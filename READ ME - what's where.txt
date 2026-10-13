@@ -1,0 +1,36 @@
+WHAT'S WHERE IN THIS FOLDER
+
+index.html
+    The campaign app. Open this one. Leave it where it is.
+    Everything you do at the table lives in the app: the party, inventories, attunement,
+    coins, the library, what's in every place, the documents.
+
+Kalatecha Map.json
+    Claude's newest build of the map, library, party and documents.
+    When Claude says it has been updated, bring it in from the app's Data tab with
+    "Update from Kalatecha Map.json" (or "Update from a new map file..."). That keeps your
+    play and only brings in what Claude changed; where you both changed the same thing,
+    yours is kept, and the app lists what came in.
+    "Load a survey.json (replaces everything)" is only for starting over from a file.
+
+Players\
+    The players' character sheets (PDFs and photos). Claude attaches them to their
+    characters in the map.
+
+Saves\
+    Your saves. In the Data tab, pick this campaign folder once ("Pick the campaign
+    folder"); then "Save to the Saves folder now" writes a dated save here, and the
+    autosave option keeps Saves\autosave.json up to date. These are your backups.
+    Claude only builds from a save when you ask him to take something from it; at the
+    moment that's "2026-10-09 kalatecha (Sallowmay below decks).json" (it has the Charter House edits too).
+
+Pictures\
+    The city picture for the table.
+
+Old versions\
+    Earlier copies, kept just in case: the Word documents from before they moved into the
+    app, earlier map files, and the app's original backup.
+
+Tools\
+    What Claude uses to build the map: the builder, the SRD rules data, and the starting
+    text of each document. Nothing in here needs opening.

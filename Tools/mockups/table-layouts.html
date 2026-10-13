@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Layouts</title>
+<style>
+  :root{
+    --paper:#e5d7b4; --paper-lit:#eee3c7; --paper-deep:#d6c49c; --ink:#3a2e1e; --ink-soft:#6d5c43; --ink-faint:#9b8968;
+    --rule:#bfab84; --rule-soft:#cdbb98; --lead:#a8331f; --r1:#5e7a4e; --r3:#a8752c; --r4:#3f6f78; --neutral:#8f7d58;
+    --mono:ui-monospace,"SF Mono",Consolas,monospace; --sans:"Helvetica Neue",Inter,system-ui,sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:13.5px}
+  button{font:inherit;color:inherit;cursor:pointer}
+  .mock-switch{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;z-index:50;display:flex;gap:4px;background:#2e2518;padding:4px;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+  .mock-switch button{border:0;background:none;color:#eee3c7;padding:6px 14px;border-radius:999px;font-family:var(--sans);font-size:12px}
+  .mock-switch button.on{background:var(--paper-lit);color:var(--ink)}
+  .mock-note{position:fixed;right:12px;bottom:12px;z-index:50;max-width:300px;background:#fffbe9;border:1px solid var(--rule);padding:8px 10px;font-family:var(--sans);font-size:11.5px;line-height:1.4;box-shadow:0 3px 10px rgba(0,0,0,.15)}
+  .mock-note b{display:block;margin-bottom:2px}
+
+  /* ── shared pieces ── */
+  .top{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-bottom:1px solid var(--rule);background:var(--paper-lit)}
+  .brand{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+  .day{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border:1px solid var(--rule);background:var(--paper)}
+  .chips{display:flex;gap:6px;margin-left:8px}
+  .pchip{display:flex;align-items:center;gap:6px;border:1px solid var(--rule);background:var(--paper);padding:3px 8px 3px 3px;border-radius:999px;font-size:12px}
+  .pchip .dot{width:22px;height:22px;border-radius:50%;background:var(--r4);color:var(--paper-lit);display:grid;place-items:center;font-family:var(--mono);font-size:11px}
+  .pchip .hp{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft)}
+  .pchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+  .spacer{flex:1}
+  .tbtn{border:1px solid var(--rule);background:var(--paper);padding:5px 10px;font-family:var(--sans);font-size:11.5px}
+  .tbtn.tv{background:#2e2518;color:#eee3c7;border-color:#2e2518}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);margin:12px 0 6px}
+  .crumb{font-family:var(--sans);font-size:12px;color:var(--ink-soft);padding:8px 12px;border-bottom:1px solid var(--rule-soft);display:flex;gap:6px;align-items:center}
+  .crumb b{color:var(--ink)} .crumb .sep{color:var(--ink-faint)}
+  .startbtn{margin-left:auto;border:1px solid var(--lead);color:var(--lead);background:#f5e6dc;padding:4px 10px;font-family:var(--sans);font-size:11.5px}
+  .startbtn.going{background:var(--lead);color:#fff}
+
+  /* the map: a ship's deck as a grid of squares */
+  .map{position:relative;flex:1;overflow:hidden;background:#9db6bc}
+  .deck{position:absolute;inset:40px 50px;background:repeating-linear-gradient(90deg,#c9a46a 0 36px,#b8935c 36px 37px);border:3px solid #6b4a2a;border-radius:40% 12px 12px 40%/50% 12px 12px 50%}
+  .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(58,46,30,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(58,46,30,.18) 1px,transparent 1px);background-size:36px 36px}
+  .tok{position:absolute;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--ink);display:grid;place-items:center;color:var(--paper-lit);font-family:var(--mono);font-size:12px;transform:translate(-50%,-50%);cursor:pointer}
+  .tok .lbl{position:absolute;top:32px;white-space:nowrap;color:var(--ink);font-family:var(--serif);font-size:10.5px;text-shadow:0 0 3px var(--paper-lit)}
+  .tok.pc{background:var(--r4)} .tok.npc{background:var(--neutral)} .tok.foe{background:var(--lead)}
+  .tok.sel{box-shadow:0 0 0 3px var(--paper-lit),0 0 0 5px var(--ink)}
+  .tok.ghost{opacity:.45;border-style:dashed}
+  .tok.turn::after{content:"";position:absolute;inset:-6px;border:3px solid var(--r3);border-radius:50%}
+
+  .turnstrip{display:none;gap:4px;padding:6px 10px;background:var(--paper-lit);border-bottom:1px solid var(--rule);align-items:center;font-family:var(--sans);font-size:11.5px;overflow:auto}
+  .fighting .turnstrip{display:flex}
+  .turnstrip .t{display:flex;align-items:center;border:1px solid var(--rule);background:var(--paper);white-space:nowrap}
+  .turnstrip .t .nm{padding:3px 7px;border:0;background:none}
+  .turnstrip .t .go{border:0;border-left:1px solid var(--rule);background:none;padding:3px 6px;color:var(--ink-faint)}
+  .turnstrip .t.now{border-color:var(--r3);box-shadow:inset 0 -3px 0 var(--r3)}
+  .turnstrip .t.neutral .nm{color:var(--neutral)} .turnstrip .t.foe .nm{color:var(--lead)}
+  .turnstrip .rd{font-family:var(--mono);font-size:10.5px;margin-right:6px}
+
+  /* the card: whoever you clicked */
+  .card{background:var(--paper-lit);border:1px solid var(--rule);padding:12px 14px}
+  .card h3{margin:0;font-size:17px;font-weight:normal}
+  .card .role{font-size:12px;color:var(--ink-soft);margin:2px 0 8px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0}
+  .stats div{border:1px solid var(--rule-soft);background:var(--paper);text-align:center;padding:4px 2px;font-family:var(--mono);font-size:12px}
+  .stats small{display:block;font-size:9px;color:var(--ink-faint);letter-spacing:.1em}
+  .acts{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+  .acts button{border:1px solid var(--rule);background:var(--paper);padding:4px 8px;font-family:var(--sans);font-size:11.5px}
+  .acts button.on{background:var(--ink);color:var(--paper-lit);border-color:var(--ink)}
+  .conds{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .cond{border:1px solid var(--lead);color:var(--lead);background:#f5e6dc;padding:1px 7px;font-family:var(--sans);font-size:11px}
+  .sbl{font-size:12.5px;line-height:1.45;margin:3px 0}
+  .sbl b{font-family:var(--sans);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin-right:4px}
+  .fav{display:flex;align-items:center;gap:6px;font-family:var(--sans);font-size:11.5px;margin-top:6px}
+  .fav button{border:1px solid var(--rule);background:var(--paper);width:24px;height:22px}
+
+  /* the session column */
+  .scene{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed var(--rule-soft);font-size:13px;line-height:1.35}
+  .scene input{margin-top:2px}
+  .scene.done{color:var(--ink-faint);text-decoration:line-through}
+  .scene.now{font-weight:bold}
+  .scene small{display:block;font-weight:normal;color:var(--ink-soft);text-decoration:none;font-size:11.5px}
+  .noteform{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+  .noteform textarea{font:inherit;font-size:12.5px;border:1px solid var(--rule);background:#fffbe9;padding:6px;min-height:52px;resize:vertical}
+  .noteform .row{display:flex;justify-content:space-between;align-items:center;font-family:var(--sans);font-size:11px}
+  .noteform button{border:1px solid var(--ink);background:var(--ink);color:var(--paper-lit);padding:4px 10px;font-family:var(--sans);font-size:11.5px}
+  .log{font-size:12px;line-height:1.4}
+  .log div{padding:3px 0;border-bottom:1px solid var(--rule-soft)}
+  .log .k{font-family:var(--mono);font-size:9.5px;color:var(--ink-faint);margin-right:4px;text-transform:uppercase}
+  .log .private{color:var(--r3)}
+  .filters{display:flex;gap:3px;margin:4px 0}
+  .filters button{border:1px solid var(--rule);background:var(--paper);padding:1px 6px;font-family:var(--sans);font-size:10.5px}
+  .filters button.on{background:var(--ink);color:var(--paper-lit)}
+
+  /* ── layout 1: table view ── */
+  #L1{display:none;height:100vh;flex-direction:column}
+  #L1.show{display:flex}
+  #L1 .body{flex:1;display:grid;grid-template-columns:clamp(240px,21vw,320px) 1fr clamp(280px,25vw,360px);min-height:0}
+  #L1 .col{overflow:auto;padding:0 12px 60px}
+  #L1 .left{border-right:1px solid var(--rule)}
+  #L1 .right{border-left:1px solid var(--rule);padding-top:10px}
+  #L1 .mid{display:flex;flex-direction:column;min-width:0}
+
+  /* ── layout 2: map + dock ── */
+  #L2{display:none;height:100vh;flex-direction:column}
+  #L2.show{display:flex}
+  #L2 .dock{height:150px;border-top:1px solid var(--rule);background:var(--paper-lit);display:grid;grid-template-columns:1.2fr 1.6fr 1fr;gap:0}
+  #L2 .dock > div{padding:8px 12px;overflow:auto;border-right:1px solid var(--rule-soft)}
+  #L2 .pcards{display:flex;gap:6px}
+  #L2 .pcard{flex:1;border:1px solid var(--rule);background:var(--paper);padding:5px 6px;font-size:12px}
+  #L2 .pcard .hpbar{height:4px;background:var(--rule-soft);margin-top:4px}
+  #L2 .pcard .hpbar i{display:block;height:100%;background:var(--r1)}
+  .float{position:absolute;width:300px;box-shadow:0 6px 18px rgba(0,0,0,.22);z-index:5}
+  .float .x{position:absolute;right:6px;top:4px;border:0;background:none;font-size:16px;color:var(--ink-soft)}
+  .drawer{position:fixed;top:44px;right:0;bottom:0;width:340px;background:var(--paper-lit);border-left:1px solid var(--rule);box-shadow:-6px 0 18px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .2s;z-index:20;padding:12px 14px}
+  .drawer.open{transform:none}
+  .drawer button.item{display:block;width:100%;text-align:left;border:1px solid var(--rule);background:var(--paper);padding:8px 10px;margin-bottom:6px;font-size:13px}
+  .drawer button.item small{display:block;color:var(--ink-soft);font-size:11px}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ LAYOUT 1: TABLE VIEW ═══════════ -->
+<div id="L1" class="show">
+  <div class="top">
+    <span class="brand">Table</span>
+    <span class="day">Day 2 · Morning</span>
+    <div class="chips" data-chips></div>
+    <span class="spacer"></span>
+    <button class="tbtn tv" data-tv>TV: the map ▾</button>
+    <button class="tbtn" data-drawer>☰ Library · Docs · Roll · Data</button>
+    <button class="tbtn">Build</button>
+  </div>
+  <div class="body">
+    <div class="col left">
+      <div class="eyebrow">Session 2 · the voyage south</div>
+      <div data-scenes></div>
+      <div class="eyebrow">Quick note</div>
+      <div class="noteform"><textarea data-note placeholder="R asks the captain about the lantern…"></textarea>
+        <div class="row"><label><input type="checkbox" data-tolog checked> Also in the game log</label><button data-addnote>Add</button></div></div>
+      <div class="eyebrow">Log</div>
+      <div class="filters" data-filters></div>
+      <div class="log" data-log></div>
+    </div>
+    <div class="mid" data-fightwrap>
+      <div class="crumb"><span>Sea</span><span class="sep">›</span><span>The Sallowmay</span><span class="sep">›</span><b>Main deck</b>
+        <button class="startbtn" data-start>Start the battle</button></div>
+      <div class="turnstrip" data-turns></div>
+      <div class="map"><div class="deck"><div class="grid"></div><div data-tokens></div></div></div>
+    </div>
+    <div class="col right"><div data-card></div>
+      <p style="font-family:var(--sans);font-size:11px;color:var(--ink-faint);margin-top:10px">Click any token, party chip or name in the turn order: its card opens here, the same card everywhere.</p></div>
+  </div>
+</div>
+
+<!-- ═══════════ LAYOUT 2: MAP + DOCK ═══════════ -->
+<div id="L2">
+  <div class="top">
+    <span class="brand">Table</span>
+    <span class="day">Day 2 · Morning</span>
+    <span class="crumb" style="border:0;padding:0">Sea › The Sallowmay › <b>Main deck</b></span>
+    <span class="spacer"></span>
+    <button class="startbtn" data-start>Start the battle</button>
+    <button class="tbtn tv" data-tv>TV: the map ▾</button>
+    <button class="tbtn" data-drawer>☰ More</button>
+  </div>
+  <div data-fightwrap style="display:flex;flex-direction:column;flex:1;min-height:0">
+    <div class="turnstrip" data-turns></div>
+    <div class="map" style="flex:1"><div class="deck"><div class="grid"></div><div data-tokens></div></div><div data-floats></div></div>
+  </div>
+  <div class="dock">
+    <div><div class="eyebrow" style="margin-top:0">Now</div><div data-scenes-now></div>
+      <div class="noteform"><textarea data-note placeholder="Quick note…" style="min-height:34px"></textarea>
+        <div class="row"><label><input type="checkbox" data-tolog checked> Also in the game log</label><button data-addnote>Add</button></div></div></div>
+    <div><div class="eyebrow" style="margin-top:0">The party</div><div class="pcards" data-pcards></div></div>
+    <div><div class="eyebrow" style="margin-top:0">Log</div><div class="log" data-log></div></div>
+  </div>
+</div>
+
+<div class="drawer" data-drawerpanel>
+  <div class="eyebrow" style="margin-top:0">Opened when you need them</div>
+  <button class="item">Library<small>people, creatures, loot, spells: drag one onto the map</small></button>
+  <button class="item">Documents<small>campaign notes, the captain, the city guide</small></button>
+  <button class="item">Roll<small>loot tables, someone to meet</small></button>
+  <button class="item">Where everyone is<small>the party, ships, key characters</small></button>
+  <button class="item">Party &amp; XP<small>award XP, companions, the XP log</small></button>
+  <button class="item">Data<small>save, update from the map file, the shelf</small></button>
+</div>
+
+<div class="mock-switch"><button class="on" data-layout="L1">Table view</button><button data-layout="L2">Map + dock</button></div>
+<div class="mock-note"><button onclick="this.parentNode.remove()" style="float:right;border:0;background:none;font-size:15px;line-height:1;color:#6d5c43">×</button><b>A mockup, not the app.</b>Click tokens, the party chips, scenes, "Start the battle" and the names in the turn order. Notes you add show up in the log. Nothing here changes your campaign.</div>
+
+<script>
+const PEOPLE = {
+  xuna:{ k:"pc", init:"X", name:"Xuna Kor'larym", role:"Navigator · Druid 3 (Stars)", ac:16, hp:"24/24", spd:30, pp:14, x:38, y:34, conds:[], fav:1 },
+  rin:{ k:"pc", init:"R", name:"Rin Amakiir", role:"Medic · Ranger 3 (Hunter)", ac:13, hp:"27/27", spd:30, pp:13, x:44, y:34, conds:[], fav:-4 },
+  ander:{ k:"pc", init:"A", name:"Ander", role:"Master-at-arms · Sorcerer 3", ac:14, hp:"23/23", spd:30, pp:11, x:50, y:62, conds:[], fav:3 },
+  ethal:{ k:"pc", init:"E", name:"Ethal Vaelor", role:"Quartermaster · Rogue 3 (Assassin)", ac:14, hp:"27/27", spd:30, pp:13, x:56, y:34, conds:[], fav:-9 },
+  cap:{ k:"npc", init:"C", name:"Captain Callomay", role:"Captain of the Sallowmay · doesn't fight", ac:"—", hp:"—", spd:30, pp:24, x:40, y:60, conds:["Invisible"],
+    look:"Tall and sun-browned, green eyes, a scarf of sea-green silk.", voice:"Warm, unhurried; answers a question with a question.", knows:"More than he says about the lantern." },
+  thimble:{ k:"npc", init:"T", name:"Thimble", role:"The captain's sprite", ac:15, hp:"10/10", spd:"10, fly 40", pp:13, x:42, y:52, conds:[], look:"Silver spirals on her arms." },
+  raven:{ k:"foe", init:"R", name:"Raven Heartgrove", role:"Pirate queen · CR 2", ac:15, hp:"52/52", spd:30, pp:14, x:78, y:46, conds:[], fight:true }
+};
+let sel = "cap", fighting = false, turn = 0, tvShow = "the map";
+const order = () => ["ethal","raven","xuna","cap","rin","ander","thimble"];
+const scenes = [
+  { t:"The ship's log", s:"Read out yesterday's entry", done:true },
+  { t:"Two days south", s:"Navigation check; weather; the lantern leans south", now:true },
+  { t:"The false light", s:"Night falls near the reef; Xuna trusts the stars or the light" },
+  { t:"Landing on Lantern Rock", s:"The Shingle Landing" }
+];
+const log = [
+  { k:"scene", t:"Session 2: done with The ship's log" },
+  { k:"move", t:"The party: Main deck, aboard the Sallowmay" },
+  { k:"cond", t:"Captain Callomay is invisible" }
+];
+let filter = "all";
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+
+function cardHtml(id, float){
+  const p = PEOPLE[id]; if(!p) return "";
+  const isPc = p.k==="pc";
+  return `<div class="card${float?" float":""}" ${float?`style="left:${Math.min(70,p.x+4)}%;top:${Math.max(4,p.y-30)}%"`:""}>${float?`<button class="x" data-close="${id}">×</button>`:""}
+    <h3>${esc(p.name)}</h3><div class="role">${esc(p.role)}</div>
+    <div class="stats"><div><small>AC</small>${p.ac}</div><div><small>HP</small>${p.hp}</div><div><small>SPEED</small>${p.spd}</div><div><small>PP</small>${p.pp}</div></div>
+    <div class="conds">${p.conds.map(c=>`<span class="cond">${c} ×</span>`).join("")}<button class="tbtn" style="padding:1px 6px">+ condition</button></div>
+    <div class="acts">
+      ${p.k!=="pc"?`<button>Talked</button>`:""}
+      <button>Big sheet</button>
+      <button>Show on TV</button>
+      <button>Hide (Stealth)</button>
+      ${fighting && !order().includes(id) ? `<button>Into the turn order</button>` : ""}
+      ${isPc?`<button>Give item</button><button>Rest</button>`:`<button>Not here</button>`}
+      ${p.fight||p.k==="pc"?`<button>Attack…</button>`:""}
+    </div>
+    ${isPc?`<div class="fav">Captain's favor <button>−</button><b style="font-family:var(--mono)">${p.fav>0?"+":""}${p.fav}</b><button>+</button><span style="color:var(--ink-faint)">(secret)</span></div>`:""}
+    ${p.look?`<div class="sbl"><b>Look</b>${esc(p.look)}</div>`:""}${p.voice?`<div class="sbl"><b>Voice</b>${esc(p.voice)}</div>`:""}${p.knows?`<div class="sbl"><b>Knows</b>${esc(p.knows)}</div>`:""}
+  </div>`;
+}
+function render(){
+  for(const root of $$("#L1, #L2")){
+    root.querySelectorAll("[data-fightwrap]").forEach(w=>w.classList.toggle("fighting", fighting));
+    root.querySelectorAll("[data-start]").forEach(b=>{ b.textContent = fighting ? "End the battle" : "Start the battle"; b.classList.toggle("going", fighting); });
+    root.querySelectorAll("[data-tv]").forEach(b=>b.textContent = `TV: ${tvShow} ▾`);
+    const o = order();
+    root.querySelectorAll("[data-turns]").forEach(el=>el.innerHTML = `<span class="rd">Round 1</span>` + o.map((id,i)=>{ const p = PEOPLE[id];
+      return `<span class="t ${p.k==="foe"?"foe":p.k==="npc"?"neutral":""}${i===turn?" now":""}"><button class="nm" data-pick="${id}" title="Open their card">${esc(p.name.split(" ")[0])}</button><button class="go" data-turn="${i}" title="Give them the turn">▶</button></span>`; }).join(""));
+    root.querySelectorAll("[data-tokens]").forEach(el=>el.innerHTML = Object.entries(PEOPLE).filter(([id,p])=>fighting || p.k!=="foe").map(([id,p])=>
+      `<div class="tok ${p.k}${sel===id?" sel":""}${p.conds.includes("Invisible")?" ghost":""}${fighting && o[turn]===id?" turn":""}" style="left:${p.x}%;top:${p.y}%" data-pick="${id}">${p.init}<span class="lbl">${esc(p.name.split(" ")[0])}</span></div>`).join(""));
+  }
+  document.querySelector("#L1 [data-chips]").innerHTML = ["xuna","rin","ander","ethal"].map(id=>{ const p = PEOPLE[id];
+    return `<button class="pchip${sel===id?" on":""}" data-pick="${id}"><span class="dot">${p.init}</span>${esc(p.name.split(" ")[0])} <span class="hp">${p.hp}</span></button>`; }).join("");
+  document.querySelector("#L1 [data-card]").innerHTML = cardHtml(sel);
+  document.querySelector("#L2 [data-floats]").innerHTML = floats.map(id=>cardHtml(id, true)).join("");
+  document.querySelector("#L2 [data-pcards]").innerHTML = ["xuna","rin","ander","ethal"].map(id=>{ const p = PEOPLE[id];
+    return `<div class="pcard" data-pick="${id}" style="cursor:pointer"><b>${esc(p.name.split(" ")[0])}</b> <span style="font-family:var(--mono);font-size:11px">AC ${p.ac} · ${p.hp}</span><div class="hpbar"><i style="width:100%"></i></div></div>`; }).join("");
+  document.querySelector("#L1 [data-scenes]").innerHTML = scenes.map((s,i)=>`<label class="scene${s.done?" done":""}${s.now?" now":""}"><input type="checkbox" data-scene="${i}" ${s.done?"checked":""}><span>${esc(s.t)}<small>${esc(s.s)}</small></span></label>`).join("");
+  const cur = scenes.find(s=>!s.done);
+  document.querySelector("#L2 [data-scenes-now]").innerHTML = cur ? `<label class="scene now" style="border:0"><input type="checkbox" data-scene="${scenes.indexOf(cur)}"><span>${esc(cur.t)}<small>${esc(cur.s)}</small></span></label>` : "Session done.";
+  const kinds = ["all","scene","fight","move","note"];
+  document.querySelectorAll("[data-filters]").forEach(el=>el.innerHTML = kinds.map(k=>`<button class="${filter===k?"on":""}" data-filter="${k}">${k}</button>`).join(""));
+  document.querySelectorAll("[data-log]").forEach(el=>el.innerHTML = log.slice().reverse().filter(e=>filter==="all"||e.k===filter).map(e=>`<div class="${e.private?"private":""}"><span class="k">${e.k}</span>${esc(e.t)}${e.private?" <small>(notes only)</small>":""}</div>`).join(""));
+}
+let floats = ["cap"];
+document.addEventListener("click", e=>{
+  const pick = e.target.closest("[data-pick]");
+  if(pick){ sel = pick.dataset.pick; if(!floats.includes(sel)) floats = [...floats.slice(-1), sel]; render(); return; }
+  const cl = e.target.closest("[data-close]"); if(cl){ floats = floats.filter(x=>x!==cl.dataset.close); render(); return; }
+  const tu = e.target.closest("[data-turn]"); if(tu){ turn = +tu.dataset.turn; sel = order()[turn]; render(); return; }
+  if(e.target.closest("[data-start]")){ fighting = !fighting; turn = 0; log.push({ k:"fight", t: fighting ? "A fight began on the main deck: Raven Heartgrove" : "The fight on the main deck ended" }); render(); return; }
+  const f = e.target.closest("[data-filter]"); if(f){ filter = f.dataset.filter; render(); return; }
+  if(e.target.closest("[data-tv]")){ tvShow = tvShow==="the map" ? "a picture" : tvShow==="a picture" ? "the mission board" : "the map"; render(); return; }
+  if(e.target.closest("[data-drawer]")){ document.querySelector("[data-drawerpanel]").classList.toggle("open"); return; }
+  const lay = e.target.closest("[data-layout]"); if(lay){ $$("[data-layout]").forEach(b=>b.classList.toggle("on", b===lay)); $$("#L1,#L2").forEach(x=>x.classList.toggle("show", x.id===lay.dataset.layout)); return; }
+  const add = e.target.closest("[data-addnote]"); if(add){ const box = add.closest(".noteform"), ta = box.querySelector("[data-note]"), tl = box.querySelector("[data-tolog]");
+    if(!ta.value.trim()) return; log.push({ k:"note", t:ta.value.trim(), private:!tl.checked }); ta.value = ""; render(); return; }
+});
+document.addEventListener("change", e=>{ const s = e.target.closest("[data-scene]"); if(!s) return; const i = +s.dataset.scene;
+  scenes[i].done = s.checked; scenes.forEach(x=>x.now=false); const nx = scenes.find(x=>!x.done); if(nx) nx.now = true;
+  if(s.checked) log.push({ k:"scene", t:`Session 2: done with ${scenes[i].t}` }); render(); });
+render();
+</script>
+</body>
+</html>

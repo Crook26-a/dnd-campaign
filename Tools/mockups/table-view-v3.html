@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table View Three</title>
+<style>
+  :root{
+    --paper:#e5d7b4; --paper-lit:#eee3c7; --paper-deep:#d6c49c; --ink:#3a2e1e; --ink-soft:#6d5c43; --ink-faint:#9b8968;
+    --rule:#bfab84; --rule-soft:#cdbb98; --lead:#a8331f; --r1:#5e7a4e; --r3:#a8752c; --r4:#3f6f78; --neutral:#8f7d58;
+    --mono:ui-monospace,"SF Mono",Consolas,monospace; --sans:"Helvetica Neue",Inter,system-ui,sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:13.5px;overflow:hidden}
+  button{font:inherit;color:inherit;cursor:pointer}
+  input,select,textarea{font:inherit;color:inherit}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);margin:10px 0 6px}
+  .grouplab{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);margin:12px 0 5px}
+  .note{font-family:var(--sans);font-size:11px;color:var(--ink-faint);line-height:1.4}
+  .btn{border:1px solid var(--rule);background:var(--paper);padding:5px 10px;font-family:var(--sans);font-size:11.5px}
+  .btn.wide{display:block;width:100%;margin:4px 0}
+  .btn.dark{background:var(--ink);color:var(--paper-lit);border-color:var(--ink)}
+  .adtabs{display:flex;gap:0;margin:2px 0 6px}
+  .adtabs button{flex:1;border:1px solid var(--rule);background:var(--paper);padding:4px 6px;font-family:var(--sans);font-size:11.5px;margin-left:-1px}
+  .adtabs button.on{background:var(--ink);color:var(--paper-lit);border-color:var(--ink)}
+  .check{display:flex;gap:6px;align-items:flex-start;font-family:var(--sans);font-size:11.5px;margin:4px 0}
+  .adrow{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--rule-soft);font-size:12.5px}
+  .adrow > span{flex:1}
+  .adrow small{color:var(--ink-faint);font-size:11px}
+
+  /* top bar */
+  .top{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-bottom:1px solid var(--rule);background:var(--paper-lit);position:relative;z-index:30}
+  .brand{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+  .day{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border:1px solid var(--rule);background:var(--paper)}
+  .chips{display:flex;gap:6px;margin-left:8px}
+  .pchip{display:flex;align-items:center;gap:6px;border:1px solid var(--rule);background:var(--paper);padding:3px 8px 3px 3px;border-radius:999px;font-size:12px}
+  .pchip .dot{width:22px;height:22px;border-radius:50%;background:var(--r4);color:var(--paper-lit);display:grid;place-items:center;font-family:var(--mono);font-size:11px}
+  .pchip .hp{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft)}
+  .pchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+  .spacer{flex:1}
+  .tvbtn{background:#2e2518;color:#eee3c7;border:1px solid #2e2518;padding:5px 10px;font-family:var(--sans);font-size:11.5px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tvbtn.open{box-shadow:0 0 0 2px var(--r3)}
+
+  /* the players' screen panel, as in the app */
+  #pscreen{position:fixed;top:46px;right:150px;z-index:60;width:300px;max-height:calc(100vh - 60px);overflow-y:auto;background:var(--paper-lit);border:1px solid var(--rule);border-radius:3px;box-shadow:0 6px 24px rgba(58,46,30,.25);padding:10px 12px}
+  #pscreen[hidden]{display:none}
+  .ps-h{display:flex;align-items:center;justify-content:space-between;font-size:14px;margin-bottom:6px}
+  .ps-st{font-size:11.5px;margin:0 0 6px;color:var(--ink-soft)} .ps-st.on{color:var(--r1)}
+  .fdel{border:0;background:none;font-size:16px;color:var(--ink-soft);padding:0 4px}
+
+  /* the three columns */
+  .body{position:absolute;top:44px;left:0;right:0;bottom:0;display:grid;grid-template-columns:clamp(250px,22vw,330px) 1fr clamp(290px,26vw,380px)}
+  .stack{display:flex;flex-direction:column;min-height:0;height:100%}
+  .pane{overflow:auto;padding:0 12px 12px;min-height:60px}
+  .pane.grow{flex:1}
+  .split{flex:0 0 9px;cursor:row-resize;background:linear-gradient(var(--rule),var(--rule)) center/40px 3px no-repeat,var(--paper-deep);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+  .split:hover,.split.drag{background:linear-gradient(var(--ink),var(--ink)) center/40px 3px no-repeat,var(--rule-soft)}
+  .left{border-right:1px solid var(--rule)}
+  .right{border-left:1px solid var(--rule)}
+  .panehead{position:sticky;top:0;background:var(--paper);padding:8px 0 4px;z-index:2;display:flex;align-items:baseline;gap:8px}
+  .panehead .eyebrow{margin:0}
+
+  /* session script */
+  .scene{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed var(--rule-soft);font-size:13px;line-height:1.35}
+  .scene input{margin-top:2px}
+  .scene.done{color:var(--ink-faint)} .scene.done .t{text-decoration:line-through}
+  .scene.now .t{font-weight:bold}
+  .scene small{display:block;color:var(--ink-soft);font-size:11.5px}
+  .readaloud{border-left:3px solid var(--r3);padding:4px 8px;margin:4px 0 0;font-style:italic;font-size:12.5px;color:var(--ink);background:var(--paper-lit)}
+  .checkrow{font-family:var(--sans);font-size:11.5px;margin:3px 0 0;color:var(--ink-soft)}
+
+  /* notes + log */
+  .noteform{display:flex;flex-direction:column;gap:4px}
+  .noteform textarea{border:1px solid var(--rule);background:#fffbe9;padding:6px;min-height:48px;resize:vertical;font-size:12.5px}
+  .noteform .row{display:flex;justify-content:space-between;align-items:center;font-family:var(--sans);font-size:11px}
+  .log{font-size:12px;line-height:1.4}
+  .log div{padding:3px 0;border-bottom:1px solid var(--rule-soft)}
+  .log .k{font-family:var(--mono);font-size:9.5px;color:var(--ink-faint);margin-right:4px;text-transform:uppercase}
+  .log .private{color:var(--r3)}
+  .filters{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0 4px}
+  .filters button{border:1px solid var(--rule);background:var(--paper);padding:1px 6px;font-family:var(--sans);font-size:10.5px}
+  .filters button.on{background:var(--ink);color:var(--paper-lit)}
+
+  /* the map */
+  .mid{display:flex;flex-direction:column;min-width:0;position:relative}
+  .crumb{font-family:var(--sans);font-size:12px;color:var(--ink-soft);padding:8px 12px;border-bottom:1px solid var(--rule-soft);display:flex;gap:6px;align-items:center}
+  .crumb b{color:var(--ink)} .crumb .sep{color:var(--ink-faint)}
+  .startbtn{margin-left:auto;border:1px solid var(--lead);color:var(--lead);background:#f5e6dc;padding:4px 10px;font-family:var(--sans);font-size:11.5px}
+  .startbtn.going{background:var(--lead);color:#fff}
+  .turnstrip{display:none;gap:4px;padding:6px 10px;background:var(--paper-lit);border-bottom:1px solid var(--rule);align-items:center;font-family:var(--sans);font-size:11.5px;overflow:auto}
+  .fighting .turnstrip{display:flex}
+  .turnstrip .t{display:flex;align-items:center;border:1px solid var(--rule);background:var(--paper);white-space:nowrap}
+  .turnstrip .t .nm{padding:3px 7px;border:0;background:none}
+  .turnstrip .t .go{border:0;border-left:1px solid var(--rule);background:none;padding:3px 6px;color:var(--ink-faint)}
+  .turnstrip .t.now{border-color:var(--r3);box-shadow:inset 0 -3px 0 var(--r3)}
+  .turnstrip .t.neutral .nm{color:var(--neutral)} .turnstrip .t.foe .nm{color:var(--lead)}
+  .turnstrip .rd{font-family:var(--mono);font-size:10.5px;margin-right:6px}
+  .map{position:relative;flex:1;overflow:hidden;background:#9db6bc}
+  .deck{position:absolute;inset:40px 50px;background:repeating-linear-gradient(90deg,#c9a46a 0 36px,#b8935c 36px 37px);border:3px solid #6b4a2a;border-radius:40% 12px 12px 40%/50% 12px 12px 50%}
+  .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(58,46,30,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(58,46,30,.18) 1px,transparent 1px);background-size:36px 36px}
+  .tok{position:absolute;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--ink);display:grid;place-items:center;color:var(--paper-lit);font-family:var(--mono);font-size:12px;transform:translate(-50%,-50%);cursor:grab;touch-action:none;user-select:none}
+  .tok .lbl{position:absolute;top:32px;white-space:nowrap;color:var(--ink);font-family:var(--serif);font-size:10.5px;text-shadow:0 0 3px var(--paper-lit);pointer-events:none}
+  .tok.pc{background:var(--r4)} .tok.npc{background:var(--neutral)} .tok.foe{background:var(--lead)}
+  .tok.sel{box-shadow:0 0 0 3px var(--paper-lit),0 0 0 5px var(--ink)}
+  .tok.ghost{opacity:.45;border-style:dashed}
+  .tok.turn::after{content:"";position:absolute;inset:-6px;border:3px solid var(--r3);border-radius:50%}
+  .dropping .map{outline:3px dashed var(--r3);outline-offset:-6px}
+
+  /* cards */
+  .slot{display:flex;flex-direction:column;min-height:80px}
+  .slot.grow{flex:1}
+  .cardwrap{overflow:auto;padding:10px 12px;flex:1}
+  .card{background:var(--paper-lit);border:1px solid var(--rule);padding:10px 12px;position:relative}
+  .card.flash{animation:fl .6s}
+  @keyframes fl{from{box-shadow:0 0 0 3px var(--r3)}to{box-shadow:0 0 0 0 transparent}}
+  .card .tools{position:absolute;right:6px;top:6px;display:flex;gap:2px}
+  .card .tools button{border:1px solid transparent;background:none;font-family:var(--sans);font-size:11px;padding:1px 5px;color:var(--ink-soft)}
+  .card .tools button.on{border-color:var(--ink);color:var(--ink);background:var(--paper)}
+  .card h3{margin:0 70px 0 0;font-size:17px;font-weight:normal}
+  .card .role{font-size:12px;color:var(--ink-soft);margin:2px 0 8px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0}
+  .stats div{border:1px solid var(--rule-soft);background:var(--paper);text-align:center;padding:4px 2px;font-family:var(--mono);font-size:12px}
+  .stats small{display:block;font-size:9px;color:var(--ink-faint);letter-spacing:.1em}
+  .acts{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+  .acts button{border:1px solid var(--rule);background:var(--paper);padding:4px 8px;font-family:var(--sans);font-size:11.5px}
+  .acts button.big{border-color:var(--ink);background:var(--ink);color:var(--paper-lit)}
+  .conds{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .cond{border:1px solid var(--lead);color:var(--lead);background:#f5e6dc;padding:1px 7px;font-family:var(--sans);font-size:11px}
+  .conds select{font-family:var(--sans);font-size:11px;border:1px solid var(--rule);background:var(--paper);padding:1px}
+  .sbl{font-size:12.5px;line-height:1.45;margin:3px 0}
+  .sbl b{font-family:var(--sans);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin-right:4px}
+  .fav{display:flex;align-items:center;gap:6px;font-family:var(--sans);font-size:11.5px;margin-top:6px}
+  .fav button{border:1px solid var(--rule);background:var(--paper);width:24px;height:22px}
+  .empty{border:1px dashed var(--rule);padding:16px 12px;text-align:center;color:var(--ink-faint);font-size:12.5px}
+  .afr{display:flex;align-items:center;gap:6px;margin:5px 0}
+  .afr label{flex:0 0 54px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft)}
+  .afr select,.afr input{flex:1;min-width:0;border:1px solid var(--rule);background:#fffbe9;padding:4px 5px;font-size:12.5px}
+  .afr input[type=number]{flex:0 0 64px}
+
+  /* the big sheet, over the map */
+  .bigsheet{position:absolute;inset:8px;z-index:12;background:var(--paper-lit);border:1px solid var(--ink-soft);box-shadow:0 8px 28px rgba(0,0,0,.3);overflow:auto;padding:16px 20px}
+  .bigsheet[hidden]{display:none}
+  .bigsheet h2{margin:0;font-weight:normal;font-size:22px}
+  .bigsheet .cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:10px}
+  .abil{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:10px 0}
+  .abil div{border:1px solid var(--rule);background:var(--paper);text-align:center;padding:6px 2px;font-family:var(--mono)}
+  .abil small{display:block;font-size:9px;color:var(--ink-faint)}
+  table.atk{width:100%;border-collapse:collapse;font-size:12px}
+  table.atk td,table.atk th{border-bottom:1px solid var(--rule-soft);padding:3px 4px;text-align:left}
+  table.atk th{font-family:var(--mono);font-size:9.5px;color:var(--ink-soft);letter-spacing:.1em}
+
+  /* the drawer */
+  .drawer{position:fixed;top:44px;right:0;bottom:0;width:380px;background:var(--paper-lit);border-left:1px solid var(--rule);box-shadow:-6px 0 18px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .2s;z-index:25;display:flex;flex-direction:column}
+  .drawer.open{transform:none}
+  .dtabs{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--rule)}
+  .dtabs button{flex:1 1 33%;border:0;border-right:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft);background:var(--paper);padding:7px 4px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+  .dtabs button.on{background:var(--paper-lit);color:var(--lead)}
+  .dbody{flex:1;overflow:auto;padding:10px 14px 30px}
+  .librow{display:flex;align-items:center;gap:6px;padding:6px 6px;border:1px solid var(--rule-soft);background:var(--paper);margin-bottom:4px;cursor:grab;font-size:12.5px}
+  .librow .who{flex:1} .librow small{display:block;color:var(--ink-soft);font-size:11px}
+  .librow .grip{color:var(--ink-faint);font-family:var(--mono)}
+  .search{width:100%;border:1px solid var(--rule);background:#fffbe9;padding:6px;margin-bottom:8px}
+  .reader{position:absolute;inset:8px;z-index:12;background:#fbf5e2;border:1px solid var(--ink-soft);box-shadow:0 8px 28px rgba(0,0,0,.3);overflow:auto;padding:18px 26px;font-size:14px;line-height:1.55}
+  .reader[hidden]{display:none}
+  .reader h2{font-weight:normal;margin:0 0 8px}
+  .rollres{border:1px solid var(--ink);background:#fffbe9;padding:8px;margin:6px 0;font-size:13px}
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#2e2518;color:#eee3c7;padding:7px 14px;font-family:var(--sans);font-size:12px;border-radius:3px;opacity:0;transition:opacity .2s;z-index:80;pointer-events:none}
+  .toast.on{opacity:1}
+  .mock-note{position:fixed;left:12px;bottom:12px;z-index:50;max-width:280px;background:#fffbe9;border:1px solid var(--rule);padding:8px 10px;font-family:var(--sans);font-size:11.5px;line-height:1.4;box-shadow:0 3px 10px rgba(0,0,0,.15)}
+  .mock-note b{display:block;margin-bottom:2px}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="brand">Table</span>
+  <span class="day" title="The world's day and time: type the day, pick the time, or Next">World day <input data-day type="number" min="1" value="2" style="width:46px;border:1px solid var(--rule);background:#fffbe9;padding:1px 3px;font-family:var(--mono)"> <select data-time style="border:1px solid var(--rule);background:#fffbe9;font-family:var(--mono);font-size:11px"><option value="day">Day</option><option value="dim">Dusk or dawn</option><option value="night">Night</option></select> <button class="btn" data-next style="padding:1px 7px">Next</button></span>
+  <div class="chips" data-chips></div>
+  <span class="spacer"></span>
+  <button class="tvbtn" data-tvbtn>Players' screen: the map ▾</button>
+  <button class="btn" data-drawer>☰ More</button>
+  <button class="btn">Build</button>
+</div>
+
+<div id="pscreen" hidden></div>
+
+<div class="body">
+  <!-- left: the session script and the notes, each scrolling on its own, the bar between them to size them -->
+  <div class="stack left" data-stack="left">
+    <div class="pane" data-top style="flex:0 0 55%">
+      <div class="panehead"><span class="eyebrow">Session 2 · the voyage south</span></div>
+      <div data-scenes></div>
+    </div>
+    <div class="split" data-split="left" title="Drag to size the two boxes"></div>
+    <div class="pane grow">
+      <div class="panehead"><span class="eyebrow">Notes &amp; log</span></div>
+      <div class="noteform"><textarea data-note placeholder="R asks the captain about the lantern…"></textarea>
+        <div class="row"><label><input type="checkbox" data-tolog checked> Also in the game log</label><button class="btn dark" data-addnote>Add</button></div></div>
+      <div class="filters" data-filters></div>
+      <div class="log" data-log></div>
+    </div>
+  </div>
+
+  <!-- middle: the map -->
+  <div class="mid" data-mid>
+    <div class="crumb"><span>Sea</span><span class="sep">›</span><span>The Sallowmay</span><span class="sep">›</span><b>Main deck</b>
+      <button class="startbtn" data-start>Start the battle</button></div>
+    <div class="turnstrip" data-turns></div>
+    <div class="map" data-map><div class="deck" data-deck><div class="grid"></div><div data-tokens></div></div></div>
+    <div class="bigsheet" data-big hidden></div>
+    <div class="reader" data-reader hidden></div>
+  </div>
+
+  <!-- right: the card on top, the Action box below (outside a fight: heal, check, give, cast… credited to whoever did it) -->
+  <div class="stack right" data-stack="right">
+    <div class="slot" data-slot="0" style="flex:0 0 55%"></div>
+    <div class="split" data-split="right" title="Drag to size the card and the Action box"></div>
+    <div class="pane grow" data-action style="padding-top:4px"></div>
+  </div>
+</div>
+
+<div class="drawer" data-drawerpanel>
+  <div class="dtabs" data-dtabs></div>
+  <div class="dbody" data-dbody></div>
+</div>
+
+<div class="toast" data-toast></div>
+<div class="mock-note"><button onclick="this.parentNode.remove()" style="float:right;border:0;background:none;font-size:15px;line-height:1;color:#6d5c43">×</button><b>Mockup three: table view.</b>The Action box (right, under the card) logs what people do outside a fight, credited to them: try Rin healing Ander, or Thimble taking the lantern from Ethal. The day in the top bar is editable. Nothing here changes your campaign.</div>
+
+<script>
+/* ── the people on the deck ── */
+const PEOPLE = {
+  xuna:{ k:"pc", init:"X", name:"Xuna Kor'larym", role:"Navigator · Druid 3 (Circle of the Stars)", ac:16, hp:"24/24", spd:30, pp:14, x:38, y:34, conds:[], fav:1, xp:1050,
+    ab:[8,14,12,13,16,10], atk:[["Rapier","+4","1d8+2 piercing"],["Starry Wisp","+5","1d8 radiant"],["Starry Form: Archer","+5","1d8+3 radiant"]], spells:"Healing Word, Cure Wounds, Thunderwave, Ice Knife, Faerie Fire, Guiding Bolt, Moonbeam", inv:"Star Map (crystal on her necklace), rapier, shield, hide armor, navigator's tools" },
+  rin:{ k:"pc", init:"R", name:"Rin Amakiir", role:"Medic · Ranger 3 (Hunter)", ac:13, hp:"27/27", spd:30, pp:13, x:44, y:34, conds:[], fav:-4, xp:1050,
+    ab:[10,16,12,10,14,8], atk:[["Longbow","+6","1d8+2 piercing"],["Dagger","+4","1d4+2 piercing"]], spells:"Cure Wounds, Alarm", inv:"Longbow, 20 arrows, two daggers, leather armor, a black pirate flag" },
+  ander:{ k:"pc", init:"A", name:"Ander", role:"Master-at-arms · Sorcerer 3 (Draconic)", ac:14, hp:"23/23", spd:30, pp:11, x:50, y:62, conds:[], fav:3, xp:1050,
+    ab:[10,12,14,10,10,16], atk:[["Fire Bolt","+5","1d10 fire"],["Thunderwave","DC 13","2d8 thunder"]], spells:"Fire Bolt, Burning Hands, Charm Person, Thunderwave", inv:"Arcane focus (staff), light crossbow, 15 sp" },
+  ethal:{ k:"pc", init:"E", name:"Ethal Vaelor", role:"Quartermaster · Rogue 3 (Assassin)", ac:14, hp:"27/27", spd:30, pp:13, x:56, y:34, conds:[], fav:-9, xp:1050,
+    ab:[10,17,12,12,10,13], atk:[["Shortsword","+5","1d6+3 piercing"],["Shortbow","+5","1d6+3 piercing"],["+ Sneak Attack","once a turn","2d6"]], spells:"Minor Illusion", inv:"The lantern that burns without oil, 3 heavy crossbows, 2 maces, the ship's purse" },
+  cap:{ k:"npc", init:"C", name:"Captain Callomay", role:"Captain of the Sallowmay · doesn't fight", ac:"—", hp:"—", spd:30, pp:24, x:40, y:60, conds:["Invisible"],
+    look:"Tall and sun-browned, green eyes, a scarf of sea-green silk.", voice:"Warm, unhurried; answers a question with a question.", knows:"More than he says about the lantern." },
+  thimble:{ k:"npc", init:"T", name:"Thimble", role:"The captain's sprite", ac:15, hp:"10/10", spd:"10, fly 40", pp:13, x:42, y:52, conds:[], look:"Silver spirals on her arms." }
+};
+const LIBRARY = [
+  { id:"raven", k:"foe", name:"Raven Heartgrove", role:"Pirate queen · CR 2", ac:15, hp:"52/52", spd:30, pp:14, atk:[["Scimitar","+5","1d6+3 slashing"],["Pistol","+5","1d10+3 piercing"]] },
+  { id:"wrecker", k:"foe", name:"Wrecker", role:"One of Raven's crew · CR 1/8", ac:12, hp:"11/11", spd:30, pp:10, atk:[["Scimitar","+3","1d6+1 slashing"]] },
+  { id:"stowaway", k:"npc", name:"The Young Stowaway", role:"Survivor of a wreck", ac:10, hp:"4/4", spd:30, pp:12, look:"Thin, sunburned, wary." },
+  { id:"rupert", k:"npc", name:"Rupert Hargrove-Vance", role:"The rival explorer", ac:13, hp:"38/38", spd:30, pp:12, look:"Silver hair, a monocle, a silver swirl just above his collar." },
+  { id:"fontaine", k:"npc", name:"Michael Fontaine", role:"The Guild of Explorers", ac:10, hp:"9/9", spd:30, pp:11, look:"Tall, blond, ink on his fingers." },
+  { id:"octopus", k:"foe", name:"Giant Octopus", role:"SRD · CR 1", ac:11, hp:"45/45", spd:"10, swim 60", pp:14 }
+];
+const DOCS = [
+  { t:"Session 2 plan", body:"<p><b>Opening.</b> Read yesterday's entry from the ship's log, then the voyage south: two days, a navigation check each day.</p><p class='readaloud'>The lantern's little flame leans south, toward a lighthouse no one tends.</p>" },
+  { t:"Campaign notes", body:"<p>The main island: Kalatecha and Saltmere are free city-states; the interior is its own country, its port Dunmarrow…</p>" },
+  { t:"Captain Callomay (DM only)", body:"<p>His slips (d8), the favor track, the hooks…</p>" },
+  { t:"Kalatecha city guide", body:"<p>Places, people, and a rope back for each.</p>" }
+];
+const TABLES = { "Weather at sea (d6)":["Clear and bright","A stiff breeze — good time","Fog by afternoon","Rain squalls","Flat calm, the sails hang","A storm on the horizon"],
+  "Curios in the market (d10)":["A compass that points at the nearest lie","A gull feather that's always dry","A brass key with no lock","A bottle with a tiny ship inside — it moves","A map of an island that sinks at high tide","A shell that hums","A coin from no country","A glove that's always warm","A spyglass that sees yesterday","A carved whale tooth"] };
+const SCENES = [
+  { t:"The ship's log", s:"Read out yesterday's entry", done:true },
+  { t:"Two days south", s:"Navigation each day; the weather; the lantern leans south", now:true, read:"The Sallowmay slips out past the breakwater, her sails filling as if the wind had been waiting for her.", check:"Xuna: Wisdom (Survival) DC 12 each day" },
+  { t:"The false light", s:"Night falls near the reef; trust the stars or the light", read:"The lighthouse blazes to life — warm, golden, and wrong.", check:"Xuna: Intelligence (Nature) or Wisdom (Survival) DC 15" },
+  { t:"Landing on Lantern Rock", s:"The Shingle Landing; the cliff path" },
+  { t:"The ship graveyard", s:"The wrecks, the octopus, the stowaway" }
+];
+const LOG = [
+  { k:"scene", t:"Session 2: done with The ship's log" },
+  { k:"move", t:"The party: Main deck, aboard the Sallowmay" },
+  { k:"cond", t:"Captain Callomay is invisible" }
+];
+const CONDITIONS = ["Blinded","Charmed","Deafened","Exhaustion","Frightened","Grappled","Incapacitated","Invisible","Paralyzed","Petrified","Poisoned","Prone","Restrained","Stunned","Unconscious"];
+const PICTURES = ["Kalatecha (the city picture)","The Sallowmay: hiring the crew","Lantern Rock at night"];
+const BOARDS = [["The Guild of Explorers: Commissions","The Charter House, Kalatecha"]];
+
+/* what each can heal with outside a fight (the dice as the SRD 5.2 spells and potion give them, plus their modifier) */
+const HEALS = { xuna:[["Cure Wounds","2d8+3",1],["Healing Word","2d4+3",1]], rin:[["Cure Wounds","2d8+2",1]] };
+const SKILLS = [["Acrobatics",1],["Animal Handling",4],["Arcana",3],["Athletics",0],["Deception",5],["History",3],["Insight",4],["Intimidation",5],["Investigation",3],["Medicine",4],["Nature",3],["Perception",4],["Performance",5],["Persuasion",5],["Religion",3],["Sleight of Hand",1],["Stealth",1],["Survival",4]];
+const ACTIONS = [["heal","Heals someone"],["check","Makes a check"],["give","Gives an item"],["take","Takes an item"],["cast","Casts a spell"],["rest","Takes a rest"],["hide","Hides"]];
+let act = { who:"rin", what:"heal", how:0, on:"ander", amt:"", skill:"Medicine", dc:"", total:"", item:"", to:"", rest:"short", spell:"", note:"" };
+let world = { day:2, time:"day" };
+let cards = [{ id:"cap", keep:false }], fighting = false, turn = 0, filter = "all", dtab = "library", libq = "";
+let tv = { open:true, show:"map", freeze:false, chart:true };
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const store = { get(k, d){ try{ const v = localStorage.getItem("tv2:"+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem("tv2:"+k, JSON.stringify(v)); }catch(e){} } };
+function toast(t){ const el = $("[data-toast]"); el.textContent = t; el.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(()=>el.classList.remove("on"), 2200); }
+const order = () => ["ethal", ...(PEOPLE.raven ? ["raven"] : []), "xuna", "cap", "rin", "ander", "thimble", ...Object.keys(PEOPLE).filter(k=>!["ethal","raven","xuna","cap","rin","ander","thimble"].includes(k))].filter(id=>PEOPLE[id]);
+const tvLabel = () => !tv.open ? "Players' screen: closed" : tv.show==="map" ? `Players' screen: the map${tv.freeze?" (frozen)":""}` : tv.show==="blank" ? "Players' screen: nothing" : `Players' screen: ${tv.show}`;
+
+/* ── a card ── */
+function cardHtml(slot){
+  const c = cards[slot]; if(!c) return `<div class="cardwrap"><div class="empty">${slot ? "Click a second person to open them here, beside the first." : "Click anyone: a token, a party chip, a name in the turn order."}</div></div>`;
+  const p = PEOPLE[c.id] || LIBRARY.find(x=>x.id===c.id); if(!p) return "";
+  const isPc = p.k==="pc", here = !!PEOPLE[c.id];
+  return `<div class="cardwrap"><div class="card" data-cardof="${c.id}">
+    <div class="tools"><button data-actas="${c.id}" title="Put them in the Action box below">Acts ↓</button><button data-closecard="${slot}" title="Close">×</button></div>
+    <h3>${esc(p.name)}</h3><div class="role">${esc(p.role)}</div>
+    <div class="stats"><div><small>AC</small>${p.ac}</div><div><small>HP</small>${p.hp}</div><div><small>SPEED</small>${p.spd}</div><div><small>PP</small>${p.pp}</div></div>
+    <div class="conds">${(p.conds||[]).map(cn=>`<button class="cond" data-uncond="${c.id}" data-k="${cn}">${cn} ×</button>`).join("")}
+      <select data-addcond="${c.id}"><option value="">+ condition</option>${CONDITIONS.filter(cn=>!(p.conds||[]).includes(cn)).map(cn=>`<option>${cn}</option>`).join("")}</select></div>
+    <div class="acts">
+      <button class="big" data-bigsheet="${c.id}">Big sheet</button>
+      ${!isPc?`<button data-logit="${esc(p.name)} talked with the party">Talked</button>`:""}
+      <button data-toastit="${esc(p.name)} is on the players' screen">Show on TV</button>
+      <button data-toastit="Type their Stealth total to hide them">Hide (Stealth)</button>
+      ${fighting && here && !order().includes(c.id) ? `<button>Into the turn order</button>` : ""}
+      ${isPc?`<button data-toastit="Pick what to give, and to whom">Give item</button><button data-logit="${esc(p.name)} took a short rest">Rest</button>`:here?`<button data-notehere="${c.id}">Not here</button>`:""}
+    </div>
+    ${isPc?`<div class="fav">Captain's favor <button data-fav="${c.id}" data-d="-1">−</button><b style="font-family:var(--mono)">${p.fav>0?"+":""}${p.fav}</b><button data-fav="${c.id}" data-d="1">+</button><span style="color:var(--ink-faint)">(secret)</span></div>`:""}
+    ${p.look?`<div class="sbl"><b>Look</b>${esc(p.look)}</div>`:""}${p.voice?`<div class="sbl"><b>Voice</b>${esc(p.voice)}</div>`:""}${p.knows?`<div class="sbl"><b>Knows</b>${esc(p.knows)}</div>`:""}
+    ${isPc?`<div class="sbl"><b>Carries</b>${esc(p.inv)}</div>`:""}
+  </div></div>`;
+}
+/* ── the Action box: what someone does outside a fight, credited to them in the log ── */
+const here = () => Object.keys(PEOPLE);
+const nm = id => (PEOPLE[id]||{}).name || "?";
+const first = id => nm(id).split(" ")[0];
+const itemsOf = id => String((PEOPLE[id]||{}).inv || "").split(/,\s*/).filter(Boolean);
+const hpOf = id => { const m = /^(\d+)\/(\d+)$/.exec((PEOPLE[id]||{}).hp||""); return m ? [+m[1], +m[2]] : null; };
+function roll(expr){ let t = 0; String(expr).replace(/(\d+)d(\d+)|([+-]\d+)/g, (m, n, d, k)=>{ if(d){ for(let i=0;i<+n;i++) t += 1+Math.floor(Math.random()*+d); } else t += +k; return ""; }); return t; }
+/* in a battle the Action box is the battle's own action form: whoever's turn it is, their attacks and spells, targets,
+   hit or miss, damage (with add-ons like Sneak Attack), and Next turn */
+let bat = { atk:0, targets:[], out:"hit", dmg:"", addons:[] };
+const ATK = id => (PEOPLE[id] && PEOPLE[id].atk) || [["Unarmed strike","+2","1 bludgeoning"]];
+function battleHtml(){
+  const o = order().filter(id=>PEOPLE[id]), who = o[turn], p = PEOPLE[who], A = ATK(who).filter(a=>!/^\+/.test(a[0]));
+  const ad = ATK(who).filter(a=>/^\+/.test(a[0])), a = A[bat.atk] || A[0];
+  const dice = [a[2].split(" ")[0], ...ad.filter(x=>bat.addons.includes(x[0])).map(x=>x[2])].join(" + ");
+  return `<div class="panehead"><span class="eyebrow">Action · round 1</span><span class="note">${esc(first(who))}'s turn</span></div>
+    <div class="afr"><label>Who</label><select data-bwho>${o.map(id=>`<option value="${id}" ${id===who?"selected":""}>${esc(nm(id))}</option>`).join("")}</select></div>
+    <div class="afr"><label>Does</label><select data-batk>${A.map((x,i)=>`<option value="${i}" ${i===bat.atk?"selected":""}>${esc(x[0])} (${esc(x[1])})</option>`).join("")}<option>Cast a spell…</option><option>Dash / Dodge / Disengage</option><option>Something else…</option></select></div>
+    ${ad.length ? `<div class="grouplab">On this attack</div><div class="acts" style="margin:0 0 4px">${ad.map(x=>`<button class="${bat.addons.includes(x[0])?"big":""}" data-badd="${esc(x[0])}">${esc(x[0].replace(/^\+ /,""))} +${esc(x[2])} · ${esc(x[1])}</button>`).join("")}</div>` : ""}
+    <div class="grouplab">Targets</div>
+    <div class="acts" style="margin:0 0 4px">${o.filter(id=>id!==who).map(id=>`<button class="${bat.targets.includes(id)?"big":""}" data-btgt="${id}">${esc(first(id))}</button>`).join("")}</div>
+    <div class="adtabs">${[["hit","Hit"],["crit","Crit"],["miss","Miss"]].map(([k,l])=>`<button class="${bat.out===k?"on":""}" data-bout="${k}">${l}</button>`).join("")}</div>
+    <div class="afr"><label>Damage</label><input data-bdmg type="number" value="${esc(bat.dmg)}"><button class="btn" data-broll>Roll ${esc(dice)}${bat.out==="crit"?" ×2":""}</button></div>
+    <button class="btn dark wide" data-blog>Log it</button>
+    <button class="btn wide" data-bnext>Next turn ▶</button>
+    <div class="grouplab" style="margin-top:14px">Something else happened</div>
+    <div class="afr"><input data-else placeholder="Raven shouts for the wreckers below…" style="flex:1"><button class="btn" data-elsego>Save</button></div>`;
+}
+function actionHtml(){
+  if(fighting) return battleHtml();
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${v===cur?"selected":""}>${esc(l)}</option>`;
+  const whoSel = (k, cur) => `<select data-af="${k}">${here().map(id=>opt(id, nm(id), cur)).join("")}</select>`;
+  const heals = HEALS[act.who] || [], H = [...heals.map(h=>`${h[0]} (${h[1]})`), "Potion of Healing (2d4+2)", "Hit Point Dice (short rest)"];
+  let body = "";
+  if(act.what==="heal") body = `<div class="afr"><label>With</label><select data-af="how">${H.map((h,i)=>opt(String(i), h, String(act.how))).join("")}</select></div>
+      <div class="afr"><label>Heals</label>${whoSel("on", act.on)}</div>
+      <div class="afr"><label>Amount</label><input data-af="amt" type="number" min="0" value="${esc(act.amt)}"><button class="btn" data-afroll="heal">Roll</button></div>`;
+  else if(act.what==="check") body = `<div class="afr"><label>Skill</label><select data-af="skill">${SKILLS.map(([s])=>opt(s, s, act.skill)).join("")}</select></div>
+      <div class="afr"><label>DC</label><input data-af="dc" type="number" min="1" value="${esc(act.dc)}" placeholder="—"><label style="flex:0 0 auto">Total</label><input data-af="total" type="number" value="${esc(act.total)}"><button class="btn" data-afroll="check">Roll</button></div>`;
+  else if(act.what==="give" || act.what==="take"){ const from = act.what==="give" ? act.who : act.to || here().find(id=>id!==act.who);
+    body = `<div class="afr"><label>${act.what==="give"?"To":"From"}</label>${whoSel("to", act.to || here().find(id=>id!==act.who))}</div>
+      <div class="afr"><label>Item</label><select data-af="item">${itemsOf(from).map(it=>opt(it, it, act.item)).join("") || `<option value="">(nothing carried)</option>`}</select></div>
+      ${act.what==="take" ? `<label class="check"><input type="checkbox" data-af="quiet" ${act.quiet?"checked":""}> Without them knowing (Sleight of Hand)</label>` : ""}`; }
+  else if(act.what==="cast") body = `<div class="afr"><label>Spell</label><input data-af="spell" value="${esc(act.spell)}" placeholder="${esc(String((PEOPLE[act.who]||{}).spells||"Guidance").split(/,\s*/)[0])}"></div>
+      <div class="afr"><label>On</label>${whoSel("on", act.on)}</div>`;
+  else if(act.what==="rest") body = `<div class="adtabs">${[["short","Short rest"],["long","Long rest"]].map(([k,l])=>`<button class="${act.rest===k?"on":""}" data-afrest="${k}">${l}</button>`).join("")}</div>`;
+  else if(act.what==="hide") body = `<div class="afr"><label>Stealth</label><input data-af="total" type="number" value="${esc(act.total)}" placeholder="total"><button class="btn" data-afroll="check">Roll</button></div>`;
+  return `<div class="panehead"><span class="eyebrow">Action</span><span class="note">outside a fight · credited to whoever does it</span></div>
+    <div class="afr"><label>Who</label>${whoSel("who", act.who)}</div>
+    <div class="afr"><label>Does</label><select data-af="what">${ACTIONS.map(([k,l])=>opt(k, l, act.what)).join("")}</select></div>
+    ${body}
+    <div class="afr"><label>Note</label><input data-af="note" value="${esc(act.note)}" placeholder="optional"></div>
+    <button class="btn dark wide" data-aflog>Log it</button>
+    <div class="grouplab" style="margin-top:14px">Something else happened</div>
+    <div class="afr"><input data-else placeholder="Thimble sticks Hannah's and Lizzie's shoes to the deck…" style="flex:1"><button class="btn" data-elsego>Save</button></div>
+    <p class="note" style="margin:2px 0 0">Goes in your notes. Tick "Also in the game log" on the left if it should be there too.</p>`;
+}
+function logAction(){
+  const who = nm(act.who), N = act.note ? ` (${act.note})` : "";
+  if(act.what==="heal"){
+    const heals = HEALS[act.who] || [], i = +act.how, how = i < heals.length ? heals[i][0] : i===heals.length ? "a Potion of Healing" : "Hit Point Dice", amt = Math.max(0, +act.amt||0);
+    if(!amt){ toast("Type or roll how much."); return; }
+    const hp = hpOf(act.on); if(hp){ PEOPLE[act.on].hp = `${Math.min(hp[1], hp[0]+amt)}/${hp[1]}`; }
+    LOG.push({ k:"heal", t:`${who} heals ${act.on===act.who?"themself":nm(act.on)} for ${amt} with ${how}${i < heals.length ? " (1st-level slot)" : ""}${N}` });
+  } else if(act.what==="check"){
+    const tot = +act.total; if(!act.total){ toast("Type or roll their total."); return; }
+    const dc = +act.dc, res = dc ? (tot >= dc ? "succeeds" : "fails") : "";
+    LOG.push({ k:"check", t:`${who}: ${act.skill} ${tot}${dc?` vs DC ${dc}, ${res}`:""}${N}` });
+  } else if(act.what==="give" || act.what==="take"){
+    const other = act.to || here().find(id=>id!==act.who), from = act.what==="give" ? act.who : other, to = act.what==="give" ? other : act.who;
+    const item = act.item || itemsOf(from)[0]; if(!item){ toast("They aren't carrying anything."); return; }
+    PEOPLE[from].inv = itemsOf(from).filter(x=>x!==item).join(", "); PEOPLE[to].inv = [...itemsOf(to), item].join(", ");
+    LOG.push({ k:"item", t: act.what==="give" ? `${who} gives ${item} to ${nm(other)}${N}` : `${who} takes ${item} from ${nm(other)}${act.quiet?" without them knowing":""}${N}` });
+  } else if(act.what==="cast"){ LOG.push({ k:"spell", t:`${who} casts ${act.spell || "a spell"} on ${act.on===act.who?"themself":nm(act.on)}${N}` }); }
+  else if(act.what==="rest"){ LOG.push({ k:"rest", t:`${who} takes a ${act.rest} rest${N}` }); }
+  else if(act.what==="hide"){ if(!act.total){ toast("Type or roll their Stealth total."); return; } LOG.push({ k:"cond", t:`${who} hides (DC ${act.total} to find)${N}` }); }
+  act.amt = ""; act.total = ""; act.note = ""; toast("In the game log."); render();
+}
+function bigHtml(id){
+  const p = PEOPLE[id] || LIBRARY.find(x=>x.id===id); if(!p) return "";
+  const AB = ["STR","DEX","CON","INT","WIS","CHA"], ab = p.ab || [10,10,10,10,10,10], mod = v => { const m = Math.floor((v-10)/2); return (m>=0?"+":"")+m; };
+  return `<button class="fdel" style="float:right;font-size:20px" data-closebig>×</button>
+    <h2>${esc(p.name)}</h2><div class="role" style="color:var(--ink-soft)">${esc(p.role)}</div>
+    <div class="abil">${AB.map((a,i)=>`<div><small>${a}</small>${mod(ab[i])}<small>${ab[i]}</small></div>`).join("")}</div>
+    <div class="cols">
+      <div><div class="grouplab">Defenses</div><div class="sbl"><b>AC</b>${p.ac} · <b>HP</b>${p.hp} · <b>Speed</b>${p.spd}</div><div class="sbl"><b>Passive Perception</b>${p.pp}</div>
+        <div class="grouplab">Conditions</div><div class="sbl">${(p.conds||[]).join(", ") || "None"}</div></div>
+      <div><div class="grouplab">Attacks</div><table class="atk"><tr><th>ATTACK</th><th>HIT / DC</th><th>DAMAGE</th></tr>${(p.atk||[]).map(a=>`<tr><td>${esc(a[0])}</td><td>${esc(a[1])}</td><td>${esc(a[2])}</td></tr>`).join("") || `<tr><td colspan=3 style="color:var(--ink-faint)">None</td></tr>`}</table>
+        <div class="grouplab">Spells</div><div class="sbl">${esc(p.spells || "—")}</div></div>
+      <div><div class="grouplab">Carries</div><div class="sbl">${esc(p.inv || "—")}</div>${p.look?`<div class="grouplab">Look</div><div class="sbl">${esc(p.look)}</div>`:""}</div>
+    </div>`;
+}
+/* ── the drawer: the things you reach for now and then ── */
+const DTABS = [["library","Library"],["docs","Docs"],["roll","Roll"],["where","Where"],["party","Party & XP"],["data","Data"]];
+function drawerHtml(){
+  if(dtab==="library"){
+    const q = libq.toLowerCase(), L = LIBRARY.filter(x=>!q || (x.name+" "+x.role).toLowerCase().includes(q));
+    return `<input class="search" data-libq placeholder="Search people and creatures…" value="${esc(libq)}">
+      <p class="note">Drag someone onto the deck to put them there. Click to open their card.</p>
+      ${L.map(x=>`<div class="librow" draggable="true" data-libdrag="${x.id}" data-libopen="${x.id}"><span class="grip">⠿</span><span class="who">${esc(x.name)}<small>${esc(x.role)}</small></span><span class="tok ${x.k}" style="position:static;transform:none;width:20px;height:20px;font-size:10px">${x.name[0]}</span></div>`).join("")}`;
+  }
+  if(dtab==="docs") return `<p class="note">Opens over the map; your script and cards stay where they are.</p>${DOCS.map((d,i)=>`<div class="adrow"><span>${esc(d.t)}</span><button class="btn" data-doc="${i}">Read</button></div>`).join("")}`;
+  if(dtab==="roll") return Object.keys(TABLES).map(t=>`<div class="adrow"><span>${esc(t)}</span><button class="btn" data-roll="${esc(t)}">Roll</button></div>`).join("") + `<div data-rollres></div>`;
+  if(dtab==="where") return `<div class="grouplab">The party</div><div class="adrow"><span>All four<br><small>Main deck, the Sallowmay (at sea, 18 mi south of Kalatecha)</small></span></div>
+      <div class="grouplab">Ships</div><div class="adrow"><span>The Sallowmay<br><small>sailing south, day 1 of 2</small></span></div><div class="adrow"><span>The Undaunted<br><small>Kalatecha, the Merchant Pier</small></span></div>
+      <div class="grouplab">Key characters</div><div class="adrow"><span>Rupert Hargrove-Vance<br><small>aboard the Undaunted</small></span></div><div class="adrow"><span>Raven Heartgrove<br><small>Lantern Rock</small></span></div>`;
+  if(dtab==="party") return `<div class="grouplab">Award XP</div><div style="display:flex;gap:6px"><input data-xp type="number" placeholder="Total XP" style="flex:1;border:1px solid var(--rule);background:#fffbe9;padding:5px"><button class="btn dark" data-award>Split it</button></div>
+      <p class="note">Split evenly among the four.</p>
+      <div class="grouplab">The party</div>${["xuna","rin","ander","ethal"].map(id=>`<div class="adrow"><span>${esc(PEOPLE[id].name)}<br><small>level 3 · ${PEOPLE[id].xp.toLocaleString()} XP (level 4 at 2,700)</small></span></div>`).join("")}`;
+  if(dtab==="data") return `<div class="grouplab">The campaign folder</div><p class="note" style="margin:0 0 6px">Saving into My campaign\\Saves${store.get("saved","") ? `, last at ${store.get("saved","")}` : ""}.</p>
+      <button class="btn wide" data-save>Save to the Saves folder now</button><button class="btn wide" data-toastit="Updated from Kalatecha Map.json: nothing new">Update from Kalatecha Map.json</button>
+      <label class="check"><input type="checkbox" ${store.get("auto",true)?"checked":""} data-auto> Autosave every 10 minutes, and when the app is closed</label>`;
+  return "";
+}
+/* ── the players' screen panel, as the app has it ── */
+function pscreenHtml(){
+  const showBtn = (k, label, id) => `<button class="${tv.show===(id||k)?"on":""}" data-tvshow="${esc(id||k)}">${label}</button>`;
+  return `<div class="ps-h"><b>Players' screen</b><button class="fdel" data-tvclose title="Close this panel">×</button></div>
+    ${tv.open ? `<p class="ps-st on">Open. Drag that window to the TV and double-click it for full screen.</p><button class="btn wide" data-tvopen="0">Close the players' screen</button>`
+              : `<p class="ps-st">Not open.</p><button class="btn wide" data-tvopen="1">Open the players' screen</button>`}
+    <p class="grouplab">They see</p>
+    <div class="adtabs">${showBtn("map","The map")}${showBtn("blank","Nothing")}</div>
+    <label class="check"><input type="checkbox" data-tvfreeze ${tv.freeze?"checked":""}> Freeze it here while I look around</label>
+    <p class="note" style="margin:0 0 6px">It follows your map: the town, the sea chart, or the battle map when a fight is open.</p>
+    <p class="grouplab">The sea chart</p>
+    <label class="check"><input type="checkbox" ${tv.chart?"checked":""} data-tvchart> They see only what the crew has charted</label>
+    <p class="grouplab">Pictures</p>
+    ${PICTURES.map(p=>`<div class="adrow"><span>${esc(p)}</span><div class="adtabs" style="margin:0">${showBtn("picture", tv.show===p?"Showing":"Show", p)}</div></div>`).join("")}
+    <button class="btn wide" style="margin-top:6px">Add a picture…</button>
+    <p class="grouplab">Mission boards</p>
+    ${BOARDS.map(([t,w])=>`<div class="adrow"><span>${esc(t)}<br><small>${esc(w)}</small></span><div class="adtabs" style="margin:0">${showBtn("board", tv.show===t?"Showing":"Show", t)}</div></div>`).join("")}`;
+}
+function render(){
+  $("[data-mid]").classList.toggle("fighting", fighting);
+  $("[data-start]").textContent = fighting ? "End the battle" : "Start the battle"; $("[data-start]").classList.toggle("going", fighting);
+  $("[data-tvbtn]").textContent = tvLabel() + " ▾";
+  const o = order(), shown = cards.filter(Boolean).map(c=>c.id);
+  $("[data-turns]").innerHTML = `<span class="rd">Round 1</span>` + o.filter(id=>PEOPLE[id]).map((id,i)=>{ const p = PEOPLE[id];
+    return `<span class="t ${p.k==="foe"?"foe":p.k==="npc"?"neutral":""}${i===turn?" now":""}"><button class="nm" data-pick="${id}" title="Open their card">${esc(p.name.split(" ")[0])}</button><button class="go" data-turn="${i}" title="Give them the turn">▶</button></span>`; }).join("");
+  $("[data-tokens]").innerHTML = Object.entries(PEOPLE).map(([id,p])=>
+    `<div class="tok ${p.k}${shown.includes(id)?" sel":""}${(p.conds||[]).includes("Invisible")?" ghost":""}${fighting && o[turn]===id?" turn":""}" style="left:${p.x}%;top:${p.y}%" data-tok="${id}">${p.init||p.name[0]}<span class="lbl">${esc(p.name.split(" ")[0])}</span></div>`).join("");
+  $("[data-chips]").innerHTML = ["xuna","rin","ander","ethal"].map(id=>{ const p = PEOPLE[id];
+    return `<button class="pchip${shown.includes(id)?" on":""}" data-pick="${id}"><span class="dot">${p.init}</span>${esc(p.name.split(" ")[0])} <span class="hp">${p.hp}</span></button>`; }).join("");
+  $('[data-slot="0"]').innerHTML = cardHtml(0); const af = $("[data-action]"), st = af.scrollTop; af.innerHTML = actionHtml(); af.scrollTop = st;
+  $("[data-day]").value = world.day; $("[data-time]").value = world.time;
+  $("[data-scenes]").innerHTML = SCENES.map((s,i)=>`<label class="scene${s.done?" done":""}${s.now?" now":""}"><input type="checkbox" data-scene="${i}" ${s.done?"checked":""}><span><span class="t">${esc(s.t)}</span><small>${esc(s.s)}</small>
+      ${s.now && s.read ? `<div class="readaloud">${esc(s.read)}</div>` : ""}${s.now && s.check ? `<div class="checkrow">Check: ${esc(s.check)}</div>` : ""}</span></label>`).join("");
+  const kinds = ["all","scene","fight","heal","check","item","note","cond","xp"];
+  $("[data-filters]").innerHTML = kinds.map(k=>`<button class="${filter===k?"on":""}" data-filter="${k}">${k}</button>`).join("");
+  $("[data-log]").innerHTML = LOG.slice().reverse().filter(e=>filter==="all"||e.k===filter).map(e=>`<div class="${e.private?"private":""}"><span class="k">${e.k}</span>${esc(e.t)}${e.private?" <small>(notes only)</small>":""}</div>`).join("");
+  $("[data-dtabs]").innerHTML = DTABS.map(([k,l])=>`<button class="${dtab===k?"on":""}" data-dtab="${k}">${l}</button>`).join("");
+  $("[data-dbody]").innerHTML = drawerHtml();
+  const ps = $("#pscreen"); if(!ps.hidden) ps.innerHTML = pscreenHtml();
+}
+/* opening someone: into the top card, unless it's kept; then into the bottom one */
+function openCard(id){
+  const at = cards.findIndex(c=>c && c.id===id);
+  if(at>=0){ const el = document.querySelector(`[data-slot="${at}"] .card`); if(el){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); } return; }
+  cards[0] = { id }; if(PEOPLE[id]) act.who = act.who || id; render();
+}
+function logit(k, t, priv){ LOG.push({ k, t, private:!!priv }); render(); }
+
+/* ── the two drag bars ── */
+for(const sp of $$("[data-split]")){
+  const side = sp.dataset.split, stack = sp.parentNode, top = sp.previousElementSibling;
+  const saved = store.get("split:"+side, null); if(saved) top.style.flex = `0 0 ${saved}px`;
+  sp.addEventListener("pointerdown", e=>{ sp.setPointerCapture(e.pointerId); sp.classList.add("drag");
+    const r = stack.getBoundingClientRect();
+    const move = ev => { const h = Math.max(70, Math.min(r.height - 80, ev.clientY - r.top)); top.style.flex = `0 0 ${h}px`; };
+    const up = ev => { sp.classList.remove("drag"); sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); store.set("split:"+side, parseFloat(top.style.flex.split(" ")[2])); };
+    sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up); });
+}
+/* ── tokens: click to open, drag to move ── */
+let drag = null;
+document.addEventListener("pointerdown", e=>{ const t = e.target.closest("[data-tok]"); if(!t) return; drag = { id:t.dataset.tok, sx:e.clientX, sy:e.clientY, moved:false }; t.setPointerCapture(e.pointerId); });
+document.addEventListener("pointermove", e=>{ if(!drag) return; if(!drag.moved && Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy) < 4) return; drag.moved = true;
+  const r = $("[data-deck]").getBoundingClientRect(), p = PEOPLE[drag.id]; p.x = Math.max(2, Math.min(98, (e.clientX-r.left)/r.width*100)); p.y = Math.max(4, Math.min(96, (e.clientY-r.top)/r.height*100));
+  const el = document.querySelector(`[data-tok="${drag.id}"]`); if(el){ el.style.left = p.x+"%"; el.style.top = p.y+"%"; } });
+document.addEventListener("pointerup", e=>{ if(!drag) return; const d = drag; drag = null; if(!d.moved) openCard(d.id); else render(); });
+/* ── dragging someone out of the library onto the deck ── */
+document.addEventListener("dragstart", e=>{ const r = e.target.closest && e.target.closest("[data-libdrag]"); if(!r) return; e.dataTransfer.setData("text/plain", r.dataset.libdrag); $("[data-mid]").classList.add("dropping"); });
+document.addEventListener("dragend", ()=>$("[data-mid]").classList.remove("dropping"));
+$("[data-map]").addEventListener("dragover", e=>{ e.preventDefault(); });
+$("[data-map]").addEventListener("drop", e=>{ e.preventDefault(); $("[data-mid]").classList.remove("dropping");
+  const id = e.dataTransfer.getData("text/plain"), x = LIBRARY.find(q=>q.id===id); if(!x) return;
+  const r = $("[data-deck]").getBoundingClientRect();
+  PEOPLE[id] = { ...x, init:x.name[0], conds:[], x:Math.max(2, Math.min(98, (e.clientX-r.left)/r.width*100)), y:Math.max(4, Math.min(96, (e.clientY-r.top)/r.height*100)) };
+  logit("move", `${x.name} is on the main deck`); openCard(id); toast(`${x.name} is here. ${x.k==="foe" ? "Start the battle when you're ready." : ""}`); });
+
+document.addEventListener("click", e=>{
+  const g = s => e.target.closest(s);
+  if(g("[data-tok]")) return;
+  if(g("[data-pick]")){ openCard(g("[data-pick]").dataset.pick); return; }
+  if(g("[data-libopen]")){ openCard(g("[data-libopen]").dataset.libopen); return; }
+  /* the battle's action form */
+  if(g("[data-badd]")){ const k = g("[data-badd]").dataset.badd; bat.addons = bat.addons.includes(k) ? bat.addons.filter(x=>x!==k) : [...bat.addons, k]; render(); return; }
+  if(g("[data-btgt]")){ const k = g("[data-btgt]").dataset.btgt; bat.targets = bat.targets.includes(k) ? bat.targets.filter(x=>x!==k) : [...bat.targets, k]; render(); return; }
+  if(g("[data-bout]")){ bat.out = g("[data-bout]").dataset.bout; render(); return; }
+  if(g("[data-broll]")){ const o = order().filter(id=>PEOPLE[id]), who = o[turn], A = ATK(who).filter(a=>!/^\+/.test(a[0])), a = A[bat.atk] || A[0];
+    const parts = [a[2].split(" ")[0], ...ATK(who).filter(x=>/^\+/.test(x[0]) && bat.addons.includes(x[0])).map(x=>x[2])];
+    let t = 0; for(const pp of parts) t += roll(bat.out==="crit" ? pp.replace(/(\d+)d/g, (m,n)=>`${2*n}d`) : pp); bat.dmg = String(t); toast(`${parts.join(" + ")}${bat.out==="crit"?" (crit: dice twice)":""} = ${t}`); render(); return; }
+  if(g("[data-blog]")){ const o = order().filter(id=>PEOPLE[id]), who = o[turn], A = ATK(who).filter(a=>!/^\+/.test(a[0])), a = A[bat.atk] || A[0], d = bat.out==="miss" ? 0 : (+bat.dmg||0);
+    if(!bat.targets.length){ toast("Pick a target."); return; }
+    for(const id of bat.targets){ const hp = hpOf(id); if(hp && d) PEOPLE[id].hp = `${Math.max(0, hp[0]-d)}/${hp[1]}`; }
+    const ad = bat.addons.length ? ` with ${bat.addons.map(x=>x.replace(/^\+ /,"")).join(" and ")}` : "";
+    LOG.push({ k:"fight", t:`${nm(who)}: ${a[0]}${ad} on ${bat.targets.map(first).join(", ")}, ${({ hit:"hits", crit:"crits", miss:"misses" })[bat.out]}${d?`, ${d} ${a[2].split(" ").slice(1).join(" ")} damage`:""}` });
+    bat = { atk:0, targets:[], out:"hit", dmg:"", addons:[] }; toast("Logged. HP updated."); render(); return; }
+  if(g("[data-bnext]")){ const n = order().filter(id=>PEOPLE[id]).length; turn = (turn+1) % n; bat = { atk:0, targets:[], out:"hit", dmg:"", addons:[] }; render(); return; }
+  /* the Action box */
+  if(g("[data-actas]")){ act.who = g("[data-actas]").dataset.actas; act.item = ""; render(); toast(`${nm(act.who)} is in the Action box.`); return; }
+  if(g("[data-aflog]")){ logAction(); return; }
+  if(g("[data-afrest]")){ act.rest = g("[data-afrest]").dataset.afrest; render(); return; }
+  if(g("[data-afroll]")){ const k = g("[data-afroll]").dataset.afroll;
+    if(k==="heal"){ const heals = HEALS[act.who] || [], i = +act.how, dice = i < heals.length ? heals[i][1] : i===heals.length ? "2d4+2" : "1d8+1"; act.amt = String(roll(dice)); toast(`${dice}: ${act.amt}`); }
+    else { const d = 1 + Math.floor(Math.random()*20), mod = act.what==="hide" ? 1 : ((SKILLS.find(s=>s[0]===act.skill)||[])[1] || 0); act.total = String(d + mod); toast(`d20 ${d} + ${mod} = ${act.total}`); }
+    render(); return; }
+  if(g("[data-elsego]")){ const i = $("[data-else]"); if(!i.value.trim()) return; LOG.push({ k:"note", t:i.value.trim(), private:true }); i.value = ""; toast("Saved to your notes."); render(); return; }
+  if(g("[data-next]")){ const seq = ["day","dim","night"], k = seq.indexOf(world.time); if(k===2){ world.day++; world.time = "day"; } else world.time = seq[k+1];
+    LOG.push({ k:"time", t:`Day ${world.day}, ${({ day:"day", dim:"dusk or dawn", night:"night" })[world.time]}` }); render(); return; }
+  if(g("[data-closecard]")){ const k = +g("[data-closecard]").dataset.closecard; cards[k] = null; if(k===0 && cards[1]){ cards[0] = cards[1]; cards[1] = null; } render(); return; }
+  if(g("[data-bigsheet]")){ const b = $("[data-big]"); b.innerHTML = bigHtml(g("[data-bigsheet]").dataset.bigsheet); b.hidden = false; $("[data-reader]").hidden = true; return; }
+  if(g("[data-closebig]")){ $("[data-big]").hidden = true; return; }
+  if(g("[data-uncond]")){ const b = g("[data-uncond]"), p = PEOPLE[b.dataset.uncond]; if(p){ p.conds = p.conds.filter(x=>x!==b.dataset.k); logit("cond", `${p.name} is no longer ${b.dataset.k.toLowerCase()}`); } return; }
+  if(g("[data-fav]")){ const b = g("[data-fav]"), p = PEOPLE[b.dataset.fav]; p.fav = Math.max(-15, Math.min(15, p.fav + +b.dataset.d)); logit("note", `Captain's favor for ${p.name} is now ${p.fav>0?"+":""}${p.fav}`, true); return; }
+  if(g("[data-logit]")){ logit("note", g("[data-logit]").dataset.logit); toast("In the game log."); return; }
+  if(g("[data-toastit]")){ toast(g("[data-toastit]").dataset.toastit); return; }
+  if(g("[data-notehere]")){ const id = g("[data-notehere]").dataset.notehere; const nm = PEOPLE[id].name; delete PEOPLE[id]; cards = cards.map(c=>c && c.id===id ? null : c); logit("move", `${nm} is no longer on the main deck`); return; }
+  if(g("[data-turn]")){ turn = +g("[data-turn]").dataset.turn; render(); return; }
+  if(g("[data-start]")){ fighting = !fighting; turn = 0; bat = { atk:0, targets:[], out:"hit", dmg:"", addons:[] };
+    /* for the mockup: a planned encounter waiting here (Raven boards with a wrecker) if nobody hostile is on the deck yet */
+    if(fighting && !Object.values(PEOPLE).some(p=>p.k==="foe")){ for(const [id, x, y] of [["raven", 80, 46], ["wrecker", 84, 60]]){ const L = LIBRARY.find(q=>q.id===id); PEOPLE[id] = { ...L, init:L.name[0], conds:[], x, y }; } }
+    logit("fight", fighting ? "A fight began on the main deck" : "The fight on the main deck ended"); return; }
+  if(g("[data-filter]")){ filter = g("[data-filter]").dataset.filter; render(); return; }
+  if(g("[data-addnote]")){ const box = g(".noteform"), ta = box.querySelector("[data-note]"), tl = box.querySelector("[data-tolog]"); if(!ta.value.trim()) return;
+    logit("note", ta.value.trim(), !tl.checked); ta.value = ""; return; }
+  /* the players' screen panel */
+  if(g("[data-tvbtn]")){ const ps = $("#pscreen"); ps.hidden = !ps.hidden; $("[data-tvbtn]").classList.toggle("open", !ps.hidden); render(); return; }
+  if(g("[data-tvclose]")){ $("#pscreen").hidden = true; $("[data-tvbtn]").classList.remove("open"); return; }
+  if(g("[data-tvopen]")){ tv.open = g("[data-tvopen]").dataset.tvopen==="1"; render(); return; }
+  if(g("[data-tvshow]")){ tv.show = g("[data-tvshow]").dataset.tvshow; if(tv.show!=="map" && tv.show!=="blank") logit("pic", `Showed the players ${tv.show}`); else render(); return; }
+  /* the drawer */
+  if(g("[data-drawer]")){ $("[data-drawerpanel]").classList.toggle("open"); return; }
+  if(g("[data-dtab]")){ dtab = g("[data-dtab]").dataset.dtab; render(); return; }
+  if(g("[data-doc]")){ const d = DOCS[+g("[data-doc]").dataset.doc], r = $("[data-reader]"); r.innerHTML = `<button class="fdel" style="float:right;font-size:20px" data-closereader>×</button><h2>${esc(d.t)}</h2>${d.body}`; r.hidden = false; $("[data-big]").hidden = true; return; }
+  if(g("[data-closereader]")){ $("[data-reader]").hidden = true; return; }
+  if(g("[data-roll]")){ const t = g("[data-roll]").dataset.roll, rows = TABLES[t], i = Math.floor(Math.random()*rows.length);
+    $("[data-rollres]").innerHTML = `<div class="rollres"><b>${i+1}.</b> ${esc(rows[i])}<div style="margin-top:6px"><button class="btn" data-logit="${esc(t)}: ${esc(rows[i])}">Put it in the game log</button></div></div>`; return; }
+  if(g("[data-award]")){ const v = Math.round(+$("[data-xp]").value||0); if(!v) return; const each = Math.floor(v/4);
+    for(const id of ["xuna","rin","ander","ethal"]) PEOPLE[id].xp += each; logit("xp", `${each} XP each`); toast(`${each} XP each to the four.`); return; }
+  if(g("[data-save]")){ const t = new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }); store.set("saved", t); toast("Saved: Saves\\2026-10-12 Kalatecha.json"); render(); return; }
+  if(!g("#pscreen") && !g("[data-tvbtn]") && !$("#pscreen").hidden && !g(".drawer")){ $("#pscreen").hidden = true; $("[data-tvbtn]").classList.remove("open"); }
+});
+document.addEventListener("change", e=>{
+  const t = e.target;
+  if(t.matches("[data-af]")){ const k = t.dataset.af; act[k] = t.type==="checkbox" ? t.checked : t.value;
+    if(k==="who" || k==="what" || k==="to" || k==="how"){ if(k!=="how") act.item = ""; render(); } return; }
+  if(t.matches("[data-bwho]")){ turn = order().filter(id=>PEOPLE[id]).indexOf(t.value); bat = { atk:0, targets:[], out:"hit", dmg:"", addons:[] }; render(); return; }
+  if(t.matches("[data-batk]")){ bat.atk = +t.value || 0; render(); return; }
+  if(t.matches("[data-day]")){ world.day = Math.max(1, Math.round(+t.value||1)); LOG.push({ k:"time", t:`It's day ${world.day}` }); render(); return; }
+  if(t.matches("[data-time]")){ world.time = t.value; render(); return; }
+  if(t.matches("[data-scene]")){ const i = +t.dataset.scene; SCENES[i].done = t.checked; SCENES.forEach(x=>x.now=false); const nx = SCENES.find(x=>!x.done); if(nx) nx.now = true;
+    if(t.checked) logit("scene", `Session 2: done with ${SCENES[i].t}`); else render(); return; }
+  if(t.matches("[data-addcond]") && t.value){ const p = PEOPLE[t.dataset.addcond] || LIBRARY.find(x=>x.id===t.dataset.addcond); if(p){ p.conds = [...(p.conds||[]), t.value]; logit("cond", `${p.name} is ${t.value.toLowerCase()}`); } return; }
+  if(t.matches("[data-tvfreeze]")){ tv.freeze = t.checked; render(); return; }
+  if(t.matches("[data-tvchart]")){ tv.chart = t.checked; return; }
+  if(t.matches("[data-auto]")){ store.set("auto", t.checked); toast(t.checked ? "Autosave is on." : "Autosave is off."); return; }
+});
+document.addEventListener("input", e=>{ if(e.target.matches("input[data-af]:not([type=checkbox])")){ act[e.target.dataset.af] = e.target.value; return; }
+  if(e.target.matches("[data-bdmg]")){ bat.dmg = e.target.value; return; }
+  if(e.target.matches("[data-libq]")){ libq = e.target.value; const pos = e.target.selectionStart; render(); const s = $("[data-libq]"); s.focus(); s.setSelectionRange(pos, pos); } });
+render();
+</script>
+</body>
+</html>
