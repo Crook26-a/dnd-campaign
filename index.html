@@ -5006,12 +5006,20 @@ function placeNode(kind,x,y){
   revealInspector(true);
   if(joined) flash(joined);
 }
+/* every settlement, post and toll lying beside a road (within half a mile) joins it */
+const ROADSIDE_KINDS = new Set(["city","town","village","post","toll","inn"]);
+function joinAllToRoads(){
+  const said = [];
+  for(const n of doc.nodes.slice()) if(ROADSIDE_KINDS.has(n.kind)){ const s = joinRoadAt(n, (doc.ppm||10) * .5); if(s) said.push(n.name || "a place"); }
+  touch(); render(); renderPane(true);
+  flash(said.length ? `On the roads now: ${said.join(", ")}.` : "Nothing lies beside a road that isn't already on it.");
+}
 /* a place set down on a road (or dragged onto one) joins it: it snaps onto the line and the road becomes two, one
    each side of it; the bends stay with their half, hand-set miles are shared out by length (else each half is
    measured), and the road's name, quality, danger, coaches and encounters carry over */
-function joinRoadAt(n){
+function joinRoadAt(n, within){
   if(!n || sailsAbout(n) || !Array.isArray(doc.roads)) return "";
-  const tol = 12 / (view.k || 1), S = 10;
+  const tol = within || 12 / (view.k || 1), S = 10;
   let best = null;
   for(const r of doc.roads){
     if(r.from===n.id || r.to===n.id) continue;
@@ -5031,6 +5039,8 @@ function joinRoadAt(n){
   const copy = o => JSON.parse(JSON.stringify(o));
   const h1 = { ...copy(r), id:uid("e"), to:n.id, pts:copy((r.pts||[]).slice(0, seg)) };
   const h2 = { ...copy(r), id:uid("e"), from:n.id, pts:copy((r.pts||[]).slice(seg)) };
+  /* a curved road keeps its line: each half bends through points taken off the old curve (two to a bend), not just the old bends */
+  if(!r.straight){ const keep = arr => arr.filter((p, k)=>k % 5===2).map(p=>({ x:Math.round(p.x), y:Math.round(p.y) })); h1.pts = keep(sm.slice(1, i)); h2.pts = keep(sm.slice(i, sm.length-1)); }
   if(r.milesLocked){ h1.miles = r1(r.miles * frac); h2.miles = Math.max(.1, r1(r.miles - h1.miles)); }
   /* encounters placed on the road go with the half they're on, at the same spot */
   const encs = r.encs || []; h1.encs = []; h2.encs = [];
@@ -12550,7 +12560,8 @@ function renderRegions(){
     <p class="eyebrow spaced">Reckoning the sheet</p>
     <p class="empty-note" style="margin-bottom:10px">Bring the roads' miles and the drawing back into line: measure each road as it's drawn, or move the places so the roads run their stated miles (walking out from the home port).</p>
     <button class="btn wide" id="remeasure">Re-measure roads from the plot</button>
-    <button class="btn wide" id="replot">Re-plot markers to their mileage</button>`;
+    <button class="btn wide" id="replot">Re-plot markers to their mileage</button>
+    <button class="btn wide" id="joinroads" title="Towns, villages, cities, posts and tolls within half a mile of a road join it: the road splits there">Put places onto the roads beside them</button>`;
 
   $("#pane-regions").querySelectorAll("[data-ri]").forEach(inp=>{
     inp.oninput = e=>{
@@ -12583,6 +12594,7 @@ function renderRegions(){
     get:()=>doc.gapSpread ?? 1.2, set:v=>{ doc.gapSpread = v; }, done:()=>renderPane(true) });
   $("#remeasure").onclick = recomputeAll;
   $("#replot").onclick = replotFromMiles;
+  $("#joinroads").onclick = joinAllToRoads;
 }
 
 /* ══════════════════════════════════════════════════════════════
