@@ -10,7 +10,11 @@
   out.push('mid-way: at ' + JSON.stringify(activeGroup().at) + ', trail ' + root.trail.pts.length + ' pts, journey ' + !!root.journey + ', box "' + document.querySelector('#pane-inspect .travelbox').innerText.replace(/\s+/g,' ').slice(0, 160) + '"');
   document.querySelector('#pane-inspect [data-journey="pause"]').click(); await wait(300);
   const at1 = JSON.stringify(activeGroup().at); await wait(500); out.push('paused holds still ' + (at1===JSON.stringify(activeGroup().at)) + ', buttons: ' + [...document.querySelectorAll('#pane-inspect [data-journey]')].map(b=>b.textContent).join(' / '));
-  document.querySelector('#pane-inspect [data-journey="go"]').click(); await wait(6000);
+  document.querySelector('#pane-inspect [data-journey="stop"]').click(); await wait(100);
+  out.push('stopped: at ' + JSON.stringify(activeGroup().at) + ', ' + partyWord());
+  select('node', to.id); renderPane(true); await wait(30); const b2 = document.querySelector('#pane-inspect .travelbox');
+  out.push('from the road: ' + (b2 ? b2.innerText.replace(/s+/g,' ').slice(0, 140) : 'no box'));
+  b2.querySelector('[data-travelgo]').click(); await wait(6000);
   out.push('arrived: at ' + JSON.stringify(activeGroup().at) + ', journey ' + !!root.journey + ', day ' + day0 + ' → ' + campaignDay() + ' | ' + gameLogList().slice(-2).map(e=>e.text).join(' / '));
  }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
  document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');

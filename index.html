@@ -2071,9 +2071,12 @@ const roadQuality = r => r ? Math.max(1, Math.min(10, Math.round(+r.quality || 1
 const roadGrade = q => !q ? "across country" : q >= 8 ? "a good road" : q >= 4 ? "a road" : "a poor path";
 const roadStep = q => !q ? 0 : q >= 8 ? 1 : q >= 4 ? 0 : -1;
 const travelSet = () => { const t = root.travel || (root.travel = {}); if(!PACES[t.pace]) t.pace = "normal"; t.hours = Math.max(1, Math.min(16, Math.round(+t.hours || 8))); t.nav = t.nav || {}; return t; };
-/* the survey place the party (the group on the move) is at: a town they're inside counts as that town; aboard a ship, none */
+/* where the party (the group on the move) sets off from: a survey place (a town they're inside counts as that town), or a
+   spot out on the survey (stopped on the road, or put there by hand) as { x, y, name }; aboard a ship, nowhere */
 function overlandFrom(){
-  const at = partyWhere(), id = at.map==="survey" ? at.node : at.map, n = id && root.nodes.find(x=>x.id===id);
+  const at = partyWhere();
+  if(at.map==="survey" && !at.node && at.x!=null) return { x:at.x, y:at.y, name:atWord(at) };
+  const id = at.map==="survey" ? at.node : at.map, n = id && root.nodes.find(x=>x.id===id);
   return n && !sailsAbout(n) ? n : null;
 }
 /* the shortest way by road between two survey places: { miles, legs:[{ r, back }] }, or null if no roads join them */
@@ -2107,16 +2110,54 @@ function terrainAt(x, y){
   if(isle && ringDist(shapeRing(isle), x, y) <= (+root.coastMiles || 2)*(root.ppm||10)) return "coastal";     // the shore strip: 2 miles unless the map says otherwise
   return (isle && TERRAINS[isle.terrain]) ? isle.terrain : "grassland";
 }
-/* the whole trip worked out: the way (points), each stretch's terrain and pace, the hours, the Navigation DC */
-function tripPlan(from, to, t){
-  const ppm = root.ppm||10, road = roadRoute(from, to), parts = [];
-  if(road){
-    for(const { r, back } of road.legs){
-      let sm = samplePath(roadPts(r), false, 10, r.straight); if(back) sm = sm.slice().reverse();
-      const drawn = polyLength(sm) || 1, f = (+r.miles || drawn/ppm) / (drawn/ppm);       // the road's own mileage, spread along its line
-      parts.push({ sm, f, q:roadQuality(r) });
+/* a road's line as stretches to walk, in either direction, at the road's own mileage spread along its line */
+function roadPart(r, back){
+  const ppm = root.ppm||10; let sm = samplePath(roadPts(r), false, 10, r.straight); if(back) sm = sm.slice().reverse();
+  const drawn = polyLength(sm) || 1; return { sm, f:(+r.miles || drawn/ppm) / (drawn/ppm), q:roadQuality(r) };
+}
+/* the nearest point on any road to (x, y): { r, sm, i, x, y, d } — the road, its line, the segment it falls on */
+function nearestRoad(x, y){
+  let best = null;
+  for(const r of root.roads||[]){
+    if(!nodeById(r.from) || !nodeById(r.to)) continue;
+    const sm = samplePath(roadPts(r), false, 10, r.straight);
+    for(let i=1; i<sm.length; i++){ const a = sm[i-1], b = sm[i], dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy;
+      const u = L ? Math.max(0, Math.min(1, ((x-a.x)*dx + (y-a.y)*dy)/L)) : 0, px = a.x+u*dx, py = a.y+u*dy, d = Math.hypot(x-px, y-py);
+      if(!best || d < best.d) best = { r, sm, i, x:px, y:py, d }; }
+  }
+  return best;
+}
+/* the ways they could go: by road (from a place, or picking up the road they're on or near, toward either end), or straight
+   across country; each a list of stretches to walk */
+function routeCandidates(from, to){
+  const ppm = root.ppm||10, out = [], legsTo = (start, parts) => {
+    if(start.id===to.id) return parts;
+    const rr = roadRoute(start, to); return rr ? [...parts, ...rr.legs.map(({ r, back })=>roadPart(r, back))] : null; };
+  if(from.id){ const rr = roadRoute(from, to); if(rr) out.push({ road:true, parts:rr.legs.map(({ r, back })=>roadPart(r, back)) }); }
+  else {
+    const near = nearestRoad(from.x, from.y);
+    if(near && near.d <= ppm){                                       // on a road, or within a mile of one
+      const { r, sm, i } = near, f = roadPart(r, false).f, q = roadQuality(r), P = { x:near.x, y:near.y };
+      const onto = near.d > ppm*.05 ? [{ sm:[{ x:from.x, y:from.y }, P], f:1, q:0 }] : [];      // a step across to it first
+      const back = legsTo(nodeById(r.from), [...onto, { sm:[P, ...sm.slice(0, i).reverse()], f, q }]);
+      const ahead = legsTo(nodeById(r.to), [...onto, { sm:[P, ...sm.slice(i)], f, q }]);
+      for(const parts of [back, ahead]) if(parts) out.push({ road:true, parts });
     }
-  } else parts.push({ sm:[{ x:from.x, y:from.y }, { x:to.x, y:to.y }], f:1, q:0 });
+  }
+  if(!out.length || !from.id) out.push({ road:false, parts:[{ sm:[{ x:from.x, y:from.y }, { x:to.x, y:to.y }], f:1, q:0 }] });
+  return out;
+}
+/* the whole trip worked out: the way (points), each stretch's terrain and pace, the hours, the Navigation DC — the
+   quickest of the ways they could go */
+function tripPlan(from, to, t){
+  const plans = routeCandidates(from, to).map(c=>planParts(c.parts, c.road, t)), quick = list => list.length ? list.reduce((a, b)=>b.roadHours < a.roadHours ? b : a) : null;
+  if(from.id && !plans.some(p=>!p.road)) plans.push(planParts([{ sm:[{ x:from.x, y:from.y }, { x:to.x, y:to.y }], f:1, q:0 }], false, t));     // from a place: across country is a choice too
+  const road = quick(plans.filter(p=>p.road)), country = quick(plans.filter(p=>!p.road));
+  const pick = (t.way==="country" ? country : road) || road || country;
+  return { ...pick, choices:{ road, country } };
+}
+function planParts(parts, road, t){
+  const ppm = root.ppm||10;
   const pts = [], stretches = [], chosen = PACE_STEPS.indexOf(t.pace);
   for(const { sm, f, q } of parts){
     for(let i=1; i<sm.length; i++){
@@ -2132,8 +2173,8 @@ function tripPlan(from, to, t){
   const miles = stretches.reduce((s, x)=>s + x.miles, 0);
   const roadHours = stretches.reduce((s, x)=>s + x.miles / (PACES[x.pace].day / 8), 0);       // the day column's rate: 8 hours a day
   const sum = {}; for(const x of stretches){ const k = `${x.ter}|${x.pace}`; sum[k] = (sum[k]||0) + x.miles; }
-  const dc = Math.max(0, ...stretches.map(x=>x.dc)), hard = stretches.find(x=>x.dc===dc);
-  return { road:!!road, pts, miles:Math.round(miles*10)/10, roadHours, dc, hard, parts:Object.entries(sum).map(([k, mi])=>{ const [ter, pace] = k.split("|"); return { ter, pace, miles:Math.round(mi*10)/10 }; }),
+  const dc = Math.max(5, ...stretches.map(x=>x.dc)), hard = stretches.find(x=>x.dc===dc) || stretches[0];
+  return { road, pts, miles:Math.round(miles*10)/10, roadHours, dc, hard, parts:Object.entries(sum).map(([k, mi])=>{ const [ter, pace] = k.split("|"); return { ter, pace, miles:Math.round(mi*10)/10 }; }),
     arctic:stretches.some(x=>x.ter==="arctic"), roads:[...new Set(stretches.map(x=>x.q))] };
 }
 /* hours on the road turned into days and hours of the clock: so many hours a day on the road, the rest resting */
@@ -2162,6 +2203,7 @@ function travelBlock(n){
   const grades = plan.roads.map(q=>q ? `${roadGrade(q)} (${q}/10)` : "across country").join(", ");
   return `<div class="travelbox"><p class="eyebrow spaced">Travel here overland</p>
     <p class="empty-note" style="font-size:11px;margin:0 0 4px">From ${esc(from.name||"where they are")}: ${plan.miles} mi, ${grades}.</p>
+    ${plan.choices.road && plan.choices.country ? `<label style="display:block;margin:0 0 6px">Way <select data-travel="way">${[["road", "By road", plan.choices.road], ["country", "Across country", plan.choices.country]].map(([k, l, p])=>`<option value="${k}" ${(t.way==="country" ? "country" : "road")===k ? "selected" : ""}>${l}: ${p.miles} mi, ${hoursWord(clockHours(p.roadHours, t.hours))}, DC ${p.dc}</option>`).join("")}</select></label>` : ""}
     <p class="empty-note" style="font-size:11px;margin:0 0 6px">${plan.parts.map(p=>`${TERRAINS[p.ter].label} ${p.miles} mi (${PACES[p.pace].label})`).join(" · ")}</p>
     <div class="pcrow"><label style="flex:1">Pace <select data-travel="pace">${Object.entries(PACES).map(([k, p])=>`<option value="${k}" ${k===t.pace?"selected":""}>${p.label}: ${p.mph} mph, ${p.day} mi a day</option>`).join("")}</select></label>
       <label style="flex:0 0 92px">Hours a day <input type="number" data-travel="hours" min="1" max="16" value="${t.hours}"></label></div>
@@ -2178,7 +2220,7 @@ function travelBlock(n){
 document.getElementById("pane-inspect").addEventListener("change", e=>{
   const c = e.target.closest("[data-travel]"); if(!c) return;
   const t = travelSet(), k = c.dataset.travel;
-  if(k==="pace") t.pace = c.value; else if(k==="hours") t.hours = +c.value; else if(k==="skis") t.skis = c.checked; else if(k==="mps") t.mps = +c.value;
+  if(k==="pace") t.pace = c.value; else if(k==="hours") t.hours = +c.value; else if(k==="skis") t.skis = c.checked; else if(k==="mps") t.mps = +c.value; else if(k==="way") t.way = c.value;
   else if(k==="nat20") t.nav.nat20 = c.checked; else if(k==="navtotal") t.nav.total = c.value==="" ? "" : Math.round(+c.value);
   travelSet(); saveParty(); if(!journeyPlay) renderPane(true);
 });
@@ -2204,7 +2246,7 @@ function startJourney(from, n){
   const path = trailPoints(plan.pts, nav.lost||0), cum = [0];
   for(let i=1; i<path.length; i++) cum.push(cum[i-1] + Math.hypot(path[i][0]-path[i-1][0], path[i][1]-path[i-1][1]));
   const g = activeGroup();
-  root.journey = { gid:g.id, from:from.id, to:n.id, path, cum, miles:plan.miles, hours:clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours), done:0, passed:0,
+  root.journey = { gid:g.id, from:from.id||null, fromName:from.name||"where they were", to:n.id, path, cum, miles:plan.miles, hours:clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours), done:0, passed:0,
     pace:t.pace, dc:plan.dc, nav:{ ...t.nav }, word:nav.word, parts:plan.parts, push:t.hours - 8 };
   root.trail = { pts:[path[0]] };
   gameLog("move", `${groupName(g)} set off from ${from.name||"where they were"} for ${n.name||"somewhere"}: ${plan.miles} mi at a ${PACES[t.pace].label} pace (${plan.parts.map(p=>`${TERRAINS[p.ter].label} ${p.miles} mi ${PACES[p.pace].label.toLowerCase()}`).join(", ")}). Navigation DC ${plan.dc}${nav.word ? `, ${nav.word}` : ""}.`);
@@ -2246,11 +2288,11 @@ function stepJourney(t){
 function endJourney(arrived){
   const jp = journeyPlay; journeyPlay = null; if(jp && jp.owed) passHours(jp.owed, true);
   const J = root.journey; if(!J) return; delete root.journey;
-  const to = root.nodes.find(x=>x.id===J.to), from = root.nodes.find(x=>x.id===J.from);
+  const to = root.nodes.find(x=>x.id===J.to), fromName = J.fromName || ((root.nodes.find(x=>x.id===J.from)||{}).name) || "where they were";
   let g = groupsOf().find(x=>x.id===J.gid) || activeGroup();
   if(arrived && to){
     root.trail = { pts:J.path }; g.at = hasPlan(to.id) ? { map:to.id, node:null } : { map:"survey", node:to.id }; g = joinUp(g); to.visited = true;
-    partyMoved(`${groupName(g)} reached ${to.name||"the place"} from ${(from&&from.name)||"where they were"}: ${J.miles} mi, ${hoursWord(J.passed)} on the way.${J.push>0 && J.passed>8 ? ` They pushed on ${J.push} hour${J.push===1?"":"s"} past 8 a day (Constitution saves, DC 11${J.push>1?` to ${10+J.push}`:""}).` : ""} Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
+    partyMoved(`${groupName(g)} reached ${to.name||"the place"} from ${fromName}: ${J.miles} mi, ${hoursWord(J.passed)} on the way.${J.push>0 && J.passed>8 ? ` They pushed on ${J.push} hour${J.push===1?"":"s"} past 8 a day (Constitution saves, DC 11${J.push>1?` to ${10+J.push}`:""}).` : ""} Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
   } else partyMoved(`${groupName(g)} stopped on the road to ${(to&&to.name)||"somewhere"}: ${Math.round(J.done)} mi along, ${Math.round(J.miles - J.done)} mi short, ${hoursWord(J.passed)} on the way. Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
   touch(); render(); renderPane(true);
 }
