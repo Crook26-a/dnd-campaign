@@ -5614,14 +5614,15 @@ const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.lev
    fight's pool is still split evenly, with a bonus pool on top shared by
    damage dealt, foes brought down, healing and aim (no penalty for damage
    taken: Joseph dropped it); and outside fights, a
-   great check (beat the DC by enough, or a natural 20) earns XP by level
-   (no XP is lost for a bad one). Every number is a setting
+   check that meets its DC earns XP by how far over it went, times level
+   (5 a point up to 10 over, meeting it counts as 1; 1 a point past
+   that; nothing lost for a miss). Every number is a setting
    (root.xpRules), shown in the Party tab.
    ══════════════════════════════════════════════════════════════ */
-const XP_RULES_DEFAULT = { bonus:20, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, great:10, greatXp:25 } };
+const XP_RULES_DEFAULT = { bonus:20, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:5, upTo:10, past:1 } };
 function xpRules(){
   const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
-  r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) }; delete r.checks.bad; delete r.checks.badXp;     // no XP lost for a bad check: Joseph dropped it
+  r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) }; for(const k of ["bad","badXp","great","greatXp"]) delete r.checks[k];     // the old rule: a flat bonus for a great check, a cost for a bad one
   if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
@@ -5684,15 +5685,18 @@ function xpDueSite(){
   const n = battleOf ? bnode() : (sel && sel.kind==="node" ? nodeById(sel.id) : null);
   return n && n.site && n.site.xpDue ? n.site : null;
 }
-/* a check outside a fight: a great one earns XP, by level */
+/* a check outside a fight that meets its DC earns XP by how far over it went, times the character's level */
+const checkXpFor = (over, lv, R) => { if(over < 0) return 0; const up = Math.max(1, +R.upTo||10), pp = Math.max(0, +R.perPoint||0), past = Math.max(0, +R.past||0);
+  return Math.round((over <= up ? pp * Math.max(1, over) : pp * up + past * (over - up)) * lv); };
 function checkXp(who, dc, natOf, what){
   const R = xpRules().checks; if(!R.on || !dc) return "";
   const per = {}, why = [];
   for(const x of who){
     if(!x.key.startsWith("pc:")) continue;
-    const c = x.o, tot = Math.round(+ta.tot[x.key]), nat = natOf[x.key], lv = clampLv(c.level), S = statsOf(c);
-    const great = nat===20 || tot - dc >= (+R.great||10);
-    if(great){ per[c.id] = Math.round((+R.greatXp||0) * lv); S.greats = (S.greats||0) + 1; why.push(`${(c.name||"").split(" ")[0]} ${nat===20 ? "rolled a natural 20" : `beat it by ${tot-dc}`}`); }
+    const c = x.o, tot = Math.round(+ta.tot[x.key]), lv = clampLv(c.level), S = statsOf(c), over = tot - dc;
+    if(!isFinite(over) || over < 0) continue;
+    per[c.id] = checkXpFor(over, lv, R); if(over >= 10 || natOf[x.key]===20) S.greats = (S.greats||0) + 1;
+    why.push(`${(c.name||"").split(" ")[0]} ${over ? `beat it by ${over}` : "met it"}`);
   }
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
 }
@@ -5739,7 +5743,8 @@ function xpRulesBlock(){
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
       damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
-    <div class="xprule">A great check: beat the DC by ${num("checks.great", C.great, 46)} or a natural 20 = +${num("checks.greatXp", C.greatXp, 46)} XP × level.</div>
+    <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. Nothing lost for a miss.<br>
+      <small>So at level 3: meet it 15 · by 5, 75 · by 10, 150 · by 13, 159.</small></div>
     <button class="btn wide" data-lb="rulesreset" style="margin-top:6px">Back to the starting numbers</button></details>`;
 }
 document.addEventListener("click", e=>{
