@@ -24,7 +24,7 @@ $appEnd = [Array]::FindLastIndex($lines, [Predicate[string]]{ param($l) $l -eq '
 # the roll's own entry points: what Field Book calls
 $roots = @("genPerson","buildPerson","roleOptions","pickClass","CLASS_BLOCKS","CREATURE_TYPES","GEN_SPECIES","ALIGNMENTS","ALIGN_ABBR",
   "completeSheet","fillSheetFromBlock","foeKit","foeById","npcAsFoe","abMod","clampLv","spellOf","SRD_FOES","SRD_SPELLS","SRD_LOOT","crLabel","signed","slotSummary","CASTING","groupOfClass",
-  "GEN_FIRST","GEN_FAMILY","GEN_NICK","GEN_LOOK","GEN_VOICE","GEN_WANTS","GEN_SECRET","genBackstory","rollAlignment","attacksFromStatBlock","weaponAttack","attackWeapons","sheetClasses","creatureOptions","genCreature")
+  "GEN_FIRST","GEN_FAMILY","GEN_NICK","GEN_LOOK","GEN_VOICE","GEN_WANTS","GEN_SECRET","genBackstory","rollAlignment","attacksFromStatBlock","weaponAttack","attackWeapons","sheetClasses","creatureOptions","genCreature","spellByName","allSpells","spellLine","spellHeals","spellTidy","SPELL_SCHOOLS","srdSpellBlock","blankLib","copyFromSrd")
 # supplied by Field Book (see the shim below) or about the survey's own screen and storage: never brought along
 $stop = @('SRD','SRD_CREDIT','$','$$','lib','root','doc','sel','flash','render','renderPane','renderLibrary','renderLibList','saveParty','touch','markDirty',
   'partyAvgLevel','partyLevels','partyRoster','partySize','companions','libNpcById','libLootById','gameLog','svg','battleOf','pane','openInv',
@@ -138,7 +138,7 @@ $shim = @'
   const libNpcById = id => lib().npcs.find(p=>p.id===id) || null;
   const libLootById = id => SRD_LOOT.find(x=>x.id===id) || lib().loot.find(x=>x.id===id) || null;
   const partyLevels = () => []; const partyAvgLevel = () => (FB.level ? FB.level() : 1);
-  const root = {}, doc = { nodes:[] }; const flash = () => {}, saveParty = () => {}, touch = () => {}, gameLog = () => {};
+  const root = { get library(){ return lib(); } }, doc = { nodes:[] }; const flash = () => {}, saveParty = () => {}, touch = () => {}, gameLog = () => {};
 '@
 $body = ($kept | ForEach-Object { $_.Lines -join "`n" }) -join "`n"
 $out = @"

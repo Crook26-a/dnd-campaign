@@ -1246,7 +1246,7 @@ const BESTIARY = [
 function lib(){
   if(!root) return { foes:[], npcs:[], loot:[] };
   const L = (root.library = root.library || {});
-  for(const k of ["foes","npcs","loot"]) if(!Array.isArray(L[k])) L[k] = [];
+  for(const k of ["foes","npcs","loot","spells"]) if(!Array.isArray(L[k])) L[k] = [];
   return L;
 }
 const libFoeById  = id => lib().foes.find(m => m.id === id) || null;
@@ -1341,7 +1341,7 @@ function npcAsFoe(p){
   const cr = p.cr!=null && p.cr!=="" ? +p.cr : 0;
   const tr = [];
   if(p.defenses) tr.push(["Defenses", p.defenses]);
-  const sp = (p.spells||[]).map(id=>(SPELL_BY.get(id)||{}).name).filter(Boolean);
+  const sp = (p.spells||[]).map(id=>(spellOf(id)||{}).name).filter(Boolean);
   if(sp.length) tr.push(["Spells", sp.join(", ") + (p.dc||p.satk ? ` (save DC ${p.dc||"?"}, attack ${p.satk||"?"})` : "")]);
   return { id:"npc:"+p.id, name:p.name||"Someone", npc:true, cr, xp:CR_XP[cr]??0, size:"", type:p.species||"Humanoid", talk:true,
     ac:p.ac||"", hp:p.hpMax||p.hp||"", init:p.init||"", spd:p.speed ? (/ft/.test(String(p.speed)) ? p.speed : `${p.speed} ft.`) : "",
@@ -5109,6 +5109,9 @@ function srdItemBlock(x){
 }
 /* copying a standard entry makes it yours to change; the standard one stays as it was */
 function copyFromSrd(cat, id){
+  if(cat==="spells"){ const s = SPELL_BY.get(id); if(!s) return null;
+    const { heal, ...rest } = JSON.parse(JSON.stringify(s));
+    return { ...rest, id:uid("lsp"), name:`${s.name} (yours)`, notes:`Copied from the SRD 5.2 ${s.name}.` }; }
   if(cat==="foes"){
     const f = SRD_FOE_BY.get(id); if(!f) return null;
     const ab = Array.isArray(f.ab) ? f.ab : [];
@@ -5177,6 +5180,8 @@ function goToPlace(planId, nodeId){
 /* deleting an entry takes it out of every place that held it */
 function purgeLib(cat, id){
   const L = lib(); L[cat] = L[cat].filter(x=>x.id!==id);
+  /* a spell of your own: everyone who knew it forgets it */
+  if(cat==="spells"){ for(const p of [...partyRoster(), ...L.npcs]) if(Array.isArray(p.spells)) p.spells = p.spells.filter(s=>s!==id); refreshSpellList(); saveParty(); return; }
   const strip = nodes => { for(const n of nodes||[]){
     if(cat==="foes" && n.site && n.site.foes) n.site.foes = n.site.foes.filter(f=>f.id!==id);
     if(cat==="loot" && n.site && n.site.items) n.site.items = n.site.items.filter(x=>baseId(x)!==id);
@@ -5190,9 +5195,18 @@ function blankLib(cat){
   if(cat==="foes") return { id:uid("lf"), name:"New foe", cr:1, xp:CR_XP[1], ac:"", hp:"", speed:"30 ft.",
     str:"", dex:"", con:"", int:"", wis:"", cha:"", sav:"", sen:"", init:"", attacks:"", traits:"", boss:false, talk:false, notes:"" };
   if(cat==="npcs") return { id:uid("ln"), name:"New person", role:"", where:"", look:"", voice:"", wants:"", knows:"", fightsAs:"", notes:"" };
+  if(cat==="spells") return { id:uid("lsp"), name:"New spell", lv:1, school:"Evocation", time:"Action", range:"", comp:"V, S", dur:"Instantaneous",
+    conc:false, rit:false, cls:"", save:"", atk:false, dmg:"", dtype:"", desc:"", hi:"", notes:"" };
   return { id:uid("ll"), name:"New item", kind:"curio", value:"", desc:"", notes:"" };
 }
+const SPELL_SCHOOLS = ["Abjuration","Conjuration","Divination","Enchantment","Evocation","Illusion","Necromancy","Transmutation"];
+const spellLine = s => [s.lv ? `${ORD[s.lv]} level` : "cantrip", String(s.school||"").toLowerCase(), s.conc ? "conc." : "", s.dmg ? `${s.dmg} ${s.dtype||""}`.trim() : ""].filter(Boolean).join(" · ");
+/* a spell of your own heals if it says it restores Hit Points and does no damage, as the SRD's are read */
+const spellHeals = s => !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||"");
+/* after an edit: whether it heals, and a healing spell's dice read from its words when left blank (the SRD keeps them in dmg) */
+function spellTidy(s){ s.heal = spellHeals(s); if(s.heal && !s.dmg){ const m = /regains?\b[^.]*?(\d+d\d+)/i.exec(s.desc||""); if(m) s.dmg = m[1]; } return s; }
 function libSummary(cat, x){
+  if(cat==="spells") return esc(spellLine(x));
   if(cat==="foes") return `CR ${crLabel(+x.cr||0)} · ${(+x.xp||0).toLocaleString()} xp${x.boss?" · boss":""}`;
   if(cat==="npcs") return esc([x.role, x.align ? (ALIGN_ABBR[x.align]||x.align) : ""].filter(Boolean).join(" · "));
   return esc([x.kind, x.rarity&&x.rarity!=="Mundane"?x.rarity:"", x.value, itemStatLine(x)].filter(Boolean).join(" · "));
@@ -5285,6 +5299,22 @@ function libForm(cat, x){
       ${ta("carries","Carries","One item per line: a rusty key, a love letter, a dagger…",3)}
       <div class="pcrow" style="margin:-4px 0 8px"><select class="lib-carrypick" data-for="${x.id}" style="flex:1;min-width:0"><option value="">Give them an item…</option>${lootOptions("")}</select><button class="btn" ${a} data-libact="carryadd">Add</button></div>
       ${draft ? "" : filesBlock(x, "npc:"+x.id)}`;
+  } else if(cat==="spells"){
+    /* a spell of your own, on the SRD's own fields, so it casts, scales with a higher slot and heals as theirs do */
+    const sel = (k, lab, opts, flex) => `<div class="field" style="flex:${flex||1}"><label>${lab}</label><select ${a} data-f="${k}">${opts.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(x[k]??"")?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`;
+    h += `<div class="pcrow">${sel("lv","Level",[[0,"Cantrip"],...[1,2,3,4,5,6,7,8,9].map(n=>[n, `${ORD[n]} level`])])}${sel("school","School",SPELL_SCHOOLS.map(s=>[s,s]))}</div>
+      <div class="pcrow">${t("time","Casting time",1,"Action, Bonus Action, 1 minute")}${t("range","Range",1,"60 feet, Self, Touch")}</div>
+      <div class="pcrow">${t("comp","Components",1.3,"V, S, M (a pinch of salt)")}${t("dur","Duration",1,"Instantaneous, 1 minute")}</div>
+      <div class="pcrow" style="margin-bottom:9px"><label class="check" style="flex:1"><input ${a} data-f="conc" type="checkbox" ${x.conc?"checked":""}> Concentration</label>
+        <label class="check" style="flex:1"><input ${a} data-f="rit" type="checkbox" ${x.rit?"checked":""}> Ritual</label></div>
+      ${t("cls","Classes",1,"Wizard, Sorcerer")}
+      <div class="pcrow">${sel("save","Saving throw",[["","None"],...Object.values(ABIL_NAME).map(s=>[s,s])])}
+        <label class="check" style="flex:1;margin-top:14px"><input ${a} data-f="atk" type="checkbox" ${x.atk?"checked":""}> A spell attack</label></div>
+      <div class="pcrow">${t("dmg","Dice (damage, or healing)",1,"2d8")}${sel("dtype","Damage type",[["","—"],...DAMAGE_TYPES.filter(Boolean).map(d=>[d,d])])}</div>
+      ${ta("desc","What it does","A ribbon of frost lashes out at a creature you can see… On a failed save it takes 2d8 Cold damage… A creature regains 1d8 Hit Points…",4)}
+      ${ta("hi","With a higher-level slot","The damage increases by 1d8 for each spell slot level above 1.",2)}
+      <p class="empty-note" style="font-size:11px;margin:-4px 0 8px">Write the damage, healing and higher-slot lines the way the SRD does ("…regains 1d8 Hit Points", "increases by 1d6 for each spell slot level above 2") and casting it rolls and scales them, as with any spell.</p>
+      ${x.name && (x.desc || x.dmg) ? `<details class="pcset"><summary>How it reads</summary>${srdSpellBlock(x)}</details>` : ""}`;
   } else {
     h += `<div class="pcrow">
         <div class="field" style="flex:1"><label>Kind</label><select ${a} data-f="kind">${LOOT_KINDS.map(k=>`<option ${k===x.kind?"selected":""}>${k}</option>`).join("")}</select></div>
@@ -5308,6 +5338,11 @@ function libForm(cat, x){
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Damage above counts too when it's used (a bomb, a wand). Charges come back by themselves: at dawn when the day count moves on (Next, or typing a later day), or when whoever carries it finishes that rest (the Action box's "Takes a rest", or Rest on the Party tab). The game log says so.</p></details>`; })()}`;
   }
   h += ta("notes","Notes");
+  if(cat==="spells" && !draft){
+    const who = [...partyRoster(), ...lib().npcs].filter(p=>(p.spells||[]).includes(x.id)).map(p=>p.name||"Someone");
+    return h + `<p class="grouplab">Known by</p><p class="empty-note" style="margin:0 0 8px">${who.length ? esc(who.join(", ")) : "Nobody yet: add it on a character's sheet (Spells) by name."}</p>
+      <button class="btn wide danger" data-libact="del" data-id="${x.id}" style="margin-top:8px">Delete from the library</button></div>`;
+  }
   if(draft) return h + `<div class="pcrow libdraft-go"><button class="btn on" style="flex:2" data-libact="draftadd">Add${x.name?` ${esc(x.name)}`:""} to the library</button><button class="btn" style="flex:1" data-libact="draftcancel">Cancel</button></div></div>`;
   const used = usedAt(cat, x.id);
   h += `<p class="grouplab">Used at</p>${used.length
@@ -5340,15 +5375,16 @@ function stdMatches(q){
 const FB_FIELDS = {
   loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","cls","level","ac","hpMax","speed","init",
-    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells"] };
+    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells"],
+  spells:["name","lv","school","time","range","comp","dur","conc","rit","cls","save","atk","dmg","dtype","desc","hi","notes"] };
 function fieldBookIn(text, quiet){                  // quiet: the inbox — no message, just the counts back
   let o; try{ o = JSON.parse(text); }catch(err){ flash("That isn't a Field Book file."); return; }
-  if(!o || (!Array.isArray(o.loot) && !Array.isArray(o.npcs))){ flash("No items or people in that file."); return; }
+  if(!o || (!Array.isArray(o.loot) && !Array.isArray(o.npcs) && !Array.isArray(o.spells))){ flash("No items or people in that file."); return; }
   const L = lib(), unmatched = [];
   let added = 0, updated = 0;
-  for(const cat of ["loot","npcs"]) for(const raw of (o[cat]||[])){
+  for(const cat of ["loot","npcs","spells"]) for(const raw of (o[cat]||[])){
     if(!raw || typeof raw!=="object" || !String(raw.name||"").trim()) continue;
-    const x = JSON.parse(JSON.stringify(raw)); if(!x.id) x.id = uid(cat==="loot" ? "ll" : "ln");
+    const x = JSON.parse(JSON.stringify(raw)); if(!x.id) x.id = uid(cat==="loot" ? "ll" : cat==="spells" ? "lsp" : "ln"); if(cat==="spells"){ x.lv = +x.lv || 0; spellTidy(x); }
     if(cat==="npcs" && x.fightsAs==="block") delete x.fightsAs;
     if(cat==="npcs" && x.fightsAs && x.fightsAs!=="self" && !foeById(x.fightsAs)){
       const nm = String(x.fightsAs).trim().toLowerCase(), m = [...L.foes, ...SRD_FOES].find(f=>String(f.name||"").toLowerCase()===nm);
@@ -5413,23 +5449,30 @@ document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState=
 function fieldBookOut(){
   const L = lib(), d = new Date(), p = n => String(n).padStart(2,"0");
   const pack = { format:"ordinate-fieldbook", version:1, app:"Ordinate Survey", exported:d.toISOString(),
-    loot:JSON.parse(JSON.stringify(L.loot)), npcs:JSON.parse(JSON.stringify(L.npcs)) };
-  if(!pack.loot.length && !pack.npcs.length){ flash("No items or people of your own to send yet."); return; }
+    loot:JSON.parse(JSON.stringify(L.loot)), npcs:JSON.parse(JSON.stringify(L.npcs)), spells:JSON.parse(JSON.stringify(L.spells||[])) };
+  if(!pack.loot.length && !pack.npcs.length && !pack.spells.length){ flash("No items or people of your own to send yet."); return; }
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(pack)], { type:"application/json" }));
   a.download = `field-book-from-the-survey-${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}.json`;
   document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
-  flash(`${pack.loot.length} items and ${pack.npcs.length} people saved for the Field Book: open it there with Send → Bring a file in.`);
+  flash(`${pack.loot.length} items, ${pack.npcs.length} people and ${pack.spells.length} spells saved for the Field Book: open it there with Send → Bring a file in.`);
 }
 function renderLibList(){
   const box = $("#lib-list"); if(!box) return;
   const q = libQuery.trim().toLowerCase();
   if(libTab==="spells"){
-    /* spells are the standard list only — read them here, give them to characters on the Party tab */
+    /* your own spells (made here, or copied from the SRD to change), then the standard ones to read */
+    const own = lib().spells.filter(x => !q || JSON.stringify(x).toLowerCase().includes(q));
+    const draft = libDraft && libDraft.cat==="spells" ? `<div class="libitem open draft"><div class="libhead"><span class="nm">${esc(libDraft.x.name||"New spell")}</span><span class="sub">not added yet</span></div>${libForm("spells", libDraft.x)}</div>` : "";
     const match = stdMatches(q), page = match.slice(0, q ? 150 : 40);
-    box.innerHTML = `<p class="empty-note" style="margin:0 0 6px">Give a character spells on the Party tab (Spells, slots and resources). Search a name, "cantrip", "level 3", a school or a class.</p>`
+    box.innerHTML = draft + (own.length ? own.map(x=>`<div class="libitem${x.id===libOpen?" open":""}">
+          <button class="libhead" data-libtoggle="${x.id}"><span class="nm">${esc(x.name||"Unnamed")}</span><span class="sub" title="${libSummary("spells", x)}">${libSummary("spells", x)}</span></button>
+          ${x.id===libOpen?libForm("spells", x):""}</div>`).join("")
+        : `<p class="empty-note" style="margin:0 0 6px">${q ? "None of yours match." : "No spells of your own yet: + New makes one, or copy a standard one below to change it."}</p>`)
+      + `<p class="eyebrow spaced">Standard — SRD 5.2 <small>${match.length.toLocaleString()}</small></p>
+        <p class="empty-note" style="margin:0 0 6px">Give a character spells on the Party tab (Spells, slots and resources), or a person on their page. Search a name, "cantrip", "level 3", a school or a class.</p>`
       + page.map(s=>`<div class="libitem std${s.id===libOpen?" open":""}">
           <button class="libhead" data-libtoggle="${s.id}"><span class="nm">${esc(s.name)}</span><span class="sub">${s.lv?ORD[s.lv]:"cantrip"} · ${esc(s.school.toLowerCase())}${s.conc?" · conc.":""}</span></button>
-          ${s.id===libOpen?`<div class="libform">${srdSpellBlock(s)}</div>`:""}</div>`).join("")
+          ${s.id===libOpen?`<div class="libform">${srdSpellBlock(s)}<button class="btn wide" data-libcopy="${s.id}" style="margin-top:8px">Copy to my library to change it</button></div>`:""}</div>`).join("")
       + (match.length > page.length ? `<p class="empty-note">${(match.length-page.length).toLocaleString()} more — search to narrow it down.</p>` : "")
       + (match.length ? "" : `<p class="empty-note">No spells match.</p>`);
     return;
@@ -5467,6 +5510,7 @@ function renderLibList(){
   box.innerHTML = h;
 }
 function renderLibrary(){
+  refreshSpellList();
   const L = lib();
   $("#pane-library").innerHTML = `
     ${libReturn ? `<button class="btn wide libback" data-libact="back">← ${esc(libReturn.label)}</button>` : ""}
@@ -5476,9 +5520,9 @@ function renderLibrary(){
       <button class="btn" style="flex:1" data-libact="fbout" title="A file of your library's items and people for Field Book (its Send tab → Bring a file in), to work on them on your phone">Send to the Field Book</button></div>
     ${typeof window.showDirectoryPicker==="function" ? `<div class="pcrow" style="margin:-4px 0 8px;align-items:center"><small style="flex:1;min-width:0">${fbDir ? `Inbox: <b>${esc(fbDir.name)}</b>${fbAsk ? " · needs a click to reopen" : " · brings in new files by itself"}` : "No inbox yet: pick the folder your phone saves Field Book files into (your Google Drive one)."}</small>
       <button class="btn" data-libact="fbpick">${fbDir ? "Change" : "Choose the inbox…"}</button>${fbDir ? `<button class="btn" data-libact="fbcheck">Check now</button>` : ""}</div>` : ""}
-    <div class="libtabs">${LIB_CATS.map(([k,l])=>`<button data-libtab="${k}" class="${k===libTab?"on":""}">${l} <small>${k==="spells"?SRD_SPELLS.length:L[k].length}</small></button>`).join("")}</div>
+    <div class="libtabs">${LIB_CATS.map(([k,l])=>`<button data-libtab="${k}" class="${k===libTab?"on":""}">${l} <small>${k==="spells"?(L.spells||[]).length+SRD_SPELLS.length:L[k].length}</small></button>`).join("")}</div>
     <div class="pcrow"><div class="field" style="flex:1;margin-bottom:8px"><input id="lib-q" type="text" placeholder="Search ${LIB_CATS.find(c=>c[0]===libTab)[1].toLowerCase()}…" value="${esc(libQuery)}"></div>
-      ${libTab==="spells"?"":`<button class="btn" data-libact="new" style="height:31px">+ New</button>`}</div>
+      <button class="btn" data-libact="new" style="height:31px">+ New</button></div>
     <div id="lib-list"></div>
     ${typeof SRD_CREDIT!=="undefined"?`<p class="credit">${esc(SRD_CREDIT)} Data via Open5e.</p>`:""}`;
   renderLibList();
@@ -5491,6 +5535,7 @@ $("#pane-library").addEventListener("input", e=>{
   if(k.startsWith("atk.")){ const [, j, f] = k.split("."), q = (x.attacks||[])[+j]; if(q){ q[f] = t.value; saveParty(); } return; }
   if(k.startsWith("purse.")){ x.purse = x.purse || {}; x.purse[k.slice(6)] = Math.max(0, Math.round(+t.value||0)); saveParty(); return; }
   x[k] = k==="xp" ? (t.value===""?0:+t.value) : t.value;
+  if(cat==="spells"){ spellTidy(x); if(k==="name" && !(libDraft && libDraft.x===x)) refreshSpellList(); }
   if(k==="name"){ const it = t.closest(".libitem"), nm = it && it.querySelector(".libhead .nm"), dr = libDraft && libDraft.x===x;
     if(nm) nm.textContent = t.value || (dr ? { loot:"New item", npcs:"New person", foes:"New foe" }[cat] : "Unnamed");
     const go = dr && it.querySelector('[data-libact="draftadd"]'); if(go) go.textContent = `Add${t.value.trim()?" "+t.value.trim():""} to the library`;
@@ -5509,7 +5554,7 @@ $("#pane-library").addEventListener("change", e=>{
   if(t.type==="checkbox") x[k] = t.checked;
   else if(t.tagName==="SELECT"){
     if(k.startsWith("atk.")){ const [, j, f] = k.split("."), q = (x.attacks||[])[+j]; if(q){ q[f] = t.value; saveParty(); } return; }
-    x[k] = k==="cr" ? (t.value==="" && cat==="npcs" ? "" : +t.value) : t.value;
+    x[k] = k==="cr" ? (t.value==="" && cat==="npcs" ? "" : +t.value) : k==="lv" ? +t.value : t.value;
     if(cat==="npcs" && (k==="fightsAs" || k==="align")){ saveParty(); renderLibList(); return; }   /* a set alignment hides the roll button */
     if(k==="cr"){ x.xp = CR_XP[x.cr]; const xi = t.closest(".libform").querySelector('[data-f="xp"]'); if(xi) xi.value = x.xp; }
     /* a rarity with no price yet suggests the guideline one; a price you typed is left alone */
@@ -5518,6 +5563,7 @@ $("#pane-library").addEventListener("change", e=>{
       if(vi){ vi.placeholder = guess || "50 gp"; if(guess && (!x.value || /^~/.test(String(x.value).trim()))){ x.value = guess; vi.value = guess; } }
     }
   } else return;
+  if(cat==="spells") spellTidy(x);
   const sub = t.closest(".libitem")&&t.closest(".libitem").querySelector(".libhead .sub");
   if(sub) sub.innerHTML = libSummary(cat, x);
   saveParty();
@@ -5555,7 +5601,7 @@ $("#pane-library").addEventListener("click", e=>{
     else if(a==="atkdel"){ (x.attacks||[]).splice(+b.dataset.k, 1); }
     else if(a==="spadd"){
       const inp = $(`#pane-library .lib-spname[data-for="${x.id}"]`), nm = (inp&&inp.value||"").trim().toLowerCase();
-      const s = SRD_SPELLS.find(q=>q.name.toLowerCase()===nm); if(!s){ flash("Pick a spell from the list."); return; }
+      const s = spellByName(nm); if(!s){ flash("Pick a spell from the list."); return; }
       x.spells = x.spells||[]; if(!x.spells.includes(s.id)) x.spells.push(s.id);
     }
     else if(a==="spdel"){ x.spells = (x.spells||[]).filter(q=>q!==b.dataset.sp); }
@@ -6334,7 +6380,13 @@ function pcState(c){
   c.temp = numOr(c.temp, 0);
   return c;
 }
-const spellOf = id => SPELL_BY.get(id) || null;
+/* a spell by id: the SRD's, or one of your own (the Library's Spells tab) — same fields, so it casts, scales and heals the same way */
+const ownSpells = () => (typeof root!=="undefined" && root && root.library && Array.isArray(root.library.spells)) ? root.library.spells : [];
+const spellOf = id => SPELL_BY.get(id) || ownSpells().find(s=>s.id===id) || null;
+const allSpells = () => [...SRD_SPELLS, ...ownSpells()];
+const spellByName = nm => { const n = String(nm||"").trim().replace(/\.$/,"").toLowerCase(); return ownSpells().find(s=>String(s.name).toLowerCase()===n) || SRD_SPELLS.find(s=>s.name.toLowerCase()===n) || null; };
+/* the list of spell names to pick from, kept up to date as you make your own */
+function refreshSpellList(){ const d = document.getElementById("dl-spells"); if(d) d.innerHTML = allSpells().map(s=>`<option value="${esc(s.name)}">`).join(""); }
 /* what a character has done and carries: built up from logged actions and loot handed over */
 /* coins, in their five denominations, and what they come to in gold */
 const COINS = [["cp","Copper"],["sp","Silver"],["ep","Electrum"],["gp","Gold"],["pp","Platinum"]];
@@ -6747,7 +6799,7 @@ function wirePc(box, rerender){
     else if(a==="uncond"){ c.conds = c.conds.filter(cn=>cn!==b.dataset.k); }
     else if(a==="spadd"){
       const inp = box.querySelector(`.pc-spname[data-pci="${b.dataset.pci}"]`), nm = (inp&&inp.value||"").trim().toLowerCase();
-      const s = SRD_SPELLS.find(x=>x.name.toLowerCase()===nm);
+      const s = spellByName(nm);
       if(!s){ flash("Pick a spell from the list."); return; }
       c.spells = c.spells||[]; if(!c.spells.includes(s.id)) c.spells.push(s.id);
     }
@@ -7974,7 +8026,7 @@ document.getElementById("field").insertAdjacentHTML("beforeend",
   `<div id="battle" hidden><div class="bt-head"><span id="bt-title"></span><span class="bt-hint">Drag tokens · drag the floor to pan · wheel to zoom · 1 square = 5 ft</span><button class="btn" id="bt-back">Back to the map</button></div><svg id="bsvg"></svg><div id="bt-pop" hidden></div></div>`);
 const bnode = () => battleOf ? (battleOf.doc.nodes||[]).find(x=>x.id===battleOf.nodeId) : null;
 /* every spell name, for typing one in */
-document.body.insertAdjacentHTML("beforeend", `<datalist id="dl-spells">${SRD_SPELLS.map(s=>`<option value="${esc(s.name)}">`).join("")}</datalist>`);
+document.body.insertAdjacentHTML("beforeend", `<datalist id="dl-spells"></datalist>`); refreshSpellList();
 function initBonus(m){
   if(!m) return 0;
   if(m.init!=null && /[+-]?\d+/.test(String(m.init))) return parseInt(String(m.init).replace("+",""));
@@ -8519,10 +8571,10 @@ function actInfo(c, t){
     const text = (foeEntries(m).find(([n])=>n===nm)||[])[1] || [...pairs(m&&m.leg)].find(([n])=>n===nm)?.[1] || "";
     return { kind:/^Spellcasting/i.test(nm)?"spell":"ability", name:nm.replace(/\s*\(.*\)\s*$/,""), full:nm, hint:hintFromText(text), save:/Saving Throw/i.test(text) };
   }
-  if(w.startsWith("fsp:")){ const key = w.slice(4), s = [...SPELL_BY.values()].find(x=>`spell:${x.name}`===key) || null;
+  if(w.startsWith("fsp:")){ const key = w.slice(4), s = allSpells().find(x=>`spell:${x.name}`===key) || null;
     return { kind:"spell", name:key.slice(6), spell:s, save:!!(s&&s.save), hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null }; }
   if(w.startsWith("sp:") || w==="anyspell"){
-    const s = w==="anyspell" ? [...SPELL_BY.values()].find(x=>x.name.toLowerCase()===a.spellText.trim().toLowerCase()) : spellOf(w.slice(3));
+    const s = w==="anyspell" ? spellByName(a.spellText) : spellOf(w.slice(3));
     return { kind:"spell", name:s?s.name:(a.spellText||"a spell"), spell:s, save:!!(s&&s.save), atk:!!(s&&s.atk), heal:!!(s&&s.heal),
       hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null };
   }
@@ -9603,7 +9655,11 @@ function genCreature(o){
   const p = personFromCreature(m.id);
   Object.assign(p, { name:g.name, role:`${{enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[disp]} · ${m.name}`, align:g.align,
     look:g.look, voice:g.voice, wants:g.wants, cr:m.cr, hpMax:String(hp||""), hp:String(hp||""),
-    notes:`Secret: ${g.secret}.\nA ${String(m.name).toLowerCase()} (SRD stat block, CR ${crLabel(m.cr)}, ${(m.xp||0).toLocaleString()} XP); it fights with that stat block.` });
+    notes:`Secret: ${g.secret}.\nA ${String(m.name).toLowerCase()}, built from the SRD ${m.name} stat block (CR ${crLabel(m.cr)}, ${(m.xp||0).toLocaleString()} XP).` });
+  /* a character of their own, like any rolled person: the stat block written onto their sheet (attacks, spells, skills)
+     and a copy of it that they fight with, keeping the hit points rolled above */
+  fillSheetFromBlock(p); p.hpMax = String(hp||p.hpMax||""); p.hp = p.hpMax;
+  completeSheet(p);
   g.person = p;
   return g;
 }
