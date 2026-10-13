@@ -368,6 +368,10 @@ $json = $doc | ConvertTo-Json -Depth 20 -Compress
 $mapOut = Join-Path $OutDir "Gull Isles demo map.json"
 [IO.File]::WriteAllText($mapOut, ($doc | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding $false))
 $app = [IO.File]::ReadAllText((Join-Path $Campaign "index.html"), [Text.Encoding]::UTF8)
+# the app loads the SRD from Tools\srd; the demo is one file, so the data goes inside it
+$srdTag = '<script src="Tools/srd/srd-data.js" charset="utf-8"></script>'
+if (-not $app.Contains($srdTag)) { throw "can't find the SRD script line in index.html" }
+$app = $app.Replace($srdTag, "<script>`n" + $srdRaw.TrimEnd() + "`n</script>")
 $marker = '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
 if (-not $app.Contains($marker)) { throw "can't find the viewport line in index.html" }
 $inject = $marker + "`n<meta name=""ordinate-store"" content=""demo"">`n<script>window.__DEMO_MAP = " + ($json -replace '</', '<\/') + ";</script>"

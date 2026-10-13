@@ -15,9 +15,9 @@ if (-not $OutDir) { $OutDir = Join-Path (Split-Path (Split-Path $Campaign -Paren
 $utf8 = New-Object Text.UTF8Encoding $false
 $lines = [IO.File]::ReadAllLines((Join-Path $Campaign "index.html"), [Text.Encoding]::UTF8)
 
-# where the code is: the SRD's own little script, then the app's big one
-$srdStart = [Array]::FindIndex($lines, [Predicate[string]]{ param($l) $l -match '^const SRD = ' })
-if ($srdStart -lt 0) { throw "no 'const SRD = ' line in index.html" }
+# where the code is: the SRD data in its own file (const SRD = …; const SRD_CREDIT = …), then the app's big script
+$srd = @([IO.File]::ReadAllLines((Join-Path $PSScriptRoot "srd\srd-data.js"), [Text.Encoding]::UTF8) | Where-Object { $_ -match '^const SRD(_CREDIT)? = ' }) -join "`n"
+if (-not $srd.Contains("const SRD_CREDIT = ")) { throw "no 'const SRD = ' and 'const SRD_CREDIT = ' lines in Tools\srd\srd-data.js" }
 $appStart = [Array]::FindIndex($lines, [Predicate[string]]{ param($l) $l -eq '"use strict";' })
 $appEnd = [Array]::FindLastIndex($lines, [Predicate[string]]{ param($l) $l -eq '</script>' })
 
@@ -129,7 +129,6 @@ foreach ($c in $chunks) {
 }
 
 $kept = @($chunks | Where-Object { $keep.Contains($_) } | Sort-Object Order)
-$srd = ($lines[$srdStart..($lines.Length-1)] | Select-Object -First 2) -join "`n"     # const SRD = …; const SRD_CREDIT = …
 $exports = @($roots)
 $shim = @'
   /* what the phone supplies: its own library (items and people, no foes of its own), and nothing to save or show */
