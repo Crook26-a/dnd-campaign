@@ -781,6 +781,7 @@
   .xpstand tr.ready td{color:var(--lead);font-weight:600}
   .xpbar{flex:1;min-width:46px;height:7px;background:var(--paper-deep);border:1px solid var(--rule);border-radius:4px;overflow:hidden} .xpbar span{display:block;height:100%;background:var(--r1)}
   .xpstand tr.ready .xpbar span{background:var(--lead)}
+  .xpstand.tv{font-size:min(3.2vh,30px);margin:2vh 0 0} .xpstand.tv th{font-size:min(1.6vh,14px)} .xpstand.tv td{padding:1.4vh 1vw} .xpstand.tv td small{font-size:min(2vh,18px)} .xpstand.tv .xpbar{min-width:16vw;height:2vh;border-radius:1vh}
   .statfix{margin-top:6px} .statfix > summary{cursor:pointer;font-size:11.5px;color:var(--ink-soft)}
   .statfixgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-top:4px} .statfixgrid label{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11.5px} .statfixgrid input{width:64px;padding:1px 4px}
   .mb{width:min(1500px,96vw);min-height:80vh;box-sizing:border-box;padding:3.5vh 3vw 4vh;border-radius:6px;position:relative}
@@ -1860,6 +1861,7 @@ function sendPlayers(now){
       }
       else if(playerShow.kind==="board"){ const bn = boardByKey(playerShow.id); msg = bn && bn.board ? { kind:"board", html:boardHtml(bn) } : { kind:"blank" }; }
       else if(playerShow.kind==="leaders") msg = { kind:"board", html:leaderHtml(playerShow.scope || leaderScope, true) };
+      else if(playerShow.kind==="standing") msg = { kind:"board", html:`<div class="lb lb-tv"><div class="lb-h">Who is where</div>${xpStanding(partyRoster(), true)}</div>` };
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
       else msg = playerMapScene();
       playerWin.postMessage({ ordinate:"scene", ...msg }, "*");
@@ -1997,6 +1999,7 @@ function renderPScreen(){
     <button class="btn wide" data-ps="add" style="margin-top:6px">Add a picture…</button><input type="file" id="ps-file" accept="image/*" multiple hidden>
     <p class="grouplab" style="margin-top:10px">Leaderboards</p>
     <div class="adrow"><span>Who's leading<br><small>${leaderScope==="session" ? "this session" : "the whole campaign"} (change it in the Party tab)</small></span>${showBtn("leaders", playerShow.kind==="leaders" ? "Showing" : "Show")}</div>
+    <div class="adrow"><span>Who is where<br><small>levels and XP, how close each is</small></span>${showBtn("standing", playerShow.kind==="standing" ? "Showing" : "Show")}</div>
     <p class="grouplab" style="margin-top:10px">Mission boards</p>
     ${boardsAll().length ? boardsAll().map(({ plan, n })=>{ const k = boardKey(plan, n); return `<div class="adrow"><span>${esc(n.board.title || placeLabel(n))}<br><small>${esc(placeLabel(n))}</small></span>${showBtn("board", playerShow.kind==="board"&&playerShow.id===k?"Showing":"Show", k)}</div>`; }).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">None yet. Any place can have one: "Put up a mission board here" at the bottom of its panel (DM mode).</p>`}`;
@@ -5758,7 +5761,7 @@ function leaderHtml(scope, tv){
 }
 let leaderScope = "session", leaderTvTimer = null;
 function leadersOnTv(scope){ playerShow = { kind:"leaders", scope:scope || leaderScope }; sendPlayers(true); renderPScreen(); }
-function refreshLeadersOnTv(){ if(playerShow.kind!=="leaders") return; clearTimeout(leaderTvTimer); leaderTvTimer = setTimeout(()=>sendPlayers(true), 400); }
+function refreshLeadersOnTv(){ if(playerShow.kind!=="leaders" && playerShow.kind!=="standing") return; clearTimeout(leaderTvTimer); leaderTvTimer = setTimeout(()=>sendPlayers(true), 400); }
 function leaderBlock(){
   const showing = playerShow.kind==="leaders";
   return `<details class="partysec" data-invfor="party:leaders" ${openInv.has("party:leaders")?"open":""}><summary class="eyebrow">Leaderboards</summary>
@@ -5782,6 +5785,7 @@ document.addEventListener("click", e=>{
   const b = e.target.closest("[data-lb]"); if(!b) return; const a = b.dataset.lb;
   if(a==="session" || a==="all"){ leaderScope = a; if(playerShow.kind==="leaders") leadersOnTv(a); }
   else if(a==="tv") leadersOnTv(leaderScope);
+  else if(a==="standtv"){ playerShow = { kind:"standing" }; sendPlayers(true); renderPScreen(); }
   else if(a==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); }
   else if(a==="rulesreset"){ root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)); saveParty(); }
   renderPane(true);
@@ -5975,11 +5979,11 @@ function personFromCreature(id){
 function pcAt(i){ const s = String(i); return s.startsWith("n:") ? libNpcById(s.slice(2)) : (partyRoster()[+s] || null); }
 
 /* who is where: each character's level and XP, most first, and how close each is to the next level (2024 Character Advancement) */
-function xpStanding(pcs){
+function xpStanding(pcs, tv){
   const rows = pcs.map(c=>{ const lv = clampLv(c.level), xp = +c.xp||0, from = XP_LEVELS[lv], to = lv >= 20 ? null : XP_LEVELS[lv+1];
     return { c, lv, xp, to, left:to==null ? 0 : Math.max(0, to - xp), pct:to==null ? 100 : Math.max(0, Math.min(100, (xp - from) / ((to - from) || 1) * 100)), ready:to!=null && xp >= to }; })
     .sort((a, b)=>b.xp - a.xp);
-  return `<p class="eyebrow spaced" style="margin-top:2px">Who is where</p><table class="xpstand"><tr><th></th><th>Lv</th><th>XP</th><th>Next level</th><th>To go</th><th>How close</th></tr>
+  return `<table class="xpstand${tv ? " tv" : ""}"><tr><th></th><th>Lv</th><th>XP</th><th>Next level</th><th>To go</th><th>How close</th></tr>
     ${rows.map(r=>`<tr${r.ready ? ` class="ready"` : ""}><td>${esc((r.c.name||"Character").split(" ")[0])}</td><td>${r.lv}</td><td>${r.xp.toLocaleString()}</td>
       <td>${r.to==null ? "top level" : `${r.to.toLocaleString()} <small>(Lv ${r.lv+1})</small>`}</td><td>${r.to==null ? "—" : r.ready ? "ready!" : r.left.toLocaleString()}</td>
       <td><div class="xpbar" title="${Math.round(r.pct)}% of the way from level ${r.lv} to ${r.lv+1}"><span style="width:${r.pct.toFixed(1)}%"></span></div><small>${Math.round(r.pct)}%</small></td></tr>`).join("")}</table>`;
@@ -6001,7 +6005,9 @@ function renderParty(){
     <div class="stat"><span class="k">At the table</span><span class="v">${pcs.length} · level${pcs.length>1?"s":""} ${partyLevels().join(", ")}</span></div>
     <div class="stat"><span class="k">A fight for them now</span><span class="v">low ${b.lo} · mod ${b.mod} · high ${b.hi}</span></div>
     <p class="empty-note" style="margin:4px 0 10px">Change how many with the Party slider in the top bar. 2024 DMG budget, each character's level counted on its own.</p>
+    <details class="partysec" data-invfor="party:standing" ${openInv.has("party:standing")?"open":""}><summary class="eyebrow">Who is where</summary>
     ${xpStanding(pcs)}
+    <button class="btn wide" data-lb="${playerShow.kind==="standing" ? "tvoff" : "standtv"}" style="margin:-4px 0 10px">${playerShow.kind==="standing" ? "Take it off the players' screen" : "Show it on the players' screen"}</button></details>
 
     <details class="partysec" data-invfor="party:award" ${openInv.has("party:award")?"open":""}><summary class="eyebrow">Award XP</summary>
     <div class="pcrow">
@@ -6965,7 +6971,7 @@ function splitCoins(purse){
   return parts.join(", ");
 }
 /* which inventory sections are folded open, so they stay open while you edit them */
-const openInv = new Set();
+const openInv = new Set(["party:standing"]);         // open to start with: Who is where
 document.addEventListener("toggle", e=>{ const d = e.target; if(d.dataset && d.dataset.invfor){ if(d.open) openInv.add(d.dataset.invfor); else openInv.delete(d.dataset.invfor); } }, true);
 /* an enemy's (or a body's) belongings. key says whose: "f3" is the fight's 4th enemy, "b0" the
    first body left at the place. Only the fallen can be searched, and only what's found can be handed out. */
