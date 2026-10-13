@@ -5615,13 +5615,13 @@ const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.lev
    damage dealt, foes brought down, healing and aim (no penalty for damage
    taken: Joseph dropped it); and outside fights, a
    great check (beat the DC by enough, or a natural 20) earns XP by level
-   and a bad miss (or a natural 1) costs some. Every number is a setting
+   (no XP is lost for a bad one). Every number is a setting
    (root.xpRules), shown in the Party tab.
    ══════════════════════════════════════════════════════════════ */
-const XP_RULES_DEFAULT = { bonus:20, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, great:10, greatXp:25, bad:10, badXp:10 } };
+const XP_RULES_DEFAULT = { bonus:20, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, great:10, greatXp:25 } };
 function xpRules(){
   const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
-  r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) };
+  r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) }; delete r.checks.bad; delete r.checks.badXp;     // no XP lost for a bad check: Joseph dropped it
   if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
@@ -5684,16 +5684,15 @@ function xpDueSite(){
   const n = battleOf ? bnode() : (sel && sel.kind==="node" ? nodeById(sel.id) : null);
   return n && n.site && n.site.xpDue ? n.site : null;
 }
-/* a check outside a fight: a great one earns XP, a bad miss costs some (by level) */
+/* a check outside a fight: a great one earns XP, by level */
 function checkXp(who, dc, natOf, what){
   const R = xpRules().checks; if(!R.on || !dc) return "";
   const per = {}, why = [];
   for(const x of who){
     if(!x.key.startsWith("pc:")) continue;
     const c = x.o, tot = Math.round(+ta.tot[x.key]), nat = natOf[x.key], lv = clampLv(c.level), S = statsOf(c);
-    const great = nat===20 || tot - dc >= (+R.great||10), bad = nat===1 || dc - tot >= (+R.bad||10);
+    const great = nat===20 || tot - dc >= (+R.great||10);
     if(great){ per[c.id] = Math.round((+R.greatXp||0) * lv); S.greats = (S.greats||0) + 1; why.push(`${(c.name||"").split(" ")[0]} ${nat===20 ? "rolled a natural 20" : `beat it by ${tot-dc}`}`); }
-    else if(bad){ per[c.id] = -Math.round((+R.badXp||0) * lv); S.flops = (S.flops||0) + 1; why.push(`${(c.name||"").split(" ")[0]} ${nat===1 ? "rolled a natural 1" : `missed by ${dc-tot}`}`); }
   }
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
 }
@@ -5740,8 +5739,7 @@ function xpRulesBlock(){
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
       damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
-    <div class="xprule">A great check: beat the DC by ${num("checks.great", C.great, 46)} or a natural 20 = +${num("checks.greatXp", C.greatXp, 46)} XP × level.<br>
-      A bad miss: miss it by ${num("checks.bad", C.bad, 46)} or a natural 1 = −${num("checks.badXp", C.badXp, 46)} XP × level.</div>
+    <div class="xprule">A great check: beat the DC by ${num("checks.great", C.great, 46)} or a natural 20 = +${num("checks.greatXp", C.greatXp, 46)} XP × level.</div>
     <button class="btn wide" data-lb="rulesreset" style="margin-top:6px">Back to the starting numbers</button></details>`;
 }
 document.addEventListener("click", e=>{
