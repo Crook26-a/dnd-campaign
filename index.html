@@ -5616,14 +5616,15 @@ const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.lev
    damage dealt, foes brought down, healing and aim (no penalty for damage
    taken: Joseph dropped it); and outside fights, a
    check that meets its DC earns XP by how far over it went, times level
-   (5 a point up to 10 over, meeting it counts as 1; 1 a point past
-   that); a miss costs a share of what beating it by as much would earn
+   (3 a point up to 10 over, meeting it counts as 1; 1 a point past
+   that; a natural 20 that makes it at least 50); a miss costs a share of what beating it by as much would earn
    (half), never below the XP they had when the session started. Every number is a setting
    (root.xpRules), shown in the Party tab.
    ══════════════════════════════════════════════════════════════ */
-const XP_RULES_DEFAULT = { bonus:20, crit:50, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:5, upTo:10, past:1, missPct:50 } };
+const XP_RULES_DEFAULT = { bonus:20, crit:50, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:3, upTo:10, past:1, missPct:50, nat20:50 }, v:2 };
 function xpRules(){
   const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
+  if(!(r.v >= 2)){ if(r.checks && +r.checks.perPoint===5) r.checks.perPoint = 3; r.v = 2; }     // Joseph, 2026-10-13: 3 a point, not 5
   r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) }; for(const k of ["bad","badXp","great","greatXp"]) delete r.checks[k];     // the old rule: a flat bonus for a great check, a cost for a bad one
   if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
@@ -5705,8 +5706,8 @@ function checkXp(who, dc, natOf, what){
       if(lose > 0){ per[c.id] = -lose; why.push(`${(c.name||"").split(" ")[0]} missed by ${-over}`); }
       continue;
     }
-    const nat20 = natOf[x.key]===20;                       // a natural 20 that makes it is worth at least the top of the scale (by 10 over)
-    per[c.id] = Math.max(checkXpFor(over, lv, R), nat20 ? checkXpFor(Math.max(1, +R.upTo||10), lv, R) : 0); if(over >= 10 || nat20) S.greats = (S.greats||0) + 1;
+    const nat20 = natOf[x.key]===20;                       // a natural 20 that makes it is worth at least checks.nat20 (50) × level
+    per[c.id] = Math.max(checkXpFor(over, lv, R), nat20 ? Math.round(Math.max(0, +R.nat20||0) * lv) : 0); if(over >= 10 || nat20) S.greats = (S.greats||0) + 1;
     why.push(`${(c.name||"").split(" ")[0]} ${nat20 ? "rolled a natural 20" : over ? `beat it by ${over}` : "met it"}`);
   }
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
@@ -5754,9 +5755,9 @@ function xpRulesBlock(){
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
       damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight. And each critical hit: ${num("crit", R.crit, 46)} XP × level.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
-    <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. A natural 20 that makes it gets at least the top of the scale (by ${C.upTo} over).<br>
+    <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. A natural 20 that makes it gets at least ${num("checks.nat20", C.nat20, 46)} XP × level.<br>
       A miss costs ${num("checks.missPct", C.missPct, 46)} % of what beating it by as much would earn, and never takes them below the XP they had when the session started (a natural 1 is just its margin).${root.statMarks && root.statMarks.xp ? "" : ` <b>Start a session</b> (the log) so misses can cost XP earned in it.`}<br>
-      <small>So at level 3: meet it 15 · by 5, 75 · by 10, 150 · by 13, 159. Miss by 5, −38 · by 10, −75.</small></div>
+      <small>So at level 3 (3 a point): meet it 9 · by 5, 45 · by 10, 90 · by 13, 99 · a natural 20, at least 150. Miss by 5, −23 · by 10, −45.</small></div>
     <button class="btn wide" data-lb="rulesreset" style="margin-top:6px">Back to the starting numbers</button></details>`;
 }
 document.addEventListener("click", e=>{
