@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Build view mockup</title>
+<style>
+  :root{
+    --paper:#e5d7b4; --paper-lit:#eee3c7; --paper-deep:#d6c49c; --ink:#3a2e1e; --ink-soft:#6d5c43; --ink-faint:#9b8968;
+    --rule:#bfab84; --lead:#a8331f; --sea:#9db6bc; --road:#4e737d;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.4 var(--serif);height:100vh;display:grid;grid-template-rows:44px 1fr;overflow:hidden}
+  button,input,select{font:inherit;color:inherit}
+  .note{position:fixed;left:50%;transform:translateX(-50%);top:52px;z-index:20;background:#3a2e1e;color:#f3e8cc;padding:8px 14px;border-radius:6px;font-size:13px;max-width:900px;box-shadow:0 2px 10px #0004}
+  .note b{color:#ffd9a0}
+  .note button{margin-left:6px;background:#6d5c43;border:0;color:#fff;border-radius:4px;padding:2px 8px;cursor:pointer}
+  .note button.on{background:var(--lead)}
+  /* top bar */
+  #bar{display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:1px solid var(--rule);background:var(--paper-lit)}
+  .brand{letter-spacing:.2em;font-size:13px}
+  .crumb{font-size:13px;color:var(--ink-soft)} .crumb a{color:var(--lead);text-decoration:none}
+  .seg{display:flex;border:1px solid var(--ink);border-radius:3px;overflow:hidden;font-family:var(--mono);font-size:11px}
+  .seg span{padding:3px 10px} .seg .on{background:var(--ink);color:var(--paper-lit)}
+  .bar-sm{font-family:var(--mono);font-size:11px;color:var(--ink-soft)} .bar-sm input{width:44px;background:var(--paper);border:1px solid var(--rule);padding:1px 4px}
+  .grow{flex:1}
+  .btn{background:var(--paper);border:1px solid var(--rule);border-radius:3px;padding:4px 10px;cursor:pointer;font-size:12px}
+  .btn:hover{border-color:var(--ink-soft)} .btn.on{background:var(--ink);color:var(--paper-lit);border-color:var(--ink)}
+  .btn.wide{width:100%;margin:4px 0}
+  #main{display:grid;grid-template-columns:232px 1fr 340px;min-height:0}
+  /* palette */
+  #pal{border-right:1px solid var(--rule);overflow:auto;padding:10px 10px 60px;background:var(--paper-lit)}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin:12px 0 5px}
+  .find{width:100%;padding:5px 8px;border:1px solid var(--rule);background:var(--paper);border-radius:3px}
+  .tools{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  .tool{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);cursor:pointer;font-size:12.5px}
+  .tool.on{background:var(--ink);color:var(--paper-lit)} .tool kbd{margin-left:auto;font-family:var(--mono);font-size:10px;opacity:.6}
+  details.grp{margin:2px 0} details.grp summary{cursor:pointer;font-size:12.5px;color:var(--ink-soft);padding:3px 0;list-style:none} details.grp summary::before{content:"▸ ";} details.grp[open] summary::before{content:"▾ ";}
+  .items{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:2px 0 6px}
+  .item{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:3px;cursor:pointer;font-size:12.5px;border:1px solid transparent}
+  .item:hover{border-color:var(--rule);background:var(--paper)} .item.on{border-color:var(--ink);background:var(--paper)}
+  .ico{width:16px;height:16px;flex:0 0 16px;display:inline-block}
+  .sw{width:18px;height:12px;flex:0 0 18px;border-radius:2px;border:1.5px solid}
+  .item small{display:block;font-size:10px;color:var(--ink-faint);line-height:1.1}
+  .drawas{display:flex;gap:3px;margin:4px 0} .drawas .btn{flex:1;padding:3px 0;font-size:11px}
+  /* map */
+  #map{position:relative;background:#e9dcb8;overflow:hidden}
+  #map svg{width:100%;height:100%}
+  .hint{position:absolute;left:10px;bottom:10px;font-size:12px;color:var(--ink-soft);background:#eee3c7cc;padding:3px 8px;border-radius:3px}
+  .mapctl{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px}
+  .mapctl span{width:32px;height:32px;border:1px solid var(--rule);background:var(--paper-lit);display:grid;place-items:center;border-radius:3px;font-size:14px}
+  /* card */
+  #card{border-left:1px solid var(--rule);overflow:auto;background:var(--paper-lit)}
+  .head{position:sticky;top:0;z-index:2;background:var(--paper-lit);border-bottom:1px solid var(--rule);padding:10px 12px 8px}
+  .head .kind{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+  .head .nm{display:flex;gap:6px;align-items:center;margin-top:3px}
+  .head input{flex:1;font-size:17px;padding:4px 7px;border:1px solid var(--rule);background:var(--paper)}
+  .eye{border:1px solid var(--rule);background:var(--paper);border-radius:3px;padding:4px 7px;cursor:pointer;font-size:12px;white-space:nowrap}
+  .eye.hid{background:#3a2e1e;color:#f3e8cc}
+  .sub{font-size:12px;color:var(--ink-soft);margin-top:4px}
+  details.sec{border-bottom:1px solid var(--rule)} details.sec>summary{cursor:pointer;list-style:none;padding:9px 12px;display:flex;align-items:baseline;gap:8px}
+  details.sec>summary::before{content:"▸";color:var(--ink-faint);font-size:11px} details.sec[open]>summary::before{content:"▾"}
+  details.sec>summary b{font-weight:normal;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  details.sec>summary i{font-style:normal;font-size:12px;color:var(--ink-soft);margin-left:auto;text-align:right}
+  .body{padding:0 12px 10px}
+  label.f{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin:6px 0 2px}
+  .in{width:100%;padding:4px 7px;border:1px solid var(--rule);background:var(--paper)}
+  .row{display:flex;gap:8px} .row>*{flex:1}
+  .chk{display:flex;gap:6px;align-items:center;font-size:13px;margin:3px 0}
+  .chips{display:flex;flex-wrap:wrap;gap:4px} .chip{border:1px solid var(--rule);border-radius:10px;padding:1px 8px;font-size:12px;background:var(--paper)} .chip.off{opacity:.45;text-decoration:line-through}
+  .line{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px dotted var(--rule);font-size:13px}
+  .line small{color:var(--ink-faint)} .line .x{margin-left:auto;color:var(--ink-faint)}
+  .tag{font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:3px;background:#8a2e1e;color:#fff8e6}
+  .muted{font-size:12px;color:var(--ink-soft)}
+  .warn{font-size:12.5px;padding:4px 0;border-bottom:1px dotted var(--rule)} .warn b{color:var(--lead)}
+  input[type=range]{width:100%}
+  /* the drawer */
+  #drawer{position:fixed;top:44px;right:0;bottom:0;width:340px;background:var(--paper-lit);border-left:1px solid var(--ink);box-shadow:-4px 0 14px #0003;transform:translateX(100%);transition:transform .2s;z-index:10;padding:12px}
+  #drawer.open{transform:none}
+  .dtabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px} .dtabs .btn{font-size:12px}
+  .old{background:#f6e7c8;border:1px dashed var(--lead);padding:6px 8px;border-radius:4px;font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="bar">
+  <span class="brand">ORDINATE SURVEY</span>
+  <span class="crumb"><a href="#">The Age of Exploration</a> › Kalatecha Island</span>
+  <div class="seg"><span class="on">BUILD</span><span>DM</span></div>
+  <span class="bar-sm">Scale <input value="10"> px/mi · Grid <input value="10"> mi</span>
+  <span class="grow"></span>
+  <button class="btn" title="Undo">↶</button><button class="btn" title="Redo">↷</button>
+  <span class="bar-sm">Saved</span>
+  <button class="btn" id="moreBtn">☰ More</button>
+</div>
+
+<div id="main">
+  <!-- LEFT: what you can put on the map, named -->
+  <aside id="pal">
+    <input class="find" placeholder="Find a kind… (toll, forest, inn)">
+    <p class="eyebrow">Tools</p>
+    <div class="tools">
+      <span class="tool on">➤ Select <kbd>V</kbd></span><span class="tool">✋ Hand <kbd>H</kbd></span>
+      <span class="tool">╱ Road <kbd>C</kbd></span><span class="tool">⟷ Measure <kbd>M</kbd></span>
+    </div>
+
+    <p class="eyebrow">Places</p>
+    <details class="grp" open><summary>Settlements</summary><div class="items">
+      <span class="item"><svg class="ico"><rect x="2" y="3" width="12" height="11" fill="#3a2e1e"/></svg>City</span>
+      <span class="item on"><svg class="ico"><rect x="3" y="5" width="10" height="9" fill="#3a2e1e"/></svg>Town</span>
+      <span class="item"><svg class="ico"><circle cx="8" cy="9" r="5" fill="#3a2e1e"/></svg>Village</span>
+    </div></details>
+    <details class="grp" open><summary>Along the roads</summary><div class="items">
+      <span class="item"><svg class="ico"><path d="M8 2 14 9 8 15 2 9Z" fill="#3a2e1e"/></svg>Waystation</span>
+      <span class="item"><svg class="ico"><rect x="3" y="3" width="10" height="10" fill="none" stroke="#3a2e1e" stroke-width="2"/></svg>Toll</span>
+      <span class="item"><svg class="ico"><path d="M5 15V4l6-2v13" fill="#3a2e1e"/></svg>Stone</span>
+    </div></details>
+    <details class="grp"><summary>In the wild</summary><div class="items">
+      <span class="item"><svg class="ico"><path d="M2 14h12L8 4Z" fill="#3a2e1e"/></svg>Ruin</span>
+      <span class="item"><svg class="ico"><path d="M2 14Q8 0 14 14Z" fill="#3a2e1e"/></svg>Cave</span>
+      <span class="item"><svg class="ico"><circle cx="8" cy="7" r="5" fill="#5e7a4e"/></svg>Wood</span>
+      <span class="item"><svg class="ico"><path d="M2 14 8 4 14 14Z" fill="none" stroke="#3a2e1e" stroke-width="2"/></svg>Camp</span>
+    </div></details>
+    <details class="grp"><summary>At sea</summary><div class="items">
+      <span class="item"><svg class="ico"><path d="M2 11h12l-2 3H4Z M8 2v8 M8 3l4 5H8" fill="#3a2e1e" stroke="#3a2e1e"/></svg>Ship</span>
+      <span class="item"><svg class="ico"><path d="M2 12l12-4M4 9l2 5" stroke="#3a2e1e" stroke-width="2"/></svg>Wreck</span>
+      <span class="item"><svg class="ico"><path d="M6 15 7 4h2l1 11Z" fill="#3a2e1e"/></svg>Lighthouse</span>
+    </div></details>
+
+    <p class="eyebrow">Land and water <span style="text-transform:none;letter-spacing:0">· 2024 travel terrain</span></p>
+    <details class="grp" open><summary>The land</summary><div class="items">
+      <span class="item"><span class="sw" style="background:#93a877;border-color:#5e7a4e"></span><span>Forest<small>Normal pace</small></span></span>
+      <span class="item"><span class="sw" style="background:#cfd29a;border-color:#8c9454"></span><span>Grassland<small>Fast</small></span></span>
+      <span class="item"><span class="sw" style="background:#c6ae80;border-color:#8a7346"></span><span>Hill<small>Normal</small></span></span>
+      <span class="item"><span class="sw" style="background:#ad9878;border-color:#6a583c"></span><span>Mountain<small>Slow</small></span></span>
+      <span class="item"><span class="sw" style="background:#a2a878;border-color:#6e7748"></span><span>Swamp<small>Slow</small></span></span>
+      <span class="item"><span class="sw" style="background:#e3cf98;border-color:#a88a4a"></span><span>Desert<small>Normal</small></span></span>
+      <span class="item"><span class="sw" style="background:#e6ebec;border-color:#8ea3a8"></span><span>Arctic<small>Fast, with skis</small></span></span>
+    </div></details>
+    <details class="grp" open><summary>Water and coast</summary><div class="items">
+      <span class="item"><span class="sw" style="background:#9db6bc;border-color:#4e737d"></span>Water</span>
+      <span class="item"><span class="sw" style="background:#8fadb4;border-color:#4e737d"></span>River</span>
+      <span class="item"><span class="sw" style="background:#dccb9f;border-color:#8a7346"></span>Island</span>
+      <span class="item"><span class="sw" style="background:#b7cbc4;border-color:#5d8780"></span>Reef</span>
+      <span class="item"><span class="sw" style="background:none;border-color:#8a3520"></span>Impasse</span>
+    </div></details>
+    <p class="muted" style="margin:2px 0">Draw it as</p>
+    <div class="drawas"><span class="btn on">Freehand</span><span class="btn">Box</span><span class="btn">Circle</span><span class="btn">Points</span></div>
+    <p class="muted" style="margin-top:12px">Inside a town, the same panel lists buildings instead: Lodging and drink, Trade, Civic, Faith and care, Docks, Streets and squares.</p>
+  </aside>
+
+  <!-- MIDDLE: the map -->
+  <section id="map">
+    <svg viewBox="0 0 800 640" preserveAspectRatio="xMidYMid slice">
+      <rect width="800" height="640" fill="#c9d4cf"/>
+      <path d="M330 70 Q470 40 560 120 Q660 300 600 470 Q520 600 380 590 Q250 560 240 420 Q230 200 330 70Z" fill="#dccb9f" stroke="#8a7346" stroke-width="2"/>
+      <path d="M380 300 Q430 270 470 320 Q480 380 430 400 Q380 390 380 300Z" fill="#c6ae80" stroke="#8a7346"/>
+      <path d="M300 160 Q340 140 360 190 Q350 230 310 220Z" fill="#93a877" stroke="#5e7a4e"/>
+      <path d="M520 470 Q560 450 580 490 Q560 520 520 505Z" fill="#93a877" stroke="#5e7a4e"/>
+      <g fill="none" stroke="#4e737d" stroke-width="3">
+        <path id="r1" d="M290 340 Q300 420 360 450 Q440 480 540 470 Q560 468 575 480"/>
+        <path d="M290 340 Q300 220 340 140 Q400 100 480 110"/>
+        <path d="M480 110 Q520 200 500 330 Q470 420 450 470"/>
+      </g>
+      <path id="rsel" d="M290 340 Q300 420 360 450" fill="none" stroke="#a8331f" stroke-width="5" stroke-opacity="0" />
+      <g font-family="Palatino, Georgia, serif" font-size="13" fill="#3a2e1e">
+        <rect x="280" y="330" width="18" height="18" fill="#3a2e1e"/><text x="250" y="372">Kalatecha</text>
+        <rect x="566" y="471" width="16" height="16" fill="#3a2e1e"/><text x="575" y="505">Saltmere</text>
+        <rect x="472" y="102" width="16" height="16" fill="#3a2e1e"/><text x="490" y="100">Dunmarrow</text>
+        <g id="pin"><rect x="353" y="443" width="14" height="14" fill="#3a2e1e"/><circle cx="360" cy="450" r="14" fill="none" stroke="#a8331f" stroke-width="2"/></g>
+        <text x="335" y="478">Briarford</text>
+        <rect x="438" y="463" width="12" height="12" fill="none" stroke="#3a2e1e" stroke-width="2"/><text x="420" y="495" font-size="11">Tallow Cross</text>
+        <circle cx="505" cy="471" r="6" fill="#8a2e1e" stroke="#fff8e6" stroke-width="1.5"/><text x="490" y="455" font-size="10" fill="#8a2e1e">wolves</text>
+        <text x="395" y="345" font-style="italic" fill="#6d5c43">Inland Hills</text>
+      </g>
+    </svg>
+    <span class="hint" id="hint">Click a place, a road or an area to see its card · pick something on the left to put it on the map</span>
+    <div class="mapctl"><span>+</span><span>−</span><span style="font-size:10px">FIT</span></div>
+  </section>
+
+  <!-- RIGHT: the card for whatever is picked -->
+  <aside id="card"></aside>
+</div>
+
+<div id="drawer">
+  <div class="dtabs"><span class="btn on">Library</span><span class="btn">Docs</span><span class="btn">Regions</span><span class="btn">The survey's numbers</span><span class="btn">Data</span></div>
+  <p class="muted">The rare tabs move here, as in table mode, and they're the real ones (full Library, Docs, Data…). Party, Where, Session, Notes and Roll are for running a game: they stay in DM mode.</p>
+  <button class="btn" onclick="drawer.classList.remove('open')">Close</button>
+</div>
+
+<div class="note">
+  <b>Build view, mockup.</b> Click:
+  <button data-show="place" class="on">a place</button><button data-show="road">a road</button><button data-show="none">nothing picked</button>
+  · or ☰ More. Nothing here is wired to the real app.
+</div>
+
+<script>
+const card = document.getElementById("card"), drawer = document.getElementById("drawer");
+document.getElementById("moreBtn").onclick = () => drawer.classList.toggle("open");
+const sec = (title, sum, body, open) => `<details class="sec" ${open?"open":""}><summary><b>${title}</b><i>${sum||""}</i></summary><div class="body">${body}</div></details>`;
+const CARDS = {
+  place: `
+    <div class="head"><div class="kind">Town · Home Waters</div>
+      <div class="nm"><input value="Briarford"><span class="eye hid" title="Hidden from the players' screen: click to show it">◐ Hidden</span></div>
+      <div class="sub">On the Kalatecha–Saltmere road · 22 mi out of Kalatecha</div></div>
+    ${sec("The place", "level 1", `
+      <div class="row"><div><label class="f">Kind</label><select class="in"><option>Town</option></select></div><div><label class="f">Region</label><select class="in"><option>Home Waters</option></select></div></div>
+      <div class="row"><div><label class="f">Level</label><input class="in" value="1"></div><div></div></div>
+      <label class="chk"><input type="checkbox"> Home port (the chart and road miles start here)</label>
+      <label class="chk"><input type="checkbox"> Capital (the seat of government)</label>
+      <label class="f">Notes</label><textarea class="in" rows="2">A crossroads town, wheat and wool.</textarea>`, true)}
+    ${sec("On the players' screen", "hidden", `
+      <label class="chk"><input type="checkbox" checked> Hidden until they find it</label>
+      <label class="chk"><input type="checkbox"> On their chart already (a rumour)</label>
+      <label class="chk"><input type="checkbox"> Secret: stays hidden even in sight</label>
+      <label class="chk"><input type="checkbox"> A port of call</label><label class="chk"><input type="checkbox"> A known route (a mission there)</label>`)}
+    ${sec("Who's here", "2 people · 3 enemies", `
+      <div class="line">Old Marta <small>innkeeper</small><span class="x">×</span></div>
+      <div class="line">Tam the Reeve <small>reeve</small><span class="x">×</span></div>
+      <button class="btn wide">+ Someone to meet (Library, or roll one)</button>
+      <p class="muted" style="margin:8px 0 2px">Enemies, planned</p>
+      <div class="line">Bandit ×3 <small>hidden DC 14</small><span class="x">×</span></div>
+      <button class="btn wide">+ An enemy</button>
+      <div class="row"><div><label class="f">Built for level</label><input class="in" value="3"></div><div><label class="f">Later stages</label><input class="in" value="none"></div></div>`)}
+    ${sec("What's here", "1 item · 12 gp · board", `
+      <div class="line">Silver ring <small>hidden DC 12</small><span class="x">×</span></div>
+      <div class="line">Coin: 12 gp <small>plain sight</small></div>
+      <button class="btn wide">+ Loot (Library, or roll it)</button>
+      <div class="line">Mission board <small>parchment, 2 missions</small></div>`)}
+    ${sec("Services", "Inn · Stables · Market · +3", `
+      <p class="muted">Ticked ones show as chips; open it to change them.</p>
+      <div class="chips"><span class="chip">Inn</span><span class="chip">Stables</span><span class="chip">Coach stop</span><span class="chip">Open market</span><span class="chip">Smith</span><span class="chip">Temple</span>
+      <span class="chip off">Contract board</span><span class="chip off">General store</span><span class="chip off">Provisioner</span><span class="chip off">Apothecary</span><span class="chip off">Fence</span><span class="chip off">Healer</span><span class="chip off">Archive</span><span class="chip off">Trainer</span><span class="chip off">Reeve & gaol</span></div>`)}
+    ${sec("Inside", "no map yet", `
+      <button class="btn wide">Make a town plan for it (streets, buildings)</button>
+      <p class="muted">or a single battle map: <select class="in" style="width:auto"><option>Start from a layout…</option><option>Outdoors: Grassland</option><option>Camp: plains</option></select></p>`)}
+    ${sec("Roads from here", "2 roads", `
+      <div class="line">→ Kalatecha <small>22 mi · good road 10/10</small></div>
+      <div class="line">→ Tallow Cross <small>12.4 mi · good road · <span class="tag">✕ 1</span> encounter</small></div>
+      <button class="btn wide">Lay a road from here</button>
+      <button class="btn wide">Step off a distance from here</button>`)}
+    <div style="padding:10px 12px"><button class="btn wide" style="color:#a8331f">Delete this place</button></div>`,
+  road: `
+    <div class="head"><div class="kind">Road</div>
+      <div class="nm"><input value="The Salt Road"><span class="eye" title="Shown on the players' screen">◑ Shown</span></div>
+      <div class="sub">Briarford → Tallow Cross · 12.4 mi</div></div>
+    ${sec("The road", "12.4 mi", `
+      <div class="row"><div><label class="f">Miles</label><input class="in" value="12.4"></div><div style="display:flex;align-items:flex-end"><label class="chk"><input type="checkbox"> Hold this mileage</label></div></div>
+      <label class="chk"><input type="checkbox"> Straight lines between bends</label>
+      <div class="row"><button class="btn">Take the drawn length</button><button class="btn">Straighten it</button></div>`, true)}
+    ${sec("Quality and danger", "good road · usual", `
+      <label class="f">Road quality: 9 of 10, a good road</label><input type="range" min="1" max="10" value="9">
+      <p class="muted">A good road: one step faster than the land allows, Navigation DC down by 4, encounters half as likely.</p>
+      <label class="f">Danger</label><select class="in"><option>Usual</option><option>Safe (half as likely)</option><option>Dangerous (twice as likely)</option></select>
+      <label class="chk"><input type="checkbox" checked> Coaches run this road</label>`, true)}
+    ${sec("Encounters on this road", "1 · wolves", `
+      <div class="line">Wolves <small>6 mi out of Briarford · 100% · once</small><span class="x">×</span></div>
+      <button class="btn wide">+ An encounter on this road</button>`, true)}
+    ${sec("On the players' screen", "all of it", `<p class="muted">Both ends are shown, so the players see the whole road.</p>`)}
+    ${sec("Notes", "", `<textarea class="in" rows="3" placeholder="What the road looks like."></textarea>`)}
+    <div class="old"><b>Retire?</b> The old Errantry road numbers ("density", "How often the road interrupts", "Encounters on an average leg", region threat) are replaced by the encounter settings above. The mockup leaves them out.</div>
+    <div style="padding:10px 12px"><button class="btn wide" style="color:#a8331f">Delete this road</button></div>`,
+  none: `
+    <div class="head"><div class="kind">This map</div><div class="nm" style="font-size:17px">The Age of Exploration</div>
+      <div class="sub">29 places · 16 roads · 412 road miles · 3 regions</div></div>
+    ${sec("Wants attention", "3", `
+      <div class="warn"><b>Kalatecha Light</b> has no road to it.</div>
+      <div class="warn"><b>2 places</b> sit beside a road but aren't on it.</div>
+      <div class="warn"><b>Greywater</b> has no name on the players' chart.</div>`, true)}
+    ${sec("Road tools", "", `
+      <button class="btn wide">Put places onto the roads beside them</button>
+      <button class="btn wide">Re-measure roads from the drawing</button>
+      <button class="btn wide">Re-plot places to their mileage</button>`, true)}
+    ${sec("Encounters", "1 in 6 a day", `
+      <label class="chk"><input type="checkbox" checked> Roll for encounters on the road, 1 in <input class="in" style="width:44px;display:inline" value="6"> a day</label>
+      <p class="muted">Placed encounters: 3 on roads. The presets are in the Library.</p>`)}
+    ${sec("The survey's numbers", "miles by region, places by kind", `<p class="muted">The old Ledger, folded away here.</p>`)}`
+};
+function show(k){ card.innerHTML = CARDS[k];
+  document.querySelectorAll("[data-show]").forEach(b=>b.classList.toggle("on", b.dataset.show===k));
+  document.getElementById("pin").style.display = k==="place" ? "" : "none";
+  document.getElementById("rsel").setAttribute("stroke-opacity", k==="road" ? ".6" : "0");
+  document.getElementById("hint").textContent = k==="place" ? "Drag it to move it (drop it on a road to join it) · Del removes it" : k==="road" ? "Drag a bend to reshape the road · double-click the line to add a bend" : "Click a place, a road or an area to see its card · pick something on the left to put it on the map";
+  document.querySelectorAll(".eye").forEach(e=>e.onclick = ()=>{ e.classList.toggle("hid"); e.textContent = e.classList.contains("hid") ? "◐ Hidden" : "◑ Shown"; });
+}
+document.querySelectorAll("[data-show]").forEach(b=>b.onclick = ()=>show(b.dataset.show));
+document.querySelectorAll(".item,.tool").forEach(i=>i.onclick = ()=>{ document.querySelectorAll(".item.on,.tool.on").forEach(x=>x.classList.remove("on")); i.classList.add("on"); });
+show("place");
+</script>
+</body>
+</html>
