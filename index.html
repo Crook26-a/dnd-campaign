@@ -9507,6 +9507,7 @@ const partyAvgLevel = () => { const l = partyLevels(); return l.length ? Math.ro
    of the XP budget each, and a class picked for each) */
 function genPerson(over){
   const o = Object.assign({}, genOpts, over||{});
+  if(o.type && o.type!=="Humanoid") return genCreature(o);          // a beast, a dragon, a fiend… met as someone
   const lv = clampLv(o.level || partyAvgLevel());
   const disp = o.disp || pickOne(["enemy","neutral","ally"]);
   const cls = pickClass(o.role, disp), names = CLASS_BLOCKS[cls] || CLASS_BLOCKS.Commoner;
@@ -9581,6 +9582,31 @@ function buildPerson(g){
   completeSheet(p);
   return p;
 }
+/* someone to meet who isn't a humanoid: a creature of the type asked for (a talking raven, a dragon with a grudge),
+   given a name and the same look, voice, wants and secret as anyone, its own alignment, and its SRD stat block to fight
+   with. Picked the way a person's stat block is: up to the level asked for and worth meeting at it (CR at least a
+   quarter of it), or the very creature asked for (o.foe). No purse: the SRD gives creatures none. */
+/* the creatures of a type, weakest first, for a "Which" choice; blank = any that fits the level */
+const creatureOptions = (type, cur) => `<option value="">Any that fits the level</option>` + SRD_FOES.filter(f=>f.type===type).sort((a,b)=>a.cr-b.cr || a.name.localeCompare(b.name))
+  .map(f=>`<option value="${f.id}" ${f.id===cur?"selected":""}>${esc(f.name)} (CR ${crLabel(f.cr)})</option>`).join("");
+function genCreature(o){
+  const lv = clampLv(o.level || partyAvgLevel()), disp = o.disp || pickOne(["enemy","neutral","ally"]);
+  const all = SRD_FOES.filter(f=>f.type===o.type), asked = o.foe && all.find(f=>f.id===o.foe);
+  const pool = all.filter(f=>f.cr <= lv), near = pool.filter(f=>f.cr >= lv/4);
+  const m = asked || pickOne(near.length ? near : pool.length ? pool : all.slice().sort((a,b)=>a.cr-b.cr).slice(0, 1));
+  if(!m) return { kind:"none", level:lv, why:`The SRD has no ${o.type} to meet.` };
+  const own = ALIGNMENTS.find(a=>a.toLowerCase()===String(m.align||"").toLowerCase()) || (/unaligned/i.test(m.align||"") ? "Unaligned" : "");
+  const hp = rollDiceExpr(m.hd) || foeMaxHp(m);
+  const g = { kind:"person", creature:true, disp, level:lv, roleChoice:"", align:o.align || own || rollAlignment(disp),
+    name:`${pickOne(GEN_FIRST)}${Math.random()<.25 ? ` "${pickOne(GEN_NICK)}"` : ""}`, species:"", role:m.name, group:"", foe:m.id, hp, hd:m.hd || "",
+    statBlock:m, spells:[], spellClass:"", cast:null, swaps:[], look:pickOne(GEN_LOOK), voice:pickOne(GEN_VOICE), wants:pickOne(GEN_WANTS[disp]), secret:pickOne(GEN_SECRET), backstory:"" };
+  const p = personFromCreature(m.id);
+  Object.assign(p, { name:g.name, role:`${{enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[disp]} · ${m.name}`, align:g.align,
+    look:g.look, voice:g.voice, wants:g.wants, cr:m.cr, hpMax:String(hp||""), hp:String(hp||""),
+    notes:`Secret: ${g.secret}.\nA ${String(m.name).toLowerCase()} (SRD stat block, CR ${crLabel(m.cr)}, ${(m.xp||0).toLocaleString()} XP); it fights with that stat block.` });
+  g.person = p;
+  return g;
+}
 /* what a rolled person has on them in coin. Joseph's table rule: the SRD's stat blocks list no treasure, so this uses the
    app's own purse tiers (PURSES): a commoner has scraps, anyone else a tier by level, and a noble one tier richer */
 function personPurse(g){
@@ -9624,7 +9650,7 @@ function personSheet(g, key, compact, controls){
     ${sec("who", "Who they are", `${row("Attitude", esc({enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]) + ` <small>— ${esc(DISP_LINE[g.disp])}</small>`)}
       ${row("Alignment", esc(p.align||""))}${row("Look", esc(p.look))}${row("Voice", esc(p.voice))}${row("Wants", esc(p.wants))}${row("Secret", esc(g.secret))}${row("Purse", COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", "))}
       ${row("Personality", esc(p.persona||"").replace(/\n/g, "<br>"))}${row("Tactics", esc(tactics))}`, "", true)}
-    ${sec("sheet", "Character sheet", `${row("Class", esc(g.role||"") + (p.level ? ` ${esc(p.level)}` : "") + (g.group ? ` <small>(${esc(g.group)})</small>` : ""))}
+    ${sec("sheet", "Character sheet", `${row(g.creature ? "Creature" : "Class", esc(g.role||"") + (p.level ? ` ${esc(p.level)}` : "") + (g.group ? ` <small>(${esc(g.group)})</small>` : ""))}
       ${row("Built from", sb ? `<span class="libref" data-libopen="foes:${sb.id}">${esc(sb.name)}</span> <small>SRD stat block</small>` : "")}
       ${row("Armor Class", esc(String(m.ac)))}${row("Hit Points", `${esc(String(p.hpMax||m.hp))}${g.hd?` <small>(rolled ${esc(g.hd)}; average ${foeMaxHp(sb)})</small>`:""}`)}
       ${row("Speed", esc(m.spd||""))}${row("Initiative", esc(String(m.init||"")))}${row("Passive Perception", esc(p.pp||""))}
@@ -9690,12 +9716,13 @@ function renderRoll(){
       <div class="field" style="flex:.8"><label>Level</label><input id="gn-level" class="mono" type="number" min="1" max="20" value="${lvl}"></div>
       <div class="field" style="flex:1.3"><label>Attitude</label><select id="gn-disp">${[["","Any"],["enemy","Enemy"],["neutral","Neutral"],["ally","Potential ally"]].map(([v,l])=>`<option value="${v}" ${v===genOpts.disp?"selected":""}>${l}</option>`).join("")}</select></div></div>
     <div class="pcrow">
-      <div class="field" style="flex:1"><label>Type <i>(of an encounter)</i></label><select id="gn-type"><option value="">Any</option>${CREATURE_TYPES.map(t=>`<option ${t===genOpts.type?"selected":""}>${t}</option>`).join("")}</select></div>
+      <div class="field" style="flex:1"><label>Type</label><select id="gn-type"><option value="">Any</option>${CREATURE_TYPES.map(t=>`<option ${t===genOpts.type?"selected":""}>${t}</option>`).join("")}</select></div>
       ${genOpts.type==="Humanoid"?`<div class="field" style="flex:1.2"><label>Class</label><select id="gn-role">${roleOptions(genOpts.role)}</select></div>`:""}</div>
+    ${genOpts.type && genOpts.type!=="Humanoid" ? `<div class="field"><label>Which ${esc(genOpts.type.toLowerCase())}</label><select id="gn-foe">${creatureOptions(genOpts.type, genOpts.foe)}</select></div>` : ""}
     <div class="field"><label>Alignment</label><select id="gn-align"><option value="">Any — one that fits the attitude</option>${ALIGNMENTS.map(a=>`<option ${a===genOpts.align?"selected":""}>${a}</option>`).join("")}</select></div>
     ${genOpts.type==="Humanoid"?`<div class="field"><label>Species</label><select id="gn-species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===genOpts.species?"selected":""}>${s}</option>`).join("")}</select></div>`:""}
     <div class="pcrow">
-      <button class="btn" style="flex:1" data-ract="person" title="A person (people are humanoids, whatever Type says; Type is for encounters)">Someone to meet</button>
+      <button class="btn" style="flex:1" data-ract="person" title="Someone to meet: a person (Humanoid or Any), or a named creature of the Type picked">Someone to meet</button>
       <button class="btn" style="flex:1" data-ract="encounter">An encounter</button></div>`;
   if(genResult){
     const g = genResult;
@@ -10059,7 +10086,8 @@ $("#pane-roll").addEventListener("change", e=>{
   if(t.id==="rl-table"){ rollTable = t.value; rollPick = null; renderRoll(); return; }
   if(t.id==="rl-variant"){ rollPick = t.value; renderRoll(); return; }
   if(t.id==="gn-disp"){ genOpts.disp = t.value; return; }
-  if(t.id==="gn-type"){ genOpts.type = t.value; if(t.value!=="Humanoid"){ genOpts.role = ""; genOpts.species = ""; } renderRoll(); return; }
+  if(t.id==="gn-type"){ genOpts.type = t.value; genOpts.foe = ""; if(t.value!=="Humanoid"){ genOpts.role = ""; genOpts.species = ""; } renderRoll(); return; }
+  if(t.id==="gn-foe"){ genOpts.foe = t.value; return; }
   if(t.id==="gn-role"){ genOpts.role = t.value; return; }
   if(t.dataset.crowdk!=null && genResult && genResult.kind==="crowd"){ const g = genResult, k = +t.dataset.crowdk;
     g.people[k] = genPerson({ level:g.level, disp:g.disp, maxXp:crowdRoom(g, k), role:t.value }); renderRoll(); return; }
