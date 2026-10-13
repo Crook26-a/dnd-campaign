@@ -2330,7 +2330,9 @@ function journeyBlock(){
    the battle; the spot stays for a random while, never more than 5 days
    of world time, then it's gone.
    ══════════════════════════════════════════════════════════════ */
-const TERRAIN_CAMP = { forest:"camp-forest", grassland:"camp-plains", desert:"camp-desert", coastal:"camp-beach", hill:"camp-hills", mountain:"camp-hills", swamp:"camp-swamp", arctic:"camp-plains" };
+const TERRAIN_WILD = t => TERRAINS[t] ? `wild-${t}` : "wild-grassland";
+/* the road they're met on, as the map draws it: cobbles for a good road, gravel for an ordinary one, dirt for a poor path */
+const roadTile = (x, y) => { const near = nearestRoad(x, y); if(!near || near.d > (root.ppm||10)*.3) return ""; const q = roadQuality(near.r); return q >= 8 ? "v" : q >= 4 ? "e" : "j"; };
 const ROAD_DANGER = [["safe","Safe (half as likely)", .5], ["", "Usual", 1], ["dangerous","Dangerous (twice as likely)", 2]];
 const encSet = () => { const t = travelSet(), e = t.enc || (t.enc = { on:true, inN:6 }); e.inN = Math.max(1, Math.min(100, Math.round(+e.inN || 6))); return e; };
 const encWeight = e => Math.max(1, Math.min(10, Math.round(+e.weight || 5)));
@@ -2375,7 +2377,7 @@ function runEncounter(e, why){
   const n = newNode("camp", p.x, p.y, root.nodes[0]);
   Object.assign(n, { name:e.name || "An encounter", notes:[e.text, e.notes].filter(Boolean).join("\n\n"), encounter:e.id,
     expires: worldHours() + 6 + Math.random()*114,                         // a random while, never more than 5 days
-    bmap:{ preset:e.map || TERRAIN_CAMP[ter] || "camp-plains" },
+    bmap:(()=>{ const preset = e.map || TERRAIN_WILD(ter), road = preset.startsWith("wild-") ? roadTile(p.x, p.y) : ""; return road ? { preset, road } : { preset }; })(),
     site:{ foes:(e.foes||[]).filter(f=>f.id).map(f=>({ id:f.id, n:f.n ?? 1, ...(+f.hide > 0 ? { hide:Math.round(+f.hide) } : {}) })) } });
   root.nodes.push(n);
   if(J){ J.met = n.id; delete J.pending; }
@@ -2442,7 +2444,7 @@ function encForm(x, a, ta, draft){
       <input class="fnum mono" data-encn="${i}" type="text" value="${esc(String(f.n ?? 1))}" placeholder="1d3" title="A number, or dice like 1d4+1">
       <input class="mono" data-ench="${i}" type="number" min="1" value="${f.hide ?? ""}" placeholder="hidden?" title="Start hidden at this DC (their Stealth total); blank = in plain sight" style="width:72px">
       <button class="fdel" data-encdel="${i}" title="Remove">×</button></div>`).join("");
-  const maps = [["", "Fits the land (an outdoor camp map)"], ...CAMP_KINDS, ...BMAP_ORDER.map(k=>[k, (BMAPS[k]||{}).name || k])];
+  const maps = [["", "Fits the land (outdoors, the road across it if they're on one)"], ...WILD_KINDS, ...CAMP_KINDS, ...BMAP_ORDER.map(k=>[k, (BMAPS[k]||{}).name || k])];
   return `<div data-encid="${x.id}">
     <p class="grouplab">Who's in it</p>${rows || `<p class="empty-note" style="margin:0 0 6px">Nobody yet.</p>`}
     <button class="btn wide" data-encadd style="margin-top:2px">Add someone</button>
@@ -7409,6 +7411,7 @@ const BTILES = {
   "p": { name:"Campfire", fill:"#d6c29a", fire:true, note:"Lit: bright light 20 ft, dim 20 ft more (no rule gives a campfire's light, so a Torch's). Click it on the map to put it out or light it." },
   "E": { name:"Tent", fill:"#cfc39d", tent:true, note:"Canvas: blocks sight." },
   "s": { name:"Sand", fill:"#e6d3a0", sand:true },
+  "I": { name:"Snow", fill:"#eef1f2", snow:true },
   "m": { name:"Rock or boulder", fill:"#cfc39d", rock:true, note:"Blocks movement and sight." },
   "a": { name:"Shallow water or mud", fill:"#a9b59a", shallow:true },
   "j": { name:"Dirt path", fill:"#cdb98f", dirt:true },
@@ -7571,7 +7574,7 @@ const BMAPS = {
 };
 const BMAP_ORDER = ["blank","docks","ship","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
 /* the paint tool's palette, in sets */
-const BTILE_GROUPS = [["Ground and water", ".=:~gYsma"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiBkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
+const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiBkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
 /* inside a town, a building with no layout of its own gets its kind's default */
 const KIND_INTERIOR = { house:"hut", ruinlet:"hut", store:"shop", provision:"shop", apothecary:"shop", smith:"shop", healer:"shop",
   fence:"shop", office:"shop", trainer:"shop", archive:"shop", stall:"stall", tent:"tent", warehouse:"warehouse", tower:"tower", light:"tower", ship:"ship" };
@@ -7579,7 +7582,7 @@ const defaultInterior = n => n && sailsAbout(n) ? "ship" : planOf && n && KIND_I
 /* ── camps: a clearing with the fire in the middle and a tent for each explorer, in country of six kinds.
    Each place's camp is laid out the same way every time (seeded by the place), and the tents follow the party. ── */
 const CAMP_KINDS = [["camp-forest","Camp: forest"],["camp-plains","Camp: plains"],["camp-desert","Camp: desert"],["camp-beach","Camp: beach"],["camp-hills","Camp: hills"],["camp-swamp","Camp: swamp"]];
-const bmapChoices = () => [...BMAP_ORDER.map(k=>[k, BMAPS[k].name]), ...CAMP_KINDS];
+const bmapChoices = () => [...BMAP_ORDER.map(k=>[k, BMAPS[k].name]), ...CAMP_KINDS, ...WILD_KINDS];
 const campCache = new Map();
 function campMap(kind, seed){
   const tents = Math.max(1, Math.min(8, partySize())), key = `${kind}|${seed}|${tents}`;
@@ -7623,10 +7626,59 @@ function campMap(kind, seed){
     notes:`A night's camp: the fire in the middle (bright light 20 ft, dim 20 ft more, like a Torch) and ${tents} tent${tents===1?"":"s"}, one for each explorer. Set the time to Night to see the dark close in.` };
   campCache.set(key, m); return m;
 }
+/* out in the open, one for each Travel Terrain (2024): the ground and what stands on it, no camp; met on a road,
+   the road runs across it (cobbles for a good road, gravel for an ordinary one, a dirt path for a poor one) */
+const WILD_KINDS = [["wild-forest","Outdoors: Forest"],["wild-grassland","Outdoors: Grassland"],["wild-desert","Outdoors: Desert"],["wild-coastal","Outdoors: Coastal"],
+  ["wild-hill","Outdoors: Hill"],["wild-mountain","Outdoors: Mountain"],["wild-swamp","Outdoors: Swamp"],["wild-arctic","Outdoors: Arctic"]];
+const wildCache = new Map();
+function wildMap(kind, seed, road){
+  const key = `${kind}|${seed}|${road||""}`; if(wildCache.has(key)) return wildCache.get(key);
+  let h = 2166136261; for(const ch of key){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const rnd = () => { h = (h + 0x6D2B79F5) | 0; let t = Math.imul(h ^ h>>>15, 1 | h); t = t + Math.imul(t ^ t>>>7, 61 | t) ^ t; return ((t ^ t>>>14) >>> 0) / 4294967296; };
+  const W = 26, H = 18, ter = kind.slice(5);
+  const base = { desert:"s", coastal:"s", mountain:".", arctic:"I" }[ter] || "g";
+  const G = Array.from({ length:H }, ()=>Array(W).fill(base));
+  const set = (x, y, ch) => { if(x>=0 && y>=0 && x<W && y<H) G[y][x] = ch; };
+  const scatter = (ch, p, onto) => { for(let y=0; y<H; y++) for(let x=0; x<W; x++) if((!onto || onto.includes(G[y][x])) && rnd() < p) G[y][x] = ch; };
+  const clumps = (ch, n, r, onto) => { for(let k=0; k<n; k++){ const cx = Math.floor(rnd()*W), cy = Math.floor(rnd()*H), R = Math.ceil(r);
+    for(let y=cy-R; y<=cy+R; y++) for(let x=cx-R; x<=cx+R; x++) if(Math.hypot(x-cx, y-cy) <= r - rnd()*.8 && (!onto || onto.includes((G[y]||[])[x]))) set(x, y, ch); } };
+  /* the sea along the top of a coast: deep water, then the shallows, then the beach */
+  const shore = ter==="coastal" ? 5 : 0;
+  if(shore) for(let x=0; x<W; x++){ const d = 3 + Math.round(Math.sin(x/3.1 + rnd())*.8); for(let y=0; y<d; y++) set(x, y, "~"); set(x, d, "a"); if(rnd() < .5) set(x, d+1, "a"); }
+  if(ter==="forest"){ scatter("Y", .34, "g"); scatter("m", .02, "g"); }
+  else if(ter==="grassland"){ scatter("Y", .03, "g"); scatter("m", .01, "g"); }
+  else if(ter==="desert"){ clumps("m", 4, 1.4); scatter("m", .03, "s"); }
+  else if(ter==="coastal"){ scatter("m", .04, "s"); clumps("g", 2, 2.5, "s"); scatter("Y", .03, "g"); }
+  else if(ter==="hill"){ clumps("m", 7, 1.5); scatter("Y", .05, "g"); }
+  else if(ter==="mountain"){ clumps("m", 12, 2.2); scatter("m", .12, "."); }
+  else if(ter==="swamp"){ clumps("a", 6, 2.6); clumps("~", 3, 1.3); scatter("Y", .12, "ga"); }
+  else if(ter==="arctic"){ clumps("m", 3, 1.3); scatter("m", .03, "I"); scatter("Y", .03, "I"); }
+  /* the road (or, without one, a clear way through the middle so nobody is walled in) */
+  const mid = shore ? 11 : 8, at = x => mid + Math.round(Math.sin(x/6 + seedTurn(seed)));
+  for(let x=0; x<W; x++){ const y = at(x), y0 = Math.min(y, x ? at(x-1) : y), y1 = Math.max(y, x ? at(x-1) : y);     // where it bends, the band joins up
+    for(let d=-1; d<=y1-y0+2; d++){ const yy = y0+d; if(yy<0 || yy>=H) continue; if("Ym~".includes(G[yy][x])) G[yy][x] = base==="." ? "." : (base==="s" ? "s" : base); }
+    if(road) for(let yy=y0; yy<=y1+1; yy++) set(x, yy, road); }
+  const floor = (x, y) => x>=0 && y>=0 && x<W && y<H && !"~Ym".includes(G[y][x]);
+  /* the party on the way in the middle; whoever they meet off to the sides, in cover where there is some */
+  const party = [], enemy = [], cx = 12;
+  for(const [dx, dy] of [[0,0],[1,0],[-1,0],[2,0],[0,1],[1,1],[-1,1],[2,1]]){ const x = cx+dx, y = at(x)+dy; if(floor(x, y)) party.push([x, y]); }
+  for(let tries=0; enemy.length<10 && tries<600; tries++){
+    const x = Math.floor(rnd()*W), y = Math.floor(rnd()*H), far = Math.abs(x-cx) + Math.abs(y-at(x));
+    if(far < 6 || !floor(x, y) || enemy.some(([a, b])=>a===x && b===y)) continue;
+    const cover = [[1,0],[-1,0],[0,1],[0,-1]].some(([a, b])=>"Ym".includes((G[y+b]||[])[x+a]||""));
+    if(cover || tries > 300) enemy.push([x, y]);
+  }
+  const name = (WILD_KINDS.find(([k])=>k===kind)||[])[1] || "Outdoors";
+  const m = { name, w:W, h:H, rows:G.map(r=>r.join("")), labels:[], start:{ party, enemy },
+    notes:`${name.replace("Outdoors: ", "")} land${road ? ", the road running across it" : ""}. The party starts on the way in the middle; whoever they meet starts off to the sides, in cover where there is some.` };
+  wildCache.set(key, m); return m;
+}
+const seedTurn = s => { let h = 0; for(const ch of String(s||"")) h = (h*31 + ch.charCodeAt(0)) | 0; return (h % 628) / 100; };
 function bmapOf(n){
   const b = n && n.bmap;
   if(b && Array.isArray(b.rows) && b.rows.length) return { ...b, w:b.rows[0].length, h:b.rows.length };
   if(b && b.preset && CAMP_KINDS.some(([k])=>k===b.preset)) return campMap(b.preset, n.id);
+  if(b && b.preset && WILD_KINDS.some(([k])=>k===b.preset)) return wildMap(b.preset, n.id, b.road);
   if(b && b.preset && BMAPS[b.preset]) return BMAPS[b.preset];
   const d = defaultInterior(n); if(d) return BMAPS[d];
   return BMAPS.blank;
@@ -7733,6 +7785,7 @@ function bmapSvg(m, st, players){                    // st: the place — which 
         + `<path d="M${c-8} ${cy+5} L${c+8} ${cy-3} M${c-8} ${cy-3} L${c+8} ${cy+5}" stroke="#6b4a2a" stroke-width="4" stroke-linecap="round"/>`
         + (lit ? `<circle cx="${c}" cy="${cy}" r="${BS*.5}" fill="#ffd36b" opacity=".35"/><path d="M${c} ${cy-11} C${c+8} ${cy-2} ${c+6} ${cy+5} ${c} ${cy+5} C${c-6} ${cy+5} ${c-8} ${cy-2} ${c} ${cy-11}" fill="#ff8a1e" stroke="#c4551a"/><path d="M${c} ${cy-4} C${c+3} ${cy} ${c+2} ${cy+4} ${c} ${cy+4} C${c-2} ${cy+4} ${c-3} ${cy} ${c} ${cy-4}" fill="#ffe08a"/>` : `<circle cx="${c}" cy="${cy+1}" r="5" fill="#4a4540" opacity=".7"/>`); }
     else if(t.tent) g += `<path d="M${X+3} ${Y+BS-4} L${c} ${Y+3} L${X+BS-3} ${Y+BS-4} Z" fill="#c8b48a" stroke="#6b5a3a" stroke-width="1.5"/><path d="M${c} ${Y+3} L${c} ${Y+BS-4}" stroke="#6b5a3a" stroke-width="1.2"/><path d="M${c-4} ${Y+BS-4} L${c} ${Y+BS-14} L${c+4} ${Y+BS-4}" fill="#5e4b35"/>`;
+    else if(t.snow) g += (x*5+y*3)%3===0 ? `<path d="M${X+9} ${Y+13} l3 2 M${X+23} ${Y+27} l3 2 M${X+27} ${Y+10} l2 -2" stroke="#b9c6ca" fill="none" stroke-width="1"/>` : "";
     else if(t.sand) g += (x*5+y*3)%3===0 ? `<path d="M${X+8} ${Y+14} q4 -3 8 0 M${X+22} ${Y+28} q4 -3 8 0" stroke="#c9b37a" fill="none" stroke-width="1"/>` : "";
     /* paths: each square's own scatter (from its x,y) so a long path doesn't look stamped */
     else if(t.dirt) g += `<path d="M${X+7+(x*7)%9} ${Y+9+(y*5)%8} h2 M${X+24+(y*3)%8} ${Y+15+(x*5)%9} h2 M${X+12+(x*3+y)%10} ${Y+29+(x+y)%6} h2" stroke="#a8946a" stroke-width="2" stroke-linecap="round"/><circle cx="${X+30-(x*5)%9}" cy="${Y+30-(y*3)%7}" r="1.6" fill="#9c8a66"/>`;
@@ -8436,7 +8489,7 @@ function layoutOptions(n){
   const scan = (nodes, p, host) => { for(const x of nodes||[]) if(x!==n && x.bmap && Array.isArray(x.bmap.rows) && x.bmap.rows.length)
     own.push([`copy:${p||""}|${x.id}`, `${placeLabel(x)}${host ? ` (${host})` : ""}`]); };
   scan(root.nodes, null, ""); for(const k in plans){ const h = (root.nodes||[]).find(x=>x.id===k); scan(plans[k].nodes, k, h ? h.name : ""); }
-  return `<option value="">Pick a layout…</option><optgroup label="Ready-made">${BMAP_ORDER.filter(k=>k!=="blank").map(k=>`<option value="${k}">${esc(BMAPS[k].name)}</option>`).join("")}${CAMP_KINDS.map(([k, l])=>`<option value="${k}">${esc(l)}</option>`).join("")}</optgroup>`
+  return `<option value="">Pick a layout…</option><optgroup label="Ready-made">${BMAP_ORDER.filter(k=>k!=="blank").map(k=>`<option value="${k}">${esc(BMAPS[k].name)}</option>`).join("")}${CAMP_KINDS.map(([k, l])=>`<option value="${k}">${esc(l)}</option>`).join("")}${WILD_KINDS.map(([k, l])=>`<option value="${k}">${esc(l)}</option>`).join("")}</optgroup>`
     + (own.length ? `<optgroup label="A copy of another place's inside">${own.map(([k, l])=>`<option value="${esc(k)}">${esc(l)}</option>`).join("")}</optgroup>` : "");
 }
 function applyLayout(n, key){
@@ -8454,7 +8507,7 @@ const layoutPicker = (id, n, label) => `<div class="pcrow" style="align-items:fl
 /* while painting: a piece already on the map (furniture, a container, a lamp, a door…) is dragged to move it and
    right-clicked to delete it; ground, water and walls are just painted over */
 const PIECES = BTILE_GROUPS.filter(([g])=>/Inside|Containers|Camp/.test(g)).map(([, l])=>l).join("") + "D";
-const GROUNDS = ".=:~gsmajvez";
+const GROUNDS = ".=:~gsmajvezI";
 const isPiece = ch => !!ch && PIECES.includes(ch);
 /* what floor a piece stood on: the commonest ground around it */
 function groundUnder(rows, x, y){
