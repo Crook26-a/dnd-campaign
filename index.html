@@ -374,6 +374,17 @@
   .roadlabel{font-family:var(--mono);text-anchor:middle;dominant-baseline:central;pointer-events:none}
   .roadchip{fill:var(--paper);stroke:var(--rule)}
   .nodename{font-family:var(--serif);fill:var(--ink);text-anchor:middle;letter-spacing:.04em;pointer-events:none}
+  .nodename{paint-order:stroke;stroke:#efe4c6;stroke-width:3px;stroke-opacity:.7;stroke-linejoin:round}
+  /* over the map: the scale bar and the title cartouche */
+  #mapfurn{position:absolute;inset:0;pointer-events:none;z-index:2}
+  #mapfurn .scalebar{position:absolute;left:14px;bottom:34px;font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
+  #mapfurn .sb-bar{height:6px;border:1px solid var(--ink);display:flex;background:var(--paper-lit)} #mapfurn .sb-bar span{flex:1} #mapfurn .sb-bar span:first-child{background:var(--ink)}
+  #mapfurn .sb-lab{margin-top:2px}
+  #mapfurn .cartouche{position:absolute;left:14px;top:12px;padding:7px 16px 8px;background:var(--paper-lit);border:1px solid var(--ink);box-shadow:0 0 0 3px var(--paper-lit),0 0 0 4px var(--ink-soft);text-align:center;max-width:260px}
+  #mapfurn .cartouche[hidden]{display:none}
+  #mapfurn .ct-t{font-family:var(--serif);font-size:16px;letter-spacing:.06em;font-variant:small-caps;color:var(--ink)}
+  #mapfurn .ct-s{font-family:var(--serif);font-style:italic;font-size:11px;color:var(--ink-soft);margin-top:1px}
+  body.dm #mapfurn .cartouche{display:none}
   .nodenum{font-family:var(--mono);fill:var(--lead);text-anchor:middle;dominant-baseline:central;pointer-events:none}
   .selring{fill:none;stroke:var(--lead);stroke-width:1.5;vector-effect:non-scaling-stroke}
   /* a place a document points to, and a session's places by number */
@@ -1847,7 +1858,7 @@ function playerMapScene(){
   /* on the sea chart, with the chart on: only places in sight, charted ones, and the fog over the rest */
   const charting = !planOf && chartOn();
   const hid = new Set((doc.nodes||[]).filter(n=>n.hidden || (charting && !n.charted && !n.route && !inSight(n.x, n.y)) || (isRival(n) && !rivalInView(n))).map(n=>n.id));
-  const cg = copy.querySelector("#gChart"); if(cg) cg.innerHTML = (charting ? chartFog(true) : "") + (!planOf ? wakeLines(true) + routeLines(true) + trailLines(true) : "");
+  const cg = copy.querySelector("#gChart"); if(cg) cg.innerHTML = (charting ? chartFog(true) : "") + (!planOf ? seaMonsters(true) + wakeLines(true) + routeLines(true) + trailLines(true) : "");
   copy.querySelectorAll("[data-pn]").forEach(e=>{ if(hid.has(e.getAttribute("data-pn"))) e.remove(); else e.removeAttribute("opacity"); });
   copy.querySelectorAll("[data-pr]").forEach(e=>{ if(!(hid.has(e.getAttribute("data-pa")) || hid.has(e.getAttribute("data-pb")))) return;
     /* a road into country they haven't seen: gone, unless it shows its first few miles from a place they know */
@@ -3650,6 +3661,172 @@ function distancesFromOrigin(){
 /* ══════════════════════════════════════════════════════════════
    RENDER
    ══════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   DRESSING THE SEA CHART — the old chart-maker's touches, all drawn from
+   what's already on the map: the land drawn with its symbols (trees,
+   hills, peaks, reeds, dunes, tufts, snow), the coasts rippled out into
+   pale shallows, a compass rose with its rhumb lines across the sea, sea
+   monsters out in uncharted water, names that step aside for each other
+   and fade as you pull back (never where the party is), a scale bar and
+   a title cartouche. Seeded from the map, so the same map always dresses
+   the same way.
+   ══════════════════════════════════════════════════════════════ */
+const seeded = key => { let h = 2166136261; for(const ch of String(key)){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return () => { h = (h + 0x6D2B79F5) | 0; let t = Math.imul(h ^ h>>>15, 1 | h); t = t + Math.imul(t ^ t>>>7, 61 | t) ^ t; return ((t ^ t>>>14) >>> 0) / 4294967296; }; };
+const ptsKey = pts => { let a = 0, b = 0; for(let i=0; i<pts.length; i++){ a = (a + pts[i].x*(i+1)) % 1e9; b = (b + pts[i].y*(i+3)) % 1e9; } return `${pts.length}:${Math.round(a)}:${Math.round(b)}`; };
+/* the land's own symbols, scattered inside an area (clear of its edge), drawn bottom to top so they overlap like a hand-drawn map */
+const GLYPH_OF = { wood:"tree", hills:"hill", mountain:"peak", marsh:"reed", desert:"dune", grassland:"tuft", arctic:"snow" };
+const GLYPH_SIZE = { tree:[9, 10.5], hill:[15, 21], peak:[21, 24], reed:[9, 15], dune:[14, 26], tuft:[7, 24], snow:[12, 28] };   // size, spacing (map px at 10 px a mile)
+const glyphCache = new Map();
+function terrainGlyphs(sh){
+  const g0 = GLYPH_OF[sh.kind]; if(!g0 || !sh.closed || planOf || (sh.pts||[]).length < 3) return "";
+  const ppm = root.ppm||10, key = `${sh.id}|${sh.kind}|${ptsKey(sh.pts)}|${sh.straight?1:0}|${ppm}`;
+  if(glyphCache.has(key)) return glyphCache.get(key);
+  const ring = shapeRing(sh), rnd = seeded(key), [gs, sp0] = GLYPH_SIZE[g0], g = gs*ppm/10, sp = sp0*ppm/10;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of ring){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const at = [];
+  for(let y = y0 + sp*.5, row = 0; y < y1; y += sp*.86, row++) for(let x = x0 + (row%2 ? sp*.5 : 0); x < x1; x += sp){
+    const px = x + (rnd()-.5)*sp*.8, py = y + (rnd()-.5)*sp*.7;
+    if(inRing(ring, px, py) && ringDist(ring, px, py) > g*.6) at.push([px, py, rnd()]);
+    if(at.length > 2500) break;
+  }
+  at.sort((a, b)=>a[1]-b[1]);
+  const f = n => Math.round(n*10)/10, sw = f(Math.max(.5, g*.075));
+  let s = "";
+  for(const [x, y, r] of at){
+    if(g0==="tree"){
+      if(r < .3) s += `<path d="M${f(x)} ${f(y)} l${f(-g*.32)} 0 l${f(g*.32)} ${f(-g*.95)} l${f(g*.32)} ${f(g*.95)}Z" fill="#7f9a68" stroke="#4f6a40" stroke-width="${sw}"/>`;
+      else s += `<path d="M${f(x)} ${f(y)} v${f(-g*.3)}" stroke="#5a4a32" stroke-width="${sw*1.2}"/><circle cx="${f(x+g*.06)}" cy="${f(y-g*.52)}" r="${f(g*.4)}" fill="#6f8a58"/><circle cx="${f(x-g*.03)}" cy="${f(y-g*.58)}" r="${f(g*.36)}" fill="#9db27f" stroke="#4f6a40" stroke-width="${sw}"/>`;
+    } else if(g0==="hill"){
+      s += `<path d="M${f(x-g*.55)} ${f(y)} Q${f(x)} ${f(y-g*.75)} ${f(x+g*.55)} ${f(y)}" fill="#d6c294" stroke="#8a7346" stroke-width="${sw}"/><path d="M${f(x+g*.12)} ${f(y-g*.2)} l${f(g*.12)} ${f(g*.18)} M${f(x+g*.26)} ${f(y-g*.28)} l${f(g*.12)} ${f(g*.22)}" stroke="#8a7346" stroke-width="${sw*.8}"/>`;
+    } else if(g0==="peak"){
+      const h = g*(.8 + r*.35);
+      s += `<path d="M${f(x-g*.5)} ${f(y)} L${f(x-g*.05)} ${f(y-h)} L${f(x+g*.5)} ${f(y)}Z" fill="#ece0c3" stroke="#6a583c" stroke-width="${sw}"/><path d="M${f(x-g*.05)} ${f(y-h)} L${f(x+g*.5)} ${f(y)} L${f(x+g*.08)} ${f(y)}Z" fill="#a8916c"/><path d="M${f(x-g*.05)} ${f(y-h)} L${f(x+g*.5)} ${f(y)}" stroke="#6a583c" stroke-width="${sw}" fill="none"/>`;
+    } else if(g0==="reed"){
+      s += `<path d="M${f(x-g*.55)} ${f(y)} h${f(g*1.1)} M${f(x-g*.22)} ${f(y)} l${f(-g*.12)} ${f(-g*.6)} M${f(x)} ${f(y)} l0 ${f(-g*.8)} M${f(x+g*.22)} ${f(y)} l${f(g*.12)} ${f(-g*.6)}" stroke="#5e6a3c" stroke-width="${sw}" fill="none"/>`;
+    } else if(g0==="dune"){
+      s += `<path d="M${f(x-g*.6)} ${f(y)} Q${f(x-g*.1)} ${f(y-g*.35)} ${f(x+g*.6)} ${f(y)}" stroke="#a88a4a" stroke-width="${sw}" fill="none"/><circle cx="${f(x+g*.1)}" cy="${f(y+g*.18)}" r="${f(g*.05)}" fill="#a88a4a"/><circle cx="${f(x-g*.3)}" cy="${f(y+g*.12)}" r="${f(g*.04)}" fill="#a88a4a"/>`;
+    } else if(g0==="tuft"){
+      s += `<path d="M${f(x-g*.3)} ${f(y)} l${f(g*.14)} ${f(-g*.45)} M${f(x)} ${f(y)} l0 ${f(-g*.6)} M${f(x+g*.3)} ${f(y)} l${f(-g*.14)} ${f(-g*.45)}" stroke="#7e8a48" stroke-width="${sw}" fill="none"/>`;
+    } else if(g0==="snow"){
+      s += `<path d="M${f(x-g*.45)} ${f(y)} L${f(x)} ${f(y-g*.5)} L${f(x+g*.45)} ${f(y)}" fill="#f6f8f8" stroke="#8ea3a8" stroke-width="${sw}"/><circle cx="${f(x+g*.6)}" cy="${f(y-g*.1)}" r="${f(g*.05)}" fill="#8ea3a8"/>`;
+    }
+  }
+  s = s ? `<g class="tglyphs" pointer-events="none">${s}</g>` : "";
+  glyphCache.set(key, s); if(glyphCache.size > 300) glyphCache.delete(glyphCache.keys().next().value);
+  return s;
+}
+/* an island's coast: pale shallows, and three ripple lines repeating its shape out into the sea (drawn under its own fill) */
+function coastRipples(sh, d, inv){
+  if(sh.kind!=="island" || !sh.closed || planOf) return "";
+  const ppm = root.ppm||10, band = "#b2c7c5", line = "#6f9590", j = `stroke-linejoin="round" fill="none"`;
+  let s = `<path d="${d}" ${j} stroke="${band}" stroke-width="${2*2.6*ppm}"/>`;
+  for(const mi of [2.1, 1.35, .65]){ const w = 2*mi*ppm;
+    s += `<path d="${d}" ${j} stroke="${line}" stroke-opacity=".55" stroke-width="${w}"/><path d="${d}" ${j} stroke="${band}" stroke-width="${Math.max(0, w - 2.2*inv)}"/>`; }
+  return `<g pointer-events="none">${s}</g>`;
+}
+/* the compass rose: out at sea off the home port (or where the map says, root.rose), its rhumb lines running out across the water */
+let roseCache = null;
+function roseSpot(){
+  if(root.rose && isFinite(root.rose.x)) return root.rose;
+  const isles = (root.shapes||[]).filter(s=>s.kind==="island" && s.closed && (s.pts||[]).length > 2), sb = seaBounds(); if(!sb) return null;
+  const key = `${isles.map(s=>ptsKey(s.pts)).join("|")}|${sb.x0},${sb.y0},${sb.x1},${sb.y1}`;
+  if(roseCache && roseCache.key===key) return roseCache.at;
+  const ppm = root.ppm||10, h = homePort() || { x:(sb.x0+sb.x1)/2, y:(sb.y0+sb.y1)/2 };
+  const clear = (x, y) => x > sb.x0 + 40*ppm && x < sb.x1 - 40*ppm && y > sb.y0 + 40*ppm && y < sb.y1 - 40*ppm && !isles.some(s=>{ const r = shapeRing(s); return inRing(r, x, y) || ringDist(r, x, y) < 30*ppm; });
+  let at = null;
+  for(const mi of [110, 150, 200, 260]){ for(const deg of [225, 135, 315, 45, 270, 90, 180, 0]){ const x = h.x + Math.cos(deg*Math.PI/180)*mi*ppm, y = h.y - Math.sin(deg*Math.PI/180)*mi*ppm; if(clear(x, y)){ at = { x, y }; break; } } if(at) break; }
+  at = at || { x:(sb.x0+sb.x1)/2, y:(sb.y0+sb.y1)/2 };
+  roseCache = { key, at }; return at;
+}
+function roseArt(inv){
+  const at = roseSpot(), sb = seaBounds(); if(!at || !sb) return "";
+  const ppm = root.ppm||10, R = 19*ppm, L = Math.hypot(sb.x1-sb.x0, sb.y1-sb.y0), f = n => Math.round(n*10)/10;
+  let lines = "";
+  for(let i=0; i<32; i++){ const a = i*Math.PI/16, main = i%4===0;
+    lines += `<path d="M${f(at.x)} ${f(at.y)} L${f(at.x + Math.sin(a)*L)} ${f(at.y - Math.cos(a)*L)}" stroke="${main ? "#4f6f76" : "#6d8a8f"}" stroke-opacity="${main ? .32 : .2}" stroke-width="${f((main ? 1 : .7)*inv)}"/>`; }
+  let star = "";
+  for(let i=0; i<16; i++){ const a = i*Math.PI/8, len = i%4===0 ? R : i%2===0 ? R*.7 : R*.46, wd = R*(i%4===0 ? .13 : .1);
+    const tip = [at.x + Math.sin(a)*len, at.y - Math.cos(a)*len], l = [at.x + Math.sin(a - Math.PI/2)*wd, at.y - Math.cos(a - Math.PI/2)*wd], r = [at.x + Math.sin(a + Math.PI/2)*wd, at.y - Math.cos(a + Math.PI/2)*wd];
+    const dark = i===0 ? "#a8331f" : i%4===0 ? "#3a2e1e" : i%2===0 ? "#6d5c43" : "#9b8968", light = i===0 ? "#e8a090" : "#f3e8cc";
+    star = (i%4===0 ? "" : "") + star + `<path d="M${f(at.x)} ${f(at.y)} L${f(l[0])} ${f(l[1])} L${f(tip[0])} ${f(tip[1])}Z" fill="${light}" stroke="#3a2e1e" stroke-width="${f(.6*inv)}"/><path d="M${f(at.x)} ${f(at.y)} L${f(r[0])} ${f(r[1])} L${f(tip[0])} ${f(tip[1])}Z" fill="${dark}" stroke="#3a2e1e" stroke-width="${f(.6*inv)}"/>`;
+  }
+  const rings = `<circle cx="${f(at.x)}" cy="${f(at.y)}" r="${f(R*.86)}" fill="#efe4c6" fill-opacity=".55" stroke="#3a2e1e" stroke-width="${f(.8*inv)}"/><circle cx="${f(at.x)}" cy="${f(at.y)}" r="${f(R*.8)}" fill="none" stroke="#3a2e1e" stroke-width="${f(.5*inv)}"/>`
+    + Array.from({ length:32 }, (_, i)=>{ const a = i*Math.PI/16; return `<path d="M${f(at.x + Math.sin(a)*R*.8)} ${f(at.y - Math.cos(a)*R*.8)} L${f(at.x + Math.sin(a)*R*.86)} ${f(at.y - Math.cos(a)*R*.86)}" stroke="#3a2e1e" stroke-width="${f(.6*inv)}"/>`; }).join("");
+  const nTxt = `<text x="${f(at.x)}" y="${f(at.y - R*1.08)}" font-size="${f(R*.2)}" text-anchor="middle" font-family="var(--serif)" fill="#a8331f">N</text>`;
+  return `<g class="rose" pointer-events="none">${lines}${rings}${star}<circle cx="${f(at.x)}" cy="${f(at.y)}" r="${f(R*.05)}" fill="#3a2e1e"/>${nTxt}</g>`;
+}
+/* here be monsters: out in open water, far from any coast; on the players' chart only where they haven't been (some may be real — who can say) */
+let monsterCache = null;
+function monsterSpots(){
+  const sb = seaBounds(); if(!sb) return [];
+  const isles = (root.shapes||[]).filter(s=>s.kind==="island" && s.closed && (s.pts||[]).length > 2), ppm = root.ppm||10, rose = roseSpot();
+  const key = `${isles.map(s=>ptsKey(s.pts)).join("|")}|${sb.x0},${sb.y0},${sb.x1},${sb.y1}|${rose ? Math.round(rose.x)+","+Math.round(rose.y) : ""}|${root.title||""}`;
+  if(monsterCache && monsterCache.key===key) return monsterCache.at;
+  const rnd = seeded(key), area = (sb.x1-sb.x0)*(sb.y1-sb.y0) / (ppm*ppm), want = Math.max(3, Math.min(14, Math.round(area / 140000))), at = [];
+  for(let tries=0; at.length < want && tries < 600; tries++){
+    const x = sb.x0 + (.06 + rnd()*.88)*(sb.x1-sb.x0), y = sb.y0 + (.08 + rnd()*.84)*(sb.y1-sb.y0);
+    if(isles.some(s=>{ const r = shapeRing(s); return inRing(r, x, y) || ringDist(r, x, y) < 70*ppm; })) continue;
+    if(rose && Math.hypot(x-rose.x, y-rose.y) < 70*ppm) continue;
+    if(at.some(m=>Math.hypot(m.x-x, m.y-y) < 190*ppm)) continue;
+    if((root.nodes||[]).some(n=>Math.hypot(n.x-x, n.y-y) < 35*ppm)) continue;
+    at.push({ x, y, kind:["serpent", "kraken", "whale", "serpent"][at.length % 4], flip:rnd() < .5, s:(.85 + rnd()*.35) });
+  }
+  monsterCache = { key, at }; return at;
+}
+const MONSTER_ART = {
+  serpent:`<path d="M-58 0 q4 -3 8 0 t8 0 M-14 0 q4 -3 8 0 t8 0 M18 0 q4 -3 8 0 t8 0" stroke="#4f6f76" stroke-width="1.4" fill="none"/>
+    <path d="M-48 0 C-46 -16 -30 -16 -28 0" fill="none" stroke="#2f3f2e" stroke-width="7" stroke-linecap="round"/><path d="M-48 0 C-46 -16 -30 -16 -28 0" fill="none" stroke="#6f8f6a" stroke-width="4.4" stroke-linecap="round"/>
+    <path d="M-20 0 C-18 -20 2 -20 4 0" fill="none" stroke="#2f3f2e" stroke-width="7.5" stroke-linecap="round"/><path d="M-20 0 C-18 -20 2 -20 4 0" fill="none" stroke="#6f8f6a" stroke-width="4.8" stroke-linecap="round"/>
+    <path d="M12 0 C14 -22 26 -32 40 -28" fill="none" stroke="#2f3f2e" stroke-width="8" stroke-linecap="round"/><path d="M12 0 C14 -22 26 -32 40 -28" fill="none" stroke="#6f8f6a" stroke-width="5.2" stroke-linecap="round"/>
+    <path d="M36 -33 C44 -38 54 -34 56 -28 L46 -26 L54 -22 C46 -18 38 -22 36 -26Z" fill="#6f8f6a" stroke="#2f3f2e" stroke-width="1.4"/><circle cx="44" cy="-31" r="1.4" fill="#a8331f"/>
+    <path d="M-42 -11 l2 -6 l2 6 M-12 -14 l2 -7 l2 7 M-4 -14 l2 -6 l2 6 M20 -18 l2 -7 l2 7 M28 -25 l3 -6 l1 7" fill="#a8331f" stroke="#2f3f2e" stroke-width=".8"/>`,
+  kraken:`<path d="M-50 0 q4 -3 8 0 t8 0 t8 0 M20 0 q4 -3 8 0 t8 0 t8 0" stroke="#4f6f76" stroke-width="1.4" fill="none"/>
+    <path d="M-30 0 C-34 -14 -22 -24 -28 -34 C-31 -38 -25 -40 -24 -36 M-14 0 C-16 -18 -4 -26 -12 -40 C-15 -44 -8 -46 -7 -41 M2 0 C4 -16 14 -22 8 -36 C6 -40 12 -42 13 -37 M16 0 C20 -12 30 -14 28 -26 C27 -30 33 -31 33 -26" fill="none" stroke="#3f2622" stroke-width="6" stroke-linecap="round"/>
+    <path d="M-30 0 C-34 -14 -22 -24 -28 -34 C-31 -38 -25 -40 -24 -36 M-14 0 C-16 -18 -4 -26 -12 -40 C-15 -44 -8 -46 -7 -41 M2 0 C4 -16 14 -22 8 -36 C6 -40 12 -42 13 -37 M16 0 C20 -12 30 -14 28 -26 C27 -30 33 -31 33 -26" fill="none" stroke="#9a5a48" stroke-width="3.6" stroke-linecap="round"/>
+    <g fill="#f0d6c8"><circle cx="-29" cy="-12" r="1"/><circle cx="-26" cy="-22" r="1"/><circle cx="-13" cy="-14" r="1"/><circle cx="-9" cy="-26" r="1"/><circle cx="5" cy="-12" r="1"/><circle cx="10" cy="-24" r="1"/><circle cx="22" cy="-10" r="1"/></g>`,
+  whale:`<path d="M-56 2 q4 -3 8 0 t8 0 t8 0 M30 2 q4 -3 8 0 t8 0" stroke="#4f6f76" stroke-width="1.4" fill="none"/>
+    <path d="M-40 1 C-36 -20 14 -24 30 -6 L40 -16 L42 -12 L36 -2 L44 4 L32 2 C14 6 -30 6 -40 1Z" fill="#5f727c" stroke="#26343a" stroke-width="1.4"/>
+    <path d="M-36 -4 C-20 -2 4 -2 22 -4" stroke="#a9b8bd" stroke-width="1.2" fill="none"/><circle cx="-28" cy="-9" r="1.4" fill="#f3e8cc"/>
+    <path d="M-22 -18 q-4 -10 -12 -13 M-22 -18 q0 -12 2 -17 M-22 -18 q4 -10 12 -12" stroke="#6d8a8f" stroke-width="1.4" fill="none" stroke-linecap="round"/>`
+};
+function seaMonsters(forPlayers){
+  if(doc!==root) return "";
+  const ppm = root.ppm||10, charting = chartOn();
+  return monsterSpots().filter(m=>!charting || !inSight(m.x, m.y)).map((m, i)=>{
+    const k = 75*ppm/100*m.s;
+    return `<g class="monster" pointer-events="none" opacity="${forPlayers ? .95 : .8}" transform="translate(${Math.round(m.x)} ${Math.round(m.y)}) scale(${(m.flip?-1:1)*k} ${k})">${MONSTER_ART[m.kind]}${i===0 ? `<text x="0" y="16" font-size="8" text-anchor="middle" font-family="var(--serif)" font-style="italic" fill="#3a2e1e" transform="scale(${m.flip?-1:1} 1)">Here be monsters</text>` : ""}</g>`;
+  }).join("");
+}
+/* names that step aside for each other, and fade as you pull back: the party's place, what's picked and where they're
+   headed always keep theirs */
+const LABEL_RANK = { city:5, town:4, village:3, post:3, light:2, toll:2, ruin:2, cave:2, camp:2, wood:2, wreck:2, stone:1, ship:0, boat:0 };
+function labelNeed(){ const k = view.k; return planOf ? 1 : k >= .9 ? 1 : k >= .4 ? 2 : k >= .2 ? 3 : k >= .1 ? 4 : 5; }
+function placeLabels(reqs, obstacles, inv){
+  const need = labelNeed(), placed = [...obstacles], hit = b => placed.some(o=>b.x < o.x+o.w && b.x+b.w > o.x && b.y < o.y+o.h && b.y+b.h > o.y);
+  let s = "";
+  for(const q of reqs.sort((a, b)=>b.rank - a.rank)){
+    if(q.rank < need - 1) continue;
+    const faint = q.rank < need, size = faint ? 10 : q.size, w = (q.text.length*size*.56 + 4)*inv, h = (size + 3)*inv;
+    let pick = null, least = null, crowded = false;
+    const boxOf = c => ({ x:c.anchor==="start" ? c.x : c.anchor==="end" ? c.x - w : c.x - w/2, y:c.y - h*.8, w, h });
+    const over = b => placed.reduce((t, o)=>t + Math.max(0, Math.min(b.x+b.w, o.x+o.w) - Math.max(b.x, o.x)) * Math.max(0, Math.min(b.y+b.h, o.y+o.h) - Math.max(b.y, o.y)), 0);
+    const cands = [...q.at, ...q.at.slice(0, 2).map(c=>({ ...c, y:c.y + (c.y > q.at[0].y - 1e-9 ? 1 : -1)*h })), { ...q.at[0], x:q.at[0].x + w*.55 }, { ...q.at[0], x:q.at[0].x - w*.55 }];
+    for(const c of cands){ const b = boxOf(c); if(!hit(b)){ pick = { c, b }; break; } const o = over(b); if(!least || o < least.o) least = { c, b, o }; }
+    if(!pick){ if(q.rank < 10 && q.rank < 6 && !planOf) continue; pick = least; crowded = q.rank < 10; }     // in a town every name is wanted: the least crowded spot, small and faint
+    placed.push(pick.b);
+    s += `<g data-pn="${q.id}"${q.hidden ? ` opacity=".45"` : (faint || crowded) ? ` opacity=".55"` : ""}><text class="nodename" x="${Math.round(pick.c.x*10)/10}" y="${Math.round(pick.c.y*10)/10}" font-size="${(crowded ? size*.85 : size)*inv}" text-anchor="${pick.c.anchor||"middle"}">${esc(q.text)}</text></g>`;
+  }
+  return s;
+}
+/* over the map: a scale bar, and on the sea chart the map's title in a cartouche */
+function mapFurniture(){
+  let el = $("#mapfurn"); if(!el){ $("#field").insertAdjacentHTML("beforeend", `<div id="mapfurn"><div class="cartouche"></div><div class="scalebar"></div></div>`); el = $("#mapfurn"); }
+  const per = (doc.ppm||10) * view.k, nice = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000].find(v=>v*per >= 70) || 1000, px = Math.round(nice*per);
+  el.querySelector(".scalebar").innerHTML = `<div class="sb-bar" style="width:${px}px"><span></span><span></span></div><div class="sb-lab">${nice} ${UNIT()}</div>`;
+  const c = el.querySelector(".cartouche"); c.hidden = !!planOf;
+  if(!planOf) c.innerHTML = `<div class="ct-t">${esc(root.title||"A Chart")}</div><div class="ct-s">${esc(root.subtitle || "surveyed by its explorers")}</div>`;
+}
 function render(){
   if(!viewIsConsistent()){
     surfaceToSurvey();
@@ -3675,6 +3852,8 @@ function render(){
 
   /* drawn features */
   let s = "";
+  const seaId = planOf ? null : (()=>{ let best = null, ba = 0; for(const w of doc.shapes||[]){ if(w.kind!=="water" || !w.closed || !(w.pts||[]).length) continue; const xs = w.pts.map(p=>p.x), ys = w.pts.map(p=>p.y), a = (Math.max(...xs)-Math.min(...xs))*(Math.max(...ys)-Math.min(...ys)); if(a > ba){ ba = a; best = w.id; } } return best; })();
+  const labelBlock = [];                              // where drawn names sit, so places' names keep clear of them
   for(const sh of (doc.shapes||[])){
     if(!sh.pts || sh.pts.length<2) continue;
     const s0 = s.length;                              // each feature in its own group, so the players' screen can leave one out
@@ -3703,7 +3882,10 @@ function render(){
       }
     }
     else if(sh.closed && !kd.barrier){
+      s += coastRipples(sh, d, inv);
       s += `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
+      s += terrainGlyphs(sh);
+      if(sh.id===seaId) s += roseArt(inv);
       /* a built block gets ruled across, the way a plan hatches roofed ground */
       if(kd.hatch){
         let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
@@ -3749,7 +3931,7 @@ function render(){
     }
     /* closed features catch a click anywhere inside, not just on the hairline */
     s += `<path class="shapehit${sh.closed?" fillhit":""}" data-shape="${sh.id}" d="${d}" stroke-width="${Math.max(16,HIT*1.6)*inv}"/>`;
-    if(sh.name){
+    if(sh.name && (planOf || view.k >= .15 || ["island","water"].includes(sh.kind))){
       const mid = polyAt(sm, .5);
       if(kd.road){
       const wS = sh.w==null?kd.w:sh.w;
@@ -3764,6 +3946,7 @@ function render(){
         s += `<text class="shapelab" transform="translate(${r1(mid.x)} ${r1(mid.y)}) rotate(${r1(deg)}) translate(0 ${-r1(off)})" font-size="${12*inv}">${esc(sh.name)}</text>`;
       } else {
         s += `<text class="shapelab" x="${mid.x}" y="${mid.y}" font-size="${13*inv}">${esc(sh.name)}</text>`;
+        { const w = (sh.name.length*13*.5 + 4)*inv; labelBlock.push({ x:mid.x - w/2, y:mid.y - 12*inv, w, h:16*inv }); }
       }
     }
     s = s.slice(0, s0) + `<g data-ps="${sh.id}"${sh.hidden?' opacity=".45"':""}>` + s.slice(s0) + `</g>`;
@@ -3778,20 +3961,25 @@ function render(){
     const s0 = s.length;
     const hex = regionHex(r.region||b.region||a.region);
     const on = sel&&sel.kind==="road"&&sel.id===r.id;
-    const w = (r.density==="dense"?4.2:r.density==="quiet"?2:3)*inv;
+    const q = planOf ? 10 : roadQuality(r), w = (q >= 8 ? 3.2 : q >= 4 ? 2.6 : 2.2)*inv;
+    const dash = q >= 8 ? "" : q >= 4 ? `stroke-dasharray="${7*inv} ${4*inv}"` : `stroke-dasharray="${.1*inv} ${4.2*inv}" stroke-linecap="round"`;     // a good road solid, an ordinary one dashed, a poor path dotted
     const pts = roadPts(r), d = pathOf(pts,false,r.straight);
-    s += `<path class="road" d="${d}" fill="none" stroke="${on?"var(--lead)":hex}" stroke-width="${w}" opacity="${on?1:.78}"/>`;
+    s += `<path class="road" d="${d}" fill="none" stroke="${on?"var(--lead)":hex}" stroke-width="${q < 4 ? w*1.25 : w}" ${dash} opacity="${on?1:.78}"/>`;
     s += `<path class="roadhit" data-road="${r.id}" d="${d}" stroke-width="${Math.max(14,HIT*1.6)*inv}"/>`;
     const mid = polyAt(samplePath(pts,false,10,r.straight), .5), txt = String(r.miles);
     const cw=(txt.length*6.4+9)*inv, ch=14*inv;
-    s += `<rect class="roadchip" x="${mid.x-cw/2}" y="${mid.y-ch/2}" width="${cw}" height="${ch}" rx="${2*inv}" stroke-width="${inv}" pointer-events="none"/>`;
-    s += `<text class="roadlabel" x="${mid.x}" y="${mid.y}" font-size="${10*inv}" fill="${on?"var(--lead)":"var(--ink-soft)"}">${esc(txt)}</text>`;
+    if(planOf || view.k >= .28){                       // pulled far back, the miles give way
+      s += `<rect class="roadchip" x="${mid.x-cw/2}" y="${mid.y-ch/2}" width="${cw}" height="${ch}" rx="${2*inv}" stroke-width="${inv}" pointer-events="none"/>`;
+      s += `<text class="roadlabel" x="${mid.x}" y="${mid.y}" font-size="${10*inv}" fill="${on?"var(--lead)":"var(--ink-soft)"}">${esc(txt)}</text>`;
+    }
     s = s.slice(0, s0) + `<g data-pr="${r.id}" data-pa="${r.from}" data-pb="${r.to}">` + s.slice(s0) + `</g>`;
   }
   gRoads.innerHTML = s;
 
   /* markers */
   s = "";
+  const labels = [], glyphBoxes = [], J = root.journey, partyIds = new Set(groupsOf().flatMap(g=>{ const p = g.at||{}; return [p.node, p.map]; }).filter(Boolean));
+  const rankOf = n => (sel && sel.kind==="node" && sel.id===n.id) || partyIds.has(n.id) || (J && J.to===n.id) ? 10 : n.route ? 6 : planOf ? 3 : (LABEL_RANK[n.kind] ?? 2) - (n.hidden ? .5 : 0);
   for(const n of doc.nodes){
     const kd = KINDS[n.kind]||KINDS.stone, hex = regionHex(n.region);
     const on = sel&&sel.kind==="node"&&sel.id===n.id;
@@ -3818,8 +4006,8 @@ function render(){
         s += `<circle class="fph" data-frot="${n.id}" cx="0" cy="${-dpx/2-16*inv}" r="${5*inv}"/>`;
       }
       s += `</g>`;
-      if(n.name) s += `<g data-pn="${n.id}" transform="translate(${n.x} ${n.y+dpx/2}) scale(${inv})"${n.hidden?` opacity=".45"`:""}>
-        <text class="nodename" y="15" font-size="11">${esc(n.name)}${esc(berthLabel(n))}</text></g>`;
+      if(n.name) labels.push({ id:n.id, text:n.name + berthLabel(n), rank:rankOf(n), size:11, hidden:n.hidden,
+        at:[{ x:n.x, y:n.y + dpx/2 + 15*inv }, { x:n.x, y:n.y - dpx/2 - 5*inv }, { x:n.x + wpx/2 + 4*inv, y:n.y + 4*inv, anchor:"start" }, { x:n.x - wpx/2 - 4*inv, y:n.y + 4*inv, anchor:"end" }] });
       continue;
     }
 
@@ -3828,10 +4016,13 @@ function render(){
     if(connectFrom===n.id||(rule&&rule.fromId===n.id)) s += `<circle class="selring" r="20" stroke-dasharray="4 3"/>`;
     if(n.origin) s += `<circle r="13.5" fill="none" stroke="var(--ink-soft)" stroke-width="1" opacity=".7"/><circle r="16.5" fill="none" stroke="var(--ink-soft)" stroke-width="1" opacity=".45" stroke-dasharray="3 3"/>`;
     if(n.seat) s += `<circle r="14.5" fill="none" stroke="var(--lead)" stroke-width="1.4" opacity=".8"/><path d="M0 -20 L0 -15.5 M0 15.5 L0 20 M-20 0 L-15.5 0 M15.5 0 L20 0" stroke="var(--lead)" stroke-width="1.4" opacity=".8"/>`;
-    s += `<g class="nodeglyph" data-node="${n.id}" style="cursor:pointer">${kd.draw(hex)}</g>`;
-    if(n.name) s += `<text class="nodename" y="25" font-size="11.5">${esc(n.name)}</text>`;
+    s += `<g class="nodeglyph" data-node="${n.id}" style="cursor:pointer">${n.name ? `<title>${esc(n.name)}</title>` : ""}${kd.draw(hex)}</g>`;
+    glyphBoxes.push({ x:n.x - 11*inv, y:n.y - 11*inv, w:22*inv, h:22*inv });
+    if(n.name) labels.push({ id:n.id, text:n.name, rank:rankOf(n), size:11.5, hidden:n.hidden,
+      at:[{ x:n.x, y:n.y + 25*inv }, { x:n.x, y:n.y - 17*inv }, { x:n.x + 16*inv, y:n.y + 4*inv, anchor:"start" }, { x:n.x - 16*inv, y:n.y + 4*inv, anchor:"end" }] });
     s += `</g>`;
   }
+  s += placeLabels(labels, [...labelBlock, ...glyphBoxes], inv);
   gNodes.innerHTML = s;
 
   /* overlays */
@@ -3863,7 +4054,7 @@ function render(){
   ov += docMarks(inv);                            // a place a document pointed to, and the session's places
   /* the players' chart, faintly on the DM's sea chart: what they haven't seen is shaded */
   const gChart = svg.querySelector("#gChart");
-  if(gChart) gChart.innerHTML = (!planOf && chartOn() && chartEdgeOn() ? chartFog(false) : "") + (!planOf ? wakeLines(false) + routeLines(false) + trailLines(false) : "");
+  if(gChart) gChart.innerHTML = (!planOf && chartOn() && chartEdgeOn() ? chartFog(false) : "") + (!planOf ? seaMonsters(false) + wakeLines(false) + routeLines(false) + trailLines(false) : "");
   if(!planOf) ov += courseOverlay(inv);           // ships' planned courses (the players don't see them)
   const gParty = svg.querySelector("#gParty"); if(gParty) gParty.innerHTML = partyMarker(inv);   // the party's token (the players see it)
   /* while the chart brush is on, say so on the map, with a way out */
@@ -3883,6 +4074,7 @@ function render(){
   syncToolsBtn();
   syncHistBtns();
   syncUpBtn(); renderVoyageBar();
+  mapFurniture();
   if(!voyagePlay && !journeyPlay) renderPane();     // under sail or on the road, the panel holds still (its Pause button stays clickable)
 }
 
