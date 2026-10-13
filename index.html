@@ -5205,7 +5205,8 @@ function npcSheet(x, a, t, ta){
   const ai = (j,k,ph) => `<input ${a} data-f="atk.${j}.${k}" type="text" value="${esc((A[j]||{})[k]||"")}" placeholder="${ph}">`;
   const hasCr = x.cr!=null && x.cr!=="";
   return sec("sheet", "Character sheet", `
-      <div class="pcrow">${t("species","Species",1)}${t("cls","Class",1)}${t("level","Level",.6)}</div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Species</label>${sheetPick(`${a} data-f="species"`, GEN_SPECIES, x.species)}</div>
+        <div class="field" style="flex:1"><label>Class</label>${sheetPick(`${a} data-f="cls"`, sheetClasses(), x.cls)}</div>${t("level","Level",.6)}</div>
       <div class="pcrow"><div class="field" style="flex:1"><label>CR <i>(for XP)</i></label><select ${a} data-f="cr"><option value="">—</option>${CR_LIST.map(c=>`<option value="${c}" ${hasCr&&+x.cr===c?"selected":""}>${crLabel(c)}</option>`).join("")}</select></div>
         ${t("ac","AC",.7)}${t("hpMax","HP",.7)}${t("speed","Speed",.8,"30")}</div>
       <div class="pcrow">${t("init","Init",.7,"+0")}${t("pp","Passive Perception",1.3)}${t("dc","Spell DC",.8)}${t("satk","Spell attack",.9,"+5")}</div>`,
@@ -5219,7 +5220,8 @@ function npcSheet(x, a, t, ta){
       ${A.map((q,j)=>`<div class="atkrow"><span class="atkname">${ai(j,"name","Attack name, e.g. Dagger")}</span>${ai(j,"hit","+4")}${ai(j,"dmg","1d4+2")}
         <select ${a} data-f="atk.${j}.dtype"><option value="">—</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===q.dtype?"selected":""}>${d}</option>`).join("")}</select>
         <button class="fdel" ${a} data-libact="atkdel" data-k="${j}" title="Remove">×</button></div>`).join("")}
-      <button class="btn wide" ${a} data-libact="atkadd">Add an attack</button>`, A.length ? String(A.length) : "")
+      <div class="pcrow"><select ${a} data-libweap style="flex:1;min-width:0" title="Adds it worked out from their Strength or Dexterity and proficiency bonus (2024 rules)"><option value="">Add a weapon attack…</option>${attackWeapons().map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join("")}</select>
+        <button class="btn" ${a} data-libact="atkadd" title="A blank row, for anything else: a claw, a spell, a thrown bottle">Something else</button></div>`, A.length ? String(A.length) : "")
     + sec("spells", "Spells", `${(()=>{ const byLv = {}, slots = slotsInBlock(x.statBlock);
         for(const s of (x.spells||[]).map(spellOf).filter(Boolean)) (byLv[s.lv] = byLv[s.lv] || []).push(s);
         const lv = Object.keys(byLv).map(Number).sort((p,q)=>p-q);
@@ -5496,8 +5498,14 @@ $("#pane-library").addEventListener("input", e=>{
   saveParty();
 });
 $("#pane-library").addEventListener("change", e=>{
-  const t = e.target, cat = t.dataset.lib, k = t.dataset.f; if(!cat||!k) return;
+  const t = e.target, cat = t.dataset.lib, k = t.dataset.f;
+  /* a weapon picked for a person's attacks: worked out from their sheet */
+  if(cat && t.dataset.libweap!=null){ const x = libFind(cat, t.dataset.id), at = x && t.value && weaponAttack(x, t.value); if(!at) return;
+    x.attacks = Array.isArray(x.attacks) ? x.attacks : []; x.attacks.push(at); saveParty(); renderLibList(); flash(`${x.name||"They"}: ${at.name} ${at.hit}, ${at.dmg} ${at.dtype}.`); return; }
+  if(!cat||!k) return;
   const x = libFind(cat, t.dataset.id); if(!x) return;
+  /* Other… in a sheet's dropdown: type the new one */
+  if(t.tagName==="SELECT" && t.value==="__other"){ const v = prompt(k==="species" ? "Their species:" : k==="cls" ? "Their class:" : "Type it:", x[k]||""); if(v!=null && v.trim()) x[k] = v.trim(); saveParty(); renderLibList(); return; }
   if(t.type==="checkbox") x[k] = t.checked;
   else if(t.tagName==="SELECT"){
     if(k.startsWith("atk.")){ const [, j, f] = k.split("."), q = (x.attacks||[])[+j]; if(q){ q[f] = t.value; saveParty(); } return; }
@@ -9943,6 +9951,27 @@ function weaponStats(x){
   const props = m[4], rng = /Range (\d+)\/(\d+)/.exec(props);
   return { n:+m[1], s:+m[2], type:m[3], reach:/\bReach\b/.test(props), thrown:/Thrown/.test(props), ammo:/Ammunition/.test(props),
            range:rng ? `${rng[1]}/${rng[2]}` : "" };
+}
+/* an SRD weapon as an attack on someone's sheet, by the 2024 rules (SRD 5.2, Weapons): a melee weapon uses Strength,
+   a ranged one (Ammunition) Dexterity, a Finesse one the better of the two; the attack roll adds the proficiency bonus
+   (anyone handed the weapon is taken to be proficient with it) and the damage adds the same modifier */
+function weaponAttack(p, id){
+  const w = SRD_LOOT.find(x=>x.id===id), ws = w && weaponStats(w); if(!ws) return null;
+  const sb = p && p.statBlock && Array.isArray(p.statBlock.ab) ? p.statBlock.ab : [];
+  const score = k => numOr(p[k]) ?? sb[ABK.indexOf(k)] ?? 10;
+  const str = modOf(score("str")), dex = modOf(score("dex")), finesse = /\bFinesse\b/.test(w.desc||"");
+  const mod = finesse ? Math.max(str, dex) : ws.ammo ? dex : str;
+  const prof = numOr(p.level) ? profByLevel(p.level) : (p.cr!=null && p.cr!=="") ? profByCr(p.cr) : 2;
+  return { name: ws.thrown ? `${w.name} (thrown ${ws.range})` : ws.ammo && ws.range ? `${w.name} (${ws.range})` : w.name,
+    hit:signed(mod + prof), dmg:`${ws.n}d${ws.s}${mod ? (mod>0 ? "+" : "") + mod : ""}`, dtype:ws.type.toLowerCase() };
+}
+/* the weapons that can be attacks (the Net does no damage), and the species and classes the sheets offer */
+const attackWeapons = () => SRD_LOOT.filter(x=>x.kind==="weapon" && weaponStats(x)).sort((a,b)=>a.name.localeCompare(b.name));
+const sheetClasses = () => Object.values(CLASS_GROUPS).flat();
+/* a dropdown for a sheet: the list, whatever's already typed there kept as its own choice, and Other… to type a new one */
+function sheetPick(attrs, list, cur, blank){
+  const has = !cur || list.includes(cur);
+  return `<select ${attrs}><option value="">${esc(blank||"—")}</option>${list.map(v=>`<option ${v===cur?"selected":""}>${esc(v)}</option>`).join("")}${has ? "" : `<option selected>${esc(cur)}</option>`}<option value="__other">Other…</option></select>`;
 }
 function randomizeWeapons(sb){
   const copy = JSON.parse(JSON.stringify(sb)), swaps = [];
