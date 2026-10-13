@@ -9577,8 +9577,19 @@ function buildPerson(g){
     c ? `Spells from the ${c.cls} list as a level-${c.level} ${c.cls} (2024 Player's Handbook tables): ${slotSummary(c)}, spell save DC ${c.dc}, ${signed(c.atk)} to hit${c.notes.length ? `; ${c.notes.join("; ")}` : ""}.`
       : g.spells && g.spells.length ? `Spells re-rolled from the ${g.spellClass} list at the stat block's own levels.` : "",
     (g.swaps||[]).length ? `Chose ${g.swaps.map(([a, b])=>`${b} over the ${a}`).join(", ")}.` : ""].filter(Boolean).join("\n");
+  p.purse = personPurse(g);
   completeSheet(p);
   return p;
+}
+/* what a rolled person has on them in coin. Joseph's table rule: the SRD's stat blocks list no treasure, so this uses the
+   app's own purse tiers (PURSES): a commoner has scraps, anyone else a tier by level, and a noble one tier richer */
+function personPurse(g){
+  const lv = clampLv(g.level || 1), cls = String(g.role||"");
+  let cat = cls==="Commoner" ? 1 : lv <= 6 ? 2 : lv <= 10 ? 3 : lv <= 14 ? 4 : 5;
+  if(cls==="Noble") cat = Math.min(5, cat + 1);
+  const P = PURSES.find(q=>q.cat===cat), m = P && /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|ep|gp|pp)/.exec(P.dice || ""); if(!m) return {};
+  let n = 0; for(let i=0; i<+m[1]; i++) n += 1 + Math.floor(Math.random()*+m[2]);
+  return { [m[4]]: n * +(m[3]||1) };
 }
 
 /* a rolled person on the same kind of sheet the players have: a card with a summary line and folding
@@ -9611,7 +9622,7 @@ function personSheet(g, key, compact, controls){
     <div class="pcsum mono"><b>${esc([p.species, String(g.role||"").toLowerCase()].filter(Boolean).join(" "))}</b> · ${sum}</div>
     ${controls||""}
     ${sec("who", "Who they are", `${row("Attitude", esc({enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]) + ` <small>— ${esc(DISP_LINE[g.disp])}</small>`)}
-      ${row("Alignment", esc(p.align||""))}${row("Look", esc(p.look))}${row("Voice", esc(p.voice))}${row("Wants", esc(p.wants))}${row("Secret", esc(g.secret))}
+      ${row("Alignment", esc(p.align||""))}${row("Look", esc(p.look))}${row("Voice", esc(p.voice))}${row("Wants", esc(p.wants))}${row("Secret", esc(g.secret))}${row("Purse", COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", "))}
       ${row("Personality", esc(p.persona||"").replace(/\n/g, "<br>"))}${row("Tactics", esc(tactics))}`, "", true)}
     ${sec("sheet", "Character sheet", `${row("Class", esc(g.role||"") + (p.level ? ` ${esc(p.level)}` : "") + (g.group ? ` <small>(${esc(g.group)})</small>` : ""))}
       ${row("Built from", sb ? `<span class="libref" data-libopen="foes:${sb.id}">${esc(sb.name)}</span> <small>SRD stat block</small>` : "")}
