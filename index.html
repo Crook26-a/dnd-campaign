@@ -5855,7 +5855,7 @@ function pcCard(c, i, npc){
       <input class="pcname" data-pc="${i}" data-f="name" type="text" value="${esc(c.name)}" placeholder="${npc?"Companion":`Character ${(+i||0)+1}`}">
     </div>
     <div class="pcsub">  <!-- role and level under the name, so the name gets the whole width -->
-      <span class="pclv">${npc ? `<span class="npctag">NPC</span>` : `${c.role?`${esc(c.role)} · `:""}Lv ${clampLv(c.level)}`}</span>
+      <span class="pclv">${npc ? `<span class="npctag">NPC</span>` : `${c.role?`${esc(c.role)} · `:""}Lv ${clampLv(c.level)} · <b class="pclvxp" title="${nx!=null ? `${Math.max(0, nx - (+c.xp||0)).toLocaleString()} to level ${clampLv(c.level)+1}` : "Top level"}">${(+c.xp||0).toLocaleString()} XP</b>`}</span>
       <button class="pcbig" data-bigsheet="${npc?"npc":"pc"}:${c.id}" title="Their whole character sheet, big, over the map">Big sheet</button>
     </div>
     <div class="pcsum mono">${c.shape ? `<b class="wstag">${esc(shapeName(c))}</b> · ` : ""}${npc && (bondOwner(c) || c.role) ? `<b>${esc(bondOwner(c) ? bondLabel(c) : c.role)}</b>${sum?" · ":""}` : ""}${sum}${!npc&&c.player?` · <i>${esc(c.player)}</i>`:""}${!npc ? bondedTo(c.id).map(p=>` · ${esc((p.bond.kind||"companion").toLowerCase())}: ${esc(p.name||"?")}`).join("") : ""}</div>
