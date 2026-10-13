@@ -234,13 +234,58 @@
   .tchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
   .tchip.down .dot{background:var(--lead)}
   body.table #moreBtn{display:inline-flex;flex:none}
+  /* ── Build view: Build mode on a laptop. The named palette on the left (the rail, grown), the map, the card for whatever is
+     picked on the right, the rare tabs in the ☰ drawer ── */
+  body.buildv #main{grid-template-columns:clamp(200px,16vw,240px) minmax(0,1fr) clamp(300px,25vw,380px);position:relative}
+  body.buildv #moreBtn{display:inline-flex;flex:none}
+  body.buildv #panel{display:flex;flex-direction:column}
+  body.buildv #tabs{display:none}
+  body.buildv #pane-inspect{flex:1}
+  body.buildv #rail{display:block;padding:8px 8px 40px;text-align:left}
+  .palfind{width:100%;padding:5px 8px;border:1px solid var(--rule);background:var(--paper);border-radius:3px;font-family:var(--serif);font-size:12.5px;margin-bottom:4px}
+  .pallab{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin:10px 0 4px}
+  .pallab small{letter-spacing:0;text-transform:none}
+  .paltools{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+  .palgrp{margin:1px 0} .palgrp > summary{cursor:pointer;font-size:12px;color:var(--ink-soft);padding:2px 0;list-style:none} .palgrp > summary::-webkit-details-marker{display:none}
+  .palgrp > summary::before{content:"▸ ";color:var(--ink-faint)} .palgrp[open] > summary::before{content:"▾ "}
+  .palitems{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:1px 0 5px}
+  .pitem{display:flex;align-items:center;gap:6px;padding:3px 5px;border:1px solid transparent;border-radius:3px;background:none;cursor:pointer;font-family:var(--serif);font-size:12.5px;color:var(--ink);text-align:left;min-width:0;line-height:1.15}
+  .pitem:hover{border-color:var(--rule);background:var(--paper)} .pitem.on{border-color:var(--lead);background:var(--paper-deep)}
+  .pitem svg{flex:none;color:var(--ink-soft)} .pitem.on svg{color:var(--lead)}
+  .pitem .pl{min-width:0;overflow:hidden;text-overflow:ellipsis} .pitem small{display:block;font-size:9.5px;color:var(--ink-faint)}
+  .pitem kbd{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--ink-faint)}
+  .paltools .pitem{border-color:var(--rule);background:var(--paper)}
+  .palforms{display:flex;flex-wrap:wrap;gap:3px;margin:3px 0} .palforms .pitem{flex:1 1 30%;justify-content:center;border-color:var(--rule);font-size:11.5px;padding:3px 2px}
+  #pane-inspect input[type=range]{accent-color:var(--lead);width:100%}
+  /* Build's cards: the head stays put while the sections scroll */
+  .chead{position:sticky;top:-14px;z-index:3;background:var(--paper-lit);margin:-14px -14px 0;padding:12px 14px 9px;border-bottom:1px solid var(--rule)}
+  .chead .ck{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+  .chead .cn{display:flex;gap:6px;align-items:center;margin-top:4px}
+  .chead .cn input[type=text]{flex:1;min-width:0;font-family:var(--serif);font-size:16px;padding:4px 7px}
+  .chead .cnm{font-family:var(--serif);font-size:16px}
+  .chead .cs{font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.35}
+  .ceye{flex:none;cursor:pointer;border:1px solid var(--rule);background:var(--paper);border-radius:3px;padding:4px 8px;font-size:12px;white-space:nowrap;user-select:none}
+  .ceye input{display:none} .ceye:has(input:checked){background:var(--ink);color:var(--paper-lit);border-color:var(--ink)}
+  .csec{border-bottom:1px solid var(--rule);margin:0 -14px}
+  .csec > summary{cursor:pointer;list-style:none;padding:9px 14px;display:flex;align-items:baseline;gap:8px}
+  .csec > summary::-webkit-details-marker{display:none}
+  .csec > summary::before{content:"▸";color:var(--ink-faint);font-size:10px} .csec[open] > summary::before{content:"▾"}
+  .csec > summary b{font-weight:normal;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;flex:none}
+  .csec > summary i{font-style:normal;font-size:12px;color:var(--ink-soft);margin-left:auto;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .csec > summary:hover b{color:var(--lead)}
+  .csec-b{padding:2px 14px 12px}
+  .csec-b > .eyebrow.spaced:first-child{margin-top:4px}
+  .cline{display:block;width:100%;text-align:left;border:0;border-bottom:1px dotted var(--rule);background:none;padding:5px 0;font-family:var(--serif);font-size:13px;cursor:pointer;color:var(--ink)}
+  .cline:hover{color:var(--lead)} .cline small{color:var(--ink-faint)}
+  .cwarn{font-size:12.5px;margin:0;padding:5px 0;border-bottom:1px dotted var(--rule)} .cwarn b{color:var(--lead)}
+  .cfoot{padding:12px 0 0}
   /* the top bar at the table: room for the party, the world clock and the players' screen (the party-size slider stays in Build) */
   body.table #bar{gap:9px}
   body.table #bar .barfield:has(#party){display:none}
   body.table #bar .mark{display:none}
   body.table #saveState{max-width:260px;overflow:hidden;text-overflow:ellipsis}
   body.table #pscreenBtn{flex:none}
-  body.table #tdrawer:not([hidden]){display:flex;flex-direction:column;position:absolute;top:0;right:0;bottom:0;width:min(430px,92vw);z-index:45;background:var(--paper-lit);border-left:1px solid var(--ink);box-shadow:-8px 0 24px rgba(58,46,30,.25)}
+  body.table #tdrawer:not([hidden]),body.buildv #tdrawer:not([hidden]){display:flex;flex-direction:column;position:absolute;top:0;right:0;bottom:0;width:min(430px,92vw);z-index:45;background:var(--paper-lit);border-left:1px solid var(--ink);box-shadow:-8px 0 24px rgba(58,46,30,.25)}
   #tdtabs{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--rule)}
   #tdtabs button{flex:1 1 22%;border:0;border-right:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft);background:var(--paper);padding:8px 2px;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);cursor:pointer}
   #tdtabs button.on{background:var(--paper-lit);color:var(--lead)}
@@ -2477,7 +2522,7 @@ function spendPlaced(pl){
 function roadEncBlock(r, a){
   const L = lib().encounters, list = r.encs || [], mi = e => Math.round((+e.at||0) * (+r.miles||0) * 10) / 10;
   const opts = cur => L.map(e=>`<option value="${e.id}" ${e.id===cur?"selected":""}>${esc(e.name||"An encounter")}</option>`).join("");
-  return `<div class="roadencs"><p class="grouplab" style="margin-top:12px">Encounters on this road</p>
+  return `<div class="roadencs">
     ${list.map((e, i)=>`<div class="foerow"><select class="fsel" data-renc="${i}" data-k="enc">${opts(e.enc)}</select>
         <input class="fnum mono" data-renc="${i}" data-k="mile" type="number" min="0" step="0.5" value="${mi(e)}" title="Miles out of ${esc((a&&a.name)||"one end")}">
         <input class="mono" data-renc="${i}" data-k="pct" type="number" min="1" max="100" value="${e.pct ?? 100}" title="The chance it's there when they pass, out of 100" style="width:56px">
@@ -4003,9 +4048,44 @@ const ICONS = {
   rule:`<svg width="19" height="19" viewBox="0 0 19 19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="9.5" cy="3.4" r="1.9"/><path d="M8.4 5.1 4 16.2M10.6 5.1 15 16.2M6.6 11.6h5.8"/></svg>`,
   connect:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="14" r="2.4"/><circle cx="14" cy="4" r="2.4"/><path d="M5.8 12.2 12.2 5.8"/></svg>`
 };
+/* Build view's palette: everything the rail offers, by name, in groups, with a box to find a kind */
+const PAL_PLACES = { survey:[["Settlements","city town village"],["Along the roads","post toll stone"],["In the wild","ruin cave wood camp"],["At sea","ship wreck light"]],
+  plan:[["Lodging and drink","inn stable house hall"],["Trade","market store provision smith apothecary fence stall"],["Civic","reeve archive office gate tower well statue"],
+    ["Faith and care","temple healer trainer"],["Docks and water","warehouse shipwright ship boat wreck light tent"],["Out of the way","ruinlet cave"]] };
+const PAL_AREAS = { survey:[["The land","wood grassland hills mountain marsh desert arctic"],["Water and coast","water river island reef"],["In the way","impasse"]],
+  plan:[["Streets and squares","street lane alley square market court"],["Green and open","green garden orchard graveyard yard"],["Buildings and walls","block wall"],["Water and shore","water river pier dock quay beach rock"],["In the way","impasse"]] };
+var palQuery = "", palShut = new Set();
+function buildPalette(){
+  const which = planOf ? "plan" : "survey", byKey = (list, have) => { const used = new Set(), out = list.map(([g, ks])=>[g, ks.split(" ").filter(k=>have.includes(k) && !used.has(k) && used.add(k))]).filter(([, ks])=>ks.length);
+    const rest = have.filter(k=>!used.has(k)); if(rest.length) out.push(["More", rest]); return out; };
+  const paceOf = k => { const t = (SHAPE_TERRAIN.find(([s])=>s===k)||[])[1]; return t ? (k==="arctic" ? "Fast, with skis" : PACES[TERRAINS[t].max].label) : ""; };
+  const swatch = kd => kd.swatch ? kd.swatch : kd.barrier ? `<path d="M-8 3 L8 3 M-5 3 L-5 8 M0 3 L0 8 M5 3 L5 8" fill="none" stroke="${kd.stroke}" stroke-width="2"/>`
+    : `<rect x="-8" y="-6" width="16" height="12" rx="2" fill="${kd.fill}" fill-opacity=".55" stroke="${kd.stroke}" stroke-width="1.5"/>`;
+  const grp = (id, title, body) => `<details class="palgrp" data-palgrp="${id}" ${palShut.has(id) && !palQuery ? "" : "open"}><summary>${esc(title)}</summary><div class="palitems">${body}</div></details>`;
+  const tl = (t, icon, label, key) => `<button class="pitem ${tool===t?"on":""}" data-tool="${t}" data-find="${esc(label)}">${icon}<span class="pl">${label}</span><kbd>${key}</kbd></button>`;
+  let s = `<input class="palfind" placeholder="Find a kind… (toll, forest, inn)" value="${esc(palQuery)}">
+    <p class="pallab">Tools</p><div class="paltools">${tl("select", ICONS.select, "Select", "V")}${tl("pan", ICONS.pan, "Hand", "H")}${tl("connect", ICONS.connect, planOf ? "Street" : "Road", "C")}${tl("rule", ICONS.rule, "Measure", "M")}</div>
+    <p class="pallab">${planOf ? "Buildings and places" : "Places"}</p>`;
+  for(const [g, ks] of byKey(PAL_PLACES[which], KIND_KEYS)) s += grp("p:"+g, g, ks.map(k=>{ const kd = KINDS[k];
+    return `<button class="pitem ${tool===k?"on":""}" data-tool="${k}" data-find="${esc(kd.label)}" title="${esc(kd.label)}${kd.key?` (${kd.key})`:""}"><svg width="18" height="18" viewBox="-12 -12 24 24">${kd.draw("currentColor")}</svg><span class="pl">${esc(kd.label)}</span>${kd.key?`<kbd>${kd.key}</kbd>`:""}</button>`; }).join(""));
+  s += `<p class="pallab">${planOf ? "Streets and ground" : "Land and water"}${planOf ? "" : " <small>· 2024 travel terrain</small>"}</p>`;
+  for(const [g, ks] of byKey(PAL_AREAS[which], SHAPE_KEYS)) s += grp("a:"+g, g, ks.map(k=>{ const kd = SHAPE_KINDS[k], pace = paceOf(k);
+    return `<button class="pitem ${tool==="draw" && drawKind===k?"on":""}" data-draw="${k}" data-find="${esc(kd.label)}" title="Draw ${esc(kd.label)}${kd.key?` (${kd.key})`:""}"><svg width="18" height="18" viewBox="-12 -12 24 24">${swatch(kd)}</svg><span class="pl">${esc(kd.label)}${pace?`<small>${pace}</small>`:""}</span></button>`; }).join(""));
+  s += `<p class="pallab">Draw it as</p><div class="palforms">${Object.keys(FORMS).map(k=>`<button class="pitem ${drawForm===k?"on":""}" data-form="${k}" title="${esc(FORMS[k].label)}">${esc(FORMS[k].label)}</button>`).join("")}</div>`;
+  $("#rail").innerHTML = s;
+  filterPalette();
+}
+function filterPalette(){
+  const q = palQuery.trim().toLowerCase();
+  for(const b of $("#rail").querySelectorAll(".palitems .pitem")) b.hidden = !!q && !b.dataset.find.toLowerCase().includes(q);
+  for(const d of $("#rail").querySelectorAll(".palgrp")){ const any = [...d.querySelectorAll(".pitem")].some(b=>!b.hidden); d.hidden = !any; if(q && any) d.open = true; }
+}
+$("#rail").addEventListener("input", e=>{ if(e.target.classList.contains("palfind")){ palQuery = e.target.value; filterPalette(); } });
+$("#rail").addEventListener("toggle", e=>{ const d = e.target; if(!d.dataset || !d.dataset.palgrp || palQuery) return; if(d.open) palShut.delete(d.dataset.palgrp); else palShut.add(d.dataset.palgrp); }, true);
 function buildRail(){
   /* in DM mode there's nothing to build with — just say where you are */
   if(dmMode){ $("#rail").innerHTML = `<div class="dmrail" title="The map is locked. Switch to Build in the top bar to change it.">DM<br>mode</div>`; return; }
+  if(typeof buildOn==="function" && buildOn()) return buildPalette();
   let s = `<button class="tool ${tool==="rule"?"on":""}" data-tool="rule" title="Dividers — step off a distance, then choose what's there (M)">${ICONS.rule}<span class="key">M</span></button>`;
   s += `<button class="tool ${tool==="select"?"on":""}" data-tool="select" title="Select, move, bend (V)">${ICONS.select}<span class="key">V</span></button>`;
   s += `<button class="tool ${tool==="pan"?"on":""}" data-tool="pan" title="Hand: drag the map around without changing anything (H). Space-drag or the middle button work with any tool">${ICONS.pan}<span class="key">H</span></button>`;
@@ -5178,6 +5258,11 @@ $("#tabs").addEventListener("click", e=>{
 function syncTabs(){
   for(const b of $("#tabs").children) b.classList.toggle("on", b.dataset.pane===pane);
   /* table mode: the card stays in the panel, the script on the left, any other tab in the drawer */
+  if(typeof buildOn==="function" && buildOn()){
+    if(pane!=="inspect"){ const p = pane; pane = "inspect"; openDrawer(p); }
+    for(const p of PANES) $("#pane-"+p).hidden = !(p==="inspect" || p===drawerPane);
+    return;
+  }
   if(typeof tableOn==="function" && tableOn()){
     if(pane!=="inspect"){ const p = pane; pane = "inspect"; if(p!=="session" && p!=="regions") openDrawer(p); }
     for(const p of PANES) $("#pane-"+p).hidden = !(p==="inspect" || p==="session" || p===drawerPane);
@@ -12121,6 +12206,34 @@ function renderInspectNow(){
   /* inside a place, the way out sits at the top of every panel */
   const el = $("#pane-inspect"); if(planOf && !dmMode && !el.querySelector(".planback")) el.insertAdjacentHTML("afterbegin", planBackBar());
 }
+/* ── Build's cards: a head that stays put (what it is, its name, hidden or shown), then folding sections, each saying
+   in a few words what's inside it; which ones are open is remembered on this computer ── */
+var cardOpen = (()=>{ try{ return JSON.parse(localStorage.getItem("ordinate-cardopen")||"{}") || {}; }catch(err){ return {}; } })();
+function csec(key, title, sum, body, openDef){
+  const open = cardOpen[key] ?? !!openDef;
+  return `<details class="csec" data-csec="${key}" ${open?"open":""}><summary><b>${title}</b><i>${sum||""}</i></summary><div class="csec-b">${body}</div></details>`;
+}
+function cardHead(kind, nameHtml, hidden, what, sub){
+  return `<div class="chead"><div class="ck">${esc(kind)}</div><div class="cn">${nameHtml}${what ? `<label class="ceye" title="Hidden from the players' screen until they find it: click to change"><input type="checkbox" data-pshide="${what}" ${hidden?"checked":""}><span>${hidden ? "◐ Hidden" : "◑ Shown"}</span></label>` : ""}</div>${sub ? `<div class="cs">${sub}</div>` : ""}</div>`;
+}
+document.getElementById("pane-inspect").addEventListener("toggle", e=>{
+  const d = e.target; if(!d.dataset || !d.dataset.csec) return;
+  cardOpen[d.dataset.csec] = d.open; try{ localStorage.setItem("ordinate-cardopen", JSON.stringify(cardOpen)); }catch(err){}
+}, true);
+/* what wants looking at on this map, for the card with nothing picked */
+function mapWarnings(){
+  const w = [], nm = n => esc(n.name || KINDS[n.kind].label);
+  if(!planOf && !doc.nodes.some(n=>n.origin)) w.push("No home port marked, so road miles can't be counted from it.");
+  const orphan = doc.nodes.filter(n=>!sailsAbout(n) && !doc.roads.some(r=>r.from===n.id||r.to===n.id));
+  if(orphan.length) w.push(`<b>${orphan.length}</b> place${orphan.length===1?"":"s"} with no road: ${orphan.slice(0,4).map(nm).join(", ")}${orphan.length>4?"…":""}`);
+  if(!planOf){
+    const beside = doc.nodes.filter(n=>ROADSIDE_KINDS.has(n.kind) && (()=>{ const near = nearestRoad(n.x, n.y); return near && near.d <= (doc.ppm||10)*.5 && near.r.from!==n.id && near.r.to!==n.id; })());
+    if(beside.length) w.push(`<b>${beside.length}</b> beside a road but not on it: ${beside.slice(0,4).map(nm).join(", ")}${beside.length>4?"…":""} (Road tools, below)`);
+  }
+  const unnamed = doc.nodes.filter(n=>!n.name && n.kind!=="stone").length;
+  if(unnamed) w.push(`<b>${unnamed}</b> place${unnamed===1?"":"s"} still unnamed.`);
+  return w;
+}
 function renderInspectInner(){
   if(dmMode){ renderPlay(); return; }
   const el = $("#pane-inspect");
@@ -12151,14 +12264,26 @@ function renderInspectInner(){
     return;
   }
   if(!sel){
-    el.innerHTML = `<p class="eyebrow">Nothing selected</p>
-      <p class="empty-note">Pick a marker, a road, or a drawn feature to read its particulars.<br><br>
-      <span class="mono">M</span> dividers · <span class="mono">V</span> select ·
-      <span class="mono">C</span> join · <span class="mono">1–0</span> markers ·
-      <span class="mono">R</span> river · <span class="mono">S</span> water · <span class="mono">X</span> impasse ·
-      <span class="mono">F</span> fit · <span class="mono">Del</span> remove.<br><br>
-      Double-click any road or river to put a bend in it. Select a river and click
-      either dashed end to carry it on later.</p>`;
+    const roadsMi = Math.round(doc.roads.reduce((s, r)=>s + (+r.miles||0), 0));
+    const warns = mapWarnings(), E = encSet(), placed = (doc.roads||[]).reduce((s, r)=>s + (r.encs||[]).length, 0);
+    el.innerHTML = `
+      ${cardHead("This map", `<span class="cnm">${esc(doc.title||"The survey")}</span>`, null, null, `${doc.nodes.length} places · ${doc.roads.length} roads · ${roadsMi} road ${UNIT()} · ${doc.regions.length} region${doc.regions.length===1?"":"s"}`)}
+      ${csec("map:warn", "Wants attention", warns.length ? String(warns.length) : "nothing", warns.length ? warns.map(w=>`<p class="cwarn">${w}</p>`).join("") : `<p class="allclear">Nothing needs looking at.</p>`, true)}
+      ${csec("map:roads", "Road tools", "", `
+        <p class="empty-note" style="margin:0 0 8px">Bring the roads and the drawing into line, and the places onto their roads.</p>
+        <button class="btn wide" data-roadtool="join" title="Towns, villages, cities, posts and tolls within half a mile of a road join it: the road splits there">Put places onto the roads beside them</button>
+        <button class="btn wide" data-roadtool="remeasure">Re-measure roads from the drawing</button>
+        <button class="btn wide" data-roadtool="replot">Re-plot places to their mileage</button>`, true)}
+      ${csec("map:enc", "Encounters on the road", E.on ? `1 in ${E.inN} a day` : "not rolled", `${encSettingsRow()}
+        <p class="empty-note" style="margin:0 0 6px">${placed ? `${placed} placed on roads (on each road's card). ` : ""}The encounters themselves are in the Library (☰ More → Library → Encounters).</p>`)}
+      ${csec("map:keys", "Keys and tips", "", `<p class="empty-note" style="margin:0">
+        <span class="mono">M</span> measure · <span class="mono">V</span> select · <span class="mono">H</span> hand ·
+        <span class="mono">C</span> road · <span class="mono">1–0</span> places ·
+        <span class="mono">R</span> river · <span class="mono">S</span> water · <span class="mono">X</span> impasse ·
+        <span class="mono">F</span> fit · <span class="mono">Del</span> remove.<br><br>
+        Drop a place on a road to put it on the road. Double-click any road or river to put a bend in it. Select a river and click
+        either dashed end to carry it on later.</p>`)}`;
+    el.querySelectorAll("[data-roadtool]").forEach(b=>b.onclick = ()=>({ join:joinAllToRoads, remeasure:recomputeAll, replot:replotFromMiles })[b.dataset.roadtool]());
     return;
   }
   if(sel.kind==="shape"){
@@ -12238,45 +12363,52 @@ function renderInspectInner(){
     const d = distancesFromOrigin();
     const surveyed = isFinite(d[n.id]) ? r1(d[n.id]) : null;
     const attached = doc.roads.filter(r=>r.from===n.id||r.to===n.id);
+    const reg = doc.regions.find(r=>r.id===n.region), other = r => nodeById(r.from===n.id ? r.to : r.from);
+    const svcOn = SERVICES.flatMap(g=>g.items).filter(([k])=>n.services && n.services[k]).map(([, l])=>l);
+    const st = n.site || {}, foeN = (st.foes||[]).length, people = (n.npcs||[]).length, items = (st.items||[]).length;
+    const inside = !planOf && hasPlan(n.id) ? "a town plan" : (n.bmap && Array.isArray(n.bmap.rows)) ? "its own map" : hasInside(n) ? "a ready-made map" : "nothing drawn yet";
     el.innerHTML = `
-      <p class="eyebrow">${esc(KINDS[n.kind].label)}</p>
-      <div class="field"><label>Name</label><input id="f-name" type="text" value="${esc(n.name)}" placeholder="unnamed"></div>
-      <div class="field"><label>Kind</label><select id="f-kind">${KIND_KEYS.map(k=>`<option value="${k}" ${k===n.kind?"selected":""}>${KINDS[k].label}</option>`).join("")}</select></div>
-      <label class="check" style="margin:-4px 0 12px" title="Leave it off the players' screen until they find it"><input type="checkbox" data-pshide="node" ${n.hidden?"checked":""}> Hidden from the players' screen</label>
-      <div class="row2">
-        <div class="field"><label>Region</label><select id="f-region">${regionOptions(n.region)}</select></div>
-        <div class="field"><label>Level</label><input id="f-level" class="mono" type="number" min="1" max="5" value="${n.level||1}"></div>
-      </div>
-      <p class="eyebrow spaced">What's here</p>
-      ${SERVICES.map(g=>`<p class="grouplab">${g.group}</p><div class="checks">${
-        g.items.map(([k,l])=>`<label class="check"><input type="checkbox" data-svc="${k}" ${n.services&&n.services[k]?"checked":""}> ${l}</label>`).join("")
-      }</div>`).join("")}
-      ${hasFootprint(n)?footprintPanel(n):""}
-      ${planOf?premisesPanel(n):""}
-      ${hasInside(n)?`<button class="btn wide" id="f-inside" title="Paint furniture, chests and lamps; put loot and coins in the containers; set the light. No fight, and the players' screen doesn't follow.">Edit the inside — furniture, containers, lights</button>${placeLockBlock(n)}`:""}
-      ${npcPanel(n)}
-      ${sitePanel(n)}
-      ${adderBlock(n)}
-      ${findsPanel(n)}
-      ${planOf?"":`
-      <p class="eyebrow spaced">Standing</p>
-      <label class="check"><input id="f-origin" type="checkbox" ${n.origin?"checked":""}> Home port — the crew's chart starts here, and road miles are counted from here</label>
-      <label class="check" style="margin-top:6px"><input id="f-seat" type="checkbox" ${n.seat?"checked":""}> Capital — the seat of government</label>`}
-      <div class="field" style="margin-top:14px"><label>Notes</label><textarea id="f-notes" placeholder="Who's here, what they want, what's on the board.">${esc(n.notes)}</textarea></div>
-      <p class="eyebrow spaced">Measured</p>
-      <div class="stat"><span class="k">Roads out</span><span class="v">${attached.length}</span></div>
-      <div class="stat"><span class="k">By road from the home port</span><span class="v">${surveyed==null?"—":surveyed+` <small>${UNIT()}</small>`}</span></div>
-      <div class="hr"></div>
-      ${planOf?"":`
-        <p class="eyebrow spaced">The place itself</p>
-        ${(()=>{ const sm=planSummary(n.id); return sm
-          ? `<div class="stat"><span class="k">Drawn</span><span class="v">${sm.buildings} <small>bldg</small> · ${sm.streets} <small>st</small> · ${sm.areas} <small>area</small></span></div>`
-          : `<p class="empty-note" style="margin:0 0 9px">Nothing drawn here yet. Step inside and lay out the streets.</p>`; })()}
-        <button class="btn wide" id="f-plan">${hasPlan(n.id)?"Open the plan of this place":"Draw the plan of this place"}</button>
-        ${hasPlan(n.id)?`<button class="btn wide danger" id="f-planwipe">Discard this plan</button>`:""}`}
-      ${berthSetting(n)}${isBerth(n) ? berthBlock(n, "f") : n.link&&hasPlan(n.link)?`<button class="btn wide" id="f-link">Enter ${esc((root.nodes.find(x=>x.id===n.link)||{}).name||"this place")}</button>`:""}
-      <button class="btn wide" id="f-rule">Step off a distance from here</button>
-      <button class="btn wide danger" id="f-del">Remove this marker</button>`;
+      ${cardHead(KINDS[n.kind].label + (reg ? ` · ${reg.name}` : ""), `<input id="f-name" type="text" value="${esc(n.name)}" placeholder="unnamed">`, n.hidden, "node",
+        attached.length ? `Roads to ${attached.map(r=>esc((other(r)||{}).name || "a place")).join(", ")}` : (planOf ? "" : "No roads yet"))}
+      ${csec("node:place", "The place", `${KINDS[n.kind].label} · level ${n.level||1}`, `
+        <div class="field"><label>Kind</label><select id="f-kind">${KIND_KEYS.map(k=>`<option value="${k}" ${k===n.kind?"selected":""}>${KINDS[k].label}</option>`).join("")}</select></div>
+        <div class="row2">
+          <div class="field"><label>Region</label><select id="f-region">${regionOptions(n.region)}</select></div>
+          <div class="field"><label>Level</label><input id="f-level" class="mono" type="number" min="1" max="5" value="${n.level||1}"></div>
+        </div>
+        ${planOf?"":`
+        <label class="check"><input id="f-origin" type="checkbox" ${n.origin?"checked":""}> Home port: the crew's chart starts here, and road miles are counted from here</label>
+        <label class="check" style="margin-top:6px"><input id="f-seat" type="checkbox" ${n.seat?"checked":""}> Capital: the seat of government</label>`}
+        <div class="field" style="margin-top:12px"><label>Notes</label><textarea id="f-notes" placeholder="Who's here, what they want, what's on the board.">${esc(n.notes)}</textarea></div>`, true)}
+      ${planOf || sailsAbout(n) ? "" : csec("node:screen", "On the players' screen", n.hidden ? "hidden" : "shown", `
+        <label class="check" style="margin:0 0 6px" title="Leave it off the players' screen until they find it"><input type="checkbox" data-pshide="node" ${n.hidden?"checked":""}> Hidden from the players' screen</label>
+        ${chartFlags(n)}`)}
+      ${csec("node:who", "Who and what's here", [people ? `${people} ${people===1?"person":"people"}` : "", foeN ? `${foeN} enemy row${foeN===1?"":"s"}` : "", items ? `${items} item${items===1?"":"s"}` : ""].filter(Boolean).join(" · ") || "nobody, nothing", `
+        ${npcPanel(n)}
+        ${sitePanel(n)}
+        ${adderBlock(n)}
+        ${findsPanel(n)}`)}
+      ${csec("node:svc", "Services", svcOn.length ? svcOn.slice(0, 3).join(" · ") + (svcOn.length > 3 ? ` · +${svcOn.length-3}` : "") : "none", `
+        ${SERVICES.map(g=>`<p class="grouplab">${g.group}</p><div class="checks">${
+          g.items.map(([k,l])=>`<label class="check"><input type="checkbox" data-svc="${k}" ${n.services&&n.services[k]?"checked":""}> ${l}</label>`).join("")
+        }</div>`).join("")}`)}
+      ${csec("node:inside", "Inside", inside, `
+        ${hasFootprint(n)?footprintPanel(n):""}
+        ${planOf?premisesPanel(n):""}
+        ${hasInside(n)?`<button class="btn wide" id="f-inside" title="Paint furniture, chests and lamps; put loot and coins in the containers; set the light. No fight, and the players' screen doesn't follow.">Edit the inside: furniture, containers, lights</button>${placeLockBlock(n)}`:""}
+        ${planOf?"":`
+          ${(()=>{ const sm=planSummary(n.id); return sm
+            ? `<div class="stat"><span class="k">Drawn</span><span class="v">${sm.buildings} <small>bldg</small> · ${sm.streets} <small>st</small> · ${sm.areas} <small>area</small></span></div>`
+            : `<p class="empty-note" style="margin:0 0 9px">Nothing drawn here yet. Step inside and lay out the streets.</p>`; })()}
+          <button class="btn wide" id="f-plan">${hasPlan(n.id)?"Open the plan of this place":"Draw the plan of this place"}</button>
+          ${hasPlan(n.id)?`<button class="btn wide danger" id="f-planwipe">Discard this plan</button>`:""}`}
+        ${berthSetting(n)}${isBerth(n) ? berthBlock(n, "f") : n.link&&hasPlan(n.link)?`<button class="btn wide" id="f-link">Enter ${esc((root.nodes.find(x=>x.id===n.link)||{}).name||"this place")}</button>`:""}`)}
+      ${csec("node:roads", planOf ? "Streets from here" : "Roads from here", `${attached.length} ${planOf ? "street" : "road"}${attached.length===1?"":"s"}`, `
+        ${attached.map(r=>{ const o = other(r), ne = (r.encs||[]).filter(e=>!(e.done && !e.every)).length;
+          return `<button class="cline" data-selroad="${r.id}">→ ${esc((o&&o.name)||"a place")} <small>${r.miles} ${UNIT()}${planOf ? "" : ` · ${roadGrade(roadQuality(r))} ${roadQuality(r)}/10`}${ne ? ` · ✕ ${ne} encounter${ne===1?"":"s"}` : ""}</small></button>`; }).join("") || `<p class="empty-note" style="margin:0 0 6px">None yet. Pick ${planOf ? "Street" : "Road"} in the palette, then click here and the place to join.</p>`}
+        ${planOf?"":`<div class="stat"><span class="k">By road from the home port</span><span class="v">${surveyed==null?"—":surveyed+` <small>${UNIT()}</small>`}</span></div>`}
+        <button class="btn wide" id="f-rule">Step off a distance from here</button>`)}
+      <div class="cfoot"><button class="btn wide danger" id="f-del">Remove this marker</button></div>`;
 
     $("#f-name").oninput = e=>{ n.name=e.target.value; touch(); };
     $("#f-kind").onchange = e=>{ n.kind=e.target.value; if(planOf) syncServices(planOf); touch(); };
@@ -12296,6 +12428,7 @@ function renderInspectInner(){
     el.querySelectorAll("[data-svc]").forEach(c=>c.onchange = e=>{
       n.services=n.services||{}; n.services[e.target.dataset.svc]=e.target.checked?1:0; touch();
     });
+    el.querySelectorAll("[data-selroad]").forEach(b=>b.onclick = ()=>select("road", b.dataset.selroad));
     $("#f-rule").onclick = ()=>{ tool="rule"; rule={fromId:n.id,miles:1,ang:0,snapTo:null}; buildRail(); render(); };
     wireFootprint(n);
     wireNpcs(n);
@@ -12326,80 +12459,58 @@ function renderInspectInner(){
     const label = `${a?(a.name||KINDS[a.kind].label):"?"} → ${b?(b.name||KINDS[b.kind].label):"?"}`;
     const drawn = roadDrawnMiles(r);
     const drift = Math.abs(drawn-r.miles) > Math.max(.3, r.miles*0.04);
+    const q = roadQuality(r), encs = (r.encs||[]).filter(e=>!(e.done && !e.every)), dz = (ROAD_DANGER.find(([k])=>k===(r.danger||""))||ROAD_DANGER[1])[1];
+    const shown = a && b && (a.hidden || b.hidden) ? (a.hidden && b.hidden ? "none of it" : r.reveal ? `${r.reveal.miles} mi of it` : "none of it") : "all of it";
     el.innerHTML = `
-      <p class="eyebrow">Road</p>
-      <p style="font-family:var(--serif);font-size:15.5px;margin:0 0 14px;line-height:1.35">${esc(label)}</p>
-      <div class="field"><label>Road name</label><input id="r-name" type="text" value="${esc(r.name)}" placeholder="unnamed"></div>
-      <div class="row2">
-        <div class="field"><label>Miles</label><input id="r-miles" class="mono" type="number" step="0.1" min="0.1" value="${r.miles}"></div>
-        <div class="field"><label>Encounters</label><select id="r-density">
-          <option value="quiet" ${r.density==="quiet"?"selected":""}>Quiet</option>
-          <option value="normal" ${r.density==="normal"?"selected":""}>Normal</option>
-          <option value="dense" ${r.density==="dense"?"selected":""}>Dense</option></select></div>
-      </div>
-      <label class="check" style="margin:-4px 0 12px"><input id="r-lock" type="checkbox" ${r.milesLocked?"checked":""}> Hold this mileage when re-measuring</label>
-      <div class="field"><label>Region</label><select id="r-region">${regionOptions(r.region)}</select></div>
-      <label class="check"><input id="r-straight" type="checkbox" ${r.straight?"checked":""}> Straight lines between bends</label>
-      <label class="check" style="margin-top:6px"><input id="r-coach" type="checkbox" ${r.coach?"checked":""}> Coaches run this road</label>
-      <div class="field" style="margin-top:8px"><label>Road quality <small>1 a poor path to 10 a good road</small></label><input id="r-quality" class="mono" type="number" min="1" max="10" value="${roadQuality(r)}" title="A table rule: 8–10 a good road (one step faster than the land allows, 2024), 4–7 the land's own limit, 1–3 a poor path (one step slower). Every 2 points take 1 off the Navigation DC, never under 5"></div>
-      <div class="field"><label>Danger <small>chance of an encounter on the road</small></label><select id="r-danger">${ROAD_DANGER.map(([k, l])=>`<option value="${k}" ${(r.danger||"")===k?"selected":""}>${l}</option>`).join("")}</select></div>
-      ${a && b && (a.hidden || b.hidden) ? (()=>{ const rv = r.reveal || {}, shown = a.hidden ? b : a, nm = x => esc(x.name||KINDS[x.kind].label);
-        return `<div class="field" style="margin-top:14px"><label>On the players' screen</label>
-        <div class="row2" ${a.hidden && b.hidden ? "hidden" : ""}><input id="r-rvmi" class="mono" type="number" step="0.5" min="0" value="${rv.miles||""}" placeholder="0">
-        <select id="r-rvfrom">${[a, b].filter(x=>!x.hidden).map(x=>`<option value="${x.id}" ${(rv.from||shown.id)===x.id?"selected":""}>miles out of ${nm(x)}</option>`).join("")}</select></div></div>
-        <p class="empty-note" style="margin:-6px 0 10px;font-size:12px">${a.hidden && b.hidden ? "Both ends are hidden, so the players see none of this road." : "One end is hidden, so the players don't see this road. Give a number of miles to let them see that much of it leaving town, with no mileage shown."}</p>`; })() : ""}
-${roadEncBlock(r, a)}
-      <div class="field" style="margin-top:14px"><label>Notes</label><textarea id="r-notes" placeholder="What the road looks like. Set-piece encounters that belong to it.">${esc(r.notes)}</textarea></div>
-      <p class="eyebrow spaced">Reckoning</p>
-      <div class="field" style="margin-top:4px"><label>Encounters on this road</label>
-        <input id="r-enc" class="mono" type="text" value="${r.enc==null?"":r.enc}" placeholder="the map's rate"></div>
-      <p class="empty-note" style="margin:-6px 0 10px;font-size:12px">${r.enc==null
-        ? `Leave it blank and this road takes the map's rate, scaled by how busy the stretch is said to be. Fill it in to name this road an exception — the road nobody comes back from, or the mile where nothing ever happens.`
-        : `Named as an exception. The <b>${esc(r.density||"normal")}</b> setting above is ignored while this is filled in, and this road is held out of the map's average.`}</p>
-      <div class="stat"><span class="k">Expected encounters</span><span class="v">${roadExpects(r)}${r.enc!=null?` <small>named</small>`:` <small>from the map</small>`}</span></div>
-      <div class="stat"><span class="k">Drawn length</span><span class="v">${drawn} <small>${UNIT()}</small></span></div>
-      ${drift?`<p class="warn" style="margin-top:9px">The line as drawn runs <b>${drawn} mi</b>, but this road is held at <b>${r.miles} mi</b>.</p>
-        <button class="btn wide" id="r-adopt">Take the drawn length</button>`:""}
-      <div class="stat"><span class="k">Coach at 25%</span><span class="v">${r1(r.miles*.25)} <small>${UNIT()}</small></span></div>
-      <div class="stat"><span class="k">Coach at 50%</span><span class="v">${r1(r.miles*.5)} <small>${UNIT()}</small></span></div>
-      <div class="stat"><span class="k">Coach at 75%</span><span class="v">${r1(r.miles*.75)} <small>${UNIT()}</small></span></div>
-      <div class="hr"></div>
-      <button class="btn wide" id="r-unbend">Straighten this road</button>
-      <button class="btn wide danger" id="r-del">Remove this road</button>`;
+      ${cardHead(planOf ? "Street" : "Road", `<input id="r-name" type="text" value="${esc(r.name)}" placeholder="unnamed">`, null, null, `${esc(label)} · ${r.miles} ${UNIT()}`)}
+      ${csec("road:road", planOf ? "The street" : "The road", `${r.miles} ${UNIT()}`, `
+        <div class="row2">
+          <div class="field"><label>Miles</label><input id="r-miles" class="mono" type="number" step="0.1" min="0.1" value="${r.miles}"></div>
+          <div class="field"><label>Region</label><select id="r-region">${regionOptions(r.region)}</select></div>
+        </div>
+        <label class="check" style="margin:-4px 0 6px"><input id="r-lock" type="checkbox" ${r.milesLocked?"checked":""}> Hold this mileage when re-measuring</label>
+        <label class="check"><input id="r-straight" type="checkbox" ${r.straight?"checked":""}> Straight lines between bends</label>
+        <div class="stat"><span class="k">Drawn length</span><span class="v">${drawn} <small>${UNIT()}</small></span></div>
+        ${drift?`<p class="warn" style="margin-top:9px">The line as drawn runs <b>${drawn} mi</b>, but this road is held at <b>${r.miles} mi</b>.</p>
+          <button class="btn wide" id="r-adopt">Take the drawn length</button>`:""}
+        <button class="btn wide" id="r-unbend">Straighten this road</button>`, true)}
+      ${planOf ? "" : csec("road:quality", "Quality and danger", `${roadGrade(q)} · ${dz.split(" (")[0].toLowerCase()}`, `
+        <div class="field"><label>Road quality <small>${q}: ${roadGrade(q)}</small></label><input id="r-quality" type="range" min="1" max="10" value="${q}" title="A table rule: 8–10 a good road (one step faster than the land allows, 2024), 4–7 the land's own limit, 1–3 a poor path (one step slower). Every 2 points take 1 off the Navigation DC, never under 5"></div>
+        <p class="empty-note" style="font-size:11.5px;margin:-4px 0 8px">${q >= 8 ? "A good road: one step faster than the land allows" : q >= 4 ? "An ordinary road: the land's own pace" : "A poor path: one step slower than the land allows"}; the Navigation DC drops by ${Math.floor(q/2)} (never under 5); encounters ${q >= 8 ? "half as likely" : q >= 4 ? "as usual" : "half again as likely"}.</p>
+        <div class="field"><label>Danger <small>chance of an encounter on the road</small></label><select id="r-danger">${ROAD_DANGER.map(([k, l])=>`<option value="${k}" ${(r.danger||"")===k?"selected":""}>${l}</option>`).join("")}</select></div>
+        <label class="check"><input id="r-coach" type="checkbox" ${r.coach?"checked":""}> Coaches run this road</label>`, true)}
+      ${planOf ? "" : csec("road:enc", "Encounters on this road", encs.length ? encs.map(e=>(lib().encounters.find(x=>x.id===e.enc)||{}).name || "an encounter").join(", ") : "none", roadEncBlock(r, a), true)}
+      ${planOf ? "" : csec("road:screen", "On the players' screen", shown, a && b && (a.hidden || b.hidden) ? (()=>{ const rv = r.reveal || {}, sh = a.hidden ? b : a, nm = x => esc(x.name||KINDS[x.kind].label);
+        return `<div class="row2" ${a.hidden && b.hidden ? "hidden" : ""}><input id="r-rvmi" class="mono" type="number" step="0.5" min="0" value="${rv.miles||""}" placeholder="0">
+        <select id="r-rvfrom">${[a, b].filter(x=>!x.hidden).map(x=>`<option value="${x.id}" ${(rv.from||sh.id)===x.id?"selected":""}>miles out of ${nm(x)}</option>`).join("")}</select></div>
+        <p class="empty-note" style="margin:4px 0 6px;font-size:12px">${a.hidden && b.hidden ? "Both ends are hidden, so the players see none of this road." : "One end is hidden, so the players don't see this road. Give a number of miles to let them see that much of it leaving town, with no mileage shown."}</p>`; })()
+        : `<p class="empty-note" style="margin:0 0 6px">Both ends are shown, so the players see the whole road.</p>`)}
+      ${csec("road:notes", "Notes", r.notes ? "written" : "", `<textarea id="r-notes" placeholder="What the road looks like.">${esc(r.notes)}</textarea>`)}
+      <div class="cfoot"><button class="btn wide danger" id="r-del">Remove this road</button></div>`;
 
     $("#r-name").oninput = e=>{ r.name=e.target.value; touch(); };
     $("#r-miles").oninput = e=>{ r.miles=Math.max(.1,+e.target.value||.1); r.milesLocked=true; touch(); };
     $("#r-lock").onchange = e=>{ r.milesLocked=e.target.checked; touch(); };
-    $("#r-density").onchange = e=>{ r.density=e.target.value; touch(); };
     $("#r-region").onchange = e=>{ r.region=e.target.value; touch(); };
     $("#r-straight").onchange = e=>{
       r.straight = e.target.checked;
       if(!r.milesLocked) r.miles = roadDrawnMiles(r);
       touch(); renderInspect();
     };
-    $("#r-coach").onchange = e=>{ r.coach=e.target.checked; touch(); };
-    $("#r-quality").oninput = e=>{ const v = Math.round(+e.target.value); if(v>=1 && v<=10){ r.quality = v; touch(); } };
-    $("#r-danger").onchange = e=>{ if(e.target.value) r.danger = e.target.value; else delete r.danger; touch(); };
+    if($("#r-coach")) $("#r-coach").onchange = e=>{ r.coach=e.target.checked; touch(); };
+    if($("#r-quality")){ $("#r-quality").oninput = e=>{ const v = Math.round(+e.target.value); if(v>=1 && v<=10){ r.quality = v; touch(); } }; $("#r-quality").onchange = ()=>renderInspect(); }
+    if($("#r-danger")) $("#r-danger").onchange = e=>{ if(e.target.value) r.danger = e.target.value; else delete r.danger; touch(); renderInspect(); };
     wireRoadEncs(r);
     const rvSet = ()=>{ const mi = Math.max(0, +$("#r-rvmi").value||0), from = $("#r-rvfrom") && $("#r-rvfrom").value;
       if(mi && from) r.reveal = { from, miles:mi }; else delete r.reveal; touch(); sendPlayers(); };
     if($("#r-rvmi")){ $("#r-rvmi").oninput = rvSet; if($("#r-rvfrom")) $("#r-rvfrom").onchange = rvSet; }
-    const enc = $("#r-enc");
-    if(enc){
-      enc.oninput = e=>{
-        const raw = e.target.value.trim();
-        if(raw===""){ delete r.enc; touch(); return; }
-        const v = Number(raw);
-        if(Number.isFinite(v) && v>=0 && v<=40){ r.enc = Math.round(v*100)/100; touch(); }
-      };
-      enc.onblur = ()=>{ renderPane(true); };
-    }
     $("#r-notes").oninput = e=>{ r.notes=e.target.value; touch(); };
     const ad = $("#r-adopt"); if(ad) ad.onclick = ()=>{ r.miles = roadDrawnMiles(r); touch(); renderInspect(); };
     $("#r-unbend").onclick = ()=>{ r.pts=[]; if(!r.milesLocked) r.miles=roadDrawnMiles(r); touch(); renderInspect(); };
     $("#r-del").onclick = confirmDelete;
   }
 }
+
 
 function renderLedger(){
   const total = doc.roads.reduce((s,r)=>s+r.miles,0);
@@ -12529,33 +12640,13 @@ function renderLedger(){
 
 function renderRegions(){
   $("#pane-regions").innerHTML = `
-    <p class="eyebrow">Regions & threat</p>
+    <p class="eyebrow">Regions</p>
     ${doc.regions.map((r,i)=>`<div class="regrow">
       <span class="swatch" style="background:${r.hex}"></span>
       <input class="nm" data-ri="${i}" data-f="name" type="text" value="${esc(r.name)}">
-      <input class="th mono" data-ri="${i}" data-f="threat" type="number" min="1" max="9" value="${r.threat}">
     </div>`).join("")}
-    <p class="empty-note" style="margin-top:12px">Threat sets the level you want before walking in, and feeds the encounter tables.</p>
+    <p class="empty-note" style="margin-top:12px">Names for parts of the map; each place and road belongs to one. How often encounters come is set on the roads (quality and danger) and in the Library's Encounters.</p>
     <button class="btn wide" id="addRegion" style="margin-top:14px">Add a region</button>
-    <p class="eyebrow spaced">How often the road interrupts</p>
-    ${(()=>{ const sp=solveSpacing(); return `
-      <div class="field"><label>Encounters on an average leg</label>
-        <input id="encPerLeg" class="mono" type="number" step="0.05" min="0" max="8" value="${doc.encPerLeg ?? 1}"></div>
-      <div class="field"><label>How even the spacing is</label>
-        <input id="gapSpread" class="mono" type="number" step="0.1" min="0" max="1.9" value="${doc.gapSpread ?? 1.2}"></div>
-      <p class="empty-note" style="margin:-4px 0 10px">${
-        (doc.gapSpread ?? 1.2) < 0.5 ? "Almost metronomic — a player will feel the rhythm."
-        : (doc.gapSpread ?? 1.2) > 1.6 ? "Very uneven. Long empty stretches, then two at once."
-        : "Reads as authored without being predictable."}</p>
-      <div class="stat"><span class="k">Solved gap</span><span class="v">${sp.gapMin} – ${(sp.gapMin+sp.gapSpan).toFixed(2)} <small>${doc.unit||"mi"}</small></span></div>
-      <div class="stat"><span class="k">Which gives</span><span class="v">${sp.perLeg} <small>per ordinary leg</small></span></div>
-      ${sp.namedLegs?`<div class="stat"><span class="k">Named as exceptions</span><span class="v">${sp.namedLegs} <small>road${sp.namedLegs===1?"":"s"}</small></span></div>
-      <div class="stat"><span class="k">Whole map</span><span class="v">${sp.perLegAll} <small>per leg · ${sp.perMile} per ${doc.unit||"mile"}</small></span></div>`
-      :`<div class="stat"><span class="k">Per ${doc.unit||"mile"}</span><span class="v">${sp.perMile}</span></div>`}
-      <div class="stat"><span class="k">Across the map</span><span class="v">≈${sp.total} <small>over ${sp.legs} legs</small></span></div>
-      ${sp.roads.length?`<p class="empty-note" style="margin-top:8px">Longest leg sees ≈${
-        Math.max(...sp.roads.map(r=>r.expected))}, shortest ≈${Math.min(...sp.roads.map(r=>r.expected))}. A leg under half is a road where nothing usually happens.</p>`:""}
-    `; })()}
 
     <p class="eyebrow spaced">Reckoning the sheet</p>
     <p class="empty-note" style="margin-bottom:10px">Bring the roads' miles and the drawing back into line: measure each road as it's drawn, or move the places so the roads run their stated miles (walking out from the home port).</p>
@@ -12588,10 +12679,6 @@ function renderRegions(){
     touch(); renderPane(true);
     flash(`${n} service${n===1?"":"s"} ticked on ${parent.name||"the place"}.`);
   };
-  numField($("#encPerLeg"), { min:0, max:8,
-    get:()=>doc.encPerLeg ?? 1, set:v=>{ doc.encPerLeg = v; }, done:()=>renderPane(true) });
-  numField($("#gapSpread"), { min:0, max:1.9,
-    get:()=>doc.gapSpread ?? 1.2, set:v=>{ doc.gapSpread = v; }, done:()=>renderPane(true) });
   $("#remeasure").onclick = recomputeAll;
   $("#replot").onclick = replotFromMiles;
   $("#joinroads").onclick = joinAllToRoads;
@@ -13393,22 +13480,28 @@ function exportBundle(){
    ══════════════════════════════════════════════════════════════ */
 var tableReady = false;                                 // set once the app has started (wireTable, in boot): nothing is drawn before that
 function tableOn(){ return !!tableReady && !!dmMode && window.innerWidth > 860 && location.hash!=="#player"; }
+/* Build view: Build mode on a laptop: the named palette on the left, the map, the card on the right, the rare tabs in the ☰ drawer */
+function buildOn(){ return !!tableReady && !dmMode && window.innerWidth > 860 && location.hash!=="#player"; }
 var drawerPane = null, tcard = null, tlTab = "log", tlKind = "", tlDraft = "", tlToLog = true;
 const PANES = ["inspect","ledger","regions","party","where","notes","session","docs","library","roll","data"];
 const DRAWER_TABS = [["library","Library"],["docs","Docs"],["roll","Roll"],["where","Where"],["party","Party & XP"],["notes","Notes"],["ledger","Ledger"],["data","Data"]];
+const BUILD_DRAWER_TABS = [["library","Library"],["docs","Docs"],["regions","Regions"],["ledger","The survey's numbers"],["data","Data"]];
+const drawerTabs = () => buildOn() ? BUILD_DRAWER_TABS : DRAWER_TABS;
 function renderNamedPane(p){
   ({ inspect:renderInspect, ledger:renderLedger, regions:renderRegions, party:renderParty, where:renderWhere, library:renderLibrary,
      roll:renderRoll, notes:renderNotes, session:renderSession, docs:renderDocs, data:renderData })[p]?.();
 }
 function applyTable(){
-  const on = tableOn(), ses = $("#pane-session");
+  const on = tableOn(), bon = buildOn(), ses = $("#pane-session");
   document.body.classList.toggle("table", on);
+  document.body.classList.toggle("buildv", bon);
   if(on){
     if(ses.parentNode !== $("#tl-top")){ $("#tl-top").appendChild(ses); ses.hidden = false; renderSession(); }
     if(pane!=="inspect"){ const p = pane; pane = "inspect"; if(p!=="session" && p!=="regions") openDrawer(p); }
   } else {
     if(ses.parentNode !== $("#panel")) $("#panel").insertBefore(ses, $("#pane-docs"));
-    closeDrawer();
+    if(bon){ if(pane!=="inspect"){ const p = pane; pane = "inspect"; openDrawer(p); } else if(drawerPane && !BUILD_DRAWER_TABS.some(([k])=>k===drawerPane)) closeDrawer(); }
+    else closeDrawer();
   }
   renderChips();
 }
@@ -13417,7 +13510,7 @@ function openDrawer(p){
   for(const x of [...body.children]) if(x!==el){ x.hidden = true; $("#panel").insertBefore(x, $("#tr-split")); }
   if(el.parentNode!==body) body.appendChild(el);
   drawerPane = p; el.hidden = false; $("#tdrawer").hidden = false;
-  $("#tdtabs").innerHTML = DRAWER_TABS.map(([k,l])=>`<button data-tdtab="${k}" class="${k===p?"on":""}">${l}</button>`).join("") + `<button class="tdx" data-tdtab="" title="Close">×</button>`;
+  $("#tdtabs").innerHTML = drawerTabs().map(([k,l])=>`<button data-tdtab="${k}" class="${k===p?"on":""}">${l}</button>`).join("") + `<button class="tdx" data-tdtab="" title="Close">×</button>`;
   renderNamedPane(p);
 }
 function closeDrawer(){
@@ -13428,7 +13521,7 @@ function closeDrawer(){
 function wireTable(){
   tableReady = true;
   $("#bar .spacer").insertAdjacentHTML("beforebegin", `<span id="tchips"></span>`);
-  $("#panelToggle").insertAdjacentHTML("beforebegin", `<button id="moreBtn" class="btn" title="The other tabs: Library, Docs, Roll, Where, Party & XP, Notes, Ledger, Data">☰ More</button>`);
+  $("#panelToggle").insertAdjacentHTML("beforebegin", `<button id="moreBtn" class="btn" title="The other tabs">☰ More</button>`);
   $("#moreBtn").onclick = ()=>{ if(drawerPane) closeDrawer(); else openDrawer("library"); };
   $("#tdtabs").addEventListener("click", e=>{ const b = e.target.closest("[data-tdtab]"); if(!b) return; if(b.dataset.tdtab) openDrawer(b.dataset.tdtab); else closeDrawer(); });
   $("#tchips").addEventListener("click", e=>{ const b = e.target.closest("[data-tchip]"); if(!b) return; openPersonCard("pc", b.dataset.tchip); });
@@ -13445,7 +13538,7 @@ function wireTable(){
       sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up);
     });
   }
-  window.addEventListener("resize", ()=>{ const was = document.body.classList.contains("table"); if(was !== tableOn()){ applyTable(); syncTabs(); renderPane(true); } });
+  window.addEventListener("resize", ()=>{ const was = document.body.classList.contains("table"), wasB = document.body.classList.contains("buildv"); if(was !== tableOn() || wasB !== buildOn()){ buildRail(); applyTable(); syncTabs(); renderPane(true); } });
   wireTLog(); wireActionBox();
 }
 /* the party along the top bar: a click opens their card (on the battle map, picks their token) */
