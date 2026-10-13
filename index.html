@@ -579,6 +579,12 @@
 
   /* ── the fight tracker (DM mode) ── */
   .fighthead{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin:0 0 6px}
+  /* a calm place: who's here, and the way into a fight */
+  .calmrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:5px 7px;border-bottom:1px solid var(--rule-soft);cursor:pointer;font-size:13px}
+  .calmrow small{font-family:var(--mono);font-size:10px;color:var(--ink-soft);white-space:nowrap}
+  .calmrow.sel{background:var(--paper-deep)}
+  .btn.calmgo{background:var(--lead);border-color:var(--lead);color:#fff;font-size:13px;padding:10px;margin:6px 0 4px}
+  .btn.calmgo:hover{background:#8f2a19;color:#fff}
   .fcard{border:1px solid var(--rule);border-radius:3px;background:var(--paper-lit);padding:6px 8px 5px;margin-bottom:6px}
   .fcard.down{opacity:.55}
   .fcard.down .fc-h .libref{text-decoration:line-through}
@@ -637,6 +643,8 @@
   .bt-head #bt-title{font-family:var(--serif);font-size:15px;color:var(--ink)}
   .bt-head .bt-hint{flex:1;font-size:10.5px;color:var(--ink-faint);font-family:var(--mono)}
   #bsvg{flex:1;width:100%;min-height:0;touch-action:none;cursor:grab}
+  #bsvg.hand{cursor:grab} #bsvg.panning{cursor:grabbing}
+  #svg.hand-tool{cursor:grab}
   .planback{margin:0 0 12px}
   .lightrow{margin:4px 0 8px}
   .enterbox{border:1px solid var(--lead-soft);border-radius:3px;background:var(--paper-lit);padding:8px 10px;margin:6px 0 10px}
@@ -3455,6 +3463,7 @@ function renderHint(){
       : (doc.nodes.length ? `Click a marker to step off a distance from it.` : `Set a marker first — press <b>1</b> for a city.`);
   else if(tool==="connect")
     h.innerHTML = connectFrom ? `Click the far end to lay the road. <b>Esc</b> cancels.` : `Click a marker to start a road.`;
+  else if(tool==="pan") h.innerHTML = `<b>Drag</b> to move the map · nothing is picked or changed · <b>V</b> to go back to selecting`;
   else if(tool==="select")
     h.innerHTML = sel && (sel.kind==="road"||sel.kind==="shape")
       ? `<b>Double-click</b> the line to bend it there · drag a solid handle to move a bend · <b>Alt-click</b> removes one${sel.kind==="shape"?` · click a dashed end to carry it on`:""}`
@@ -3467,6 +3476,7 @@ function renderHint(){
    RAIL
    ══════════════════════════════════════════════════════════════ */
 const ICONS = {
+  pan:`<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 9V3.6a1.1 1.1 0 0 1 2.2 0V8M7.7 7.6V2.6a1.1 1.1 0 0 1 2.2 0V8M9.9 7.8V3.4a1.1 1.1 0 0 1 2.2 0V9.6M12.1 6.6a1.1 1.1 0 0 1 2.2 0v3.6c0 3-2.1 5.3-4.9 5.3-2.2 0-3.3-.9-4.6-2.6L2.6 10.3a1.2 1.2 0 0 1 1.8-1.5L5.5 10"/></svg>`,
   select:`<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2l9 5.5-4 .8L6.6 13z"/></svg>`,
   rule:`<svg width="19" height="19" viewBox="0 0 19 19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="9.5" cy="3.4" r="1.9"/><path d="M8.4 5.1 4 16.2M10.6 5.1 15 16.2M6.6 11.6h5.8"/></svg>`,
   connect:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="14" r="2.4"/><circle cx="14" cy="4" r="2.4"/><path d="M5.8 12.2 12.2 5.8"/></svg>`
@@ -3476,6 +3486,7 @@ function buildRail(){
   if(dmMode){ $("#rail").innerHTML = `<div class="dmrail" title="The map is locked. Switch to Build in the top bar to change it.">DM<br>mode</div>`; return; }
   let s = `<button class="tool ${tool==="rule"?"on":""}" data-tool="rule" title="Dividers — step off a distance, then choose what's there (M)">${ICONS.rule}<span class="key">M</span></button>`;
   s += `<button class="tool ${tool==="select"?"on":""}" data-tool="select" title="Select, move, bend (V)">${ICONS.select}<span class="key">V</span></button>`;
+  s += `<button class="tool ${tool==="pan"?"on":""}" data-tool="pan" title="Hand: drag the map around without changing anything (H). Space-drag or the middle button work with any tool">${ICONS.pan}<span class="key">H</span></button>`;
   s += `<button class="tool ${tool==="connect"?"on":""}" data-tool="connect" title="Join two markers (C)">${ICONS.connect}<span class="key">C</span></button>`;
   s += `<div class="railrule"></div><div class="raillab">Places</div><div class="toolgrid">`;
   for(const key of KIND_KEYS){
@@ -3524,6 +3535,7 @@ function setTool(t){
      another tool mid-draw never costs you the work */
   if(draft){ if(draft.pts.length>=2) finishDraft(false); else draft=null; }
   tool=t; connectFrom=null; rule=null; editing=null; closePop(); buildRail(); render();
+  svg.classList.toggle("hand-tool", tool==="pan");
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -3678,6 +3690,7 @@ function syncHistBtns(){
 function toolLabel(){
   if(tool==="rule") return "Dividers";
   if(tool==="select") return "Select";
+  if(tool==="pan") return "Hand";
   if(tool==="connect") return planOf ? "Join" : "Join roads";
   if(tool==="draw") return SHAPE_KINDS[drawKind] ? SHAPE_KINDS[drawKind].label : "Draw";
   return KINDS[tool] ? KINDS[tool].label : "Tools";
@@ -3704,6 +3717,7 @@ function buildToolSheet(){
   h += `<p class="eyebrow">Working</p><div class="tsgrid">`
     + item(tool==="rule","data-tool=\"rule\"",ICONS.rule,"Dividers")
     + item(tool==="select","data-tool=\"select\"",ICONS.select,"Select & bend")
+    + item(tool==="pan","data-tool=\"pan\"",ICONS.pan,"Hand: move the map")
     + item(tool==="connect","data-tool=\"connect\"",ICONS.connect,planOf?"Join streets":"Join roads")
     + `</div>`;
   h += `<p class="eyebrow spaced">${planOf?"What stands here":"Places"}</p><div class="tsgrid">`;
@@ -3822,6 +3836,8 @@ svg.addEventListener("pointerdown", steady(e=>{
   const nEl = e.target.closest("[data-node]"), rEl = e.target.closest("[data-road]"), shEl = e.target.closest("[data-shape]");
   const hPt = e.target.closest("[data-rp],[data-sp]"), hGap = e.target.closest("[data-rg],[data-sg]");
   const hCap = e.target.closest("[data-cap]");
+  /* the hand tool: any left-drag moves the map, nothing else (Space or the middle button do the same with any tool) */
+  if(tool==="pan" && e.button===0){ drag = { mode:"pan", sx:e.clientX, sy:e.clientY, tx:view.tx, ty:view.ty }; svg.classList.add("panning"); return; }
 
   /* the party's token: drag it to where they are (a tap opens the Where tab) */
   const pEl = e.target.closest("[data-party],[data-member]");
@@ -4210,6 +4226,7 @@ document.addEventListener("keydown", e=>{
   }
   if(k==="m") setTool("rule");
   else if(k==="v") setTool("select");
+  else if(k==="h") setTool("pan");
   else if(k==="c") setTool("connect");
   else if(SHAPE_KEYS.some(key=>SHAPE_KINDS[key].key && SHAPE_KINDS[key].key.toLowerCase()===k)){
     drawKind = SHAPE_KEYS.find(key=>SHAPE_KINDS[key].key && SHAPE_KINDS[key].key.toLowerCase()===k);
@@ -5992,10 +6009,34 @@ function startFight(st){
       list.push(foeBelongings(x));
     }
   });
-  st.combat = { round:1, list, stage:0 };              // stage: how many later stages have been brought in
-  const foesNow = list.filter(x=>!x.ally && !x.neutral);
-  if(foesNow.length){ const by = {}; for(const x of foesNow){ const nm = (foeById(x.foe)||{}).name||"foe"; by[nm] = (by[nm]||0)+1; }
-    gameLog("fight", `A fight began${placeOfSite(st) ? ` at ${placeOfSite(st)}` : ""}: ${Object.entries(by).map(([k,v])=>v>1?`${v} × ${k}`:k).join(", ")}`); }
+  /* calm: everyone is here and on the map, but nobody is fighting yet — no initiative, no turns, no rounds. Going into
+     any place starts this way, planned encounter or not; the fight begins only from Start the battle (beginBattle) */
+  st.combat = { round:1, list, stage:0, calm:true };     // stage: how many later stages have been brought in
+}
+/* is this place calm (here, not fighting)? A place entered before calm existed counts as calm if its fight never got going */
+function calmOf(c){
+  if(!c) return false;
+  if(c.calm===undefined && !c.turn && !Object.values(c.init||{}).some(v=>v!=null) && !(c.log||[]).length) c.calm = true;
+  return !!c.calm;
+}
+const calmHere = () => { const n = battleOf ? bnode() : null; return !!(n && n.site && n.site.combat && calmOf(n.site.combat)); };
+/* Start the battle: whoever is here stays where they stand; the turn order and the battle's action form take over */
+function beginBattle(st){
+  if(!st.combat) startFight(st);
+  const c = st.combat; c.calm = false; c.round = c.round || 1;
+  const foesNow = c.list.filter(x=>!x.ally && !x.neutral && !(x.max && x.hp<=0) && !x.fled), by = {};
+  for(const x of foesNow){ const nm = (foeById(x.foe)||{}).name||"foe"; by[nm] = (by[nm]||0)+1; }
+  gameLog("fight", `A fight began${placeOfSite(st) ? ` at ${placeOfSite(st)}` : ""}${foesNow.length ? `: ${Object.entries(by).map(([k,v])=>v>1?`${v} × ${k}`:k).join(", ")}` : ""}`);
+  if(battleOf){ const all = combatants(c); act = freshAct((all[0]||{}).id); }
+  return c;
+}
+/* End the battle, standing in the place: the fallen are laid out to search, whoever ran is gone, and it's calm again —
+   anyone still standing stays where they are */
+function calmAfterBattle(st){
+  const c = st.combat; if(!c) return;
+  c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
+  for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.onceUsed; delete c.fled;
 }
 /* bringing someone into a fight already going: a person from the library (as their own sheet or
    the stat block they fight as), or any foe — against the party or on its side */
@@ -6249,7 +6290,7 @@ function enemyCard(x, i, extra, open){
 }
 function wireFight(n, st){
   const el = $("#pane-inspect");
-  const go = $("#pl-fight"); if(go) go.onclick = ()=>{ startFight(st); touch(); renderPlay(); };
+  const go = $("#pl-fight"); if(go) go.onclick = ()=>{ beginBattle(st); touch(); renderPlay(); };
   wireInv(el, n, st);
   if(!st.combat) return;
   const c = st.combat, amt = i => { const a = el.querySelector(`.fc-amt[data-fi="${i}"]`); return Math.max(0, Math.round(+(a&&a.value)||0)); };
@@ -6350,10 +6391,12 @@ function wireFight(n, st){
         if(r.kind==="recharge" && r.min<=6 && y.spent[r.key]){ const d = 1+Math.floor(Math.random()*6); if(d>=r.min){ y.spent[r.key] = false; back.push(`${y.label}: ${r.label} (${d})`); } }
       flash(back.length ? `Recharged — ${back.join(", ")}` : "Nothing recharged.");
     }
-    else if(a==="reset"){ if(!confirm("Start this fight over at full health?")) return; startFight(st); }
+    else if(a==="reset"){ if(!confirm("Start this fight over at full health?")) return; startFight(st); beginBattle(st); }
+    else if(a==="begin"){ beginBattle(st); flash("The battle begins: roll initiative."); }
     else if(a==="end" && !c.list.length && !(st.foes||[]).length){
-      /* a battle map opened at a place with no fight in it: just put it away */
-      delete st.combat; if(battleOf) closeBattle(true);
+      /* nobody to fight: on the map it's just calm again; from the panel it's put away */
+      if(battleOf){ gameLog("fight", `The fight at ${placeLabel(battleOf ? bnode() : {})} is over`); calmAfterBattle(st); touch(); renderBattle(); renderBattlePanel(); return; }
+      delete st.combat;
     }
     else if(a==="end"){
       const E = c.list.filter(y=>!y.ally && !y.neutral), left = E.filter(y=>!(y.max && y.hp<=0) && !y.fled).length, ran = E.filter(y=>y.fled).length;
@@ -6364,9 +6407,10 @@ function wireFight(n, st){
       /* the fallen stay here to be searched — whoever ran or still stands keeps their things */
       const laid = layBodies(st, c.list.filter(y=>!y.ally && !y.neutral && y.max!=null && y.hp<=0 && !y.fled));
       if(laid) flash(`${laid} bod${laid===1?"y":"ies"} left here to search — see "On the fallen" under Loot here.`);
-      delete st.combat;
       if(!left || confirm("Mark this place cleared?")) st.cleared = true;
-      if(battleOf) closeBattle(true);
+      /* on the map: stay here, calm again; from the place's panel: the fight is put away */
+      if(battleOf){ calmAfterBattle(st); touch(); renderBattle(); renderBattlePanel(); return; }
+      delete st.combat;
     }
     else return;
     touch(); renderPlay(); if(battleOf) renderBattle();
@@ -7909,6 +7953,7 @@ function wireSpotPanel(el, n){
   });
 }
 var bpaint = null;                                     // the tile being painted, or null
+var bhand = false;                                      // the hand: a left-drag moves the battle map and nothing else
 function bmapPanel(n){
   const m = bmapOf(n), key = bmapKey(n), used = m.rows ? [...new Set(m.rows.join(""))].filter(ch=>BTILES[ch]) : [];
   return `<details class="partysec" data-invfor="battle:map" ${openInv.has("battle:map")||bpaint?"open":""}><summary class="eyebrow">Battle map · ${esc(m.name||"this place's own")}</summary>
@@ -7918,6 +7963,7 @@ function bmapPanel(n){
     ${used.length?`<div class="bmlegend">${used.map(ch=>`<div><span class="bmsw" style="background:${BTILES[ch].fill}"></span><b>${esc(BTILES[ch].name)}</b>${BTILES[ch].note?` <small>${esc(BTILES[ch].note)}</small>`:""}</div>`).join("")}</div>`:""}
     <label class="check" style="margin:6px 0 0"><input type="checkbox" class="bm-gridnames" ${gridNames()?"checked":""}> Square names (A1, B2…) on both screens</label>
     <label class="check" style="margin:6px 0"><input type="checkbox" class="bm-paintbox" ${bpaint?"checked":""}> Paint the map</label>
+    <button class="btn wide${bhand?" on":""}" data-bmhand style="margin:4px 0 2px" title="While it's on, dragging moves the map: nothing is painted, picked or moved. Space-drag or the middle mouse button do the same at any time">✋ Hand: move the map${bhand?" (on)":""}</button>
     ${bpaint ? BTILE_GROUPS.map(([g, list])=>`<p class="grouplab" style="margin:6px 0 3px">${g}</p><div class="bmpal">${[...list].filter(ch=>BTILES[ch]).map(ch=>`<button class="${bpaint===ch?"on":""}" data-bmtile="${esc(ch)}" title="${esc(BTILES[ch].name)}${BTILES[ch].box?" — can hold loot":""}"><span class="bmsw" style="background:${BTILES[ch].fill}"></span>${esc(BTILES[ch].name)}${BTILES[ch].box?" ◆":""}</button>`).join("")}</div>`).join("") + `<p class="grouplab" style="margin:6px 0 3px">Text</p><div class="bmpal"><button class="${bpaint==="text"?"on":""}" data-bmtile="text" title="Labels on the map: click to add, drag to move, double-click to edit, right-click to delete"><span class="bmsw" style="background:none;font:italic 11px var(--serif);text-align:center;line-height:12px">Aa</span>Label</button></div>${bpaint==="text" ? `<p class="empty-note" style="font-size:11px;margin:4px 0;color:var(--lead)">Labels: click an empty spot to add one, drag one to move it, double-click it to change the words, right-click it to delete it.</p>` : ""}<p class="empty-note" style="font-size:10.5px;margin:4px 0 0">◆ can hold loot: click one on the map (not painting) to fill it.</p>
       <p class="empty-note" style="font-size:11px;margin:4px 0">Click or drag on the floor to paint. Drag a piece that's there (furniture, a container, a lamp, a door) to move it, with whatever is in it. Press R over a piece, or double-click it, to turn it a quarter. Right-click a piece, a wall, a door or a window to delete it. Painting a ready-made map gives this place its own copy; the others are unchanged.</p>
       ${key==="own"?`<div class="pcrow"><div class="field" style="flex:1"><label>Squares across</label><input class="bm-w mono" type="number" min="6" max="60" value="${m.w}"></div><div class="field" style="flex:1"><label>Down</label><input class="bm-h mono" type="number" min="6" max="60" value="${m.h}"></div></div>
@@ -8139,7 +8185,7 @@ function renderBattle(players){
   const furnish = editingInside(), n = bnode(); if(!n || (!furnish && (!n.site || !n.site.combat))){ if(players) return ""; closeBattle(); return; }
   const c = furnish ? EDIT_STAGE : n.site.combat, bm = useBmap(n); if(!furnish) placeTokens(c);
   if(!players) syncUpBtn();
-  if(!players) $("#bt-title").textContent = furnish ? `Inside ${placeLabel(n)} · ${bm.name||"its map"} · furnishing${bpaint?" (painting)":""}` : `${placeLabel(n)} · round ${c.round}${bm.rows?` · ${bm.name||"this place's map"}`:""}${bpaint?" · painting":""}`;
+  if(!players) $("#bt-title").textContent = furnish ? `Inside ${placeLabel(n)} · ${bm.name||"its map"} · furnishing${bpaint?" (painting)":""}` : `${placeLabel(n)} · ${calmOf(c) ? "calm" : `round ${c.round}`}${bm.rows?` · ${bm.name||"this place's map"}`:""}${bpaint?" · painting":""}`;
   const svgB = $("#bsvg"), b = bview;
   if(!players) svgB.setAttribute("viewBox", `${b.x} ${b.y} ${b.w} ${b.h}`);
   const lineup = c.layout==="lineup";
@@ -8224,9 +8270,14 @@ function bpoint(e){
   const ox = (r.width - b.w/s)/2, oy = (r.height - b.h/s)/2;
   return { x: b.x + (e.clientX - r.left - ox)*s, y: b.y + (e.clientY - r.top - oy)*s, s };
 }
+/* the hand shows as a grab cursor on the battle map */
+function syncHand(){ const b = $("#bsvg"); if(b) b.classList.toggle("hand", !!bhand); }
+$("#bsvg").addEventListener("mousedown", e=>{ if(e.button===1) e.preventDefault(); });     // no autoscroll on a middle-button drag
 $("#bsvg").addEventListener("pointerdown", e=>{
   const tok = e.target.closest("[data-tok]");
   try{ $("#bsvg").setPointerCapture(e.pointerId); }catch(err){}
+  /* moving the map, whatever is picked: the middle button, Space held down, or the hand */
+  if(e.button===1 || ((spaceDown || bhand) && e.button===0)){ e.preventDefault(); bdrag = { pan:true, sx:e.clientX, sy:e.clientY, vb:{...bview} }; $("#bsvg").classList.add("panning"); return; }
   const n = bnode(), lineup = n && n.site && n.site.combat && n.site.combat.layout==="lineup";
   /* a light on the floor: drag it to move it, click it to put it out or light it */
   const lt = e.target.closest("[data-light]");
@@ -8347,7 +8398,7 @@ $("#bsvg").addEventListener("pointermove", e=>{
 });
 const bend = e=>{
   if(!bdrag) return;
-  const d = bdrag; bdrag = null;
+  const d = bdrag; bdrag = null; $("#bsvg").classList.remove("panning");
   if(d.ptok){ if(d.moved){ touch(); renderBattle(); renderEditPanel(); } return; }
   if(d.paint){ if(d.changed){ touch(); renderBattlePanel(); } return; }
   if(d.piece){ if(d.moved){ touch(); renderBattle(); renderBattlePanel(); } return; }
@@ -8843,7 +8894,8 @@ function wireBmapPanel(el, n, c){
   const st0 = el.querySelector('[data-bm="start"]'); if(st0) st0.onclick = ()=>{ if(c) c.pos = {}; redo(); };
   const gn = el.querySelector(".bm-gridnames"); if(gn) gn.onchange = ()=>{ if(gn.checked) delete root.gridNames; else root.gridNames = false; saveParty(); renderBattle(); };
   const pb = el.querySelector(".bm-paintbox"); if(pb) pb.onchange = ()=>{ bpaint = pb.checked ? (bpaint || "=") : null; openInv.add("battle:map"); renderBattle(); renderBattlePanel(); };
-  el.querySelectorAll("[data-bmtile]").forEach(b=>b.onclick = ()=>{ bpaint = b.dataset.bmtile; renderBattlePanel(); });
+  el.querySelectorAll("[data-bmtile]").forEach(b=>b.onclick = ()=>{ bpaint = b.dataset.bmtile; bhand = false; syncHand(); renderBattlePanel(); });
+  el.querySelectorAll("[data-bmhand]").forEach(b=>b.onclick = ()=>{ bhand = !bhand; syncHand(); renderBattlePanel(); flash(bhand ? "Hand on: drag to move the map." : "Hand off."); });
   const bw = el.querySelector(".bm-w"), bh = el.querySelector(".bm-h"), bn = el.querySelector(".bm-name");
   if(bw) bw.onchange = ()=>{ resizeBmap(n, bw.value, bh.value); redo(); };
   if(bh) bh.onchange = ()=>{ resizeBmap(n, bw.value, bh.value); redo(); };
@@ -8851,6 +8903,19 @@ function wireBmapPanel(el, n, c){
   const md = el.querySelector('[data-invfor="battle:map"]'); if(md) md.ontoggle = ()=>{ if(md.open) openInv.add("battle:map"); else openInv.delete("battle:map"); };
 }
 function renderBattlePanel(){ return keepPaneScroll("pane-inspect", renderBattlePanelNow); }
+/* the top of the panel while it's calm: who's here, and the button that starts the battle */
+function calmTop(n, st, c, all){
+  const by = bystanders(c), foes = all.filter(t=>t.side==="enemy" && !(t.x.max && t.x.hp<=0));
+  const row = (id, label, tag) => `<div class="calmrow${battleSel===id?" sel":""}" data-bsel="${esc(id)}"><span>${esc(label)}</span><small>${tag}</small></div>`;
+  return `<p class="eyebrow">Here · ${esc(placeLabel(n))}</p>
+    <div class="fighthead"><span>Calm, not fighting</span><span>${all.length + by.length} here</span></div>
+    <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
+    <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p>
+    ${lightRow(n)}${spotPanel(n)}${placeSearchBox(st)}
+    <p class="grouplab">Who's here <small>click one, or their token</small></p>
+    ${all.map(t=>row(t.id, t.label, t.side==="party" ? "party" : t.side==="enemy" ? "hostile" : t.side==="neutral" ? "neutral" : "")).join("")}
+    ${by.map(b=>row(b.id, b.p.name||"Someone", b.p.role ? String(b.p.role).split(" · ")[0].toLowerCase() : "here")).join("")}`;
+}
 function renderBattlePanelNow(){
   if(editingInside()) return renderEditPanel();
   const el = $("#pane-inspect"), n = bnode(); if(!n || !n.site || !n.site.combat){ closeBattle(true); return renderPlay(); }
@@ -8859,7 +8924,8 @@ function renderBattlePanelNow(){
   if(!act || !all.some(x=>x.id===act.actor)) act = freshAct((cur||all[0]||{}).id);
   const hpText = t => t.kind==="foe" ? (t.x.max!=null?`${t.x.hp}/${t.x.max}`:"?") : `${numOr(t.p.hp)??"?"}/${numOr(t.p.hpMax)??"?"}`;
   const log = (c.log||[]).slice().reverse();
-  let h = `<p class="eyebrow">Encounter · ${esc(placeLabel(n))}</p>
+  const calm = calmOf(c);
+  let h = calm ? calmTop(n, st, c, all) : `<p class="eyebrow">Encounter · ${esc(placeLabel(n))}</p>
     <div class="fighthead"><span>Round <b>${c.round}</b></span><span>${cur?`Turn: <b>${esc(cur.label)}</b>`:"Roll initiative to begin"}</span></div>
     ${lightRow(n)}
     ${spotPanel(n)}
@@ -8900,10 +8966,11 @@ function renderBattlePanelNow(){
   /* anyone on the map can be taken off it again (Delete does the same) */
   if(by || (selT && selT.kind==="foe") || (selT && selT.person)) h += `<button class="btn wide danger" data-bremove="${esc(battleSel)}" style="margin-top:4px" title="Takes them off the map${selT && selT.kind==="foe" ? " and out of the fight" : " and out of this place"} (Delete key). Someone who ran away is Fled instead.">Remove from here</button>`;
   h = h.slice(0, selAt) + `<div class="bt-sel">` + h.slice(selAt) + `</div>`;
-  h += stageBlock(st);
+  if(!calm) h += stageBlock(st);
   h += bringInBlock(st);
   h += bmapPanel(n);
-  h += `<div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-fa="recharge">Roll recharges</button><button class="btn" style="flex:1" data-fa="end">${c.list.length || (st.foes||[]).length ? "End the fight" : "Close the battle map"}</button></div>
+  h += calm ? `<button class="btn wide" data-ba="back" style="margin-top:8px">Back to the map</button>`
+    : `<div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-fa="recharge">Roll recharges</button><button class="btn" style="flex:1" data-fa="end" title="Lays out the fallen to search, then it's calm again here">End the battle</button></div>
     <button class="btn wide" data-ba="back">Back to the map</button>`;
   el.innerHTML = h;
   wireSpotPanel(el, n); wireLightRow(el, n); wireStealthRow(el, c); wirePlaceSearch(el, n, ()=>{ renderBattle(); renderBattlePanel(); });
@@ -8947,6 +9014,7 @@ function renderBattlePanelNow(){
     if(act.p2){ if(g("#ac-dmg2")!==undefined) act.p2.dmg = g("#ac-dmg2"); const o2 = document.querySelector('input[name="ac-out2"]:checked'); if(o2) act.p2.outcome = o2.value; }
     const r = $("#ac-react"); if(r) act.reaction = r.checked; };
   const redraw = () => { keep(); renderBattlePanel(); };
+  if(!calm){                                      // the battle's action form: only once the battle has begun
   $("#ac-actor").onchange = e=>{ act = freshAct(e.target.value); renderBattlePanel(); };
   $("#ac-what").onchange = e=>{
     keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null;
@@ -8975,12 +9043,14 @@ function renderBattlePanelNow(){
     flash(`${dice}${crit?" (crit: dice twice)":""}: ${r.rolls.join(" + ")}${flat?` ${flat<0?"−":"+"} ${Math.abs(flat)}`:""} = ${r.total}`);
     renderBattlePanel(); });
   $("#ac-go").onclick = ()=>{ keep(); logAction(n, c); };
+  }
   el.querySelectorAll("[data-ba]").forEach(b=>b.onclick = ()=>{
     const a = b.dataset.ba;
     if(a==="back") return closeBattle();
     if(a==="undo") return undoAction(c);
     if(a==="pcfled"){ c.fled = c.fled||{}; if(c.fled[b.dataset.id]) delete c.fled[b.dataset.id]; else c.fled[b.dataset.id] = true; }
     if(a==="initorder"){ delete c.order; flash("Back to initiative order."); }
+    if(a==="begin"){ beginBattle(st); battleSel = null; flash("The battle begins: roll initiative."); }
     if(a==="layout"){ c.layout = c.layout==="lineup" ? "map" : "lineup"; bview = { x:-BS, y:-BS, w:(BW+2)*BS, h:(BH+2)*BS }; }
     if(a==="init"){
       for(const t of all) if((t.kind==="foe" || t.npc) && !t.shared) c.init[t.id] = 1 + Math.floor(Math.random()*20) + (t.kind==="foe" ? initBonus(foeById(t.x.foe)) : numOr(String(t.p.init||"").replace("+",""), 0));
@@ -8999,7 +9069,9 @@ function renderBattlePanelNow(){
   wirePc(el, ()=>{ renderBattle(); renderBattlePanel(); });
   /* table mode: the action form (with Roll initiative and Next turn) goes to the Action box below the card, and the
      one picked on the map comes first in the card */
-  if(tableOn()){
+  if(tableOn() && calm){                          // calm: the Action box stays the one for outside a fight
+    renderActionBox(true); const s = el.querySelector(".bt-sel"); if(s && s.children.length) el.prepend(s); renderChips();
+  } else if(tableOn()){
     const ab = $("#actionbox"), form = el.querySelector(".actbox"), ctl = el.querySelector(".bt-turnctl");
     ab.innerHTML = `<div class="tbhead"><span class="eyebrow">Action · round ${c.round}</span><span class="empty-note" style="margin:0;font-size:11px">${cur ? `${esc(cur.label)}'s turn` : "roll initiative to begin"}</span></div>`;
     if(ctl) ab.appendChild(ctl); if(form) ab.appendChild(form);
@@ -9062,11 +9134,11 @@ function renderPlayNow(){
     const tone = { light:"var(--ink-faint)", fair:"var(--r1)", hard:"var(--r3)", deadly:"var(--lead)" }[chk.verdict];
     const tot = chk.raw*(st.waves||1);
     h += `<p class="eyebrow spaced">The fight</p>`
-      + (st.combat ? fightTracker(st) : (()=>{ const line = f => { const m = foeById(f.id);
+      + (st.combat && !calmOf(st.combat) ? fightTracker(st) : (()=>{ const line = f => { const m = foeById(f.id);
           return `<div class="sbl">${esc(String(f.n??1))} × ${m?`<span class="libref" data-libopen="foes:${f.id}">${esc(m.name)}</span> <small>CR ${crLabel(+m.cr||0)}</small>`:"<i>unknown foe</i>"}</div>`; }, S = siteStages(st);
           return (S.length ? `<p class="grouplab" style="margin:4px 0 2px">At the start</p>` : "") + st.foes.map(line).join("")
             + S.map((s,k)=>`<p class="grouplab" style="margin:6px 0 2px">Stage ${k+2}${s.name?` · ${esc(s.name)}`:""}</p>` + (s.foes||[]).map(line).join("")).join("")
-            + `<button class="btn wide" id="pl-fight" style="margin:7px 0 2px">Start the fight — track hit points</button>`; })())
+            + `<button class="btn wide" id="pl-fight" style="margin:7px 0 2px">Start the battle — track hit points</button>`; })())
       + `<div class="verdict" style="border-color:${tone}"><div class="vhead" style="color:${tone}">${(chk.label||chk.verdict).toUpperCase()}</div><div class="vbody">${verdictLine(chk, st.level||1)}${stageBreakdown(st, st.level||1)}</div></div>`
       + `<label class="check" style="margin:0 0 9px"><input id="pl-cleared" type="checkbox" ${st.cleared?"checked":""}> Cleared</label>`
       + (chk.party>1&&tot ? `<button class="btn wide" id="pl-award" data-xp="${tot}">Award ${tot.toLocaleString()} XP to the party — ${Math.floor(tot/chk.party).toLocaleString()} each</button>` : "");
@@ -9075,7 +9147,7 @@ function renderPlayNow(){
   { const key = bmapKey(n), m = bmapOf(n), going = st && st.combat;
     h += `<p class="eyebrow spaced">Battle map</p>
       <div class="pcrow"><select id="pl-bmap" style="flex:1;min-width:0" title="The ground a fight here happens on">${bmapChoices().map(([k, l])=>`<option value="${k}" ${k===key?"selected":""}>${esc(l)}</option>`).join("")}${key==="own"?`<option value="own" selected>${esc(m.name||"This place's own")}${n.bmap&&n.bmap.by?"":" (painted)"}</option>`:""}</select>
-        <button class="btn" id="pl-bopen" title="${(st&&(st.foes||[]).length)&&!going?"Starts the fight here and opens the map":"Opens the map; bring anyone in from its panel"}">${going?"Back to it":"Open it"}</button></div>`; }
+        <button class="btn" id="pl-bopen" title="Opens the map: everyone here, calm until you press Start the battle">${going?"Back to it":"Open it"}</button></div>`; }
 
   const items = (st&&st.items)||[], pc = st&&st.loot ? (st.loot.purse ?? st.loot.coin) : 0, purse = PURSES.find(p=>p.cat===pc);
   const left = !!(st && st.coins && purseGp(coinsOf(st.coins)));
@@ -12914,7 +12986,7 @@ function taHealDice(o, src){
 function slotChoices(o, s){ if(!s || !s.lv) return []; pcState(o); return [...Array(10).keys()].filter(L=>L>=s.lv && o.slots[L] && o.slots[L].max>0); }
 function renderActionBox(force){
   const el = $("#actionbox"); if(!el || !tableOn()) return;
-  if(battleOf){ return; }                                  // the battle panel fills it with the battle's own form
+  if(battleOf && !calmHere()){ return; }                   // in a fight the battle panel fills it with the battle's own form; calm, it's this one
   const ae = document.activeElement; if(!force && ae && el.contains(ae) && (ae.tagName==="INPUT" || ae.tagName==="TEXTAREA")) return;
   const P = taPeople(); if(!ta.who || (ta.who!=="party" && !P.some(x=>x.key===ta.who))) ta.who = (P[0]||{}).key || "";
   const party = ta.who==="party", o = party ? null : taObj(ta.who);

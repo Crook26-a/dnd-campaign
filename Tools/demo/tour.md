@@ -72,13 +72,15 @@ Go back out to the sea chart and click [[place:kgannet|the Merry Gannet]]. Her p
 
 Click [[place:kthorn|Thornback Cave]]. Its panel shows who's there (a goblin boss and six goblin warriors), how dangerous that is for this party under the 2024 rules, and what XP it's worth.
 
-1. Press **Start the fight — track hit points**, then **Enter the encounter — battle map**.
-2. **Roll initiative.** The turn order shows on both screens.
+1. Press **Enter this place**. Going in is always calm: the goblins are on the map where they stand, but nobody is fighting yet, and the Action box is still the one for outside a fight. Talk your way through if you can.
+2. Press **Start the battle** when it comes to blows, then **Roll initiative.** The turn order shows on both screens.
 3. The **Action box** becomes the fight's own: whoever's turn it is, their attacks and spells, add-ons like Sneak Attack, and **Roll** for the damage (dice doubled on a crit). Click any token or name in the turn order for their card, whoever's turn it is.
 4. The cave is dark: only the goblins' campfire lights it. Each character sees only what their eyes can.
 5. The chest at the back is locked. Click it: the panel shows how hard the lock is, and a search with a Perception check can turn up what's hidden.
 
-**Next turn** moves the fight along. **End the fight** clears it, and the place's panel offers the party the XP.
+**Next turn** moves the fight along. **End the battle** lays the fallen out to search and leaves the cave calm again, and the place's panel offers the party the XP.
+
+While you paint a map in Build, hold **Space** and drag (or drag with the middle mouse button) to move around it without painting, or switch on **✋ Hand** in the paint panel. On the main map, **H** picks the hand.
 
 ## The party {5 min}
 
