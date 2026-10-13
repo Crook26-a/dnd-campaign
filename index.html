@@ -5695,8 +5695,9 @@ function checkXp(who, dc, natOf, what){
     if(!x.key.startsWith("pc:")) continue;
     const c = x.o, tot = Math.round(+ta.tot[x.key]), lv = clampLv(c.level), S = statsOf(c), over = tot - dc;
     if(!isFinite(over) || over < 0) continue;
-    per[c.id] = checkXpFor(over, lv, R); if(over >= 10 || natOf[x.key]===20) S.greats = (S.greats||0) + 1;
-    why.push(`${(c.name||"").split(" ")[0]} ${over ? `beat it by ${over}` : "met it"}`);
+    const nat20 = natOf[x.key]===20;                       // a natural 20 that makes it is worth at least the top of the scale (by 10 over)
+    per[c.id] = Math.max(checkXpFor(over, lv, R), nat20 ? checkXpFor(Math.max(1, +R.upTo||10), lv, R) : 0); if(over >= 10 || nat20) S.greats = (S.greats||0) + 1;
+    why.push(`${(c.name||"").split(" ")[0]} ${nat20 ? "rolled a natural 20" : over ? `beat it by ${over}` : "met it"}`);
   }
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
 }
@@ -5743,7 +5744,7 @@ function xpRulesBlock(){
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
       damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
-    <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. Nothing lost for a miss.<br>
+    <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. A natural 20 that makes it gets at least the top of the scale (by ${C.upTo} over). Nothing lost for a miss.<br>
       <small>So at level 3: meet it 15 · by 5, 75 · by 10, 150 · by 13, 159.</small></div>
     <button class="btn wide" data-lb="rulesreset" style="margin-top:6px">Back to the starting numbers</button></details>`;
 }
