@@ -2031,6 +2031,78 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
   touch(); renderPane(true); flash(`${ship.name||"The ship"} is at ${n.name||"the place"}.${said}`);
 });
 /* ══════════════════════════════════════════════════════════════
+   OVERLAND TRAVEL — the party goes from where it is to a place on the
+   survey, by road where roads join them (else straight across country),
+   and the clock moves on. Travel Pace from the 2024 free rules: a day's
+   distance is for 8 hours on the road; past 8 hours is Extended Travel
+   (each extra hour, a Constitution save, DC 10 + 1 per hour past 8, or
+   1 Exhaustion level). A good road raises the most a terrain allows by
+   one step; the DM picks the pace with that in mind.
+   ══════════════════════════════════════════════════════════════ */
+const PACES = {
+  fast:   { label:"Fast",   mph:4, day:30, effect:"Disadvantage on Wisdom (Perception or Survival) and Dexterity (Stealth) checks" },
+  normal: { label:"Normal", mph:3, day:24, effect:"Disadvantage on Dexterity (Stealth) checks" },
+  slow:   { label:"Slow",   mph:2, day:18, effect:"Advantage on Wisdom (Perception or Survival) checks" }
+};
+const travelSet = () => { const t = root.travel || (root.travel = {}); if(!PACES[t.pace]) t.pace = "normal"; t.hours = Math.max(1, Math.min(16, Math.round(+t.hours || 8))); return t; };
+/* the survey place the party (the group on the move) is at: a town they're inside counts as that town; aboard a ship, none */
+function overlandFrom(){
+  const at = partyWhere(), id = at.map==="survey" ? at.node : at.map, n = id && root.nodes.find(x=>x.id===id);
+  return n && !sailsAbout(n) ? n : null;
+}
+/* the shortest way by road between two survey places: { miles, via:[names] }, or null if no roads join them */
+function roadRoute(a, b){
+  const dist = { [a.id]:0 }, prev = {}, todo = new Set([a.id]), done = new Set();
+  while(todo.size){
+    let id = null; for(const x of todo) if(id===null || dist[x] < dist[id]) id = x;
+    todo.delete(id); done.add(id); if(id===b.id) break;
+    for(const r of root.roads||[]){
+      const o = r.from===id ? r.to : r.to===id ? r.from : null; if(!o || done.has(o) || !root.nodes.some(x=>x.id===o)) continue;
+      const d = dist[id] + (+r.miles || 0); if(dist[o]===undefined || d < dist[o]){ dist[o] = d; prev[o] = id; todo.add(o); }
+    }
+  }
+  if(dist[b.id]===undefined) return null;
+  const via = []; for(let id = prev[b.id]; id && id!==a.id; id = prev[id]) via.unshift((root.nodes.find(x=>x.id===id)||{}).name || "a crossroads");
+  return { miles: Math.round(dist[b.id]*10)/10, via };
+}
+/* how long the trip takes: whole days at the pace's day distance (stretched or cut by the hours on the road), the rest by the hour */
+function travelHours(miles, pace, hours){
+  const p = PACES[pace], perDay = hours >= 8 ? p.day + (hours - 8)*p.mph : p.mph*hours;
+  const days = Math.floor(miles / perDay), rest = miles - days*perDay;
+  return days*24 + Math.min(hours, rest / p.mph);
+}
+function travelBlock(n){
+  if(planOf || sailsAbout(n)) return "";
+  const from = overlandFrom(); if(!from || from===n) return "";
+  const t = travelSet(), road = roadRoute(from, n);
+  const miles = road ? road.miles : Math.round(Math.hypot(n.x-from.x, n.y-from.y) / (root.ppm||10) * 10) / 10;
+  const hrs = travelHours(miles, t.pace, t.hours), push = t.hours - 8;
+  return `<div class="travelbox"><p class="eyebrow spaced">Travel here overland</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">From ${esc(from.name||"where they are")}: ${miles} mi ${road ? `by road${road.via.length ? ` (by way of ${esc(road.via.join(", "))})` : ""}` : "across country (no road joins them)"}.</p>
+    <div class="pcrow"><label style="flex:1">Pace <select data-travel="pace">${Object.entries(PACES).map(([k, p])=>`<option value="${k}" ${k===t.pace?"selected":""}>${p.label}: ${p.mph} mph, ${p.day} mi a day</option>`).join("")}</select></label>
+      <label style="flex:0 0 92px">Hours a day <input type="number" data-travel="hours" min="1" max="16" value="${t.hours}"></label></div>
+    <p class="empty-note" style="font-size:11px;margin:4px 0 6px">${PACES[t.pace].label} pace: ${PACES[t.pace].effect}.${road ? " A good road lets them go one step faster than the land allows." : ""}${push > 0 ? ` Pushing on ${push} hour${push===1?"":"s"} past 8 a day: each traveler makes a Constitution save at the end of each extra hour (DC 11${push>1?` to ${10+push}`:""}) or gains 1 Exhaustion level.` : ""}</p>
+    <button class="btn wide" data-travelgo="${n.id}">Travel here: ${hoursWord(hrs)}</button></div>`;
+}
+document.getElementById("pane-inspect").addEventListener("change", e=>{
+  const c = e.target.closest("[data-travel]"); if(!c) return;
+  const t = travelSet(); if(c.dataset.travel==="pace") t.pace = c.value; else t.hours = +c.value;
+  travelSet(); saveParty(); renderPane(true);
+});
+document.getElementById("pane-inspect").addEventListener("click", e=>{
+  const b = e.target.closest("[data-travelgo]"); if(!b) return;
+  const n = root.nodes.find(x=>x.id===b.dataset.travelgo), from = overlandFrom(); if(!n || !from) return;
+  const t = travelSet(), road = roadRoute(from, n);
+  const miles = road ? road.miles : Math.round(Math.hypot(n.x-from.x, n.y-from.y) / (root.ppm||10) * 10) / 10;
+  const hrs = travelHours(miles, t.pace, t.hours);
+  passHours(hrs, true);
+  let g = activeGroup(); g.at = hasPlan(n.id) ? { map:n.id, node:null } : { map:"survey", node:n.id }; g = joinUp(g);
+  n.visited = true;
+  const push = t.hours - 8;
+  partyMoved(`${groupName(g)} traveled ${miles} mi ${road ? "by road" : "across country"} from ${from.name||"where they were"} to ${n.name||"the place"} at a ${PACES[t.pace].label} pace: ${hoursWord(hrs)}. Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).${push>0 && hrs>8 ? ` They pushed on ${push} hour${push===1?"":"s"} past 8 a day (Constitution saves, DC 11${push>1?` to ${10+push}`:""}).` : ""}`);
+  touch(); renderPane(true);
+});
+/* ══════════════════════════════════════════════════════════════
    THE SEA CHART AND VOYAGES — the players' screen shows only what the
    crew has seen: "unknown" (a deeper, hatched sea) over the sea chart, cleared around
    the home port and along every voyage (root.chart.seen: [x, y, miles]
@@ -9108,7 +9180,7 @@ function renderPlayNow(){
     ${hasInside(n)&&bmapKey(n)!=="blank"?`<button class="btn wide" id="pl-enter" title="Opens its map: ${esc(bmapOf(n).name||"")}">Enter this place${(n.site||{}).lock?` <small>(${esc(lockWord(n.site.lock))})</small>`:""}</button>`:""}
     ${hasInside(n) && !(n.bmap && Array.isArray(n.bmap.rows)) ? layoutPicker("pl-layout", n, bmapKey(n)==="blank" ? "Nothing inside yet: start from a layout" : `For now it uses the ready-made map “${esc(bmapOf(n).name)}”. Start from a layout`) : ""}
     ${enterAsk===n.id ? enterBox(n) : ""}
-    ${sailBlock(n)}`;
+    ${sailBlock(n)}${travelBlock(n)}`;
 
   h += boardBlock(n);
   h += `<p class="eyebrow spaced">Who you'll meet</p>` + (people.length ? people.map(p=>`<div class="playperson">
@@ -12978,6 +13050,11 @@ function taHealDice(o, src){
   return sc.heal + (m ? `+${m}` : "").replace("+-","-");
 }
 function slotChoices(o, s){ if(!s || !s.lv) return []; pcState(o); return [...Array(10).keys()].filter(L=>L>=s.lv && o.slots[L] && o.slots[L].max>0); }
+/* where a Perception check in the Action box also searches: the place whose map is open, else the place picked on the map */
+function checkSpot(){
+  const n = battleOf ? bnode() : (sel && sel.kind==="node" ? nodeById(sel.id) : null);
+  return n && !sailsAbout(n) ? n : null;
+}
 function renderActionBox(force){
   const el = $("#actionbox"); if(!el || !tableOn()) return;
   if(battleOf && !calmHere()){ return; }                   // in a fight the battle panel fills it with the battle's own form; calm, it's this one
@@ -13009,7 +13086,8 @@ function renderActionBox(force){
     body = `<div class="afr"><label>Check</label><select data-ta="skill"><optgroup label="Skills">${TA_SKILLS.map(s=>opt(s, s, ta.skill)).join("")}</optgroup><optgroup label="Abilities">${Object.entries(ABIL_NAME).map(([k,l])=>opt(k, l, ta.skill)).join("")}</optgroup></select></div>
       <div class="afr"><label>DC</label><input data-ta="dc" type="number" min="1" value="${esc(ta.dc)}" placeholder="—"></div>
       <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small></label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>`; }).join("")}</div>
-      ${who.length>1 ? `<button class="btn wide" data-tar="checkall">Roll for everyone</button>` : ""}`;
+      ${who.length>1 ? `<button class="btn wide" data-tar="checkall">Roll for everyone</button>` : ""}
+      ${ta.skill===SEARCH_SKILL && checkSpot() ? `<label class="check" style="margin:4px 0 0" title="Each total is also that person's search of the place: hidden pieces, items and coin they can see"><input type="checkbox" data-ta="search" ${ta.search!==false?"checked":""}> Also search ${esc(placeLabel(checkSpot()))} with these totals</label>` : ""}`;
   } else if((ta.what==="give" || ta.what==="take") && o){
     const other = others.some(x=>x.key===ta.to) ? ta.to : (others[0]||{}).key, from = ta.what==="give" ? o : taObj(other);
     const items = (from && from.inv) || [];
@@ -13102,6 +13180,11 @@ function logTableAction(){
     const dc = +ta.dc || 0, what = ABIL_NAME[ta.skill] ? `${ABIL_NAME[ta.skill]} check` : `${ta.skill} check`;
     const res = x => `${x.name.split(" ")[0]} ${ta.tot[x.key]}${dc ? (+ta.tot[x.key] >= dc ? " ✓" : " ✗") : ""}`;
     gameLog("check", party || who.length>1 ? `${what}${dc?` (DC ${dc})`:""}: ${who.map(res).join(", ")}${N}` : `${name}: ${what} ${ta.tot[who[0].key]}${dc ? ` vs DC ${dc}, ${+ta.tot[who[0].key] >= dc ? "succeeds" : "fails"}` : ""}${N}`);
+    const spot = ta.skill===SEARCH_SKILL && ta.search!==false ? checkSpot() : null;
+    if(spot){
+      const rolls = who.filter(x=>x.key.startsWith("pc:")).map(x=>({ p:x.o, roll:Math.round(+ta.tot[x.key]) })).filter(r=>isFinite(r.roll));
+      if(rolls.length){ runPlaceSearch(spot, siteOf(spot), rolls); if(battleOf){ renderBattle(); renderBattlePanel(); } }
+    }
     ta.tot = {};
   } else if(ta.what==="give" || ta.what==="take"){
     const others = P.filter(x=>x.key!==ta.who), oKey = others.some(x=>x.key===ta.to) ? ta.to : (others[0]||{}).key, other = taObj(oKey);
