@@ -2043,7 +2043,8 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
    shore is Coastal; any other land is the island's own terrain (Grassland
    unless set). Joseph's table rules: road quality 1–10 (8–10 a good road,
    one step faster; 4–7 the land's own limit; 1–3 a poor path, one step
-   slower); the Navigation DC drops by the road's quality and the hardest
+   slower); the Navigation DC drops by half the road's quality, never under
+   5 (every trip has a check), and the hardest
    stretch sets it; each point the navigator's Wisdom (Survival) total
    falls short adds an hour on the road, and the trail wanders; a natural
    20 finds a shortcut, a quarter less time.
@@ -2123,7 +2124,7 @@ function tripPlan(from, to, t){
       for(let k=0; k<n; k++){
         const x = a.x + (b.x-a.x)*(k+.5)/n, y = a.y + (b.y-a.y)*(k+.5)/n, ter = terrainAt(x, y), T = TERRAINS[ter];
         const top = ter==="arctic" && !t.skis ? 1 : PACE_STEPS.indexOf(T.max), pace = PACE_STEPS[Math.max(0, Math.min(chosen, top + roadStep(q), 2))];
-        stretches.push({ ter, pace, q, miles:seg/n, dc:T.nav - q });
+        stretches.push({ ter, pace, q, miles:seg/n, dc:Math.max(5, T.nav - Math.floor(q/2)) });
       }
       if(!pts.length) pts.push([Math.round(a.x), Math.round(a.y)]); pts.push([Math.round(b.x), Math.round(b.y)]);
     }
@@ -2139,19 +2140,25 @@ function tripPlan(from, to, t){
 function clockHours(roadHours, hours){ const days = Math.floor(roadHours / hours), rest = roadHours - days*hours; return days*24 + rest; }
 /* the navigator's check against the trip: extra hours on the road (lost), or a shortcut */
 function navEffect(plan, nav){
-  if(!plan.dc) return { extra:0, word:"no check needed: the way is plain" };
   if(nav.nat20) return { extra:-plan.roadHours/4, word:"a natural 20: a shortcut, a quarter less time" };
   if(nav.total==null || nav.total==="") return { extra:0, word:"" };
   const short = plan.dc - Math.round(+nav.total);
   return short > 0 ? { extra:short, lost:short, word:`${nav.total}: lost for a while, ${short} hour${short===1?"":"s"} more on the road` } : { extra:0, word:`${nav.total}: they keep to the way` };
 }
 const navigatorAshore = () => navigatorOf() || (partySize()>1 ? partyRoster() : [])[0] || null;
+function rollNav(t){
+  const who = navigatorAshore(), d = 1 + Math.floor(Math.random()*20), m = who ? skillMod(who, "Survival") : 0;
+  t.nav = { total:d + m, nat20:d===20 };
+  return `${(who&&who.name)||"The navigator"}: Wisdom (Survival) ${d}${m ? `${m>0?"+":"−"}${Math.abs(m)}` : ""} = ${d+m}${d===20?", a natural 20":""}`;
+}
+const JOURNEY_MPS = [[2,"2 mi a second"],[5,"5 mi a second"],[10,"10 mi a second"],[20,"20 mi a second"],[50,"50 mi a second"]];
 function travelBlock(n){
   if(planOf || sailsAbout(n)) return "";
+  if(root.journey) return journeyBlock();
   const from = overlandFrom(); if(!from || from===n) return "";
   const t = travelSet(), plan = tripPlan(from, n, t), nav = navEffect(plan, t.nav), push = t.hours - 8;
   const hrs = clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours), who = navigatorAshore();
-  const hardWhy = plan.hard ? `${TERRAINS[plan.hard.ter].label} ${TERRAINS[plan.hard.ter].nav}${plan.hard.q ? `, less ${plan.hard.q} for the road` : ", no road"}` : "";
+  const hardWhy = plan.hard ? `${TERRAINS[plan.hard.ter].label} ${TERRAINS[plan.hard.ter].nav}${plan.hard.q ? `, less ${Math.floor(plan.hard.q/2)} for the road` : ", no road"}${plan.hard.dc===5 && TERRAINS[plan.hard.ter].nav - Math.floor(plan.hard.q/2) < 5 ? ", never under 5" : ""}` : "";
   const grades = plan.roads.map(q=>q ? `${roadGrade(q)} (${q}/10)` : "across country").join(", ");
   return `<div class="travelbox"><p class="eyebrow spaced">Travel here overland</p>
     <p class="empty-note" style="font-size:11px;margin:0 0 4px">From ${esc(from.name||"where they are")}: ${plan.miles} mi, ${grades}.</p>
@@ -2160,39 +2167,102 @@ function travelBlock(n){
       <label style="flex:0 0 92px">Hours a day <input type="number" data-travel="hours" min="1" max="16" value="${t.hours}"></label></div>
     ${plan.arctic ? `<label class="check" style="margin:4px 0"><input type="checkbox" data-travel="skis" ${t.skis?"checked":""}> Skis or snowshoes (Fast in Arctic terrain needs them)</label>` : ""}
     <p class="empty-note" style="font-size:11px;margin:4px 0 6px">${PACES[t.pace].label} pace: ${PACES[t.pace].effect}. The land and the road can hold them to a slower one.${push > 0 ? ` Pushing on ${push} hour${push===1?"":"s"} past 8 a day: each traveler makes a Constitution save at the end of each extra hour (DC 11${push>1?` to ${10+push}`:""}) or gains 1 Exhaustion level.` : ""}</p>
-    ${plan.dc ? `<div class="pcrow" style="align-items:center"><label style="flex:1">Navigation DC ${plan.dc} <small>(${esc(hardWhy)})</small>${who ? `<br><small>${esc(who.name||"The navigator")}, Wisdom (Survival)</small>` : ""}</label>
+    <div class="pcrow" style="align-items:center"><label style="flex:1">Navigation DC ${plan.dc} <small>(${esc(hardWhy)})</small>${who ? `<br><small>${esc(who.name||"The navigator")}, Wisdom (Survival)</small>` : ""}</label>
       <input type="number" data-travel="navtotal" placeholder="total" value="${esc(t.nav.total??"")}" style="width:64px"><button class="btn" data-travelroll>Roll</button>
       <label class="check" style="margin:0"><input type="checkbox" data-travel="nat20" ${t.nav.nat20?"checked":""}> nat 20</label></div>
-      ${nav.word ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">${esc(nav.word)}</p>` : ""}` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">No navigation check: the way is plain.</p>`}
-    <button class="btn wide" data-travelgo="${n.id}">Travel here: ${hoursWord(hrs)}</button>
+    <p class="empty-note" style="font-size:11px;margin:2px 0 6px">${nav.word ? esc(nav.word) : "No total yet: setting off rolls it for the navigator."}</p>
+    <div class="pcrow"><button class="btn" style="flex:1" data-travelgo="${n.id}">▶ Set off: ${hoursWord(hrs)}</button>
+      <select data-travel="mps" title="How fast it plays on the map" style="flex:0 0 120px">${JOURNEY_MPS.map(([v, l])=>`<option value="${v}" ${v===(+t.mps||10)?"selected":""}>${l}</option>`).join("")}</select></div>
     ${(root.trail||{}).pts ? `<button class="btn wide" data-trailclear>Clear their trail on the map</button>` : ""}</div>`;
 }
 document.getElementById("pane-inspect").addEventListener("change", e=>{
   const c = e.target.closest("[data-travel]"); if(!c) return;
   const t = travelSet(), k = c.dataset.travel;
-  if(k==="pace") t.pace = c.value; else if(k==="hours") t.hours = +c.value; else if(k==="skis") t.skis = c.checked;
+  if(k==="pace") t.pace = c.value; else if(k==="hours") t.hours = +c.value; else if(k==="skis") t.skis = c.checked; else if(k==="mps") t.mps = +c.value;
   else if(k==="nat20") t.nav.nat20 = c.checked; else if(k==="navtotal") t.nav.total = c.value==="" ? "" : Math.round(+c.value);
-  travelSet(); saveParty(); renderPane(true);
+  travelSet(); saveParty(); if(!journeyPlay) renderPane(true);
 });
 document.getElementById("pane-inspect").addEventListener("click", e=>{
   if(e.target.closest("[data-trailclear]")){ delete root.trail; touch(); render(); renderPane(true); return; }
-  if(e.target.closest("[data-travelroll]")){
-    const t = travelSet(), who = navigatorAshore(), d = 1 + Math.floor(Math.random()*20), m = who ? skillMod(who, "Survival") : 0;
-    t.nav = { total:d + m, nat20:d===20 }; saveParty(); renderPane(true);
-    flash(`${(who&&who.name)||"The navigator"}: Wisdom (Survival) ${d}${m ? `${m>0?"+":"−"}${Math.abs(m)}` : ""} = ${d+m}${d===20?", a natural 20":""}.`); return;
-  }
+  if(e.target.closest("[data-travelroll]")){ const said = rollNav(travelSet()); saveParty(); renderPane(true); flash(`${said}.`); return; }
+  const j = e.target.closest("[data-journey]");
+  if(j){ const a = j.dataset.journey; if(a==="pause") pauseJourney(); else if(a==="go") playJourney(); else if(a==="stop") endJourney(false); return; }
   const b = e.target.closest("[data-travelgo]"); if(!b) return;
-  const n = root.nodes.find(x=>x.id===b.dataset.travelgo), from = overlandFrom(); if(!n || !from) return;
-  const t = travelSet(), plan = tripPlan(from, n, t), nav = navEffect(plan, t.nav);
-  const hrs = clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours);
-  passHours(hrs, true);
-  root.trail = { pts:trailPoints(plan.pts, nav.lost||0) };
-  let g = activeGroup(); g.at = hasPlan(n.id) ? { map:n.id, node:null } : { map:"survey", node:n.id }; g = joinUp(g);
-  n.visited = true;
-  const push = t.hours - 8;
-  partyMoved(`${groupName(g)} traveled ${plan.miles} mi from ${from.name||"where they were"} to ${n.name||"the place"} at a ${PACES[t.pace].label} pace (${plan.parts.map(p=>`${TERRAINS[p.ter].label} ${p.miles} mi ${PACES[p.pace].label.toLowerCase()}`).join(", ")}): ${hoursWord(hrs)}.${plan.dc && nav.word ? ` Navigation DC ${plan.dc}, ${nav.word}.` : ""} Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).${push>0 && hrs>8 ? ` They pushed on ${push} hour${push===1?"":"s"} past 8 a day (Constitution saves, DC 11${push>1?` to ${10+push}`:""}).` : ""}`);
-  t.nav = {}; touch(); render(); renderPane(true);
+  const n = root.nodes.find(x=>x.id===b.dataset.travelgo), from = overlandFrom(); if(n && from) startJourney(from, n);
 });
+/* ══════════════════════════════════════════════════════════════
+   A JOURNEY UNDER WAY — like a voyage: the party's token goes along the
+   way at the chosen speed, the clock runs with it, the trail grows behind
+   it (wandering where they got lost), the view follows; Pause, Go on, or
+   stop where they are. root.journey keeps it across a pause or a reload.
+   ══════════════════════════════════════════════════════════════ */
+var journeyPlay = null;
+function startJourney(from, n){
+  const t = travelSet(); let said = "";
+  if(!t.nav.nat20 && (t.nav.total==null || t.nav.total==="")) said = rollNav(t);
+  const plan = tripPlan(from, n, t), nav = navEffect(plan, t.nav);
+  const path = trailPoints(plan.pts, nav.lost||0), cum = [0];
+  for(let i=1; i<path.length; i++) cum.push(cum[i-1] + Math.hypot(path[i][0]-path[i-1][0], path[i][1]-path[i-1][1]));
+  const g = activeGroup();
+  root.journey = { gid:g.id, from:from.id, to:n.id, path, cum, miles:plan.miles, hours:clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours), done:0, passed:0,
+    pace:t.pace, dc:plan.dc, nav:{ ...t.nav }, word:nav.word, parts:plan.parts, push:t.hours - 8 };
+  root.trail = { pts:[path[0]] };
+  gameLog("move", `${groupName(g)} set off from ${from.name||"where they were"} for ${n.name||"somewhere"}: ${plan.miles} mi at a ${PACES[t.pace].label} pace (${plan.parts.map(p=>`${TERRAINS[p.ter].label} ${p.miles} mi ${PACES[p.pace].label.toLowerCase()}`).join(", ")}). Navigation DC ${plan.dc}${nav.word ? `, ${nav.word}` : ""}.`);
+  t.nav = {}; if(said) flash(`${said}.`);
+  playJourney();
+}
+const journeyAt = J => { const L = J.cum[J.cum.length-1] || 1, want = Math.min(1, J.done / (J.miles || 1)) * L;
+  let i = 1; while(i < J.cum.length-1 && J.cum[i] < want) i++;
+  const a = J.path[i-1], b = J.path[i] || a, seg = (J.cum[i] - J.cum[i-1]) || 1, f = Math.max(0, Math.min(1, (want - J.cum[i-1]) / seg));
+  return { x:a[0] + (b[0]-a[0])*f, y:a[1] + (b[1]-a[1])*f, i }; };
+function playJourney(){
+  const J = root.journey; if(!J || planOf) return;
+  journeyPlay = { last:performance.now(), drew:0, owed:0 };
+  const p = journeyAt(J), r = svg.getBoundingClientRect(); view.tx = r.width/2 - p.x*view.k; view.ty = r.height/2 - p.y*view.k; applyTransform();
+  requestAnimationFrame(stepJourney); renderPane(true);
+}
+function pauseJourney(){
+  const jp = journeyPlay; if(!jp) return; journeyPlay = null;
+  if(jp.owed) passHours(jp.owed);
+  const J = root.journey; if(J) flash(`Paused on the road: ${Math.round(J.miles - J.done)} mi to go. Day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
+  touch(); render(); renderPane(true);
+}
+function stepJourney(t){
+  const jp = journeyPlay, J = root.journey; if(!jp) return;
+  if(!J || planOf){ pauseJourney(); return; }
+  const dt = Math.min(.25, Math.max(0, (t - jp.last)/1000)); jp.last = t;
+  const step = Math.min(J.miles - J.done, (+travelSet().mps || 10) * dt), hrs = J.hours * step / (J.miles || 1);
+  J.done += step; J.passed += hrs; jp.owed += hrs;
+  if(jp.owed >= .25){ passHours(jp.owed, true); jp.owed = 0; }          // the clock ticks along as they go
+  const p = journeyAt(J), g = groupsOf().find(x=>x.id===J.gid) || activeGroup();
+  g.at = { map:"survey", x:Math.round(p.x), y:Math.round(p.y) };
+  root.trail = { pts:[...J.path.slice(0, p.i), [Math.round(p.x), Math.round(p.y)]] };
+  const r = svg.getBoundingClientRect(); view.tx = r.width/2 - p.x*view.k; view.ty = r.height/2 - p.y*view.k; applyTransform();
+  if(J.done >= J.miles - 1e-6){ endJourney(true); return; }
+  if(t - jp.drew > 40){ jp.drew = t; render(); const pr = document.getElementById("jr-prog"); if(pr) pr.textContent = journeyProgress(J); }
+  requestAnimationFrame(stepJourney);
+}
+/* there (arrived), or stopped on the road where they are */
+function endJourney(arrived){
+  const jp = journeyPlay; journeyPlay = null; if(jp && jp.owed) passHours(jp.owed, true);
+  const J = root.journey; if(!J) return; delete root.journey;
+  const to = root.nodes.find(x=>x.id===J.to), from = root.nodes.find(x=>x.id===J.from);
+  let g = groupsOf().find(x=>x.id===J.gid) || activeGroup();
+  if(arrived && to){
+    root.trail = { pts:J.path }; g.at = hasPlan(to.id) ? { map:to.id, node:null } : { map:"survey", node:to.id }; g = joinUp(g); to.visited = true;
+    partyMoved(`${groupName(g)} reached ${to.name||"the place"} from ${(from&&from.name)||"where they were"}: ${J.miles} mi, ${hoursWord(J.passed)} on the way.${J.push>0 && J.passed>8 ? ` They pushed on ${J.push} hour${J.push===1?"":"s"} past 8 a day (Constitution saves, DC 11${J.push>1?` to ${10+J.push}`:""}).` : ""} Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
+  } else partyMoved(`${groupName(g)} stopped on the road to ${(to&&to.name)||"somewhere"}: ${Math.round(J.done)} mi along, ${Math.round(J.miles - J.done)} mi short, ${hoursWord(J.passed)} on the way. Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
+  touch(); render(); renderPane(true);
+}
+const journeyProgress = J => `${Math.round(J.done)} of ${J.miles} mi, ${hoursWord(J.passed)} so far`;
+function journeyBlock(){
+  const J = root.journey, to = root.nodes.find(x=>x.id===J.to), t = travelSet();
+  return `<div class="travelbox"><p class="eyebrow spaced">On the road to ${esc((to&&to.name)||"somewhere")}</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px"><span id="jr-prog">${journeyProgress(J)}</span> · ${PACES[J.pace].label} pace · Navigation DC ${J.dc}${J.word ? `, ${esc(J.word)}` : ""}</p>
+    <div class="pcrow">${journeyPlay ? `<button class="btn" style="flex:1" data-journey="pause">⏸ Pause</button>` : `<button class="btn" style="flex:1" data-journey="go">▶ Go on</button>`}
+      <select data-travel="mps" title="How fast it plays on the map" style="flex:0 0 120px">${JOURNEY_MPS.map(([v, l])=>`<option value="${v}" ${v===(+t.mps||10)?"selected":""}>${l}</option>`).join("")}</select></div>
+    ${journeyPlay ? "" : `<button class="btn wide" data-journey="stop">Stop here, on the road</button>`}</div>`;
+}
 /* the party's trail: the way they went, dotted on the map (both screens); lost for a while, it wanders off the way */
 function trailPoints(pts, lost){
   if(!lost || pts.length < 2) return pts;
@@ -3501,7 +3571,7 @@ function render(){
   syncToolsBtn();
   syncHistBtns();
   syncUpBtn(); renderVoyageBar();
-  if(!voyagePlay) renderPane();                 // under sail, the panel holds still (its Pause button stays clickable)
+  if(!voyagePlay && !journeyPlay) renderPane();     // under sail or on the road, the panel holds still (its Pause button stays clickable)
 }
 
 /* the dividers: a chained rule stepped off in miles */
@@ -11901,7 +11971,7 @@ function renderInspectInner(){
       <div class="field"><label>Region</label><select id="r-region">${regionOptions(r.region)}</select></div>
       <label class="check"><input id="r-straight" type="checkbox" ${r.straight?"checked":""}> Straight lines between bends</label>
       <label class="check" style="margin-top:6px"><input id="r-coach" type="checkbox" ${r.coach?"checked":""}> Coaches run this road</label>
-      <div class="field" style="margin-top:8px"><label>Road quality <small>1 a poor path to 10 a good road</small></label><input id="r-quality" class="mono" type="number" min="1" max="10" value="${roadQuality(r)}" title="A table rule: 8–10 a good road (one step faster than the land allows, 2024), 4–7 the land's own limit, 1–3 a poor path (one step slower). Each point takes 1 off the Navigation DC"></div>
+      <div class="field" style="margin-top:8px"><label>Road quality <small>1 a poor path to 10 a good road</small></label><input id="r-quality" class="mono" type="number" min="1" max="10" value="${roadQuality(r)}" title="A table rule: 8–10 a good road (one step faster than the land allows, 2024), 4–7 the land's own limit, 1–3 a poor path (one step slower). Every 2 points take 1 off the Navigation DC, never under 5"></div>
       ${a && b && (a.hidden || b.hidden) ? (()=>{ const rv = r.reveal || {}, shown = a.hidden ? b : a, nm = x => esc(x.name||KINDS[x.kind].label);
         return `<div class="field" style="margin-top:14px"><label>On the players' screen</label>
         <div class="row2" ${a.hidden && b.hidden ? "hidden" : ""}><input id="r-rvmi" class="mono" type="number" step="0.5" min="0" value="${rv.miles||""}" placeholder="0">
