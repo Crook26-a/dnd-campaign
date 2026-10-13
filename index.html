@@ -5612,17 +5612,17 @@ const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.lev
    Party tab and on the players' screen. And Joseph's table rule on XP
    (the 2024 rules split an encounter's XP evenly and stop there): the
    fight's pool is still split evenly, with a bonus pool on top shared by
-   damage dealt, foes brought down, healing and aim, less a penalty pool
-   taken by share of the damage the party took; and outside fights, a
+   damage dealt, foes brought down, healing and aim (no penalty for damage
+   taken: Joseph dropped it); and outside fights, a
    great check (beat the DC by enough, or a natural 20) earns XP by level
    and a bad miss (or a natural 1) costs some. Every number is a setting
    (root.xpRules), shown in the Party tab.
    ══════════════════════════════════════════════════════════════ */
-const XP_RULES_DEFAULT = { bonus:20, penalty:10, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, great:10, greatXp:25, bad:10, badXp:10 } };
+const XP_RULES_DEFAULT = { bonus:20, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, great:10, greatXp:25, bad:10, badXp:10 } };
 function xpRules(){
   const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
   r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) };
-  if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.penalty)) r.penalty = XP_RULES_DEFAULT.penalty;
+  if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
 const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","greats","flops"];
@@ -5633,20 +5633,19 @@ function statSnap(){
     o.spells = Object.values(S.spells||{}).reduce((a, b)=>a + (+b||0), 0); out[c.id] = o; }
   return out;
 }
-/* the fight's XP shared out: an even share each, the bonus pool by what each did, the penalty by what each took */
+/* the fight's XP shared out: an even share each, then the bonus pool on top, by what each did */
 const XP_CATS = [["dealt","damage"], ["kills","kills"], ["healed","healing"], ["aim","aim"]];
 function perfAward(due){
   const R = xpRules(), pcs = partyRoster().filter(c=>due.delta[c.id]), n = pcs.length || 1, pool = +due.pool || 0;
   const v = (c, k) => { const d = due.delta[c.id] || {}; return k==="aim" ? ((d.attacks||0) >= 2 ? (d.hits||0) / d.attacks : 0) : Math.max(0, d[k]||0); };
-  const B = pool * (+R.bonus||0) / 100, P = pool * (+R.penalty||0) / 100, wsum = XP_CATS.reduce((s, [k])=>s + Math.max(0, +R.w[k]||0), 0) || 1;
-  const sumOf = k => pcs.reduce((s, c)=>s + v(c, k), 0), taken = pcs.reduce((s, c)=>s + Math.max(0, (due.delta[c.id]||{}).taken||0), 0);
+  const B = pool * (+R.bonus||0) / 100, wsum = XP_CATS.reduce((s, [k])=>s + Math.max(0, +R.w[k]||0), 0) || 1;
+  const sumOf = k => pcs.reduce((s, c)=>s + v(c, k), 0);
   return pcs.map(c=>{
     const share = Math.floor(pool / n), bonus = {};
     for(const [k] of XP_CATS){ const t = sumOf(k); bonus[k] = t > 0 ? B * (Math.max(0, +R.w[k]||0) / wsum) * v(c, k) / t : 0; }
-    const pen = taken > 0 ? P * Math.max(0, (due.delta[c.id]||{}).taken||0) / taken : 0;
-    const auto = Math.max(0, Math.round(share + Object.values(bonus).reduce((a, b)=>a + b, 0) - pen));
+    const auto = Math.max(0, Math.round(share + Object.values(bonus).reduce((a, b)=>a + b, 0)));
     const total = due.edit && due.edit[c.id] != null && due.edit[c.id] !== "" ? Math.max(0, Math.round(+due.edit[c.id]||0)) : auto;
-    return { c, share, bonus, pen, auto, total, d:due.delta[c.id] || {} };
+    return { c, share, bonus, auto, total, d:due.delta[c.id] || {} };
   });
 }
 /* XP to each by name (a fight's shares, a check's bonus or cost); one step to take back */
@@ -5665,11 +5664,11 @@ function xpDueBlock(st){
   const R = xpRules(), rows = perfAward(due), f = x => Math.round(x);
   if(!rows.length) return "";
   return `<div class="xpdue"><p class="eyebrow spaced" style="margin-top:4px">XP for the fight${due.place ? ` at ${esc(due.place)}` : ""}</p>
-    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${due.pool.toLocaleString()} XP from the foes brought down, split ${rows.length} ways, plus ${R.bonus}% for how they fought, less ${R.penalty}% by the damage each took (your table rule).</p>
-    <table class="xptab"><tr><th></th><th title="An even share of the fight's XP">share</th><th title="Damage dealt">dmg</th><th title="Foes brought down">kills</th><th title="Healing given">heal</th><th title="Hits for attacks made">aim</th><th title="Less, for damage taken">taken</th><th>total</th></tr>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${due.pool.toLocaleString()} XP from the foes brought down, split ${rows.length} ways, plus ${Math.round(due.pool * R.bonus / 100)} XP more (${R.bonus}%) shared by how they fought (your table rule).</p>
+    <table class="xptab"><tr><th></th><th title="An even share of the fight's XP">share</th><th title="Damage dealt">dmg</th><th title="Foes brought down">kills</th><th title="Healing given">heal</th><th title="Hits for attacks made">aim</th><th>total</th></tr>
     ${rows.map(r=>`<tr><td>${esc((r.c.name||"Someone").split(" ")[0])}</td><td>${r.share}</td>
       <td title="${r.d.dealt||0} damage">+${f(r.bonus.dealt)}</td><td title="${r.d.kills||0} brought down">+${f(r.bonus.kills)}</td><td title="${r.d.healed||0} healed">+${f(r.bonus.healed)}</td>
-      <td title="${r.d.hits||0} of ${r.d.attacks||0} hit">+${f(r.bonus.aim)}</td><td title="${r.d.taken||0} damage taken">−${f(r.pen)}</td>
+      <td title="${r.d.hits||0} of ${r.d.attacks||0} hit">+${f(r.bonus.aim)}</td>
       <td><input class="mono" data-xpdue="${r.c.id}" type="number" min="0" value="${r.total}" style="width:62px"></td></tr>`).join("")}</table>
     <div class="pcrow" style="margin-top:6px"><button class="btn calmgo" style="flex:2" data-xpd="award">Award these</button><button class="btn" style="flex:1" data-xpd="split" title="Just the even split, ${Math.floor(due.pool/rows.length)} each">Even split</button><button class="btn" style="flex:0 0 auto" data-xpd="drop" title="No XP for this one">×</button></div></div>`;
 }
@@ -5739,8 +5738,7 @@ function xpRulesBlock(){
   return `<details class="partysec" data-invfor="party:xprules" ${openInv.has("party:xprules")?"open":""}><summary class="eyebrow">XP for how they play <small>your table rule</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">The 2024 rules split a fight's XP evenly. This adds to that.</p>
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
-      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights),
-      less ${num("penalty", R.penalty)} % taken by each one's share of the damage the party took.</div>
+      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
     <div class="xprule">A great check: beat the DC by ${num("checks.great", C.great, 46)} or a natural 20 = +${num("checks.greatXp", C.greatXp, 46)} XP × level.<br>
       A bad miss: miss it by ${num("checks.bad", C.bad, 46)} or a natural 1 = −${num("checks.badXp", C.badXp, 46)} XP × level.</div>
