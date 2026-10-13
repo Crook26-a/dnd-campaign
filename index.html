@@ -774,6 +774,7 @@
   .xpdue{border:1px solid var(--rule);background:var(--paper);padding:2px 8px 8px;margin:0 0 10px;border-radius:3px}
   .xprule{font-size:12px;line-height:1.9;color:var(--ink-soft)} .xprule input{padding:1px 4px}
   .tanat{flex:none;margin:0;font-size:10.5px;white-space:nowrap;color:var(--ink-soft)}
+  .taresult{margin:2px 0 8px;padding:5px 8px;border:1px solid var(--rule);border-left:3px solid var(--lead);background:var(--paper);font-size:12.5px;line-height:1.4}
   .statfix{margin-top:6px} .statfix > summary{cursor:pointer;font-size:11.5px;color:var(--ink-soft)}
   .statfixgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-top:4px} .statfixgrid label{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11.5px} .statfixgrid input{width:64px;padding:1px 4px}
   .mb{width:min(1500px,96vw);min-height:80vh;box-sizing:border-box;padding:3.5vh 3vw 4vh;border-radius:6px;position:relative}
@@ -14194,6 +14195,7 @@ function renderActionBox(force){
     ${body}
     <div class="afr"><label>Note</label><input data-ta="note" value="${esc(ta.note)}" placeholder="optional"></div>
     <button class="btn wide" data-talog style="background:var(--ink);color:var(--paper-lit);border-color:var(--ink)">Log it</button>
+    ${ta.result ? `<div class="taresult">${esc(ta.result)}</div>` : ""}
     <p class="grouplab" style="margin-top:12px">Something else happened</p>
     <div class="afr"><input data-ta="other" value="${esc(ta.other)}" placeholder="The innkeeper won't serve the dwarf until she pays her old tab…"><button class="btn" data-taother>Save</button></div>
     <label class="check" style="margin:0"><input type="checkbox" data-ta="otherLog" ${ta.otherLog?"checked":""}> Also in the game log (otherwise just your notes)</label>`;
@@ -14228,6 +14230,7 @@ function wireActionBox(){
 }
 /* doing it: the change on the sheets, and a line in the game log that says who did it */
 function logTableAction(){
+  ta.result = "";                                         // what came of the last one logged (XP), shown under Log it until the next
   const P = taPeople(), party = ta.who==="party", o = party ? null : taObj(ta.who), name = party ? "The party" : (P.find(x=>x.key===ta.who)||{}).name || "Someone";
   const N = ta.note ? ` (${ta.note})` : "", nameOf = key => (P.find(x=>x.key===key)||{}).name || "someone";
   const on = ta.on && P.some(x=>x.key===ta.on) ? ta.on : null;
@@ -14245,7 +14248,7 @@ function logTableAction(){
     if(String(ta.who).startsWith("pc:") && src.k!=="hd"){ const S = statsOf(o); S.healed += Math.max(0, numOr(t.hp, 0) - was); if(src.s) S.spells[src.s.name] = (S.spells[src.s.name]||0) + 1; }
     /* and XP for it, outside a fight (your table rule): so much × level for each hit point actually restored */
     if(String(ta.who).startsWith("pc:") && src.k!=="hd" && !(battleOf && !calmHere()) && partyRoster().includes(o)){ const back = Math.max(0, numOr(t.hp, 0) - was), xp = Math.round(back * Math.max(0, +xpRules().heal||0) * clampLv(o.level));
-      if(xp > 0){ const said = awardXPPer({ [o.id]:xp }, `healing ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${back} outside a fight`); setTimeout(()=>flash(`XP: ${said}`), 1600); } }
+      if(xp > 0){ const said = awardXPPer({ [o.id]:xp }, `healing ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${back} outside a fight`); ta.result = `XP: ${said}`; } }
   } else if(ta.what==="use"){
     const U = usableOf(o||{}), cur = U.find(x=>String(x.k)===String(ta.item)) || U[0]; if(!cur){ flash("Nothing to use."); return; }
     const tKey = on || ta.who, t = taObj(tKey), amt = Math.max(0, Math.round(+ta.amt||0));
@@ -14273,7 +14276,7 @@ function logTableAction(){
       const rolls = who.filter(x=>x.key.startsWith("pc:")).map(x=>({ p:x.o, roll:Math.round(+ta.tot[x.key]) })).filter(r=>isFinite(r.roll));
       if(rolls.length){ runPlaceSearch(spot, siteOf(spot), rolls); if(battleOf){ renderBattle(); renderBattlePanel(); } }
     }
-    const xpSaid = checkXp(who, dc, ta.nat || {}, what); if(xpSaid) setTimeout(()=>flash(`XP: ${xpSaid}`), 1600);
+    const xpSaid = checkXp(who, dc, ta.nat || {}, what); ta.result = xpSaid ? `XP: ${xpSaid}` : (dc ? `${what}: no XP either way` : "");
     ta.nat = {};
     ta.tot = {};
   } else if(ta.what==="give" || ta.what==="take"){

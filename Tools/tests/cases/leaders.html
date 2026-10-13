@@ -17,6 +17,7 @@
   Object.assign(ta, { who:'party', what:'check', skill:'Athletics', dc:'12', tot:{ ['pc:'+R[0].id]:'25', ['pc:'+R[1].id]:'1', ['pc:'+R[2].id]:'12', ['pc:'+R[3].id]:'17' }, nat:{ ['pc:'+R[1].id]:1 } }); renderActionBox(true); await wait(20);
   const tick = document.querySelector('#actionbox [data-tanat="pc:'+R[3].id+'"]'); tick.click(); await wait(20); out.push('nat 20 box ticked: ' + (ta.nat['pc:'+R[3].id]===20));
   const b2 = R.map(c=>+c.xp); document.querySelector('#actionbox [data-talog]').click(); await wait(50);
+  out.push('action box shows: ' + (document.querySelector('#actionbox .taresult')||{}).textContent);
   out.push('checks: ' + R.map((c, i)=>c.name.split(' ')[0] + ' ' + ((+c.xp) - b2[i])).join(', ') + ' | greats ' + statsOf(R[0]).greats + ', flops ' + statsOf(R[1]).flops);
   /* the leaderboards, and on the TV */
   pane = 'party'; syncTabs(); openInv.add('party:leaders'); renderPane(true); await wait(30);
