@@ -1786,7 +1786,7 @@ function playersOrder(){
   const n = bnode(), c = n && n.site && n.site.combat; if(!c || editingInside()) return null;
   if(!c.turn && !Object.values(c.init||{}).some(v=>v!=null)) return null;
   const lineup = c.layout==="lineup", sight = lineup ? null : sightOf(n, c, useBmap(n));
-  const list = combatants(c).filter(t=>!t.fled && !(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && (isMember(t) || !sight || sight.seen(t)))
+  const list = combatants(c).filter(t=>!t.fled && !(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && (isMember(t) || (sight ? sight.seen(t) : !outOfSight(stealthOf(c, t)))))
     .map(t=>({ label:(t.x && t.x.shownAs) || t.label, party:t.side==="party", now:c.turn===t.id }));      // a foe named at the table keeps its old label for the players
   return list.length ? { round:c.round, list } : null;
 }
@@ -6063,7 +6063,7 @@ function wireInv(el, n, st){
   });
 }
 function startFight(st){
-  const list = [];
+  const list = [], stealth = {};
   (st.foes||[]).forEach((f, fi)=>{
     if(f.chance!=null && f.chance<1 && Math.random() >= f.chance) return;
     const m = foeById(f.id), count = rollCount(f.n??1), max = foeMaxHp(m);
@@ -6072,12 +6072,13 @@ function startFight(st){
       /* what Build set up: what each one carries, and the square each one starts on */
       if(f.kit && f.kit.foe===f.id && Array.isArray(f.kit.inv)){ x.inv = JSON.parse(JSON.stringify(f.kit.inv)); x.purse = { ...(f.kit.purse||{}) }; if(f.kit.pdc!=null) x.pdc = f.kit.pdc; }
       if(st.at && st.at[`f:${fi}:${i}`]) x.at = { ...st.at[`f:${fi}:${i}`] };
+      if(f.hide > 0) stealth[x.id] = { hide:f.hide };     // Build set them to start hidden: an ambush
       list.push(foeBelongings(x));
     }
   });
   /* calm: everyone is here and on the map, but nobody is fighting yet — no initiative, no turns, no rounds. Going into
      any place starts this way, planned encounter or not; the fight begins only from Start the battle (beginBattle) */
-  st.combat = { round:1, list, stage:0, calm:true };     // stage: how many later stages have been brought in
+  st.combat = { round:1, list, stage:0, calm:true, stealth };     // stage: how many later stages have been brought in
 }
 /* is this place calm (here, not fighting)? A place entered before calm existed counts as calm if its fight never got going */
 function calmOf(c){
@@ -11404,7 +11405,7 @@ function sitePanel(n){
         <input data-foen="${i}" class="fnum mono" type="text" value="${esc(String(f.n??1))}" placeholder="1d3" title="A number, or dice like 1d3">
         <input data-foec="${i}" class="fchance mono" type="text" value="${f.chance==null?"":f.chance}" placeholder="1" title="Chance it's here at all, 0 to 1">
         <button class="fdel" data-foedel="${i}" title="Remove">×</button>
-      </div>${m?`<div class="foenote">${m.xp} xp each${f.chance!=null&&f.chance<1?` · ${Math.round(f.chance*100)}% of the time`:""}${m.boss?" · boss":""}${m.talk?" · can be talked to":""}${(libFoeById(f.id)||SRD_FOE_BY.get(f.id))?` · <span class="libref" data-libopen="foes:${f.id}">stat block</span>`:""}</div>`:""}${m?`<div style="margin:0 0 6px">${foeInvBlock(kitView(st, i), "s"+i, false)}</div>`:""}`;
+      </div>${m?`<div class="foenote">${m.xp} xp each${f.chance!=null&&f.chance<1?` · ${Math.round(f.chance*100)}% of the time`:""}${m.boss?" · boss":""}${m.talk?" · can be talked to":""}${(libFoeById(f.id)||SRD_FOE_BY.get(f.id))?` · <span class="libref" data-libopen="foes:${f.id}">stat block</span>`:""}</div>`:""}${m?`<label style="display:block;font-size:11px;margin:2px 0 6px" title="An ambush: they start hidden (the Hide action, so Invisible while hidden), off the players' screen and their turn order until someone finds them. The DC is their Stealth total; blank = in plain sight">Start hidden, DC <input data-foeh="${i}" class="mono" type="number" min="1" value="${f.hide??""}" placeholder="no" style="width:64px"></label>`:""}${m?`<div style="margin:0 0 6px">${foeInvBlock(kitView(st, i), "s"+i, false)}</div>`:""}`;
     }).join("")}
     <button class="btn wide" id="st-addfoe" style="margin-top:4px">Add another</button>
 
@@ -11489,6 +11490,13 @@ function wireSite(n){
       const f = st.foes[+e.target.dataset.foec];
       if(v==="") delete f.chance; else f.chance = Math.max(0, Math.min(1, +v||0));
       touch(); refreshVerdict(n);
+    };
+  });
+  $("#pane-inspect").querySelectorAll("[data-foeh]").forEach(inp=>{
+    inp.oninput = e=>{
+      const v = Math.round(+e.target.value), f = st.foes[+e.target.dataset.foeh];
+      if(e.target.value.trim()==="" || !(v > 0)) delete f.hide; else f.hide = v;
+      touch();
     };
   });
   $("#pane-inspect").querySelectorAll("[data-foedel]").forEach(b=>{
