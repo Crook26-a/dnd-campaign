@@ -5042,7 +5042,7 @@ function srdSpellBlock(s){
   const line = (k,v) => v ? `<div class="sbl"><b>${k}</b> ${esc(String(v))}</div>` : "";
   return `<div class="statblock">
     <div class="sbmeta">${s.lv?`${ORD[s.lv]}-level ${esc(s.school.toLowerCase())}`:`${esc(s.school)} cantrip`}${s.rit?" (ritual)":""}</div>
-    ${line("Casting time", s.time)}${line("Range", s.range)}${line("Components", s.comp)}${line("Duration", (s.conc?"Concentration, ":"")+s.dur)}
+    ${line("Casting time", spellTime(s.time))}${line("Range", s.range)}${line("Components", s.comp)}${line("Duration", (s.conc?"Concentration, ":"")+s.dur)}
     ${line("Classes", s.cls)}${s.save?line("Save", s.save):""}${s.atk?line("Attack", "Spell attack roll"):""}${s.dmg?line(s.heal?"Healing":"Damage", `${s.dmg}${s.dtype?` ${s.dtype}`:""}`):""}
     <p class="sbp" style="white-space:pre-wrap;margin-top:6px">${srdText(s.desc)}</p>
     ${s.hi?`<p class="sbp"><b>At higher levels.</b> ${srdText(s.hi)}</p>`:""}</div>`;
@@ -5111,7 +5111,7 @@ function srdItemBlock(x){
 function copyFromSrd(cat, id){
   if(cat==="spells"){ const s = SPELL_BY.get(id); if(!s) return null;
     const { heal, ...rest } = JSON.parse(JSON.stringify(s));
-    return { ...rest, id:uid("lsp"), name:`${s.name} (yours)`, notes:`Copied from the SRD 5.2 ${s.name}.` }; }
+    return { ...rest, time:spellTime(s.time), id:uid("lsp"), name:`${s.name} (yours)`, notes:`Copied from the SRD 5.2 ${s.name}.` }; }
   if(cat==="foes"){
     const f = SRD_FOE_BY.get(id); if(!f) return null;
     const ab = Array.isArray(f.ab) ? f.ab : [];
@@ -5200,6 +5200,12 @@ function blankLib(cat){
   return { id:uid("ll"), name:"New item", kind:"curio", value:"", desc:"", notes:"" };
 }
 const SPELL_SCHOOLS = ["Abjuration","Conjuration","Divination","Enchantment","Evocation","Illusion","Necromancy","Transmutation"];
+/* casting times, as the 2024 rules write them; the SRD data's own spellings ("Bonus-Action", "1Minute") read the same way */
+const SPELL_TIMES = ["Action","Bonus Action","Reaction","1 minute","10 minutes","1 hour","12 hours","24 hours"];
+const spellTime = t => String(t||"").replace(/^Bonus-Action$/i,"Bonus Action").replace(/^(\d+)\s*(Minute|Hour)(s?)$/i, (a, n, u, s)=>`${n} ${u.toLowerCase()}${s.toLowerCase()}`);
+/* components as ticks: "V, S, M (a pinch of salt)" ↔ { v, s, m, mat } */
+const compParts = c => { c = String(c||""); const mat = (/\bM\s*\(([^)]*)\)/.exec(c)||[])[1] || ""; return { v:/\bV\b/.test(c), s:/\bS\b/.test(c), m:/\bM\b/.test(c), mat }; };
+const compText = p => [p.v ? "V" : "", p.s ? "S" : "", p.m ? `M${p.mat ? ` (${p.mat})` : ""}` : ""].filter(Boolean).join(", ");
 const spellLine = s => [s.lv ? `${ORD[s.lv]} level` : "cantrip", String(s.school||"").toLowerCase(), s.conc ? "conc." : "", s.dmg ? `${s.dmg} ${s.dtype||""}`.trim() : ""].filter(Boolean).join(" · ");
 /* a spell of your own heals if it says it restores Hit Points and does no damage, as the SRD's are read */
 const spellHeals = s => !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||"");
@@ -5303,8 +5309,11 @@ function libForm(cat, x){
     /* a spell of your own, on the SRD's own fields, so it casts, scales with a higher slot and heals as theirs do */
     const sel = (k, lab, opts, flex) => `<div class="field" style="flex:${flex||1}"><label>${lab}</label><select ${a} data-f="${k}">${opts.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(x[k]??"")?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`;
     h += `<div class="pcrow">${sel("lv","Level",[[0,"Cantrip"],...[1,2,3,4,5,6,7,8,9].map(n=>[n, `${ORD[n]} level`])])}${sel("school","School",SPELL_SCHOOLS.map(s=>[s,s]))}</div>
-      <div class="pcrow">${t("time","Casting time",1,"Action, Bonus Action, 1 minute")}${t("range","Range",1,"60 feet, Self, Touch")}</div>
-      <div class="pcrow">${t("comp","Components",1.3,"V, S, M (a pinch of salt)")}${t("dur","Duration",1,"Instantaneous, 1 minute")}</div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Casting time</label>${sheetPick(`${a} data-f="time"`, SPELL_TIMES, x.time)}</div>${t("range","Range",1,"60 feet, Self, Touch")}</div>
+      ${(()=>{ const c = compParts(x.comp), box = (k, l, on) => `<label class="check" style="margin:0 12px 0 0"><input ${a} data-comp="${k}" type="checkbox" ${on?"checked":""}> ${l}</label>`;
+        return `<div class="field"><label>Components</label><div class="pcrow" style="margin:2px 0 4px">${box("v","Verbal (V)",c.v)}${box("s","Somatic (S)",c.s)}${box("m","Material (M)",c.m)}</div>
+          ${c.m ? `<input ${a} data-compmat type="text" value="${esc(c.mat)}" placeholder="The material: a pinch of salt, a diamond worth 300+ GP, which the spell consumes">` : ""}</div>`; })()}
+      <div class="pcrow">${t("dur","Duration",1,"Instantaneous, 1 minute")}</div>
       <div class="pcrow" style="margin-bottom:9px"><label class="check" style="flex:1"><input ${a} data-f="conc" type="checkbox" ${x.conc?"checked":""}> Concentration</label>
         <label class="check" style="flex:1"><input ${a} data-f="rit" type="checkbox" ${x.rit?"checked":""}> Ritual</label></div>
       ${t("cls","Classes",1,"Wizard, Sorcerer")}
@@ -5542,15 +5551,23 @@ $("#pane-library").addEventListener("input", e=>{
     if(dr){ x.name = t.value; return; } }
   saveParty();
 });
+/* a spell's components, ticked: rebuilt into the usual "V, S, M (…)" */
+function compFromForm(el, x){
+  const f = el.closest(".libform"), on = k => !!(f.querySelector(`[data-comp="${k}"]`)||{}).checked, mat = f.querySelector("[data-compmat]");
+  x.comp = compText({ v:on("v"), s:on("s"), m:on("m"), mat:mat ? mat.value.trim() : compParts(x.comp).mat });
+}
+$("#pane-library").addEventListener("input", e=>{ const t = e.target; if(t.dataset.compmat==null) return;
+  const x = libFind(t.dataset.lib, t.dataset.id); if(x){ compFromForm(t, x); if(!(libDraft && libDraft.x===x)) saveParty(); } });
 $("#pane-library").addEventListener("change", e=>{
   const t = e.target, cat = t.dataset.lib, k = t.dataset.f;
+  if(cat && t.dataset.comp!=null){ const x = libFind(cat, t.dataset.id); if(!x) return; compFromForm(t, x); if(!(libDraft && libDraft.x===x)) saveParty(); renderLibList(); return; }
   /* a weapon picked for a person's attacks: worked out from their sheet */
   if(cat && t.dataset.libweap!=null){ const x = libFind(cat, t.dataset.id), at = x && t.value && weaponAttack(x, t.value); if(!at) return;
     x.attacks = Array.isArray(x.attacks) ? x.attacks : []; x.attacks.push(at); saveParty(); renderLibList(); flash(`${x.name||"They"}: ${at.name} ${at.hit}, ${at.dmg} ${at.dtype}.`); return; }
   if(!cat||!k) return;
   const x = libFind(cat, t.dataset.id); if(!x) return;
   /* Other… in a sheet's dropdown: type the new one */
-  if(t.tagName==="SELECT" && t.value==="__other"){ const v = prompt(k==="species" ? "Their species:" : k==="cls" ? "Their class:" : "Type it:", x[k]||""); if(v!=null && v.trim()) x[k] = v.trim(); saveParty(); renderLibList(); return; }
+  if(t.tagName==="SELECT" && t.value==="__other"){ const v = prompt(k==="species" ? "Their species:" : k==="cls" ? "Their class:" : k==="time" ? "Casting time:" : "Type it:", x[k]||""); if(v!=null && v.trim()) x[k] = v.trim(); saveParty(); renderLibList(); return; }
   if(t.type==="checkbox") x[k] = t.checked;
   else if(t.tagName==="SELECT"){
     if(k.startsWith("atk.")){ const [, j, f] = k.split("."), q = (x.attacks||[])[+j]; if(q){ q[f] = t.value; saveParty(); } return; }
