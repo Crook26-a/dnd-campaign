@@ -5338,7 +5338,7 @@ function stdMatches(q){
 const FB_FIELDS = {
   loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","cls","level","ac","hpMax","speed","init",
-    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes"] };
+    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells"] };
 function fieldBookIn(text, quiet){                  // quiet: the inbox — no message, just the counts back
   let o; try{ o = JSON.parse(text); }catch(err){ flash("That isn't a Field Book file."); return; }
   if(!o || (!Array.isArray(o.loot) && !Array.isArray(o.npcs))){ flash("No items or people in that file."); return; }
@@ -5388,7 +5388,7 @@ async function checkFbInbox(quiet, ask){
   if(!dir){ if(!quiet) flash(fbDir ? "Click Check now to let the app back into the inbox folder." : "Choose the inbox folder first."); if(pane==="library") renderLibrary(); return; }
   fbBusy = true; const sum = { files:0, added:0, updated:0, unmatched:[] };
   try{
-    const files = []; for await (const [k, h] of dir.entries()) if(h.kind==="file" && /\.json$/i.test(k)) files.push([k, h]);
+    const files = []; for await (const [k, h] of dir.entries()) if(h.kind==="file" && /\.(json|txt)$/i.test(k)) files.push([k, h]);    // the phone shares a .txt (Android won't share .json)
     files.sort((a, b)=>a[0].localeCompare(b[0]));
     for(const [k, h] of files){
       let text, o; try{ text = await (await h.getFile()).text(); o = JSON.parse(text); }catch(err){ continue; }
@@ -5519,7 +5519,7 @@ $("#pane-library").addEventListener("click", e=>{
   if(b.dataset.libspell){ const p = lib().npcs.find(o=>o.id===b.dataset.for); if(!p) return;
     openLibFrom("spells", b.dataset.libspell, { pane:"library", lib:{ tab:"npcs", open:p.id }, open:[`npcsec:${p.id}:spells`], anchor:`[data-invfor="npcsec:${p.id}:spells"]`, label:`Back to ${p.name||"them"}` }); return; }
   if(b.dataset.libact==="back") return goBackFromLib();
-  if(b.dataset.libact==="fbin"){ const f = document.createElement("input"); f.type = "file"; f.accept = ".json,application/json";
+  if(b.dataset.libact==="fbin"){ const f = document.createElement("input"); f.type = "file"; f.accept = ".json,.txt,application/json,text/plain";
     f.onchange = ()=>{ const file = f.files && f.files[0]; if(!file) return; const r = new FileReader(); r.onload = ()=>fieldBookIn(String(r.result||"")); r.readAsText(file); }; f.click(); return; }
   if(b.dataset.libact==="fbout") return fieldBookOut();
   if(b.dataset.libact==="fbpick") return void pickFbInbox();
