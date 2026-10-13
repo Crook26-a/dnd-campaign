@@ -7,8 +7,13 @@
   const to = root.nodes.find(n=>n.id==='ns4eb21'); select('node', to.id); renderPane(true); await wait(30);
   const box = document.querySelector('#pane-inspect .travelbox');
   out.push('travel box: ' + (box ? box.innerText.replace(/\s+/g,' ').slice(0, 260) : 'none'));
+  root.roads.forEach(r=>r.quality = 2);
+  out.push('preview line on the DM map: ' + trailLines(false).includes('#8a2e1e'));
+  const t = travelSet(), plan = tripPlan(overlandFrom(), to, t); out.push('plan: ' + plan.miles + ' mi, road hours ' + plan.roadHours.toFixed(1) + ', DC ' + plan.dc + ', parts ' + JSON.stringify(plan.parts));
+  t.nav = { total:1 }; renderPane(true); await wait(20);
   const day0 = campaignDay(), hour0 = clockHour();
-  box.querySelector('[data-travelgo]').click(); await wait(30);
+  document.querySelector('#pane-inspect [data-travelgo]').click(); await wait(30);
+  out.push('trail points ' + root.trail.pts.length + ', wanders ' + (JSON.stringify(root.trail.pts)!==JSON.stringify(plan.pts)) + ', on the TV ' + trailLines(true).includes('polyline'));
   out.push('after: day ' + day0 + ' → ' + campaignDay() + ', hour ' + hour0 + ' → ' + root.hour + ', party at ' + JSON.stringify(activeGroup().at) + ', visited ' + !!to.visited);
   out.push('log: ' + gameLogList().slice(-1)[0].text);
   /* a Perception check in the Action box also searches the place picked on the map */

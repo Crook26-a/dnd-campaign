@@ -1802,7 +1802,7 @@ function playerMapScene(){
   /* on the sea chart, with the chart on: only places in sight, charted ones, and the fog over the rest */
   const charting = !planOf && chartOn();
   const hid = new Set((doc.nodes||[]).filter(n=>n.hidden || (charting && !n.charted && !n.route && !inSight(n.x, n.y)) || (isRival(n) && !rivalInView(n))).map(n=>n.id));
-  const cg = copy.querySelector("#gChart"); if(cg) cg.innerHTML = (charting ? chartFog(true) : "") + (!planOf ? wakeLines(true) + routeLines(true) : "");
+  const cg = copy.querySelector("#gChart"); if(cg) cg.innerHTML = (charting ? chartFog(true) : "") + (!planOf ? wakeLines(true) + routeLines(true) + trailLines(true) : "");
   copy.querySelectorAll("[data-pn]").forEach(e=>{ if(hid.has(e.getAttribute("data-pn"))) e.remove(); else e.removeAttribute("opacity"); });
   copy.querySelectorAll("[data-pr]").forEach(e=>{ if(!(hid.has(e.getAttribute("data-pa")) || hid.has(e.getAttribute("data-pb")))) return;
     /* a road into country they haven't seen: gone, unless it shows its first few miles from a place they know */
@@ -2033,24 +2033,49 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
 /* ══════════════════════════════════════════════════════════════
    OVERLAND TRAVEL — the party goes from where it is to a place on the
    survey, by road where roads join them (else straight across country),
-   and the clock moves on. Travel Pace from the 2024 free rules: a day's
-   distance is for 8 hours on the road; past 8 hours is Extended Travel
-   (each extra hour, a Constitution save, DC 10 + 1 per hour past 8, or
-   1 Exhaustion level). A good road raises the most a terrain allows by
-   one step; the DM picks the pace with that in mind.
+   and the clock moves on. From the 2024 free rules: Travel Pace (a day's
+   distance is for 8 hours on the road; past 8 hours is Extended Travel:
+   each extra hour, a Constitution save, DC 10 + 1 per hour past 8, or 1
+   Exhaustion level) and the Travel Terrain table (each terrain's maximum
+   pace and Navigation DC; a good road raises the maximum by one step).
+   The land under the way comes from what's drawn: Forest, Swamp, Hill,
+   Mountain, Desert, Arctic, Grassland areas; within 2 miles of an island's
+   shore is Coastal; any other land is the island's own terrain (Grassland
+   unless set). Joseph's table rules: road quality 1–10 (8–10 a good road,
+   one step faster; 4–7 the land's own limit; 1–3 a poor path, one step
+   slower); the Navigation DC drops by the road's quality and the hardest
+   stretch sets it; each point the navigator's Wisdom (Survival) total
+   falls short adds an hour on the road, and the trail wanders; a natural
+   20 finds a shortcut, a quarter less time.
    ══════════════════════════════════════════════════════════════ */
 const PACES = {
   fast:   { label:"Fast",   mph:4, day:30, effect:"Disadvantage on Wisdom (Perception or Survival) and Dexterity (Stealth) checks" },
   normal: { label:"Normal", mph:3, day:24, effect:"Disadvantage on Dexterity (Stealth) checks" },
   slow:   { label:"Slow",   mph:2, day:18, effect:"Advantage on Wisdom (Perception or Survival) checks" }
 };
-const travelSet = () => { const t = root.travel || (root.travel = {}); if(!PACES[t.pace]) t.pace = "normal"; t.hours = Math.max(1, Math.min(16, Math.round(+t.hours || 8))); return t; };
+const PACE_STEPS = ["slow", "normal", "fast"];
+const TERRAINS = {
+  arctic:    { label:"Arctic",    max:"fast",   nav:10, forage:20, search:10, enc:"6d6 × 10 ft" },
+  coastal:   { label:"Coastal",   max:"normal", nav:5,  forage:10, search:15, enc:"2d10 × 10 ft" },
+  desert:    { label:"Desert",    max:"normal", nav:10, forage:20, search:10, enc:"6d6 × 10 ft" },
+  forest:    { label:"Forest",    max:"normal", nav:15, forage:10, search:15, enc:"2d8 × 10 ft" },
+  grassland: { label:"Grassland", max:"fast",   nav:5,  forage:15, search:15, enc:"6d6 × 10 ft" },
+  hill:      { label:"Hill",      max:"normal", nav:10, forage:15, search:15, enc:"2d10 × 10 ft" },
+  mountain:  { label:"Mountain",  max:"slow",   nav:15, forage:20, search:20, enc:"4d10 × 10 ft" },
+  swamp:     { label:"Swamp",     max:"slow",   nav:15, forage:10, search:20, enc:"2d8 × 10 ft" }
+};
+/* drawn areas and the terrain each one is, strongest first where they overlap */
+const SHAPE_TERRAIN = [["mountain","mountain"], ["marsh","swamp"], ["hills","hill"], ["wood","forest"], ["desert","desert"], ["arctic","arctic"], ["grassland","grassland"]];
+const roadQuality = r => r ? Math.max(1, Math.min(10, Math.round(+r.quality || 10))) : 0;
+const roadGrade = q => !q ? "across country" : q >= 8 ? "a good road" : q >= 4 ? "a road" : "a poor path";
+const roadStep = q => !q ? 0 : q >= 8 ? 1 : q >= 4 ? 0 : -1;
+const travelSet = () => { const t = root.travel || (root.travel = {}); if(!PACES[t.pace]) t.pace = "normal"; t.hours = Math.max(1, Math.min(16, Math.round(+t.hours || 8))); t.nav = t.nav || {}; return t; };
 /* the survey place the party (the group on the move) is at: a town they're inside counts as that town; aboard a ship, none */
 function overlandFrom(){
   const at = partyWhere(), id = at.map==="survey" ? at.node : at.map, n = id && root.nodes.find(x=>x.id===id);
   return n && !sailsAbout(n) ? n : null;
 }
-/* the shortest way by road between two survey places: { miles, via:[names] }, or null if no roads join them */
+/* the shortest way by road between two survey places: { miles, legs:[{ r, back }] }, or null if no roads join them */
 function roadRoute(a, b){
   const dist = { [a.id]:0 }, prev = {}, todo = new Set([a.id]), done = new Set();
   while(todo.size){
@@ -2058,50 +2083,140 @@ function roadRoute(a, b){
     todo.delete(id); done.add(id); if(id===b.id) break;
     for(const r of root.roads||[]){
       const o = r.from===id ? r.to : r.to===id ? r.from : null; if(!o || done.has(o) || !root.nodes.some(x=>x.id===o)) continue;
-      const d = dist[id] + (+r.miles || 0); if(dist[o]===undefined || d < dist[o]){ dist[o] = d; prev[o] = id; todo.add(o); }
+      const d = dist[id] + (+r.miles || 0); if(dist[o]===undefined || d < dist[o]){ dist[o] = d; prev[o] = { id, r }; todo.add(o); }
     }
   }
   if(dist[b.id]===undefined) return null;
-  const via = []; for(let id = prev[b.id]; id && id!==a.id; id = prev[id]) via.unshift((root.nodes.find(x=>x.id===id)||{}).name || "a crossroads");
-  return { miles: Math.round(dist[b.id]*10)/10, via };
+  const legs = []; for(let id = b.id; id!==a.id; id = prev[id].id) legs.unshift({ r:prev[id].r, back:prev[id].r.from===id });
+  return { miles: Math.round(dist[b.id]*10)/10, legs };
 }
-/* how long the trip takes: whole days at the pace's day distance (stretched or cut by the hours on the road), the rest by the hour */
-function travelHours(miles, pace, hours){
-  const p = PACES[pace], perDay = hours >= 8 ? p.day + (hours - 8)*p.mph : p.mph*hours;
-  const days = Math.floor(miles / perDay), rest = miles - days*perDay;
-  return days*24 + Math.min(hours, rest / p.mph);
+/* the land at a point of the survey */
+const shapeRing = s => { const k = `${s.pts.length}:${s.pts[0].x},${s.pts[0].y}:${s.straight?1:0}`;
+  if(s._ringKey!==k){ Object.defineProperty(s, "_ring", { value:samplePath(s.pts, true, 6, s.straight), writable:true, configurable:true, enumerable:false });
+    Object.defineProperty(s, "_ringKey", { value:k, writable:true, configurable:true, enumerable:false }); }
+  return s._ring; };
+function inRing(ring, x, y){ let c = false; for(let i=0, j=ring.length-1; i<ring.length; j=i++){ const a = ring[i], b = ring[j];
+  if((a.y > y) !== (b.y > y) && x < (b.x-a.x)*(y-a.y)/(b.y-a.y) + a.x) c = !c; } return c; }
+function ringDist(ring, x, y){ let d = Infinity; for(let i=1; i<ring.length; i++){ const a = ring[i-1], b = ring[i], dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy;
+  const t = L ? Math.max(0, Math.min(1, ((x-a.x)*dx + (y-a.y)*dy)/L)) : 0; d = Math.min(d, Math.hypot(x-a.x-t*dx, y-a.y-t*dy)); } return d; }
+function terrainAt(x, y){
+  const areas = (root.shapes||[]).filter(s=>s.closed!==false && (s.pts||[]).length > 2);
+  for(const [kind, t] of SHAPE_TERRAIN) if(areas.some(s=>s.kind===kind && inRing(shapeRing(s), x, y))) return t;
+  const isle = areas.find(s=>s.kind==="island" && inRing(shapeRing(s), x, y));
+  if(isle && ringDist(shapeRing(isle), x, y) <= (+root.coastMiles || 2)*(root.ppm||10)) return "coastal";     // the shore strip: 2 miles unless the map says otherwise
+  return (isle && TERRAINS[isle.terrain]) ? isle.terrain : "grassland";
 }
+/* the whole trip worked out: the way (points), each stretch's terrain and pace, the hours, the Navigation DC */
+function tripPlan(from, to, t){
+  const ppm = root.ppm||10, road = roadRoute(from, to), parts = [];
+  if(road){
+    for(const { r, back } of road.legs){
+      let sm = samplePath(roadPts(r), false, 10, r.straight); if(back) sm = sm.slice().reverse();
+      const drawn = polyLength(sm) || 1, f = (+r.miles || drawn/ppm) / (drawn/ppm);       // the road's own mileage, spread along its line
+      parts.push({ sm, f, q:roadQuality(r) });
+    }
+  } else parts.push({ sm:[{ x:from.x, y:from.y }, { x:to.x, y:to.y }], f:1, q:0 });
+  const pts = [], stretches = [], chosen = PACE_STEPS.indexOf(t.pace);
+  for(const { sm, f, q } of parts){
+    for(let i=1; i<sm.length; i++){
+      const a = sm[i-1], b = sm[i], seg = Math.hypot(b.x-a.x, b.y-a.y)/ppm*f, n = Math.max(1, Math.ceil(seg / .5));
+      for(let k=0; k<n; k++){
+        const x = a.x + (b.x-a.x)*(k+.5)/n, y = a.y + (b.y-a.y)*(k+.5)/n, ter = terrainAt(x, y), T = TERRAINS[ter];
+        const top = ter==="arctic" && !t.skis ? 1 : PACE_STEPS.indexOf(T.max), pace = PACE_STEPS[Math.max(0, Math.min(chosen, top + roadStep(q), 2))];
+        stretches.push({ ter, pace, q, miles:seg/n, dc:T.nav - q });
+      }
+      if(!pts.length) pts.push([Math.round(a.x), Math.round(a.y)]); pts.push([Math.round(b.x), Math.round(b.y)]);
+    }
+  }
+  const miles = stretches.reduce((s, x)=>s + x.miles, 0);
+  const roadHours = stretches.reduce((s, x)=>s + x.miles / (PACES[x.pace].day / 8), 0);       // the day column's rate: 8 hours a day
+  const sum = {}; for(const x of stretches){ const k = `${x.ter}|${x.pace}`; sum[k] = (sum[k]||0) + x.miles; }
+  const dc = Math.max(0, ...stretches.map(x=>x.dc)), hard = stretches.find(x=>x.dc===dc);
+  return { road:!!road, pts, miles:Math.round(miles*10)/10, roadHours, dc, hard, parts:Object.entries(sum).map(([k, mi])=>{ const [ter, pace] = k.split("|"); return { ter, pace, miles:Math.round(mi*10)/10 }; }),
+    arctic:stretches.some(x=>x.ter==="arctic"), roads:[...new Set(stretches.map(x=>x.q))] };
+}
+/* hours on the road turned into days and hours of the clock: so many hours a day on the road, the rest resting */
+function clockHours(roadHours, hours){ const days = Math.floor(roadHours / hours), rest = roadHours - days*hours; return days*24 + rest; }
+/* the navigator's check against the trip: extra hours on the road (lost), or a shortcut */
+function navEffect(plan, nav){
+  if(!plan.dc) return { extra:0, word:"no check needed: the way is plain" };
+  if(nav.nat20) return { extra:-plan.roadHours/4, word:"a natural 20: a shortcut, a quarter less time" };
+  if(nav.total==null || nav.total==="") return { extra:0, word:"" };
+  const short = plan.dc - Math.round(+nav.total);
+  return short > 0 ? { extra:short, lost:short, word:`${nav.total}: lost for a while, ${short} hour${short===1?"":"s"} more on the road` } : { extra:0, word:`${nav.total}: they keep to the way` };
+}
+const navigatorAshore = () => navigatorOf() || (partySize()>1 ? partyRoster() : [])[0] || null;
 function travelBlock(n){
   if(planOf || sailsAbout(n)) return "";
   const from = overlandFrom(); if(!from || from===n) return "";
-  const t = travelSet(), road = roadRoute(from, n);
-  const miles = road ? road.miles : Math.round(Math.hypot(n.x-from.x, n.y-from.y) / (root.ppm||10) * 10) / 10;
-  const hrs = travelHours(miles, t.pace, t.hours), push = t.hours - 8;
+  const t = travelSet(), plan = tripPlan(from, n, t), nav = navEffect(plan, t.nav), push = t.hours - 8;
+  const hrs = clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours), who = navigatorAshore();
+  const hardWhy = plan.hard ? `${TERRAINS[plan.hard.ter].label} ${TERRAINS[plan.hard.ter].nav}${plan.hard.q ? `, less ${plan.hard.q} for the road` : ", no road"}` : "";
+  const grades = plan.roads.map(q=>q ? `${roadGrade(q)} (${q}/10)` : "across country").join(", ");
   return `<div class="travelbox"><p class="eyebrow spaced">Travel here overland</p>
-    <p class="empty-note" style="font-size:11px;margin:0 0 6px">From ${esc(from.name||"where they are")}: ${miles} mi ${road ? `by road${road.via.length ? ` (by way of ${esc(road.via.join(", "))})` : ""}` : "across country (no road joins them)"}.</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 4px">From ${esc(from.name||"where they are")}: ${plan.miles} mi, ${grades}.</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${plan.parts.map(p=>`${TERRAINS[p.ter].label} ${p.miles} mi (${PACES[p.pace].label})`).join(" · ")}</p>
     <div class="pcrow"><label style="flex:1">Pace <select data-travel="pace">${Object.entries(PACES).map(([k, p])=>`<option value="${k}" ${k===t.pace?"selected":""}>${p.label}: ${p.mph} mph, ${p.day} mi a day</option>`).join("")}</select></label>
       <label style="flex:0 0 92px">Hours a day <input type="number" data-travel="hours" min="1" max="16" value="${t.hours}"></label></div>
-    <p class="empty-note" style="font-size:11px;margin:4px 0 6px">${PACES[t.pace].label} pace: ${PACES[t.pace].effect}.${road ? " A good road lets them go one step faster than the land allows." : ""}${push > 0 ? ` Pushing on ${push} hour${push===1?"":"s"} past 8 a day: each traveler makes a Constitution save at the end of each extra hour (DC 11${push>1?` to ${10+push}`:""}) or gains 1 Exhaustion level.` : ""}</p>
-    <button class="btn wide" data-travelgo="${n.id}">Travel here: ${hoursWord(hrs)}</button></div>`;
+    ${plan.arctic ? `<label class="check" style="margin:4px 0"><input type="checkbox" data-travel="skis" ${t.skis?"checked":""}> Skis or snowshoes (Fast in Arctic terrain needs them)</label>` : ""}
+    <p class="empty-note" style="font-size:11px;margin:4px 0 6px">${PACES[t.pace].label} pace: ${PACES[t.pace].effect}. The land and the road can hold them to a slower one.${push > 0 ? ` Pushing on ${push} hour${push===1?"":"s"} past 8 a day: each traveler makes a Constitution save at the end of each extra hour (DC 11${push>1?` to ${10+push}`:""}) or gains 1 Exhaustion level.` : ""}</p>
+    ${plan.dc ? `<div class="pcrow" style="align-items:center"><label style="flex:1">Navigation DC ${plan.dc} <small>(${esc(hardWhy)})</small>${who ? `<br><small>${esc(who.name||"The navigator")}, Wisdom (Survival)</small>` : ""}</label>
+      <input type="number" data-travel="navtotal" placeholder="total" value="${esc(t.nav.total??"")}" style="width:64px"><button class="btn" data-travelroll>Roll</button>
+      <label class="check" style="margin:0"><input type="checkbox" data-travel="nat20" ${t.nav.nat20?"checked":""}> nat 20</label></div>
+      ${nav.word ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">${esc(nav.word)}</p>` : ""}` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">No navigation check: the way is plain.</p>`}
+    <button class="btn wide" data-travelgo="${n.id}">Travel here: ${hoursWord(hrs)}</button>
+    ${(root.trail||{}).pts ? `<button class="btn wide" data-trailclear>Clear their trail on the map</button>` : ""}</div>`;
 }
 document.getElementById("pane-inspect").addEventListener("change", e=>{
   const c = e.target.closest("[data-travel]"); if(!c) return;
-  const t = travelSet(); if(c.dataset.travel==="pace") t.pace = c.value; else t.hours = +c.value;
+  const t = travelSet(), k = c.dataset.travel;
+  if(k==="pace") t.pace = c.value; else if(k==="hours") t.hours = +c.value; else if(k==="skis") t.skis = c.checked;
+  else if(k==="nat20") t.nav.nat20 = c.checked; else if(k==="navtotal") t.nav.total = c.value==="" ? "" : Math.round(+c.value);
   travelSet(); saveParty(); renderPane(true);
 });
 document.getElementById("pane-inspect").addEventListener("click", e=>{
+  if(e.target.closest("[data-trailclear]")){ delete root.trail; touch(); render(); renderPane(true); return; }
+  if(e.target.closest("[data-travelroll]")){
+    const t = travelSet(), who = navigatorAshore(), d = 1 + Math.floor(Math.random()*20), m = who ? skillMod(who, "Survival") : 0;
+    t.nav = { total:d + m, nat20:d===20 }; saveParty(); renderPane(true);
+    flash(`${(who&&who.name)||"The navigator"}: Wisdom (Survival) ${d}${m ? `${m>0?"+":"−"}${Math.abs(m)}` : ""} = ${d+m}${d===20?", a natural 20":""}.`); return;
+  }
   const b = e.target.closest("[data-travelgo]"); if(!b) return;
   const n = root.nodes.find(x=>x.id===b.dataset.travelgo), from = overlandFrom(); if(!n || !from) return;
-  const t = travelSet(), road = roadRoute(from, n);
-  const miles = road ? road.miles : Math.round(Math.hypot(n.x-from.x, n.y-from.y) / (root.ppm||10) * 10) / 10;
-  const hrs = travelHours(miles, t.pace, t.hours);
+  const t = travelSet(), plan = tripPlan(from, n, t), nav = navEffect(plan, t.nav);
+  const hrs = clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours);
   passHours(hrs, true);
+  root.trail = { pts:trailPoints(plan.pts, nav.lost||0) };
   let g = activeGroup(); g.at = hasPlan(n.id) ? { map:n.id, node:null } : { map:"survey", node:n.id }; g = joinUp(g);
   n.visited = true;
   const push = t.hours - 8;
-  partyMoved(`${groupName(g)} traveled ${miles} mi ${road ? "by road" : "across country"} from ${from.name||"where they were"} to ${n.name||"the place"} at a ${PACES[t.pace].label} pace: ${hoursWord(hrs)}. Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).${push>0 && hrs>8 ? ` They pushed on ${push} hour${push===1?"":"s"} past 8 a day (Constitution saves, DC 11${push>1?` to ${10+push}`:""}).` : ""}`);
-  touch(); renderPane(true);
+  partyMoved(`${groupName(g)} traveled ${plan.miles} mi from ${from.name||"where they were"} to ${n.name||"the place"} at a ${PACES[t.pace].label} pace (${plan.parts.map(p=>`${TERRAINS[p.ter].label} ${p.miles} mi ${PACES[p.pace].label.toLowerCase()}`).join(", ")}): ${hoursWord(hrs)}.${plan.dc && nav.word ? ` Navigation DC ${plan.dc}, ${nav.word}.` : ""} Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).${push>0 && hrs>8 ? ` They pushed on ${push} hour${push===1?"":"s"} past 8 a day (Constitution saves, DC 11${push>1?` to ${10+push}`:""}).` : ""}`);
+  t.nav = {}; touch(); render(); renderPane(true);
 });
+/* the party's trail: the way they went, dotted on the map (both screens); lost for a while, it wanders off the way */
+function trailPoints(pts, lost){
+  if(!lost || pts.length < 2) return pts;
+  const ppm = root.ppm||10, out = [], L = pts.reduce((s, p, i)=>i ? s + Math.hypot(p[0]-pts[i-1][0], p[1]-pts[i-1][1]) : 0, 0) || 1;
+  let run = 0;
+  for(let i=0; i<pts.length; i++){
+    if(i) run += Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+    const a = pts[Math.max(0, i-1)], b = pts[Math.min(pts.length-1, i+1)], dx = b[0]-a[0], dy = b[1]-a[1], d = Math.hypot(dx, dy) || 1;
+    const p = run / L, amp = Math.min(L*0.08, (0.4 + lost*0.25)*ppm) * Math.sin(Math.PI*p), side = Math.sin(2*Math.PI*(1 + lost*0.3)*p) * amp;
+    out.push([Math.round(pts[i][0] - dy/d*side), Math.round(pts[i][1] + dx/d*side)]);
+  }
+  return out;
+}
+function trailLines(forPlayers){
+  if(doc!==root) return "";
+  const line = (pts, color, w, dash, op) => `<polyline points="${pts.map(p=>p.join(",")).join(" ")}" fill="none" stroke="${color}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-opacity="${op}" style="pointer-events:none"/>`;
+  let h = (root.trail||{}).pts ? line(root.trail.pts, forPlayers?"#5a3a1e":"#6d4a2a", forPlayers?2.6:1.8, `0.1 ${forPlayers?9:8}`, .75) : "";
+  /* the DM's map, a place picked to travel to: the way they'd go */
+  if(!forPlayers && dmMode && sel && sel.kind==="node"){
+    const n = root.nodes.find(x=>x.id===sel.id), from = n && !sailsAbout(n) && overlandFrom();
+    if(from && from!==n){ const plan = tripPlan(from, n, travelSet()); h += line(plan.pts, "#8a2e1e", 1.6, "2 7", .8); }
+  }
+  return h;
+}
 /* ══════════════════════════════════════════════════════════════
    THE SEA CHART AND VOYAGES — the players' screen shows only what the
    crew has seen: "unknown" (a deeper, hatched sea) over the sea chart, cleared around
@@ -2925,10 +3040,14 @@ const SURVEY_SHAPES = {
   water:    { label:"Water",     key:"S", fill:"#9db6bc", stroke:"#4e737d", hachure:true },
   river:    { label:"River",     key:"R", fill:"#8fadb4", stroke:"#4e737d", river:true, alwaysOpen:true,
               swatch:`<path d="M-9 4 Q-4.5 -3 0 1 T9 -4" fill="none" stroke="#4e737d" stroke-width="2.4" stroke-linecap="round"/>` },
-  wood:     { label:"Wood",      key:"",  fill:"#93a877", stroke:"#5e7a4e" },
-  marsh:    { label:"Marsh",     key:"",  fill:"#a2a878", stroke:"#6e7748", dash:"7 5" },
-  hills:    { label:"Hills",     key:"",  fill:"#c6ae80", stroke:"#8a7346" },
-  mountain: { label:"Mountains", key:"",  fill:"#ad9878", stroke:"#6a583c" },
+  /* the land: each one is a 2024 Travel Terrain (see OVERLAND TRAVEL); open land is its island's own terrain */
+  wood:     { label:"Forest",    key:"",  fill:"#93a877", stroke:"#5e7a4e" },
+  marsh:    { label:"Swamp",     key:"",  fill:"#a2a878", stroke:"#6e7748", dash:"7 5" },
+  hills:    { label:"Hill",      key:"",  fill:"#c6ae80", stroke:"#8a7346" },
+  mountain: { label:"Mountain",  key:"",  fill:"#ad9878", stroke:"#6a583c" },
+  grassland:{ label:"Grassland", key:"",  fill:"#cfd29a", stroke:"#8c9454" },
+  desert:   { label:"Desert",    key:"",  fill:"#e3cf98", stroke:"#a88a4a", dash:"1 4" },
+  arctic:   { label:"Arctic",    key:"",  fill:"#e6ebec", stroke:"#8ea3a8" },
   impasse:  { label:"Impasse",   key:"X", fill:"none",    stroke:"#8a3520", barrier:true },
   /* land standing out of the sea, and the shallows that tear the bottom out of a ship */
   island:   { label:"Island",    key:"",  fill:"#dccb9f", stroke:"#8a7346" },
@@ -3362,7 +3481,7 @@ function render(){
   ov += docMarks(inv);                            // a place a document pointed to, and the session's places
   /* the players' chart, faintly on the DM's sea chart: what they haven't seen is shaded */
   const gChart = svg.querySelector("#gChart");
-  if(gChart) gChart.innerHTML = (!planOf && chartOn() && chartEdgeOn() ? chartFog(false) : "") + (!planOf ? wakeLines(false) + routeLines(false) : "");
+  if(gChart) gChart.innerHTML = (!planOf && chartOn() && chartEdgeOn() ? chartFog(false) : "") + (!planOf ? wakeLines(false) + routeLines(false) + trailLines(false) : "");
   if(!planOf) ov += courseOverlay(inv);           // ships' planned courses (the players don't see them)
   const gParty = svg.querySelector("#gParty"); if(gParty) gParty.innerHTML = partyMarker(inv);   // the party's token (the players see it)
   /* while the chart brush is on, say so on the map, with a way out */
@@ -11614,6 +11733,7 @@ function renderInspectInner(){
       ${kd.alwaysOpen?"":`<label class="check"><input id="s-closed" type="checkbox" ${sh.closed?"checked":""}> Closed outline</label>`}
       <label class="check" style="margin-top:6px"><input id="s-straight" type="checkbox" ${sh.straight?"checked":""}> Straight lines between points</label>
       <label class="check" style="margin-top:6px"><input id="s-imp" type="checkbox" ${sh.impassable?"checked":""}> Roads can't cross this</label>
+      ${sh.kind==="island" ? `<div class="field" style="margin-top:8px"><label>Open land here is</label><select id="s-terrain" title="Travel Terrain (2024) for any land on this island not drawn as Forest, Hill, Swamp and so on; 2 miles of shore all round is Coastal">${Object.entries(TERRAINS).filter(([k])=>k!=="coastal").map(([k, T])=>`<option value="${k}" ${(sh.terrain||"grassland")===k?"selected":""}>${T.label}</option>`).join("")}</select></div>` : ""}
       ${kd.road?`
         <div class="field" style="margin-top:12px"><label>Width</label>
           <input id="s-w" class="mono" type="number" step="0.5" min="0.5" max="60" value="${sh.w==null?kd.w:sh.w}"></div>`:""}
@@ -11650,6 +11770,7 @@ function renderInspectInner(){
     const wS = $("#s-w"); if(wS) wS.oninput = e=>{ sh.w = Math.max(.5, Math.min(60, +e.target.value||kd.w)); touch(); };
     const cl = $("#s-closed"); if(cl) cl.onchange = e=>{ sh.closed=e.target.checked; if(sh.closed) editing=null; touch(); renderInspect(); };
     $("#s-imp").onchange = e=>{ sh.impassable=e.target.checked; touch(); };
+    if($("#s-terrain")) $("#s-terrain").onchange = e=>{ sh.terrain = e.target.value; touch(); };
     $("#s-notes").oninput = e=>{ sh.notes=e.target.value; touch(); };
     const fl = $("#s-flip"); if(fl) fl.onclick = ()=>{ sh.side = sh.side===-1?1:-1; touch(); };
     const w0 = $("#s-w0"); if(w0) w0.oninput = e=>{ sh.w0 = Math.max(.5, Math.min(60, +e.target.value||1.6)); touch(); };
@@ -11780,6 +11901,7 @@ function renderInspectInner(){
       <div class="field"><label>Region</label><select id="r-region">${regionOptions(r.region)}</select></div>
       <label class="check"><input id="r-straight" type="checkbox" ${r.straight?"checked":""}> Straight lines between bends</label>
       <label class="check" style="margin-top:6px"><input id="r-coach" type="checkbox" ${r.coach?"checked":""}> Coaches run this road</label>
+      <div class="field" style="margin-top:8px"><label>Road quality <small>1 a poor path to 10 a good road</small></label><input id="r-quality" class="mono" type="number" min="1" max="10" value="${roadQuality(r)}" title="A table rule: 8–10 a good road (one step faster than the land allows, 2024), 4–7 the land's own limit, 1–3 a poor path (one step slower). Each point takes 1 off the Navigation DC"></div>
       ${a && b && (a.hidden || b.hidden) ? (()=>{ const rv = r.reveal || {}, shown = a.hidden ? b : a, nm = x => esc(x.name||KINDS[x.kind].label);
         return `<div class="field" style="margin-top:14px"><label>On the players' screen</label>
         <div class="row2" ${a.hidden && b.hidden ? "hidden" : ""}><input id="r-rvmi" class="mono" type="number" step="0.5" min="0" value="${rv.miles||""}" placeholder="0">
@@ -11814,6 +11936,7 @@ function renderInspectInner(){
       touch(); renderInspect();
     };
     $("#r-coach").onchange = e=>{ r.coach=e.target.checked; touch(); };
+    $("#r-quality").oninput = e=>{ const v = Math.round(+e.target.value); if(v>=1 && v<=10){ r.quality = v; touch(); } };
     const rvSet = ()=>{ const mi = Math.max(0, +$("#r-rvmi").value||0), from = $("#r-rvfrom") && $("#r-rvfrom").value;
       if(mi && from) r.reveal = { from, miles:mi }; else delete r.reveal; touch(); sendPlayers(); };
     if($("#r-rvmi")){ $("#r-rvmi").oninput = rvSet; if($("#r-rvfrom")) $("#r-rvfrom").onchange = rvSet; }

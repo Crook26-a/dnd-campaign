@@ -90,8 +90,8 @@ function Build-Page($case) {
 # tab closes as soon as the page's title says RES (or the test runs out of time).
 $port = 9300 + (Get-Random -Maximum 600)
 $cdp = "http://127.0.0.1:$port"
-$profDir = Join-Path $work "browser"
-Remove-Item $profDir -Recurse -Force -ErrorAction SilentlyContinue
+$profDir = Join-Path $work "browser-$runKey"
+Get-ChildItem $work -Directory -Filter "browser*" -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }      # old runs, unless still in use
 $browser = Start-Process -FilePath $edge -PassThru -WindowStyle Hidden -ArgumentList ("--headless --disable-gpu --no-first-run --disable-extensions " +
   "--remote-debugging-port=$port --user-data-dir=`"$profDir`" --window-size=1920,1000 --disable-background-timer-throttling " +
   "--disable-renderer-backgrounding --disable-backgrounding-occluded-windows about:blank")
