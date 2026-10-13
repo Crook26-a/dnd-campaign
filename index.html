@@ -1248,7 +1248,7 @@ const BESTIARY = [
 function lib(){
   if(!root) return { foes:[], npcs:[], loot:[] };
   const L = (root.library = root.library || {});
-  for(const k of ["foes","npcs","loot","spells"]) if(!Array.isArray(L[k])) L[k] = [];
+  for(const k of ["foes","npcs","loot","spells","encounters"]) if(!Array.isArray(L[k])) L[k] = [];
   return L;
 }
 const libFoeById  = id => lib().foes.find(m => m.id === id) || null;
@@ -2213,8 +2213,10 @@ function travelBlock(n){
       <input type="number" data-travel="navtotal" placeholder="total" value="${esc(t.nav.total??"")}" style="width:64px"><button class="btn" data-travelroll>Roll</button>
       <label class="check" style="margin:0"><input type="checkbox" data-travel="nat20" ${t.nav.nat20?"checked":""}> nat 20</label></div>
     <p class="empty-note" style="font-size:11px;margin:2px 0 6px">${nav.word ? esc(nav.word) : "No total yet: setting off rolls it for the navigator."}</p>
+    ${encSettingsRow()}
     <div class="pcrow"><button class="btn" style="flex:1" data-travelgo="${n.id}">▶ Set off: ${hoursWord(hrs)}</button>
       <select data-travel="mps" title="How fast it plays on the map" style="flex:0 0 120px">${JOURNEY_MPS.map(([v, l])=>`<option value="${v}" ${v===(+t.mps||10)?"selected":""}>${l}</option>`).join("")}</select></div>
+    <p class="grouplab" style="margin-top:6px">Or pull in an encounter, where they are now</p>${encPullRow()}
     ${(root.trail||{}).pts ? `<button class="btn wide" data-trailclear>Clear their trail on the map</button>` : ""}</div>`;
 }
 document.getElementById("pane-inspect").addEventListener("change", e=>{
@@ -2228,7 +2230,7 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
   if(e.target.closest("[data-trailclear]")){ delete root.trail; touch(); render(); renderPane(true); return; }
   if(e.target.closest("[data-travelroll]")){ const said = rollNav(travelSet()); saveParty(); renderPane(true); flash(`${said}.`); return; }
   const j = e.target.closest("[data-journey]");
-  if(j){ const a = j.dataset.journey; if(a==="pause") pauseJourney(); else if(a==="go") playJourney(); else if(a==="stop") endJourney(false); return; }
+  if(j){ const a = j.dataset.journey; if(a==="pause") pauseJourney(); else if(a==="go") { if(root.journey) delete root.journey.met; playJourney(); } else if(a==="stop") endJourney(false); return; }
   const b = e.target.closest("[data-travelgo]"); if(!b) return;
   const n = root.nodes.find(x=>x.id===b.dataset.travelgo), from = overlandFrom(); if(n && from) startJourney(from, n);
 });
@@ -2248,6 +2250,7 @@ function startJourney(from, n){
   const g = activeGroup();
   root.journey = { gid:g.id, from:from.id||null, fromName:from.name||"where they were", to:n.id, path, cum, miles:plan.miles, hours:clockHours(Math.max(0, plan.roadHours + nav.extra), t.hours), done:0, passed:0,
     pace:t.pace, dc:plan.dc, nav:{ ...t.nav }, word:nav.word, parts:plan.parts, push:t.hours - 8 };
+  rollRoadEncounters(root.journey, Math.max(0, plan.roadHours + nav.extra), t.hours);
   root.trail = { pts:[path[0]] };
   gameLog("move", `${groupName(g)} set off from ${from.name||"where they were"} for ${n.name||"somewhere"}: ${plan.miles} mi at a ${PACES[t.pace].label} pace (${plan.parts.map(p=>`${TERRAINS[p.ter].label} ${p.miles} mi ${PACES[p.pace].label.toLowerCase()}`).join(", ")}). Navigation DC ${plan.dc}${nav.word ? `, ${nav.word}` : ""}.`);
   t.nav = {}; if(said) flash(`${said}.`);
@@ -2275,11 +2278,14 @@ function stepJourney(t){
   const dt = Math.min(.25, Math.max(0, (t - jp.last)/1000)); jp.last = t;
   const step = Math.min(J.miles - J.done, (+travelSet().mps || 10) * dt), hrs = J.hours * step / (J.miles || 1);
   J.done += step; J.passed += hrs; jp.owed += hrs;
+  const ev = (J.events||[]).find(v=>!v.done && J.done >= v.at * J.miles);
   if(jp.owed >= .25){ passHours(jp.owed, true); jp.owed = 0; }          // the clock ticks along as they go
   const p = journeyAt(J), g = groupsOf().find(x=>x.id===J.gid) || activeGroup();
   g.at = { map:"survey", x:Math.round(p.x), y:Math.round(p.y) };
   root.trail = { pts:[...J.path.slice(0, p.i), [Math.round(p.x), Math.round(p.y)]] };
   const r = svg.getBoundingClientRect(); view.tx = r.width/2 - p.x*view.k; view.ty = r.height/2 - p.y*view.k; applyTransform();
+  if(ev){ ev.done = true; const x = pickEncounter(terrainAt(p.x, p.y)); J.pending = { enc:x && x.id, roll:ev.roll, pct:ev.pct, ter:terrainAt(p.x, p.y) };
+    journeyPlay = null; if(jp.owed) passHours(jp.owed, true); flash("An encounter on the road!"); touch(); render(); renderPane(true); return; }
   if(J.done >= J.miles - 1e-6){ endJourney(true); return; }
   if(t - jp.drew > 40){ jp.drew = t; render(); const pr = document.getElementById("jr-prog"); if(pr) pr.textContent = journeyProgress(J); }
   requestAnimationFrame(stepJourney);
@@ -2298,12 +2304,154 @@ function endJourney(arrived){
 }
 const journeyProgress = J => `${Math.round(J.done)} of ${J.miles} mi, ${hoursWord(J.passed)} so far`;
 function journeyBlock(){
-  const J = root.journey, to = root.nodes.find(x=>x.id===J.to), t = travelSet();
+  const J = root.journey, to = root.nodes.find(x=>x.id===J.to), t = travelSet(), P = J.pending, pe = P && P.enc && lib().encounters.find(q=>q.id===P.enc);
+  const met = J.met && root.nodes.find(x=>x.id===J.met);
+  if(P) return `<div class="travelbox"><p class="eyebrow spaced">An encounter on the road</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">The day's roll: ${P.roll} on a d100, ${P.pct}% or under meets something (${esc(TERRAINS[P.ter].label)}).</p>
+    ${pe ? `<p class="playname" style="margin:0 0 4px">${esc(pe.name||"An encounter")}</p>${pe.text ? `<p class="playnotes">${esc(pe.text)}</p>` : ""}
+      <button class="btn wide calmgo" data-encgo="play">Play it out</button>
+      <div class="pcrow"><button class="btn" style="flex:1" data-encgo="another">Another one</button><button class="btn" style="flex:1" data-encgo="skip">Not this time</button></div>`
+      : `<p class="empty-note" style="margin:0 0 6px">None of the Library's encounters can happen in ${esc(TERRAINS[P.ter].label)} land. Pull one in anyway, or let it pass.</p>
+      ${encPullRow()}<button class="btn wide" data-encgo="skip" style="margin-top:4px">Not this time</button>`}</div>`;
   return `<div class="travelbox"><p class="eyebrow spaced">On the road to ${esc((to&&to.name)||"somewhere")}</p>
     <p class="empty-note" style="font-size:11px;margin:0 0 6px"><span id="jr-prog">${journeyProgress(J)}</span> · ${PACES[J.pace].label} pace · Navigation DC ${J.dc}${J.word ? `, ${esc(J.word)}` : ""}</p>
-    <div class="pcrow">${journeyPlay ? `<button class="btn" style="flex:1" data-journey="pause">⏸ Pause</button>` : `<button class="btn" style="flex:1" data-journey="go">▶ Go on</button>`}
+    <div class="pcrow">${journeyPlay ? `<button class="btn" style="flex:1" data-journey="pause">⏸ Pause</button>` : `<button class="btn" style="flex:1" data-journey="go">▶ ${met ? "Back on the road" : "Go on"}</button>`}
       <select data-travel="mps" title="How fast it plays on the map" style="flex:0 0 120px">${JOURNEY_MPS.map(([v, l])=>`<option value="${v}" ${v===(+t.mps||10)?"selected":""}>${l}</option>`).join("")}</select></div>
-    ${journeyPlay ? "" : `<button class="btn wide" data-journey="stop">Stop here, on the road</button>`}</div>`;
+    ${journeyPlay ? "" : `<button class="btn wide" data-journey="stop">Stop here, on the road</button><p class="grouplab" style="margin-top:6px">Pull in an encounter</p>${encPullRow()}`}</div>`;
+}
+/* ══════════════════════════════════════════════════════════════
+   ENCOUNTERS ON THE ROAD — presets in the Library (who's in it, where it
+   can happen, how common, its battle map, read-aloud). A journey can roll
+   for one each day on the road (Joseph's table rule: 1 in 6 a day unless
+   set; a good road halves it, a poor path or open country is half again
+   as likely, and a road's danger doubles or halves it), or the DM pulls
+   one in by hand whenever. Played out, it's a spot on the sea chart where
+   they met it (a Camp, its battle map fitting the land), calm until Start
+   the battle; the spot stays for a random while, never more than 5 days
+   of world time, then it's gone.
+   ══════════════════════════════════════════════════════════════ */
+const TERRAIN_CAMP = { forest:"camp-forest", grassland:"camp-plains", desert:"camp-desert", coastal:"camp-beach", hill:"camp-hills", mountain:"camp-hills", swamp:"camp-swamp", arctic:"camp-plains" };
+const ROAD_DANGER = [["safe","Safe (half as likely)", .5], ["", "Usual", 1], ["dangerous","Dangerous (twice as likely)", 2]];
+const encSet = () => { const t = travelSet(), e = t.enc || (t.enc = { on:true, inN:6 }); e.inN = Math.max(1, Math.min(100, Math.round(+e.inN || 6))); return e; };
+const encWeight = e => Math.max(1, Math.min(10, Math.round(+e.weight || 5)));
+const encountersFor = ter => lib().encounters.filter(e=>(e.foes||[]).length && (!(e.terrains||[]).length || e.terrains.includes(ter)));
+function pickEncounter(ter, not){
+  const list = encountersFor(ter).filter(e=>e.id!==not), pool = list.length ? list : encountersFor(ter);
+  if(!pool.length) return null;
+  let r = Math.random() * pool.reduce((s, e)=>s + encWeight(e), 0);
+  for(const e of pool){ r -= encWeight(e); if(r <= 0) return e; }
+  return pool[pool.length-1];
+}
+/* the chance of an encounter in a day on the road at this spot: the base, the road (or none), the road's danger */
+function encChanceAt(x, y){
+  const near = nearestRoad(x, y), r = near && near.d <= (root.ppm||10)*.3 ? near.r : null, q = roadQuality(r);
+  const qf = !r ? 1.5 : q >= 8 ? .5 : q >= 4 ? 1 : 1.5, df = (ROAD_DANGER.find(([k])=>k===((r&&r.danger)||""))||[0,0,1])[2];
+  return Math.min(.95, qf * df / encSet().inN);
+}
+/* rolled when they set off: one roll for each day on the road (a part day counts for its part), each at a random point in it */
+function rollRoadEncounters(J, roadHours, hours){
+  J.events = []; if(!encSet().on) return;
+  const D = Math.max(roadHours / hours, .01);
+  for(let k=0; k < Math.ceil(D); k++){
+    const a = k / D, b = Math.min(1, (k+1) / D), at = a + Math.random()*(b - a), p = journeyAt({ ...J, done:at*J.miles });
+    const pct = Math.round(encChanceAt(p.x, p.y) * (b - a) * D * 100), roll = 1 + Math.floor(Math.random()*100);
+    if(roll <= pct) J.events.push({ at, roll, pct });
+  }
+}
+/* where the party stands on the sea chart, for an encounter: on the road, out on the map, or just by the place they're at */
+function partySpot(){
+  const J = root.journey; if(J){ const p = journeyAt(J); return { x:p.x, y:p.y }; }
+  const at = partyWhere(); if(at.map==="survey" && !at.node && at.x!=null) return { x:at.x, y:at.y };
+  const id = at.map==="survey" ? at.node : at.map, n = root.nodes.find(x=>x.id===id);
+  return n && !sailsAbout(n) ? { x:n.x + 8, y:n.y + 8 } : null;
+}
+/* play one out: a spot where they are, the encounter's people and creatures in it, its battle map open, calm */
+function runEncounter(e, why){
+  if(!e) return;
+  if(planOf){ planFrom = null; leavePlan(); }
+  const p = partySpot(); if(!p){ flash("The party isn't on land to meet it (aboard a ship?)."); return; }
+  if(journeyPlay){ const jp = journeyPlay; journeyPlay = null; if(jp.owed) passHours(jp.owed, true); }
+  const ter = terrainAt(p.x, p.y), J = root.journey;
+  const n = newNode("camp", p.x, p.y, root.nodes[0]);
+  Object.assign(n, { name:e.name || "An encounter", notes:[e.text, e.notes].filter(Boolean).join("\n\n"), encounter:e.id,
+    expires: worldHours() + 6 + Math.random()*114,                         // a random while, never more than 5 days
+    bmap:{ preset:e.map || TERRAIN_CAMP[ter] || "camp-plains" },
+    site:{ foes:(e.foes||[]).filter(f=>f.id).map(f=>({ id:f.id, n:f.n ?? 1, ...(+f.hide > 0 ? { hide:Math.round(+f.hide) } : {}) })) } });
+  root.nodes.push(n);
+  if(J){ J.met = n.id; delete J.pending; }
+  let g = J ? (groupsOf().find(x=>x.id===J.gid) || activeGroup()) : activeGroup(); g.at = { map:"survey", node:n.id }; g = joinUp(g);
+  gameLog("fight", `${why}: ${e.name||"an encounter"} (${TERRAINS[ter].label})`);
+  select("node", n.id); touch(); render(); openBattle(n);
+  if(e.text) flash(e.text);
+}
+/* spots of encounters past their time go, unless someone's still there */
+function expireEncounters(){
+  if(!root || !Array.isArray(root.nodes)) return;
+  const now = worldHours(), here = id => groupsOf().some(g=>g.at && ((g.at.map==="survey" && g.at.node===id) || g.at.map===id)) || (battleOf && battleOf.nodeId===id) || (root.journey && root.journey.met===id);
+  for(let i = root.nodes.length-1; i >= 0; i--){ const n = root.nodes[i];
+    if(n.encounter && n.expires!=null && n.expires <= now && !here(n.id)){ root.nodes.splice(i, 1); if(sel && sel.kind==="node" && sel.id===n.id) sel = null; } }
+}
+/* pull one in by hand: any of the Library's encounters, wherever the party is */
+function encPullRow(){
+  const L = lib().encounters.filter(e=>(e.foes||[]).length);
+  return L.length ? `<div class="pcrow" style="margin-top:4px"><select data-encpick style="flex:1">${L.map(e=>`<option value="${e.id}">${esc(e.name||"An encounter")}</option>`).join("")}</select><button class="btn" data-encpull>Pull it in</button></div>`
+    : `<p class="empty-note" style="font-size:11px;margin:4px 0 0">No encounters in the Library yet (Library → Encounters → + New).</p>`;
+}
+function encSettingsRow(){
+  const E = encSet();
+  return `<div class="pcrow" style="align-items:center;margin:2px 0 6px"><label class="check" style="flex:1;margin:0"><input type="checkbox" data-encset="on" ${E.on?"checked":""}> Roll for encounters on the road</label>
+    <label style="flex:0 0 auto;margin:0">1 in <input type="number" data-encset="inN" min="1" max="100" value="${E.inN}" style="width:48px"> a day</label></div>`;
+}
+document.getElementById("pane-inspect").addEventListener("change", e=>{
+  const c = e.target.closest("[data-encset]"); if(!c) return;
+  const E = encSet(); if(c.dataset.encset==="on") E.on = c.checked; else E.inN = +c.value; encSet(); saveParty();
+});
+document.getElementById("pane-inspect").addEventListener("click", e=>{
+  if(e.target.closest("[data-encpull]")){ const s = $("#pane-inspect [data-encpick]"), x = s && lib().encounters.find(q=>q.id===s.value); if(x) runEncounter(x, "Pulled in"); return; }
+  const b = e.target.closest("[data-encgo]"); if(!b) return;
+  const J = root.journey, P = J && J.pending; if(!P) return;
+  if(b.dataset.encgo==="play"){ const x = lib().encounters.find(q=>q.id===P.enc); if(x) runEncounter(x, `An encounter on the road (rolled ${P.roll}, ${P.pct}% or under)`); }
+  else if(b.dataset.encgo==="another"){ const x = pickEncounter(P.ter, P.enc); P.enc = x && x.id; renderPane(true); }
+  else if(b.dataset.encgo==="skip"){ gameLog("move", `An encounter on the road was let pass`); delete J.pending; playJourney(); }
+});
+/* the Library's Encounters: who's in it, where, how common, its map; Pull it in */
+document.getElementById("pane-library").addEventListener("change", e=>{
+  const t = e.target, box = t.closest("[data-encid]"); if(!box) return;
+  const x = libFind("encounters", box.dataset.encid); if(!x) return; x.foes = x.foes || [];
+  if(t.dataset.encf!=null){ x.foes[+t.dataset.encf].id = t.value; }
+  else if(t.dataset.encter!=null){ const k = t.dataset.encter, s = new Set(x.terrains||[]); t.checked ? s.add(k) : s.delete(k); x.terrains = [...s]; }
+  else if(t.dataset.encmap!=null){ x.map = t.value; }
+  else return;
+  saveParty();
+});
+document.getElementById("pane-library").addEventListener("input", e=>{
+  const t = e.target, box = t.closest("[data-encid]"); if(!box) return;
+  const x = libFind("encounters", box.dataset.encid); if(!x) return;
+  if(t.dataset.encn!=null){ x.foes[+t.dataset.encn].n = t.value.trim() || 1; saveParty(); }
+  else if(t.dataset.ench!=null){ const f = x.foes[+t.dataset.ench], v = Math.round(+t.value); if(t.value.trim()==="" || !(v > 0)) delete f.hide; else f.hide = v; saveParty(); }
+});
+document.getElementById("pane-library").addEventListener("click", e=>{
+  const t = e.target, box = t.closest("[data-encid]"); if(!box) return;
+  const x = libFind("encounters", box.dataset.encid); if(!x) return; x.foes = x.foes || [];
+  if(t.closest("[data-encadd]")){ x.foes.push({ id:(SRD_FOES[0]||{}).id || "", n:1 }); saveParty(); renderLibList(); }
+  else if(t.closest("[data-encdel]")){ x.foes.splice(+t.closest("[data-encdel]").dataset.encdel, 1); saveParty(); renderLibList(); }
+  else if(t.closest("[data-encrun]")) runEncounter(x, "Pulled in");
+});
+function encForm(x, a, ta, draft){
+  const rows = (x.foes||[]).map((f, i)=>`<div class="foerow"><select class="fsel" data-encf="${i}">${foeOptions(f.id)}</select>
+      <input class="fnum mono" data-encn="${i}" type="text" value="${esc(String(f.n ?? 1))}" placeholder="1d3" title="A number, or dice like 1d4+1">
+      <input class="mono" data-ench="${i}" type="number" min="1" value="${f.hide ?? ""}" placeholder="hidden?" title="Start hidden at this DC (their Stealth total); blank = in plain sight" style="width:72px">
+      <button class="fdel" data-encdel="${i}" title="Remove">×</button></div>`).join("");
+  const maps = [["", "Fits the land (an outdoor camp map)"], ...CAMP_KINDS, ...BMAP_ORDER.map(k=>[k, (BMAPS[k]||{}).name || k])];
+  return `<div data-encid="${x.id}">
+    <p class="grouplab">Who's in it</p>${rows || `<p class="empty-note" style="margin:0 0 6px">Nobody yet.</p>`}
+    <button class="btn wide" data-encadd style="margin-top:2px">Add someone</button>
+    <p class="grouplab">Where it can happen <small>none ticked = anywhere</small></p>
+    <div style="display:flex;flex-wrap:wrap;gap:2px 12px;margin:0 0 8px">${Object.entries(TERRAINS).map(([k, T])=>`<label class="check" style="margin:0"><input type="checkbox" data-encter="${k}" ${(x.terrains||[]).includes(k)?"checked":""}> ${T.label}</label>`).join("")}</div>
+    <div class="pcrow"><div class="field" style="flex:1"><label>How common <small>1–10</small></label><input ${a} data-f="weight" class="mono" type="number" min="1" max="10" value="${esc(x.weight ?? 5)}"></div>
+      <div class="field" style="flex:2"><label>Battle map</label><select data-encmap>${maps.map(([k, l])=>`<option value="${k}" ${(x.map||"")===k?"selected":""}>${esc(l)}</option>`).join("")}</select></div></div>
+    ${ta("text", "Read-aloud", "A crack of branches, and the horses shy…", 3)}
+    ${draft ? "" : `<button class="btn wide" data-encrun>Pull it in now, where the party is</button>`}</div>`;
 }
 /* the party's trail: the way they went, dotted on the map (both screens); lost for a while, it wanders off the way */
 function trailPoints(pts, lost){
@@ -2354,6 +2502,7 @@ const hoursWord = h => { const d = Math.floor(h/24), r = Math.round((h - d*24)*2
 function passHours(hrs, quiet){
   let h = clockHour() + hrs, d = 0; while(h >= 24){ h -= 24; d++; }
   root.hour = Math.round(h*100)/100; root.day = campaignDay() + d; root.timeOfDay = phaseAt(root.hour);
+  expireEncounters();
   syncTimeBar(); if(!quiet) saveParty(); return d;
 }
 /* a ship moved on the sea chart: chart her way, and pass the time it took */
@@ -5350,7 +5499,7 @@ let libTab = "foes", libOpen = null, libQuery = "";
 /* "+ New" fills in a draft first: it joins the library only when Add is pressed (Cancel throws it away) */
 let libDraft = null;
 const libFind = (cat, id) => (libDraft && libDraft.cat===cat && libDraft.x.id===id) ? libDraft.x : (lib()[cat]||[]).find(o=>o.id===id);
-const LIB_CATS = [["foes","Foes"],["npcs","People"],["loot","Loot"],["spells","Spells"]];
+const LIB_CATS = [["foes","Foes"],["npcs","People"],["loot","Loot"],["spells","Spells"],["encounters","Encounters"]];
 /* a spell, laid out for reading at the table */
 function srdSpellBlock(s){
   const line = (k,v) => v ? `<div class="sbl"><b>${k}</b> ${esc(String(v))}</div>` : "";
@@ -5478,6 +5627,7 @@ function usedAt(cat, id){
   const label = n => n.name || ((PLAN_KINDS[n.kind]||SURVEY_KINDS[n.kind]||{label:"marker"}).label.toLowerCase());
   const scan = (nodes, planId, host) => { for(const n of nodes||[]){
     const hit = cat==="foes" ? !!(n.site&&(n.site.foes||[]).some(f=>f.id===id))
+              : cat==="encounters" ? n.encounter===id
               : cat==="loot" ? !!(n.site&&(n.site.items||[]).some(x=>baseId(x)===id))
               : (n.npcs||[]).includes(id);
     if(hit) out.push({ name:label(n), host, plan:planId, node:n.id });
@@ -5506,6 +5656,7 @@ function purgeLib(cat, id){
   saveParty();
 }
 function blankLib(cat){
+  if(cat==="encounters") return { id:uid("le"), name:"New encounter", foes:[], terrains:[], weight:5, map:"", text:"", notes:"" };
   if(cat==="foes") return { id:uid("lf"), name:"New foe", cr:1, xp:CR_XP[1], ac:"", hp:"", speed:"30 ft.",
     str:"", dex:"", con:"", int:"", wis:"", cha:"", sav:"", sen:"", init:"", attacks:"", traits:"", boss:false, talk:false, notes:"" };
   if(cat==="npcs") return { id:uid("ln"), name:"New person", role:"", where:"", look:"", voice:"", wants:"", knows:"", fightsAs:"", notes:"" };
@@ -5638,6 +5789,8 @@ function libForm(cat, x){
       ${ta("hi","With a higher-level slot","The damage increases by 1d8 for each spell slot level above 1.",2)}
       <p class="empty-note" style="font-size:11px;margin:-4px 0 8px">Write the damage, healing and higher-slot lines the way the SRD does ("…regains 1d8 Hit Points", "increases by 1d6 for each spell slot level above 2") and casting it rolls and scales them, as with any spell.</p>
       ${x.name && (x.desc || x.dmg) ? `<details class="pcset"><summary>How it reads</summary>${srdSpellBlock(x)}</details>` : ""}`;
+  } else if(cat==="encounters"){
+    h += encForm(x, a, ta, draft);
   } else {
     h += `<div class="pcrow">
         <div class="field" style="flex:1"><label>Kind</label><select ${a} data-f="kind">${LOOT_KINDS.map(k=>`<option ${k===x.kind?"selected":""}>${k}</option>`).join("")}</select></div>
@@ -5807,7 +5960,7 @@ function renderLibList(){
       ${x.id===libOpen?libForm(libTab,x):""}</div>`).join("")
     : `<p class="empty-note">${q?"None of yours match.":"Nothing of your own here yet. Add one, or copy a standard one below."}</p>`;
   if(libDraft && libDraft.cat===libTab){
-    const x = libDraft.x, what = { loot:"New item", npcs:"New person", foes:"New foe" }[libTab];
+    const x = libDraft.x, what = { loot:"New item", npcs:"New person", foes:"New foe", encounters:"New encounter" }[libTab];
     h = `<div class="libitem open draft"><div class="libhead"><span class="nm">${esc(x.name||what)}</span><span class="sub">${x.name?what.toLowerCase()+", not added yet":"not added yet"}</span></div>${libForm(libTab, x)}</div>` + h;
   }
 
@@ -5860,7 +6013,7 @@ $("#pane-library").addEventListener("input", e=>{
   x[k] = k==="xp" ? (t.value===""?0:+t.value) : t.value;
   if(cat==="spells"){ spellTidy(x); if(k==="name" && !(libDraft && libDraft.x===x)) refreshSpellList(); }
   if(k==="name"){ const it = t.closest(".libitem"), nm = it && it.querySelector(".libhead .nm"), dr = libDraft && libDraft.x===x;
-    if(nm) nm.textContent = t.value || (dr ? { loot:"New item", npcs:"New person", foes:"New foe" }[cat] : "Unnamed");
+    if(nm) nm.textContent = t.value || (dr ? { loot:"New item", npcs:"New person", foes:"New foe", encounters:"New encounter" }[cat] : "Unnamed");
     const go = dr && it.querySelector('[data-libact="draftadd"]'); if(go) go.textContent = `Add${t.value.trim()?" "+t.value.trim():""} to the library`;
     if(dr){ x.name = t.value; return; } }
   saveParty();
@@ -12014,6 +12167,7 @@ function renderInspectInner(){
       <label class="check"><input id="r-straight" type="checkbox" ${r.straight?"checked":""}> Straight lines between bends</label>
       <label class="check" style="margin-top:6px"><input id="r-coach" type="checkbox" ${r.coach?"checked":""}> Coaches run this road</label>
       <div class="field" style="margin-top:8px"><label>Road quality <small>1 a poor path to 10 a good road</small></label><input id="r-quality" class="mono" type="number" min="1" max="10" value="${roadQuality(r)}" title="A table rule: 8–10 a good road (one step faster than the land allows, 2024), 4–7 the land's own limit, 1–3 a poor path (one step slower). Every 2 points take 1 off the Navigation DC, never under 5"></div>
+      <div class="field"><label>Danger <small>chance of an encounter on the road</small></label><select id="r-danger">${ROAD_DANGER.map(([k, l])=>`<option value="${k}" ${(r.danger||"")===k?"selected":""}>${l}</option>`).join("")}</select></div>
       ${a && b && (a.hidden || b.hidden) ? (()=>{ const rv = r.reveal || {}, shown = a.hidden ? b : a, nm = x => esc(x.name||KINDS[x.kind].label);
         return `<div class="field" style="margin-top:14px"><label>On the players' screen</label>
         <div class="row2" ${a.hidden && b.hidden ? "hidden" : ""}><input id="r-rvmi" class="mono" type="number" step="0.5" min="0" value="${rv.miles||""}" placeholder="0">
@@ -12049,6 +12203,7 @@ function renderInspectInner(){
     };
     $("#r-coach").onchange = e=>{ r.coach=e.target.checked; touch(); };
     $("#r-quality").oninput = e=>{ const v = Math.round(+e.target.value); if(v>=1 && v<=10){ r.quality = v; touch(); } };
+    $("#r-danger").onchange = e=>{ if(e.target.value) r.danger = e.target.value; else delete r.danger; touch(); };
     const rvSet = ()=>{ const mi = Math.max(0, +$("#r-rvmi").value||0), from = $("#r-rvfrom") && $("#r-rvfrom").value;
       if(mi && from) r.reveal = { from, miles:mi }; else delete r.reveal; touch(); sendPlayers(); };
     if($("#r-rvmi")){ $("#r-rvmi").oninput = rvSet; if($("#r-rvfrom")) $("#r-rvfrom").onchange = rvSet; }
