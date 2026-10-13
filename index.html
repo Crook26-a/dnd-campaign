@@ -774,6 +774,8 @@
   .xpdue{border:1px solid var(--rule);background:var(--paper);padding:2px 8px 8px;margin:0 0 10px;border-radius:3px}
   .xprule{font-size:12px;line-height:1.9;color:var(--ink-soft)} .xprule input{padding:1px 4px}
   .tanat{flex:none;margin:0;font-size:10.5px;white-space:nowrap;color:var(--ink-soft)}
+  .statfix{margin-top:6px} .statfix > summary{cursor:pointer;font-size:11.5px;color:var(--ink-soft)}
+  .statfixgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-top:4px} .statfixgrid label{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11.5px} .statfixgrid input{width:64px;padding:1px 4px}
   .mb{width:min(1500px,96vw);min-height:80vh;box-sizing:border-box;padding:3.5vh 3vw 4vh;border-radius:6px;position:relative}
   .mb-title{margin:0 0 3vh;text-align:center;font-family:var(--serif);font-weight:600;font-size:clamp(26px,3.6vw,58px);letter-spacing:.02em}
   .mb-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,90vw),1fr));gap:3vh 2.4vw;align-items:start}
@@ -5621,12 +5623,12 @@ const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.lev
    (half), never below the XP they had when the session started. Every number is a setting
    (root.xpRules), shown in the Party tab.
    ══════════════════════════════════════════════════════════════ */
-const XP_RULES_DEFAULT = { bonus:20, crit:50, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:3, upTo:10, past:1, missPct:50, nat20:50 }, v:2 };
+const XP_RULES_DEFAULT = { bonus:20, crit:50, heal:1, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:3, upTo:10, past:1, missPct:50, nat20:50 }, v:2 };
 function xpRules(){
   const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
   if(!(r.v >= 2)){ if(r.checks && +r.checks.perPoint===5) r.checks.perPoint = 3; r.v = 2; }     // Joseph, 2026-10-13: 3 a point, not 5
   r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) }; for(const k of ["bad","badXp","great","greatXp"]) delete r.checks[k];     // the old rule: a flat bonus for a great check, a cost for a bad one
-  if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
+  if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; if(!isFinite(+r.heal)) r.heal = XP_RULES_DEFAULT.heal; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
 const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops"];
@@ -5712,6 +5714,15 @@ function checkXp(who, dc, natOf, what){
   }
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
 }
+/* correcting a character's tallies by hand (something logged wrong): logged, and the party's Undo takes it back */
+const STAT_FIX = [["dealt","Damage dealt"],["taken","Damage taken"],["healed","Healing given"],["kills","Foes brought down"],["attacks","Attacks made"],["hits","Attacks that hit"],["crits","Critical hits"],["greats","Great checks"]];
+document.addEventListener("change", e=>{
+  const t = e.target.closest("[data-statfix]"); if(!t) return;
+  const c = [...partyRoster(), ...companions()].find(x=>x.id===t.dataset.pcid); if(!c) return;
+  const S = statsOf(c), k = t.dataset.statfix, v = Math.max(0, Math.round(+t.value||0)), was = +S[k]||0; if(v===was) return;
+  partyDoing("Stats corrected", c); S[k] = v; saveParty();
+  gameLog("note", `Stats corrected for ${c.name||"a character"}: ${((STAT_FIX.find(([x])=>x===k)||[])[1]||k).toLowerCase()} ${was} → ${v}`); renderPane(true);
+});
 /* the boards: for this session (since the last "Start session" marker) or the whole campaign */
 const LEADER_BOARDS = [
   ["dealt", "Most damage dealt", r=>r.dealt],
@@ -5753,7 +5764,7 @@ function xpRulesBlock(){
   return `<details class="partysec" data-invfor="party:xprules" ${openInv.has("party:xprules")?"open":""}><summary class="eyebrow">XP for how they play <small>your table rule</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">The 2024 rules split a fight's XP evenly. This adds to that.</p>
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
-      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight. And each critical hit: ${num("crit", R.crit, 46)} XP × level.</div>
+      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight. And each critical hit: ${num("crit", R.crit, 46)} XP × level.<br>Healing outside a fight (the Action box): ${num("heal", R.heal, 46)} XP × level for each hit point it gives back.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
     <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. A natural 20 that makes it gets at least ${num("checks.nat20", C.nat20, 46)} XP × level.<br>
       A miss costs ${num("checks.missPct", C.missPct, 46)} % of what beating it by as much would earn, and never takes them below the XP they had when the session started (a natural 1 is just its margin).${root.statMarks && root.statMarks.xp ? "" : ` <b>Start a session</b> (the log) so misses can cost XP earned in it.`}<br>
@@ -5982,7 +5993,8 @@ function renderParty(){
     <div class="pcrow">
       <button class="btn" style="flex:1" data-act="split">Split among ${pcs.length}</button>
       <button class="btn" style="flex:1" data-act="each">Give each</button>
-    </div></details>
+    </div>
+    <div class="pcrow"><select id="px-who" style="flex:1">${pcs.map(c=>`<option value="${c.id}">${esc(c.name||"Character")}</option>`).join("")}</select><button class="btn" style="flex:1" data-act="giveone">Give only them</button></div></details>
 
     <div class="pcrow" style="align-items:center;margin-top:14px"><p class="eyebrow" style="flex:1;margin:0">Characters</p>
       <button class="btn" data-act="foldall">${pcs.every(c=>foldedPc.has(c.id)) ? "Open all" : "Fold all"}</button></div>
@@ -6052,6 +6064,9 @@ $("#pane-party").addEventListener("click", e=>{
   const act = b.dataset.act;
   if(act==="split"||act==="each"){
     awardXP($("#px-amt").value, act, $("#px-note").value.trim());
+  } else if(act==="giveone"){
+    const amt = Math.round(+$("#px-amt").value||0), id = $("#px-who").value; if(!amt || !id) return;
+    awardXPPer({ [id]:amt }, $("#px-note").value.trim() || "XP");
   } else if(act==="levelup"){
     const c = pcAt(b.dataset.pc);
     if(c){ partyDoing("Level up", c); c.level = clampLv(c.level+1); saveParty(); flash(`${c.name||"Character"} is level ${c.level}.`); gameLog("level", `${c.name||"A character"} reached level ${c.level}`); }
@@ -7525,6 +7540,8 @@ function pcStatsBlock(c, i){
       ${Object.keys(S.spells||{}).length?`<div class="sbl"><b>Spells cast</b> ${list(S.spells)}</div>`:""}
       ${Object.keys(S.abilities||{}).length?`<div class="sbl"><b>Abilities used</b> ${list(S.abilities)}</div>`:""}
       ${!S.attacks && !Object.keys(S.spells||{}).length && !Object.keys(S.abilities||{}).length ? `<p class="empty-note" style="font-size:11px;margin:4px 0 0">Fills in as you log actions in encounters.</p>` : ""}
+      <details class="statfix"><summary>Correct the tallies</summary><div class="statfixgrid">${STAT_FIX.map(([k, l])=>`<label>${l}<input class="mono" type="number" min="0" data-statfix="${k}" data-pcid="${c.id}" value="${S[k]||0}"></label>`).join("")}</div>
+        <p class="empty-note" style="font-size:11px;margin:4px 0 0">For something entered wrong. It goes in the game log; Undo takes it back.</p></details>
     </details>
     <details class="pcset" data-invfor="pc:${c.id}" ${openInv.has("pc:"+c.id)?"open":""}><summary>Inventory and purse · ~${fmtGp(purseGp(purse))} gp, ${inv.length} item${inv.length===1?"":"s"} · attuned ${attunedCount(c)}/${ATTUNE_MAX}</summary>
       <label class="grouplab" style="margin-top:4px">Purse</label>
@@ -14226,6 +14243,9 @@ function logTableAction(){
     gameLog("heal", `${name} heals ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${amt} with ${how}${N}`);
     /* healing out of a fight counts on the leaderboards too (a Hit Point Die is resting, not healing anyone) */
     if(String(ta.who).startsWith("pc:") && src.k!=="hd"){ const S = statsOf(o); S.healed += Math.max(0, numOr(t.hp, 0) - was); if(src.s) S.spells[src.s.name] = (S.spells[src.s.name]||0) + 1; }
+    /* and XP for it, outside a fight (your table rule): so much × level for each hit point actually restored */
+    if(String(ta.who).startsWith("pc:") && src.k!=="hd" && !(battleOf && !calmHere()) && partyRoster().includes(o)){ const back = Math.max(0, numOr(t.hp, 0) - was), xp = Math.round(back * Math.max(0, +xpRules().heal||0) * clampLv(o.level));
+      if(xp > 0){ const said = awardXPPer({ [o.id]:xp }, `healing ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${back} outside a fight`); setTimeout(()=>flash(`XP: ${said}`), 1600); } }
   } else if(ta.what==="use"){
     const U = usableOf(o||{}), cur = U.find(x=>String(x.k)===String(ta.item)) || U[0]; if(!cur){ flash("Nothing to use."); return; }
     const tKey = on || ta.who, t = taObj(tKey), amt = Math.max(0, Math.round(+ta.amt||0));
