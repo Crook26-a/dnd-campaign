@@ -6,7 +6,7 @@
   enterPlan('klantern'); await wait(50); const n = doc.nodes.find(x=>x.id==='llight'); delete n.site.combat; delete n.site.xpDue; select('node', n.id); openBattle(n); await wait(80);
   const st = n.site, c = beginBattle(st);
   const add = (i, o) => { const S = statsOf(R[i]); for(const k in o) S[k] += o[k]; };
-  add(0, { dealt:30, kills:2, attacks:4, hits:3 }); add(1, { dealt:12, attacks:5, hits:2, healed:9 }); add(2, { dealt:20, kills:1, attacks:2, hits:2, taken:15 }); add(3, { taken:5 });
+  add(0, { dealt:30, kills:2, attacks:4, hits:3, crits:1 }); add(1, { dealt:12, attacks:5, hits:2, healed:9 }); add(2, { dealt:20, kills:1, attacks:2, hits:2, taken:15 }); add(3, { taken:5 });
   for(const y of c.list) y.hp = 0; window.confirm = () => true;
   renderBattlePanel(); await wait(30); document.querySelector('#pane-inspect [data-fa="end"]').click(); await wait(80);
   out.push('xp due: pool ' + (st.xpDue||{}).pool + ' | card: ' + txt(document.querySelector('#pane-inspect .xpdue')).slice(0, 330));
@@ -14,7 +14,8 @@
   out.push('awarded: ' + R.map((c, i)=>c.name.split(' ')[0] + ' +' + ((+c.xp) - before[i])).join(', ') + ', due cleared ' + !st.xpDue + ', log ' + root.xpLog.slice(-1)[0].note);
   /* a great check and a bad one */
   closeBattle(); leavePlan(); await wait(30);
-  Object.assign(ta, { who:'party', what:'check', skill:'Athletics', dc:'12', tot:{ ['pc:'+R[0].id]:'25', ['pc:'+R[1].id]:'1', ['pc:'+R[2].id]:'12', ['pc:'+R[3].id]:'17' }, nat:{ ['pc:'+R[1].id]:1, ['pc:'+R[2].id]:20 } }); renderActionBox(true); await wait(20);
+  Object.assign(ta, { who:'party', what:'check', skill:'Athletics', dc:'12', tot:{ ['pc:'+R[0].id]:'25', ['pc:'+R[1].id]:'1', ['pc:'+R[2].id]:'12', ['pc:'+R[3].id]:'17' }, nat:{ ['pc:'+R[1].id]:1 } }); renderActionBox(true); await wait(20);
+  const tick = document.querySelector('#actionbox [data-tanat="pc:'+R[3].id+'"]'); tick.click(); await wait(20); out.push('nat 20 box ticked: ' + (ta.nat['pc:'+R[3].id]===20));
   const b2 = R.map(c=>+c.xp); document.querySelector('#actionbox [data-talog]').click(); await wait(50);
   out.push('checks: ' + R.map((c, i)=>c.name.split(' ')[0] + ' ' + ((+c.xp) - b2[i])).join(', ') + ' | greats ' + statsOf(R[0]).greats + ', flops ' + statsOf(R[1]).flops);
   /* the leaderboards, and on the TV */

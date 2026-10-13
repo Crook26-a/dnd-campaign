@@ -773,6 +773,7 @@
   .xptab td{text-align:right;padding:2px 3px;border-top:1px dotted var(--rule);font-family:var(--mono)} .xptab td:first-child,.xptab th:first-child{text-align:left;font-family:var(--serif)}
   .xpdue{border:1px solid var(--rule);background:var(--paper);padding:2px 8px 8px;margin:0 0 10px;border-radius:3px}
   .xprule{font-size:12px;line-height:1.9;color:var(--ink-soft)} .xprule input{padding:1px 4px}
+  .tanat{flex:none;margin:0;font-size:10.5px;white-space:nowrap;color:var(--ink-soft)}
   .mb{width:min(1500px,96vw);min-height:80vh;box-sizing:border-box;padding:3.5vh 3vw 4vh;border-radius:6px;position:relative}
   .mb-title{margin:0 0 3vh;text-align:center;font-family:var(--serif);font-weight:600;font-size:clamp(26px,3.6vw,58px);letter-spacing:.02em}
   .mb-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,90vw),1fr));gap:3vh 2.4vw;align-items:start}
@@ -5616,17 +5617,18 @@ const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.lev
    taken: Joseph dropped it); and outside fights, a
    check that meets its DC earns XP by how far over it went, times level
    (5 a point up to 10 over, meeting it counts as 1; 1 a point past
-   that; nothing lost for a miss). Every number is a setting
+   that); a miss costs a share of what beating it by as much would earn
+   (half), never below the XP they had when the session started. Every number is a setting
    (root.xpRules), shown in the Party tab.
    ══════════════════════════════════════════════════════════════ */
-const XP_RULES_DEFAULT = { bonus:20, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:5, upTo:10, past:1 } };
+const XP_RULES_DEFAULT = { bonus:20, crit:50, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:5, upTo:10, past:1, missPct:50 } };
 function xpRules(){
   const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
   r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) }; for(const k of ["bad","badXp","great","greatXp"]) delete r.checks[k];     // the old rule: a flat bonus for a great check, a cost for a bad one
-  if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
+  if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
-const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","greats","flops"];
+const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops"];
 /* where every party member's tallies stand now (spells as one count) */
 function statSnap(){
   const out = {};
@@ -5644,9 +5646,10 @@ function perfAward(due){
   return pcs.map(c=>{
     const share = Math.floor(pool / n), bonus = {};
     for(const [k] of XP_CATS){ const t = sumOf(k); bonus[k] = t > 0 ? B * (Math.max(0, +R.w[k]||0) / wsum) * v(c, k) / t : 0; }
-    const auto = Math.max(0, Math.round(share + Object.values(bonus).reduce((a, b)=>a + b, 0)));
+    const crit = Math.max(0, (due.delta[c.id]||{}).crits||0) * Math.max(0, +R.crit||0) * clampLv(c.level);     // each critical hit: so much XP × level
+    const auto = Math.max(0, Math.round(share + Object.values(bonus).reduce((a, b)=>a + b, 0) + crit));
     const total = due.edit && due.edit[c.id] != null && due.edit[c.id] !== "" ? Math.max(0, Math.round(+due.edit[c.id]||0)) : auto;
-    return { c, share, bonus, auto, total, d:due.delta[c.id] || {} };
+    return { c, share, bonus, crit, auto, total, d:due.delta[c.id] || {} };
   });
 }
 /* XP to each by name (a fight's shares, a check's bonus or cost); one step to take back */
@@ -5665,11 +5668,11 @@ function xpDueBlock(st){
   const R = xpRules(), rows = perfAward(due), f = x => Math.round(x);
   if(!rows.length) return "";
   return `<div class="xpdue"><p class="eyebrow spaced" style="margin-top:4px">XP for the fight${due.place ? ` at ${esc(due.place)}` : ""}</p>
-    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${due.pool.toLocaleString()} XP from the foes brought down, split ${rows.length} ways, plus ${Math.round(due.pool * R.bonus / 100)} XP more (${R.bonus}%) shared by how they fought (your table rule).</p>
-    <table class="xptab"><tr><th></th><th title="An even share of the fight's XP">share</th><th title="Damage dealt">dmg</th><th title="Foes brought down">kills</th><th title="Healing given">heal</th><th title="Hits for attacks made">aim</th><th>total</th></tr>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${due.pool.toLocaleString()} XP from the foes brought down, split ${rows.length} ways, plus ${Math.round(due.pool * R.bonus / 100)} XP more (${R.bonus}%) shared by how they fought, and ${R.crit} XP × level for each critical hit (your table rule).</p>
+    <table class="xptab"><tr><th></th><th title="An even share of the fight's XP">share</th><th title="Damage dealt">dmg</th><th title="Foes brought down">kills</th><th title="Healing given">heal</th><th title="Hits for attacks made">aim</th><th title="Critical hits, ${R.crit} XP × level each">crit</th><th>total</th></tr>
     ${rows.map(r=>`<tr><td>${esc((r.c.name||"Someone").split(" ")[0])}</td><td>${r.share}</td>
       <td title="${r.d.dealt||0} damage">+${f(r.bonus.dealt)}</td><td title="${r.d.kills||0} brought down">+${f(r.bonus.kills)}</td><td title="${r.d.healed||0} healed">+${f(r.bonus.healed)}</td>
-      <td title="${r.d.hits||0} of ${r.d.attacks||0} hit">+${f(r.bonus.aim)}</td>
+      <td title="${r.d.hits||0} of ${r.d.attacks||0} hit">+${f(r.bonus.aim)}</td><td title="${r.d.crits||0} critical hit${(r.d.crits||0)===1?"":"s"}">+${f(r.crit)}</td>
       <td><input class="mono" data-xpdue="${r.c.id}" type="number" min="0" value="${r.total}" style="width:62px"></td></tr>`).join("")}</table>
     <div class="pcrow" style="margin-top:6px"><button class="btn calmgo" style="flex:2" data-xpd="award">Award these</button><button class="btn" style="flex:1" data-xpd="split" title="Just the even split, ${Math.floor(due.pool/rows.length)} each">Even split</button><button class="btn" style="flex:0 0 auto" data-xpd="drop" title="No XP for this one">×</button></div></div>`;
 }
@@ -5694,7 +5697,14 @@ function checkXp(who, dc, natOf, what){
   for(const x of who){
     if(!x.key.startsWith("pc:")) continue;
     const c = x.o, tot = Math.round(+ta.tot[x.key]), lv = clampLv(c.level), S = statsOf(c), over = tot - dc;
-    if(!isFinite(over) || over < 0) continue;
+    if(!isFinite(over)) continue;
+    if(over < 0){                                           // a miss: a share of what beating it by as much would earn, but only out of XP earned this session
+      const floor = root.statMarks && root.statMarks.xp ? root.statMarks.xp[c.id] : null;
+      const lose = floor==null ? 0 : Math.min(Math.round(checkXpFor(-over, lv, R) * Math.max(0, +R.missPct||0) / 100), Math.max(0, (+c.xp||0) - floor));
+      S.flops = (S.flops||0) + 1;
+      if(lose > 0){ per[c.id] = -lose; why.push(`${(c.name||"").split(" ")[0]} missed by ${-over}`); }
+      continue;
+    }
     const nat20 = natOf[x.key]===20;                       // a natural 20 that makes it is worth at least the top of the scale (by 10 over)
     per[c.id] = Math.max(checkXpFor(over, lv, R), nat20 ? checkXpFor(Math.max(1, +R.upTo||10), lv, R) : 0); if(over >= 10 || nat20) S.greats = (S.greats||0) + 1;
     why.push(`${(c.name||"").split(" ")[0]} ${nat20 ? "rolled a natural 20" : over ? `beat it by ${over}` : "met it"}`);
@@ -5742,10 +5752,11 @@ function xpRulesBlock(){
   return `<details class="partysec" data-invfor="party:xprules" ${openInv.has("party:xprules")?"open":""}><summary class="eyebrow">XP for how they play <small>your table rule</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">The 2024 rules split a fight's XP evenly. This adds to that.</p>
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
-      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight.</div>
+      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight. And each critical hit: ${num("crit", R.crit, 46)} XP × level.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
-    <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. A natural 20 that makes it gets at least the top of the scale (by ${C.upTo} over). Nothing lost for a miss.<br>
-      <small>So at level 3: meet it 15 · by 5, 75 · by 10, 150 · by 13, 159.</small></div>
+    <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. A natural 20 that makes it gets at least the top of the scale (by ${C.upTo} over).<br>
+      A miss costs ${num("checks.missPct", C.missPct, 46)} % of what beating it by as much would earn, and never takes them below the XP they had when the session started (a natural 1 is just its margin).${root.statMarks && root.statMarks.xp ? "" : ` <b>Start a session</b> (the log) so misses can cost XP earned in it.`}<br>
+      <small>So at level 3: meet it 15 · by 5, 75 · by 10, 150 · by 13, 159. Miss by 5, −38 · by 10, −75.</small></div>
     <button class="btn wide" data-lb="rulesreset" style="margin-top:6px">Back to the starting numbers</button></details>`;
 }
 document.addEventListener("click", e=>{
@@ -7442,7 +7453,7 @@ function wireFight(n, st){
       { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
         const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
         for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
-        if(pool && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; }
+        if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; }
       /* the fallen stay here to be searched — whoever ran or still stands keeps their things */
       const laid = layBodies(st, c.list.filter(y=>!y.ally && !y.neutral && y.max!=null && y.hp<=0 && !y.fled));
       if(laid) flash(`${laid} bod${laid===1?"y":"ies"} left here to search — see "On the fallen" under Loot here.`);
@@ -9831,7 +9842,7 @@ function restoreSnap(c, s){
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; } }
   }
 }
-const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
+const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
 function damageFoe(x, v){ if(x.max==null) return false; const was = x.hp; x.hp = Math.max(0, x.hp - v); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); return was>0 && x.hp<=0; }
 function damagePc(p, v){
   pcState(p); let hp = numOr(p.hp, 0); const was = hp;
@@ -9878,6 +9889,7 @@ function logAction(n, c){
     if(info.kind==="spell") S.spells[info.name] = (S.spells[info.name]||0)+1;
     else if(info.kind==="attack"){ S.attacks++; if(act.outcome==="hit"||act.outcome==="crit") S.hits++; }
     else S.abilities[info.name] = (S.abilities[info.name]||0)+1;
+    if(act.outcome==="crit") S.crits = (S.crits||0) + 1;          // a critical hit, weapon or spell: XP on the fight's card (your table rule)
   } else {
     const x = actor.x, r = foeResources(foeById(x.foe));
     const key = act.what.startsWith("fsp:") ? act.what.slice(4) : act.what.slice(3).replace(/^(Bonus|Reaction|Legendary): /,"").replace(/\s*\(.*\)\s*$/,"");
@@ -11528,7 +11540,7 @@ function gameLog(kind, text){
   const L = gameLogList(), s = String(text).trim().replace(/\.$/, ""), last = L[L.length-1], now = new Date();
   if(last && last.text===s && kind!=="loot" && now - new Date(last.t) < 5000) return;      // the same thing twice from one click (loot can really happen twice)
   L.push({ id:uid("gl"), t:now.toISOString(), day:campaignDay(), hour:root.hour, time:timeOfDay(), kind, text:s });
-  if(kind==="session") root.statMarks = { label:s, stats:statSnap() };      // "this session" on the leaderboards counts from here
+  if(kind==="session") root.statMarks = { label:s, stats:statSnap(), xp:Object.fromEntries(partyRoster().map(c=>[c.id, +c.xp||0])) };     // and where each one's XP stood: a missed check can't take them below it      // "this session" on the leaderboards counts from here
   if(L.length > GLOG_MAX) L.splice(0, L.length - GLOG_MAX);
   markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
   if(pane==="notes") refreshGameLog();
@@ -14136,7 +14148,7 @@ function renderActionBox(force){
     const who = party ? P.filter(x=>x.key.startsWith("pc:")) : [P.find(x=>x.key===ta.who)].filter(Boolean);
     body = `<div class="afr"><label>Check</label><select data-ta="skill"><optgroup label="Skills">${TA_SKILLS.map(s=>opt(s, s, ta.skill)).join("")}</optgroup><optgroup label="Abilities">${Object.entries(ABIL_NAME).map(([k,l])=>opt(k, l, ta.skill)).join("")}</optgroup></select></div>
       <div class="afr"><label>DC</label><input data-ta="dc" type="number" min="1" value="${esc(ta.dc)}" placeholder="—"></div>
-      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small></label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>`; }).join("")}</div>
+      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small></label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><label class="check tanat" title="A natural 20 on the die"><input type="checkbox" data-tanat="${x.key}" ${(ta.nat||{})[x.key]===20 ? "checked" : ""}> nat 20</label><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>`; }).join("")}</div>
       ${who.length>1 ? `<button class="btn wide" data-tar="checkall">Roll for everyone</button>` : ""}
       ${ta.skill===SEARCH_SKILL && checkSpot() ? `<label class="check" style="margin:4px 0 0" title="Each total is also that person's search of the place: hidden pieces, items and coin they can see"><input type="checkbox" data-ta="search" ${ta.search!==false?"checked":""}> Also search ${esc(placeLabel(checkSpot()))} with these totals</label>` : ""}`;
   } else if((ta.what==="give" || ta.what==="take") && o){
@@ -14171,8 +14183,10 @@ function renderActionBox(force){
 function wireActionBox(){
   const el = $("#actionbox");
   const set = t => { const k = t.dataset.ta; if(!k) return false; ta[k] = t.type==="checkbox" ? t.checked : t.value; if(k==="slot") ta.slot = +t.value; return true; };
-  el.addEventListener("input", e=>{ const t = e.target; if(t.dataset.tatot){ ta.tot[t.dataset.tatot] = t.value; if(ta.nat) delete ta.nat[t.dataset.tatot]; return; } if(t.tagName==="INPUT" && t.type!=="checkbox") set(t); });
-  el.addEventListener("change", e=>{ const t = e.target; if(!set(t)) return;
+  el.addEventListener("input", e=>{ const t = e.target; if(t.dataset.tatot){ ta.tot[t.dataset.tatot] = t.value; return; } if(t.tagName==="INPUT" && t.type!=="checkbox") set(t); });
+  el.addEventListener("change", e=>{ const t = e.target;
+    if(t.dataset.tanat){ ta.nat = ta.nat || {}; if(t.checked) ta.nat[t.dataset.tanat] = 20; else delete ta.nat[t.dataset.tanat]; return; }      // a natural 20 rolled at the table
+    if(!set(t)) return;
     if(["who","what","to","how","spell","skill","slot"].includes(t.dataset.ta)){ if(t.dataset.ta==="who"||t.dataset.ta==="to"||t.dataset.ta==="what") ta.item = ""; if(t.dataset.ta==="how"||t.dataset.ta==="spell") ta.slot = null; renderActionBox(true); } });
   el.addEventListener("click", e=>{
     const b = e.target.closest("[data-tar],[data-tarest],[data-talog],[data-taother]"); if(!b) return;
