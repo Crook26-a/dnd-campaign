@@ -754,6 +754,25 @@
   .pv-img{max-width:100vw;max-height:100vh;object-fit:contain;display:block}
   /* mission boards on the players' screen: the board's skin comes from the map (n.board.skin) */
   .pv-board{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:3vh 3vw;box-sizing:border-box;overflow:auto}
+  /* the leaderboards: in the Party tab, and big on the players' screen */
+  .lb-when{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 6px}
+  .lb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .lb-card{border:1px solid var(--rule);background:var(--paper);padding:6px 8px;border-radius:3px}
+  .lb-t{font-family:var(--serif);font-size:12.5px;font-weight:600;margin-bottom:3px}
+  .lb-row{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:1px 0}
+  .lb-row.top{font-weight:600} .lb-row.top .lb-p{color:var(--lead)}
+  .lb-p{flex:0 0 14px;font-family:var(--mono);color:var(--ink-faint)} .lb-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .lb-v{font-family:var(--mono)} .lb-v small{display:block;font-size:9px;color:var(--ink-faint);text-align:right}
+  .lb-none{font-size:11.5px;color:var(--ink-faint);margin:0}
+  .lb-tv{width:min(1400px,94vw);background:#efe4c6;border:2px solid #3a2e1e;box-shadow:0 0 0 6px #efe4c6,0 0 0 8px #6d5c43,0 10px 40px rgba(0,0,0,.35);padding:3vh 3vw}
+  .lb-tv .lb-h{font-family:var(--serif);font-size:min(6vh,54px);text-align:center;font-variant:small-caps;letter-spacing:.08em;color:#3a2e1e}
+  .lb-tv .lb-when{text-align:center;font-size:min(1.8vh,15px);margin-bottom:2vh}
+  .lb-tv .lb-grid{grid-template-columns:repeat(4,1fr);gap:1.6vh 1.4vw}
+  .lb-tv .lb-card{padding:1.2vh 1vw;background:#f6eedb}
+  .lb-tv .lb-t{font-size:min(2.4vh,22px);margin-bottom:.8vh} .lb-tv .lb-row{font-size:min(2.2vh,20px);padding:.3vh 0} .lb-tv .lb-v small{font-size:min(1.4vh,12px)}
+  .xptab{width:100%;border-collapse:collapse;font-size:11.5px} .xptab th{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:normal;text-align:right;padding:1px 3px}
+  .xptab td{text-align:right;padding:2px 3px;border-top:1px dotted var(--rule);font-family:var(--mono)} .xptab td:first-child,.xptab th:first-child{text-align:left;font-family:var(--serif)}
+  .xpdue{border:1px solid var(--rule);background:var(--paper);padding:2px 8px 8px;margin:0 0 10px;border-radius:3px}
+  .xprule{font-size:12px;line-height:1.9;color:var(--ink-soft)} .xprule input{padding:1px 4px}
   .mb{width:min(1500px,96vw);min-height:80vh;box-sizing:border-box;padding:3.5vh 3vw 4vh;border-radius:6px;position:relative}
   .mb-title{margin:0 0 3vh;text-align:center;font-family:var(--serif);font-weight:600;font-size:clamp(26px,3.6vw,58px);letter-spacing:.02em}
   .mb-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,90vw),1fr));gap:3vh 2.4vw;align-items:start}
@@ -1830,6 +1849,7 @@ function sendPlayers(now){
         msg = blob instanceof Blob ? { kind:"picture", blob } : { kind:"blank" };
       }
       else if(playerShow.kind==="board"){ const bn = boardByKey(playerShow.id); msg = bn && bn.board ? { kind:"board", html:boardHtml(bn) } : { kind:"blank" }; }
+      else if(playerShow.kind==="leaders") msg = { kind:"board", html:leaderHtml(playerShow.scope || leaderScope, true) };
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
       else msg = playerMapScene();
       playerWin.postMessage({ ordinate:"scene", ...msg }, "*");
@@ -1965,6 +1985,8 @@ function renderPScreen(){
     ${P.length ? P.map(p=>`<div class="adrow"><span>${esc(p.name||"Picture")}</span>${showBtn("picture", playerShow.kind==="picture"&&playerShow.id===p.id?"Showing":"Show", p.id)}<button class="fdel" data-ps="del" data-id="${p.id}" title="Remove">×</button></div>`).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">None yet.</p>`}
     <button class="btn wide" data-ps="add" style="margin-top:6px">Add a picture…</button><input type="file" id="ps-file" accept="image/*" multiple hidden>
+    <p class="grouplab" style="margin-top:10px">Leaderboards</p>
+    <div class="adrow"><span>Who's leading<br><small>${leaderScope==="session" ? "this session" : "the whole campaign"} (change it in the Party tab)</small></span>${showBtn("leaders", playerShow.kind==="leaders" ? "Showing" : "Show")}</div>
     <p class="grouplab" style="margin-top:10px">Mission boards</p>
     ${boardsAll().length ? boardsAll().map(({ plan, n })=>{ const k = boardKey(plan, n); return `<div class="adrow"><span>${esc(n.board.title || placeLabel(n))}<br><small>${esc(placeLabel(n))}</small></span>${showBtn("board", playerShow.kind==="board"&&playerShow.id===k?"Showing":"Show", k)}</div>`; }).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">None yet. Any place can have one: "Put up a mission board here" at the bottom of its panel (DM mode).</p>`}`;
@@ -5523,6 +5545,7 @@ function saveParty(){
   markDirty(K_SURVEY);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
+  if(typeof refreshLeadersOnTv==="function") refreshLeadersOnTv();     // the leaderboards on the TV keep up
 }
 /* ── taking back a change to the party: damage, healing, slots, rests, coins…
    The map's undo keeps the map's history; the characters get their own. Every
@@ -5579,10 +5602,163 @@ function awardXP(amount, how, note){
 }
 function undoAward(){
   const e = (root.xpLog||[]).pop(); if(!e) return;
-  for(const c of (root.roster||[])) if(e.ids.includes(c.id)) c.xp = Math.max(0, (+c.xp||0) - e.each);
+  for(const c of (root.roster||[])) if(e.ids.includes(c.id)) c.xp = Math.max(0, (+c.xp||0) - (e.per ? (+e.per[c.id]||0) : e.each));
   saveParty(); flash("Took back the last award.");
 }
 const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.level)+1];
+/* ══════════════════════════════════════════════════════════════
+   LEADERBOARDS AND XP FOR HOW THEY PLAYED — who dealt the most, healed
+   the most, hit the most… for this session or the whole campaign, in the
+   Party tab and on the players' screen. And Joseph's table rule on XP
+   (the 2024 rules split an encounter's XP evenly and stop there): the
+   fight's pool is still split evenly, with a bonus pool on top shared by
+   damage dealt, foes brought down, healing and aim, less a penalty pool
+   taken by share of the damage the party took; and outside fights, a
+   great check (beat the DC by enough, or a natural 20) earns XP by level
+   and a bad miss (or a natural 1) costs some. Every number is a setting
+   (root.xpRules), shown in the Party tab.
+   ══════════════════════════════════════════════════════════════ */
+const XP_RULES_DEFAULT = { bonus:20, penalty:10, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, great:10, greatXp:25, bad:10, badXp:10 } };
+function xpRules(){
+  const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
+  r.w = { ...XP_RULES_DEFAULT.w, ...(r.w||{}) }; r.checks = { ...XP_RULES_DEFAULT.checks, ...(r.checks||{}) };
+  if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.penalty)) r.penalty = XP_RULES_DEFAULT.penalty;
+  return r;
+}
+const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","greats","flops"];
+/* where every party member's tallies stand now (spells as one count) */
+function statSnap(){
+  const out = {};
+  for(const c of partyRoster()){ const S = statsOf(c), o = {}; for(const k of STAT_KEYS) o[k] = +S[k] || 0;
+    o.spells = Object.values(S.spells||{}).reduce((a, b)=>a + (+b||0), 0); out[c.id] = o; }
+  return out;
+}
+/* the fight's XP shared out: an even share each, the bonus pool by what each did, the penalty by what each took */
+const XP_CATS = [["dealt","damage"], ["kills","kills"], ["healed","healing"], ["aim","aim"]];
+function perfAward(due){
+  const R = xpRules(), pcs = partyRoster().filter(c=>due.delta[c.id]), n = pcs.length || 1, pool = +due.pool || 0;
+  const v = (c, k) => { const d = due.delta[c.id] || {}; return k==="aim" ? ((d.attacks||0) >= 2 ? (d.hits||0) / d.attacks : 0) : Math.max(0, d[k]||0); };
+  const B = pool * (+R.bonus||0) / 100, P = pool * (+R.penalty||0) / 100, wsum = XP_CATS.reduce((s, [k])=>s + Math.max(0, +R.w[k]||0), 0) || 1;
+  const sumOf = k => pcs.reduce((s, c)=>s + v(c, k), 0), taken = pcs.reduce((s, c)=>s + Math.max(0, (due.delta[c.id]||{}).taken||0), 0);
+  return pcs.map(c=>{
+    const share = Math.floor(pool / n), bonus = {};
+    for(const [k] of XP_CATS){ const t = sumOf(k); bonus[k] = t > 0 ? B * (Math.max(0, +R.w[k]||0) / wsum) * v(c, k) / t : 0; }
+    const pen = taken > 0 ? P * Math.max(0, (due.delta[c.id]||{}).taken||0) / taken : 0;
+    const auto = Math.max(0, Math.round(share + Object.values(bonus).reduce((a, b)=>a + b, 0) - pen));
+    const total = due.edit && due.edit[c.id] != null && due.edit[c.id] !== "" ? Math.max(0, Math.round(+due.edit[c.id]||0)) : auto;
+    return { c, share, bonus, pen, auto, total, d:due.delta[c.id] || {} };
+  });
+}
+/* XP to each by name (a fight's shares, a check's bonus or cost); one step to take back */
+function awardXPPer(per, note){
+  const ids = Object.keys(per).filter(id=>per[id]); if(!ids.length) return;
+  partyDoing(`XP: ${note}`);
+  for(const c of partyRoster()) if(per[c.id]) c.xp = Math.max(0, (+c.xp||0) + per[c.id]);
+  (root.xpLog = Array.isArray(root.xpLog) ? root.xpLog : []).push({ at:today(), per, ids, note:note||"" });
+  saveParty();
+  const said = partyRoster().filter(c=>per[c.id]).map(c=>`${(c.name||"Someone").split(" ")[0]} ${per[c.id] > 0 ? "+" : ""}${per[c.id].toLocaleString()}`).join(", ");
+  gameLog("xp", `XP${note ? ` (${note})` : ""}: ${said}`); return said;
+}
+/* after End the fight: the card that shares its XP out */
+function xpDueBlock(st){
+  const due = st && st.xpDue; if(!due) return "";
+  const R = xpRules(), rows = perfAward(due), f = x => Math.round(x);
+  if(!rows.length) return "";
+  return `<div class="xpdue"><p class="eyebrow spaced" style="margin-top:4px">XP for the fight${due.place ? ` at ${esc(due.place)}` : ""}</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${due.pool.toLocaleString()} XP from the foes brought down, split ${rows.length} ways, plus ${R.bonus}% for how they fought, less ${R.penalty}% by the damage each took (your table rule).</p>
+    <table class="xptab"><tr><th></th><th title="An even share of the fight's XP">share</th><th title="Damage dealt">dmg</th><th title="Foes brought down">kills</th><th title="Healing given">heal</th><th title="Hits for attacks made">aim</th><th title="Less, for damage taken">taken</th><th>total</th></tr>
+    ${rows.map(r=>`<tr><td>${esc((r.c.name||"Someone").split(" ")[0])}</td><td>${r.share}</td>
+      <td title="${r.d.dealt||0} damage">+${f(r.bonus.dealt)}</td><td title="${r.d.kills||0} brought down">+${f(r.bonus.kills)}</td><td title="${r.d.healed||0} healed">+${f(r.bonus.healed)}</td>
+      <td title="${r.d.hits||0} of ${r.d.attacks||0} hit">+${f(r.bonus.aim)}</td><td title="${r.d.taken||0} damage taken">−${f(r.pen)}</td>
+      <td><input class="mono" data-xpdue="${r.c.id}" type="number" min="0" value="${r.total}" style="width:62px"></td></tr>`).join("")}</table>
+    <div class="pcrow" style="margin-top:6px"><button class="btn calmgo" style="flex:2" data-xpd="award">Award these</button><button class="btn" style="flex:1" data-xpd="split" title="Just the even split, ${Math.floor(due.pool/rows.length)} each">Even split</button><button class="btn" style="flex:0 0 auto" data-xpd="drop" title="No XP for this one">×</button></div></div>`;
+}
+document.addEventListener("input", e=>{ const t = e.target.closest("[data-xpdue]"); if(!t) return; const st = xpDueSite(); if(!st) return; (st.xpDue.edit = st.xpDue.edit || {})[t.dataset.xpdue] = t.value; touch(); });
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-xpd]"); if(!b) return; const st = xpDueSite(); if(!st) return; const due = st.xpDue, a = b.dataset.xpd;
+  if(a==="award"){ const per = {}; for(const r of perfAward(due)) per[r.c.id] = r.total; awardXPPer(per, `the fight${due.place ? ` at ${due.place}` : ""}`); }
+  else if(a==="split"){ const rows = perfAward(due), per = {}; for(const r of rows) per[r.c.id] = r.share; awardXPPer(per, `the fight${due.place ? ` at ${due.place}` : ""}, even split`); }
+  delete st.xpDue; touch(); renderPane(true); if(battleOf) renderBattlePanel(); renderChips();
+});
+/* whose fight is waiting to be shared out: the open battle's place, else the place picked */
+function xpDueSite(){
+  const n = battleOf ? bnode() : (sel && sel.kind==="node" ? nodeById(sel.id) : null);
+  return n && n.site && n.site.xpDue ? n.site : null;
+}
+/* a check outside a fight: a great one earns XP, a bad miss costs some (by level) */
+function checkXp(who, dc, natOf, what){
+  const R = xpRules().checks; if(!R.on || !dc) return "";
+  const per = {}, why = [];
+  for(const x of who){
+    if(!x.key.startsWith("pc:")) continue;
+    const c = x.o, tot = Math.round(+ta.tot[x.key]), nat = natOf[x.key], lv = clampLv(c.level), S = statsOf(c);
+    const great = nat===20 || tot - dc >= (+R.great||10), bad = nat===1 || dc - tot >= (+R.bad||10);
+    if(great){ per[c.id] = Math.round((+R.greatXp||0) * lv); S.greats = (S.greats||0) + 1; why.push(`${(c.name||"").split(" ")[0]} ${nat===20 ? "rolled a natural 20" : `beat it by ${tot-dc}`}`); }
+    else if(bad){ per[c.id] = -Math.round((+R.badXp||0) * lv); S.flops = (S.flops||0) + 1; why.push(`${(c.name||"").split(" ")[0]} ${nat===1 ? "rolled a natural 1" : `missed by ${dc-tot}`}`); }
+  }
+  return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
+}
+/* the boards: for this session (since the last "Start session" marker) or the whole campaign */
+const LEADER_BOARDS = [
+  ["dealt", "Most damage dealt", r=>r.dealt],
+  ["kills", "Most foes brought down", r=>r.kills],
+  ["healed", "Most healing given", r=>r.healed],
+  ["aim", "Best aim", r=>r.attacks >= 3 ? r.hits / r.attacks : null, v=>`${Math.round(v*100)}%`, r=>`${r.hits} of ${r.attacks}`],
+  ["taken", "Took the most punishment", r=>r.taken],
+  ["spells", "Most spells cast", r=>r.spells],
+  ["greats", "Great checks", r=>r.greats],
+  ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
+];
+function leaderRows(scope){
+  const now = statSnap(), base = scope==="session" && root.statMarks ? root.statMarks.stats || {} : null;
+  return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), xp:+c.xp||0 }; });
+}
+function leaderHtml(scope, tv){
+  const rows = leaderRows(scope), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
+  const boards = LEADER_BOARDS.map(([k, title, get, fmt, sub])=>{
+    const list = rows.map(r=>({ r, v:get(r) })).filter(x=>x.v!=null && x.v > 0).sort((a, b)=>b.v - a.v);
+    if(!list.length && !tv) return `<div class="lb-card"><div class="lb-t">${title}</div><p class="lb-none">Nobody yet</p></div>`;
+    if(!list.length) return "";
+    return `<div class="lb-card"><div class="lb-t">${title}</div>${list.map((x, i)=>`<div class="lb-row${i===0 ? " top" : ""}"><span class="lb-p">${i===0 ? "★" : i+1}</span><span class="lb-n">${esc(x.r.c.name || "Someone")}</span><span class="lb-v">${fmt ? fmt(x.v) : x.v.toLocaleString()}${sub ? `<small>${sub(x.r)}</small>` : ""}</span></div>`).join("")}</div>`;
+  }).join("");
+  return `<div class="lb${tv ? " lb-tv" : ""}">${tv ? `<div class="lb-h">Leaderboards</div>` : ""}<div class="lb-when">${esc(when)}</div><div class="lb-grid">${boards || `<p class="lb-none">Nothing to show yet: it fills in as fights and checks are logged.</p>`}</div></div>`;
+}
+let leaderScope = "session", leaderTvTimer = null;
+function leadersOnTv(scope){ playerShow = { kind:"leaders", scope:scope || leaderScope }; sendPlayers(true); renderPScreen(); }
+function refreshLeadersOnTv(){ if(playerShow.kind!=="leaders") return; clearTimeout(leaderTvTimer); leaderTvTimer = setTimeout(()=>sendPlayers(true), 400); }
+function leaderBlock(){
+  const showing = playerShow.kind==="leaders";
+  return `<details class="partysec" data-invfor="party:leaders" ${openInv.has("party:leaders")?"open":""}><summary class="eyebrow">Leaderboards</summary>
+    <div class="pcrow" style="margin:2px 0 8px"><button class="btn ${leaderScope==="session"?"on":""}" style="flex:1" data-lb="session">This session</button><button class="btn ${leaderScope==="all"?"on":""}" style="flex:1" data-lb="all">The whole campaign</button></div>
+    ${leaderHtml(leaderScope, false)}
+    <button class="btn wide" data-lb="${showing ? "tvoff" : "tv"}" style="margin-top:6px">${showing ? "Take it off the players' screen" : "Show it on the players' screen"}</button></details>`;
+}
+function xpRulesBlock(){
+  const R = xpRules(), C = R.checks, num = (k, v, w) => `<input class="mono" data-xpr="${k}" type="number" min="0" value="${v}" style="width:${w||54}px">`;
+  return `<details class="partysec" data-invfor="party:xprules" ${openInv.has("party:xprules")?"open":""}><summary class="eyebrow">XP for how they play <small>your table rule</small></summary>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">The 2024 rules split a fight's XP evenly. This adds to that.</p>
+    <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
+      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights),
+      less ${num("penalty", R.penalty)} % taken by each one's share of the damage the party took.</div>
+    <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
+    <div class="xprule">A great check: beat the DC by ${num("checks.great", C.great, 46)} or a natural 20 = +${num("checks.greatXp", C.greatXp, 46)} XP × level.<br>
+      A bad miss: miss it by ${num("checks.bad", C.bad, 46)} or a natural 1 = −${num("checks.badXp", C.badXp, 46)} XP × level.</div>
+    <button class="btn wide" data-lb="rulesreset" style="margin-top:6px">Back to the starting numbers</button></details>`;
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-lb]"); if(!b) return; const a = b.dataset.lb;
+  if(a==="session" || a==="all"){ leaderScope = a; if(playerShow.kind==="leaders") leadersOnTv(a); }
+  else if(a==="tv") leadersOnTv(leaderScope);
+  else if(a==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); }
+  else if(a==="rulesreset"){ root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)); saveParty(); }
+  renderPane(true);
+});
+document.addEventListener("change", e=>{
+  const t = e.target.closest("[data-xpr]"); if(!t) return; const R = xpRules(), [a, b] = t.dataset.xpr.split(".");
+  const v = t.type==="checkbox" ? t.checked : Math.max(0, +t.value || 0);
+  if(b) R[a][b] = v; else R[a] = v; saveParty();
+});
 
 /* a character's spells, laid out like the sheet: by level, with that level's slots, each spell with
    its essentials and a line of description. The name opens the full spell in the library, and the
@@ -5803,8 +5979,11 @@ function renderParty(){
       : `<p class="empty-note" style="margin:0 0 8px">Nobody yet. Bring someone in below, from a person's entry in the Library, or by moving someone who fought on the party's side.</p>`}
     ${addCompanionBlock(pcs)}
 
+    ${leaderBlock()}
+    ${xpRulesBlock()}
+
     <details class="partysec" data-invfor="party:xplog" ${openInv.has("party:xplog")?"open":""}><summary class="eyebrow">XP log${log.length?` <small>${log.length}</small>`:""}</summary>
-    ${log.length ? `<div class="xplog">${log.map(e=>`<div class="stat"><span class="k">${esc(e.at)} · ${esc(e.note||"XP")}</span><span class="v">+${e.each.toLocaleString()} each</span></div>`).join("")}</div>
+    ${log.length ? `<div class="xplog">${log.map(e=>`<div class="stat"><span class="k">${esc(e.at)} · ${esc(e.note||"XP")}</span><span class="v">${e.per ? partyRoster().filter(c=>e.per[c.id]).map(c=>`${esc((c.name||"").split(" ")[0])} ${e.per[c.id] > 0 ? "+" : ""}${e.per[c.id].toLocaleString()}`).join(", ") : `+${(+e.each||0).toLocaleString()} each`}</span></div>`).join("")}</div>
       <button class="btn wide" data-act="undo" style="margin-top:6px">Take back the last award</button>`
       : `<p class="empty-note">Nothing awarded yet. Use the box above, or the Award button on any place with foes in it.</p>`}</details>`;
   wirePc(el, ()=>renderPane(true));
@@ -6876,6 +7055,7 @@ const calmHere = () => { const n = battleOf ? bnode() : null; return !!(n && n.s
 function beginBattle(st){
   if(!st.combat) startFight(st);
   const c = st.combat; c.calm = false; c.round = c.round || 1;
+  c.statsAt = statSnap();                               // where everyone's tallies stood: the fight's XP card counts from here
   const foesNow = c.list.filter(x=>!x.ally && !x.neutral && !(x.max && x.hp<=0) && !x.fled), by = {};
   for(const x of foesNow){ const nm = (foeById(x.foe)||{}).name||"foe"; by[nm] = (by[nm]||0)+1; }
   gameLog("fight", `A fight began${placeOfSite(st) ? ` at ${placeOfSite(st)}` : ""}${foesNow.length ? `: ${Object.entries(by).map(([k,v])=>v>1?`${v} × ${k}`:k).join(", ")}` : ""}`);
@@ -7256,6 +7436,11 @@ function wireFight(n, st){
       /* the fight goes into the session log before it's cleared away */
       if((c.log||[]).length){ const j = journal(); j.log.push({ id:uid("lg"), at:today(), n:j.log.length+1, text:fightSummary(n, c) }); saveParty(); }
       gameLog("fight", fightSummary(n, c).split("\n")[0]);
+      /* the fight's XP: the foes brought down, and what each party member did in it (shared out on the card that follows) */
+      { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
+        const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
+        for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
+        if(pool && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; }
       /* the fallen stay here to be searched — whoever ran or still stands keeps their things */
       const laid = layBodies(st, c.list.filter(y=>!y.ally && !y.neutral && y.max!=null && y.hp<=0 && !y.fled));
       if(laid) flash(`${laid} bod${laid===1?"y":"ies"} left here to search — see "On the fallen" under Loot here.`);
@@ -9812,6 +9997,7 @@ function calmTop(n, st, c, all){
   const row = (id, label, tag) => `<div class="calmrow${battleSel===id?" sel":""}" data-bsel="${esc(id)}"><span>${esc(label)}</span><small>${tag}</small></div>`;
   return `<p class="eyebrow">Here · ${esc(placeLabel(n))}</p>
     <div class="fighthead"><span>Calm, not fighting</span><span>${all.length + by.length} here</span></div>
+    ${xpDueBlock(st)}
     <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
     <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p>
     ${lightRow(n)}${spotPanel(n)}${placeSearchBox(st)}
@@ -10017,7 +10203,7 @@ function renderPlayNow(){
     ${hasInside(n)&&bmapKey(n)!=="blank"?`<button class="btn wide" id="pl-enter" title="Opens its map: ${esc(bmapOf(n).name||"")}">Enter this place${(n.site||{}).lock?` <small>(${esc(lockWord(n.site.lock))})</small>`:""}</button>`:""}
     ${hasInside(n) && !(n.bmap && Array.isArray(n.bmap.rows)) ? layoutPicker("pl-layout", n, bmapKey(n)==="blank" ? "Nothing inside yet: start from a layout" : `For now it uses the ready-made map “${esc(bmapOf(n).name)}”. Start from a layout`) : ""}
     ${enterAsk===n.id ? enterBox(n) : ""}
-    ${sailBlock(n)}${travelBlock(n)}`;
+    ${sailBlock(n)}${travelBlock(n)}${xpDueBlock(st)}`;
 
   h += boardBlock(n);
   h += `<p class="eyebrow spaced">Who you'll meet</p>` + (people.length ? people.map(p=>`<div class="playperson">
@@ -11340,6 +11526,7 @@ function gameLog(kind, text){
   const L = gameLogList(), s = String(text).trim().replace(/\.$/, ""), last = L[L.length-1], now = new Date();
   if(last && last.text===s && kind!=="loot" && now - new Date(last.t) < 5000) return;      // the same thing twice from one click (loot can really happen twice)
   L.push({ id:uid("gl"), t:now.toISOString(), day:campaignDay(), hour:root.hour, time:timeOfDay(), kind, text:s });
+  if(kind==="session") root.statMarks = { label:s, stats:statSnap() };      // "this session" on the leaderboards counts from here
   if(L.length > GLOG_MAX) L.splice(0, L.length - GLOG_MAX);
   markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
   if(pane==="notes") refreshGameLog();
@@ -13982,7 +14169,7 @@ function renderActionBox(force){
 function wireActionBox(){
   const el = $("#actionbox");
   const set = t => { const k = t.dataset.ta; if(!k) return false; ta[k] = t.type==="checkbox" ? t.checked : t.value; if(k==="slot") ta.slot = +t.value; return true; };
-  el.addEventListener("input", e=>{ const t = e.target; if(t.dataset.tatot){ ta.tot[t.dataset.tatot] = t.value; return; } if(t.tagName==="INPUT" && t.type!=="checkbox") set(t); });
+  el.addEventListener("input", e=>{ const t = e.target; if(t.dataset.tatot){ ta.tot[t.dataset.tatot] = t.value; if(ta.nat) delete ta.nat[t.dataset.tatot]; return; } if(t.tagName==="INPUT" && t.type!=="checkbox") set(t); });
   el.addEventListener("change", e=>{ const t = e.target; if(!set(t)) return;
     if(["who","what","to","how","spell","skill","slot"].includes(t.dataset.ta)){ if(t.dataset.ta==="who"||t.dataset.ta==="to"||t.dataset.ta==="what") ta.item = ""; if(t.dataset.ta==="how"||t.dataset.ta==="spell") ta.slot = null; renderActionBox(true); } });
   el.addEventListener("click", e=>{
@@ -13995,7 +14182,7 @@ function wireActionBox(){
       else if(k==="use"){ const o = taObj(ta.who), x = o && (usableOf(o).find(y=>String(y.k)===String(ta.item)) || usableOf(o)[0]), dice = x && (x.u.heal || x.u.tempHp || x.u.dmg); if(!dice) return;
         const r = rollTerms(diceTerms(dice)); ta.amt = String(r.total); flash(`${dice}: ${r.rolls.join(" + ")} = ${r.total}`); }
       else { const keys = k==="checkall" ? taPeople().filter(x=>ta.who==="party" ? x.key.startsWith("pc:") : x.key===ta.who).map(x=>x.key) : [b.dataset.k];
-        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill); ta.tot[key] = String(r + m); }
+        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill); ta.tot[key] = String(r + m); (ta.nat = ta.nat || {})[key] = r; }
         if(keys.length===1){ const o = taObj(keys[0]); flash(`d20 + ${skillMod(o, k==="hide" ? "Stealth" : ta.skill)} = ${ta.tot[keys[0]]}`); } }
       return renderActionBox(true);
     }
@@ -14020,6 +14207,8 @@ function logTableAction(){
     else if(src.x){ if(!spendItem(o, src.x.k)){ flash("No charges left."); return; } how = src.x.it.name + (src.x.u.charges ? ` (${o.inv.includes(src.x.e) ? `${src.x.e.ch}/${src.x.u.charges}` : "used up"})` : ""); }
     else if(src.k==="hd"){ src.r.used = Math.min(src.r.max, src.r.used + 1); how = "a Hit Point Die"; }
     gameLog("heal", `${name} heals ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${amt} with ${how}${N}`);
+    /* healing out of a fight counts on the leaderboards too (a Hit Point Die is resting, not healing anyone) */
+    if(String(ta.who).startsWith("pc:") && src.k!=="hd"){ const S = statsOf(o); S.healed += Math.max(0, numOr(t.hp, 0) - was); if(src.s) S.spells[src.s.name] = (S.spells[src.s.name]||0) + 1; }
   } else if(ta.what==="use"){
     const U = usableOf(o||{}), cur = U.find(x=>String(x.k)===String(ta.item)) || U[0]; if(!cur){ flash("Nothing to use."); return; }
     const tKey = on || ta.who, t = taObj(tKey), amt = Math.max(0, Math.round(+ta.amt||0));
@@ -14047,6 +14236,8 @@ function logTableAction(){
       const rolls = who.filter(x=>x.key.startsWith("pc:")).map(x=>({ p:x.o, roll:Math.round(+ta.tot[x.key]) })).filter(r=>isFinite(r.roll));
       if(rolls.length){ runPlaceSearch(spot, siteOf(spot), rolls); if(battleOf){ renderBattle(); renderBattlePanel(); } }
     }
+    const xpSaid = checkXp(who, dc, ta.nat || {}, what); if(xpSaid) setTimeout(()=>flash(`XP: ${xpSaid}`), 1600);
+    ta.nat = {};
     ta.tot = {};
   } else if(ta.what==="give" || ta.what==="take"){
     const others = P.filter(x=>x.key!==ta.who), oKey = others.some(x=>x.key===ta.to) ? ta.to : (others[0]||{}).key, other = taObj(oKey);
