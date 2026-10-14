@@ -13597,6 +13597,13 @@ async function loadJSON(text){
   await shelveBeforeReplacing();
   return loadJSONNow(text);
 }
+/* after a load or an update: the session script, the docs and the log on the left are drawn from the new data too (in table
+   mode they sit outside the pane that redraws by itself, so they kept showing the old map's documents until a reload) */
+function refreshAfterLoad(){
+  if(typeof sessOpen!=="undefined" && sessOpen && !docsAll().some(d=>d.id===sessOpen)) sessOpen = null;
+  if(typeof docOpen!=="undefined" && docOpen && !docsAll().some(d=>d.id===docOpen)) docOpen = null;
+  try{ renderSession(); renderDocs(); renderTLog(true); renderChips(); }catch(err){}
+}
 function loadJSONNow(text){
   let d;
   try{ d = JSON.parse(text); } catch(err){ flash("That isn't valid JSON."); return; }
@@ -13627,6 +13634,7 @@ function loadJSONNow(text){
   $("#ppm").value = doc.ppm;
   sel=null; rule=null; touch(); centreView(); renderCrumb();
   flash(`Loaded ${doc.nodes.length} markers, ${doc.roads.length} roads${np?`, ${np} plan${np===1?"":"s"}`:""}.`);
+  refreshAfterLoad();
   if(d.files) importFiles(d.files).catch(()=>{});
 }
 /* ══════════════════════════════════════════════════════════════
@@ -13700,7 +13708,7 @@ async function updateFromMap(text){
     merged.roads = (merged.roads||[]).filter(r=>!gone.has(r.id) && !gone.has(r.from) && !gone.has(r.to));
     if(was) rep.mine.push(`${was} place${was===1?"":"s"} retired by the map`); }
   const keepTab = pane; loadJSONNow(JSON.stringify(merged)); root.build = d.builder; rememberBase(text); markDirty(K_SURVEY); touch();
-  pane = keepTab; syncTabs(); renderPane(true);
+  pane = keepTab; syncTabs(); renderPane(true); refreshAfterLoad();
   const place = k => (root.nodes.find(n=>n.id===k)||{}).name || k;   // "plans › <id> › …" reads as "Inside <place name> › …"
   const list = a => a.slice(0, 12).map(s=>`  • ${s.replace(/^plans › ([^ ]+)/, (x, k)=>`Inside ${place(k)}`)}`).join("\n") + (a.length>12 ? `\n  …and ${a.length-12} more` : "");
   alert(`Updated to the map built ${d.builder}.\n\n${rep.mine.length ? `From the new map (${rep.mine.length}):\n${list(rep.mine)}` : "Nothing new from the map."}${rep.yours.length ? `\n\nChanged on both sides, so yours was kept (${rep.yours.length}):\n${list(rep.yours)}` : ""}\n\nEverything else you've done in the app is as you left it. The version before the update is on the shelf.`);
