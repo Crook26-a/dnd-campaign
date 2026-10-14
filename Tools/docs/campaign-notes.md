@@ -208,7 +208,7 @@ For monsters, look for giant octopus, pirate or bandit, and bandit captain stat 
 
 ### The widow on the pier
 
-**What happened.** After the dock ambush in Session 1, Ander rolled the fallen deckhands into the harbor and kept the 15 silver they carried. Each of them had been paid five silver to grab the lantern. The captain reported the fight to the City Guard. [[npc:ln_okoro|Sergeant Okoro]] wrote it down, but nobody really investigated, and nobody went looking for the dead men's families.
+**What happened.** After the dock ambush in Session 1, Ander rolled the dead deckhands into the harbor and kept the 15 silver they carried. They were already dead when they went in. Each of them had been paid five silver to grab the lantern. The captain reported the fight to the City Guard. [[npc:ln_okoro|Sergeant Okoro]] wrote it down, but nobody really investigated, and nobody went looking for the dead men's families.
 
 **The scene.** Run it the first time the crew steps onto the pier after they come back. Read:
 
