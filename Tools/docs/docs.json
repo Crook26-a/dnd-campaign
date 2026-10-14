@@ -1,7 +1,7 @@
 [
   { "id": "doc_session1", "kind": "session", "title": "Session 1: Hired in Kalatecha", "date": "", "file": "session-1.md", "updated": "2026-10-10T16:00:00.000Z" },
   { "id": "doc_session2", "kind": "session", "title": "Session 2: The False Light", "date": "", "file": "session-2.md", "updated": "2026-10-13T22:00:00.000Z" },
-  { "id": "doc_notes", "kind": "doc", "title": "Age of Exploration Campaign Notes", "date": "2026-10-05", "file": "campaign-notes.md", "updated": "2026-10-10T22:20:00.000Z" },
+  { "id": "doc_notes", "kind": "doc", "title": "Age of Exploration Campaign Notes", "date": "2026-10-05", "file": "campaign-notes.md", "updated": "2026-10-14T20:00:00.000Z" },
   { "id": "doc_captain", "kind": "doc", "title": "Captain Callomay", "date": "2026-10-07", "file": "captain-callomay.md", "updated": "2026-10-10T16:00:00.000Z" },
   { "id": "doc_cityguide", "kind": "doc", "title": "Kalatecha City Guide", "date": "2026-10-07", "file": "city-guide.md", "updated": "2026-10-10T21:50:00.000Z" },
   { "id": "doc_cheatsheet", "kind": "doc", "title": "DM Cheat Sheet", "date": "2026-10-07", "file": "dm-cheat-sheet.md", "updated": "2026-10-08T22:12:31.000Z" }

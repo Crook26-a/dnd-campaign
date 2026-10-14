@@ -204,6 +204,26 @@ For monsters, look for giant octopus, pirate or bandit, and bandit captain stat 
 - [ ] Later: Ghosts of Saltmarsh
 - [ ] Later: 2024 Dungeon Master's Guide
 
+## When they return to Kalatecha
+
+### The widow on the pier
+
+**What happened.** After the dock ambush in Session 1, Ander rolled the fallen deckhands into the harbor and kept the 15 silver they carried. Each of them had been paid five silver to grab the lantern. The captain reported the fight to the City Guard. [[npc:ln_okoro|Sergeant Okoro]] wrote it down, but nobody really investigated, and nobody went looking for the dead men's families.
+
+**The scene.** Run it the first time the crew steps onto the pier after they come back. Read:
+
+> The pier is busy, but one woman isn't working. Her eyes are red and swollen, and she's been going from sailor to sailor. When she sees the Sallowmay, she pushes through the crowd, grabs a fistful of Ander's coat and holds on. "You were here. You were on this pier the day you sailed. My Tomas took a job on the docks that day. He said he'd be home by supper with five silver. He never came home." Her voice breaks. "Do you know what happened to him? Please. Anything."
+
+**Who she is.** [[npc:ln_vela|Lucia Vela]], a net-mender from the harbor. Her husband, Tomas Vela, was one of the deckhands Ander rolled into the water. She doesn't know he was hired to steal anything. She only knows he went out for a day's work and never came back.
+
+**How it can go.**
+
+- **They tell her the truth.** She falls apart, then asks where he is so she can bury him. The harbor has had all the time they were away to take the body. If they help her look, the twins [[npc:ln_twins|Nico and Lina]] know where the tide washes things up under the bridge.
+- **They lie or say nothing.** She lets go and walks away, but she keeps asking around the docks. People saw the fight. Sooner or later, someone tells her which crew it was.
+- **They give her money.** The 15 silver from the bodies was partly her husband's pay. If Ander gives her any of it, she knows the coins are from the docks and asks why he has them.
+
+**The consequence.** This is a quiet consequence, not a punishment. Let it sting. [[npc:ln_hargrove|Hargrove-Vance]] keeps a journal of the crew's mistakes, and a grieving widow and a missing body are just what he wants. If the crew lies to her, he finds her before they sail again.
+
 ## Still to decide
 
 - [ ] What's on Kalatecha's flag?
