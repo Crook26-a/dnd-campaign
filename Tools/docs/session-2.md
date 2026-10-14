@@ -1,22 +1,22 @@
 # Session 2: The False Light
 
-Session 2 takes the Sallowmay out of Kalatecha on the night of day 1, across two days of open sea (with merrow at dusk on day 2 and a long rest that night), through the reef by the false light, and ashore on Lantern Rock as far as the ship graveyard. It runs about 2 hours 25 minutes plus a 15-minute break. Wreckers' Cove, the lighthouse and the firebird are Session 3.
+Session 2 opens on the Sallowmay just out of Kalatecha on the night of day 1 (they cast off at the end of Session 1), then crosses two days of open sea (with merrow at dusk on day 2 and a long rest that night), runs the reef by the false light, and goes ashore on Lantern Rock as far as the ship graveyard. It runs about 2 hours 15 minutes plus a 15-minute break. Wreckers' Cove, the lighthouse and the firebird are Session 3.
 
-Tick each part as you finish it. The 📍 beside a part shows its place on the map. **▶ Set the scene** (in the run sheet, and under each part's heading) does the setting up in one click: where the party is, the time of day, where the ship is, and the right map or battle map, with tonight's enemies already placed. The "In the app" steps below are there if you'd rather do it by hand. Read-aloud text is in the shaded boxes; paraphrase it freely. If you're running long, play one beat on day 2 instead of two, and skip the Sentry's Perch: the cove simply isn't warned.
+Tick each part as you finish it. The 📍 beside a part shows its place on the map. **▶ Set the scene** (in the run sheet, and under each part's heading) does the setting up in one click: where the party is, the time of day, where the ship is, and the right map or battle map, with the enemies already placed. The "In the app" steps below are there if you'd rather do it by hand. Read-aloud text is in the shaded boxes; paraphrase it freely. If you're running long, play one beat on day 2 instead of two, and skip the Sentry's Perch: the cove simply isn't warned.
 
 ## Before the players arrive
 
 - [ ] Data tab: load the save "2026-10-13 kalatecha (session 1 XP, new rules)" (Load a survey.json). It has Session 1's XP by the new rules and the party aboard the Sallowmay at Kalatecha, night of day 1.
 - [ ] Build mode, nothing picked on the sea chart: **This map → Road tools → Put places onto the roads beside them**.
 - [ ] Notes tab (or the log on the left): click **Start session 2**. Missed checks can only cost XP earned after this, and "This session" on the leaderboards counts from here.
-- [ ] Sea chart, the Sallowmay's voyage bar: **Sail to** Lantern Rock, **Stop every** ½ day (she'll stop at 10 in the morning and 10 at night). Don't sail yet.
+- [ ] Sea chart, the Sallowmay's voyage bar: **Sail to** Lantern Rock, **Nav** 25 (Xuna's roll as they cast off at the end of Session 1: the plain sailing time, about 2 days and 3 hours, so they reach the reef in the small hours of day 4), **Stop every** ½ day (she'll stop at 10 in the morning and 10 at night). Press **▶ Sail** when the Opening is done.
 - [ ] Sea chart, click the Undaunted: in her panel, **Sail to** Lantern Rock and **sets off in** ½ day (she leaves at dawn, as Hargrove-Vance boasted). Give her navigator a total of 12.
 - [ ] Lantern Rock: check that the Sentry's Perch and Wreckers' Cove are still hidden, and that the octopus is in the Silver Tern.
 - [ ] Decide the young stowaway's name. A suggestion: **Tamsin Pike**, ship's girl of the Heron, about twelve. Change it in the Library (People → The Young Stowaway).
 - [ ] The crew's map from Session 1, for Rebekah to draw the reef on.
 - [ ] Snacks within reach.
 
-**A reminder about XP.** Every check you log in the Action box with a DC now earns XP (3 × level a point over the DC) or costs a little (half that, never below where they started tonight). A natural 20 that makes the DC is at least 50 × level, so tick **nat 20** when a player rolls one at the table. Healing outside a fight earns the healer XP. After each fight (the merrow, the octopus), **End the fight** opens the XP card.
+**A reminder about XP.** Every check you log in the Action box with a DC now earns XP (3 × level a point over the DC) or costs a little (half that, never below where they started the session). A natural 20 that makes the DC is at least 50 × level, so tick **nat 20** when a player rolls one at the table. Healing outside a fight earns the healer XP. After each fight (the merrow, the octopus), **End the fight** opens the XP card.
 
 ## Opening {10 min} {place: kship/sdeck}
 
@@ -25,34 +25,17 @@ Read the recap. It's Thimble's version of Session 1, perched on the chart table:
 > "Right. For anyone who wasn't paying attention, which was most of you." Thimble clears her throat. "Four fools answered the captain's notice. The captain gave them jobs, which was generous of him. They went to the market, bought a lantern that burns without oil off a man with a thieving gull, and let a fellow in a monocle try to steal it out from under them."
 > "Then Michael Fontaine at the Guild gave them a real job: chart a way through the reef at Lantern Rock, where the lighthouse shines all night and ships don't come back. Somewhere in there a little spirit pinched a dagger, and nobody even saw it happen." She glares at the empty air beside her, as if it might be there now.
 > "Then six of the monocle man's thugs jumped them on the docks. It went badly for the thugs. Ander knocked them into the harbor with thunder, and then knocked a few more in by hand." A sniff. "And someone tried to keep the lantern in her bag. I took it back. It's on the chart table, where it belongs, and the captain says no mortal made the light inside it."
-> "So. It's night. The tide is turning. And Lantern Rock is two days south. Any questions? Good."
+> "So. We're out of the harbor, the lamps of Kalatecha are behind us, the navigator says the stars are behaving, and Lantern Rock is two days south. Any questions? Good."
 
-Ask each player for one thing their character is doing as the ship gets ready, at night, on the dock. Then move on.
-
-## Casting off {10 min} {place: kship/sdeck}
-
-The Sallowmay leaves Kalatecha in the dark, half a day ahead of the Undaunted. Read:
-
-> Nobody hauls a line. Nobody climbs the rigging. The mooring ropes slip their posts by themselves and coil on the deck like sleeping cats, and the sails, pale in the lamplight, fill with a wind none of you can feel on your faces. The Sallowmay slides out past the Admiralty's walls. Behind you, the city's lamps shrink to a string of gold beads. Ahead, the sea is black and full of stars.
-> At the stern, Captain Callomay rests one hand on the rail. "Navigator. South, if you please."
+Ask each player for one thing their character is doing on the first night at sea, with the city's lights going down behind them. Then press **▶ Sail** in the voyage bar.
 
 **The captain sails her.** He sails the Sallowmay by magic, all day and all night, and nobody needs to work the ship. If anyone asks how, he says, "She knows the way once she's told it." That's the truth, and all of it he'll say.
-
-**The navigation check (your table rule).** Xuna makes a Wisdom (Survival) check to set the course. Put the total in the voyage bar's **Nav** box (tick **nat 20** if it was one), then press **▶ Sail**. The bar works out the time:
-
-- A natural 20 halves the voyage: about a day.
-- A total of 10 or more: the plain sailing time, about 2 days and 3 hours. They reach the reef in the small hours of day 4.
-- Under 10: half a day longer for each point below 10.
-
-You can also log the roll in the Action box (Survival, DC 10) so it earns its XP.
-
-If a bad roll would bring them in by daylight, the captain heaves to a few miles off and waits for dark: the false light only burns at night.
-
-**The lantern.** On the chart table in the captain's quarters, the lantern's little flame leans south and a little east. It never wavers. A navigator who watches it all night and makes an Intelligence (Arcana) check, DC 12, notices it leans a hair further every hour: it isn't pointing at a place, it's pointing at something that moves a little. (DM only: the firebird shifting on its perch in the cage.)
 
 ## Day 2 at sea {15 min} {place: kship}
 
 The ship stops by itself at 10 in the morning (the **Stop every** setting). Pick two of these, then **▶ Sail** again.
+
+**The lantern (the navigator).** On the chart table in the captain's quarters, the lantern's little flame leans south and a little east. It never wavers. A navigator who watches it through the night and makes an Intelligence (Arcana) check, DC 12, notices it leans a hair further every hour: it isn't pointing at a place, it's pointing at something that moves a little. (DM only: the firebird shifting on its perch in the cage.)
 
 **The fish that won't die (the quartermaster, or whoever likes fishing).** Someone fishes off the stern for supper. For each catch, roll a d6: 1 to 3, a bad fish (a reef bully, an egg-thief); 4 to 6, a good one. A bad fish can be cleaned and cooked like any other. A good fish won't die: the hook slides out of its lip without a mark, the knife won't cut it, it flops about quite happily until someone throws it back. If they ask the captain, he answers truthfully: "Nothing that doesn't deserve it comes to harm on my ship." A player who makes an Intelligence (Arcana) check, DC 15, recognizes old fae guest-law. (See "No innocents aboard" in the Captain Callomay document. The crew aren't covered: "You're not my guests. You're my crew.")
 
@@ -77,7 +60,7 @@ The captain doesn't move from the wheel. Read:
 
 He doesn't fight: boarders aren't guests, but he leaves the fighting to his crew. Thimble shouts advice from the rigging, most of it rude, some of it useful.
 
-**In the app.** First bring everyone up on deck: Where tab → **All together**, then put the party on the Main deck (anyone below decks climbs up the ladder on their first turn). Enter the Sallowmay and open the [[place:kship/sdeck|Main deck]] (Enter this place); it opens calm. In the battle panel, **Bring someone in**: two [[foe:lf_redcap|red-capped merrow]] (in the Library under Foes), against the party. Put them at the port rail, one amidships and one by the stern. Then **Start the battle**. Light: dusk, so everything on deck is in Dim Light. Two merrow are 900 XP, a Moderate fight for four level-3 characters under the 2024 rules: harder than the docks, and they have a long rest tonight to recover, so let them spend everything.
+**In the app.** First bring everyone up on deck: Where tab → **All together**, then put the party on the Main deck (anyone below decks climbs up the ladder on their first turn). Enter the Sallowmay and open the [[place:kship/sdeck|Main deck]] (Enter this place); it opens calm. In the battle panel, **Bring someone in**: two [[foe:lf_redcap|red-capped merrow]] (in the Library under Foes), against the party. Put them at the port rail, one amidships and one by the stern. Then **Start the battle**. Light: dusk, so everything on deck is in Dim Light. Two merrow are 900 XP, a Moderate fight for four level-3 characters under the 2024 rules: harder than the docks, and they have a long rest that night to recover, so let them spend everything.
 
 **What the merrow do (SRD 5.2, plus the red caps).**
 
@@ -206,15 +189,14 @@ End the session there.
 
 ### Spotlight tracker
 
-- [ ] Navigator (Rebekah, Xuna): sets the course, steers by the stars through the false light, draws the reef
+- [ ] Navigator (Rebekah, Xuna): reads the lantern's flame, steers by the stars through the false light, draws the reef
 - [ ] Medic (Elisabeth, Rin): saves the petrel, tends the stowaway
 - [ ] Quartermaster (Hannah, Ethal): the fish that won't die, the salvage, winning over the stowaway, silencing the sentry
 - [ ] Master-at-arms (Benjamin, Ander): leads the deck against the merrow, the iron below decks, spotting the Undaunted
 
-### Checks tonight
+### Checks this session
 
 | Moment | Check | DC |
-| Setting the course | Wisdom (Survival) (your table rule for time) | 10 for XP |
 | Reading the lantern's flame | Intelligence (Arcana) | 12 |
 | The fish that won't die | Intelligence (Arcana), to recognize guest-law | 15 |
 | The petrel's hook | Wisdom (Medicine) | 12 |
