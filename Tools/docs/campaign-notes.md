@@ -220,12 +220,12 @@ For monsters, look for giant octopus, pirate or bandit, and bandit captain stat 
 
 1. Tomas took any work he could find. Hauling, gutting fish, night watch on the warehouses. He'd stopped sleeping.
 2. He sold his little fishing boat in the spring. They're behind on the rent, and the landlord has been knocking.
-3. Their daughter, Sofia, is six. She's been sick since winter, and the healers at the cathedral can't fix it. She needs surgery from a surgeon in the Upper Town, who wants his fee in gold before he'll touch her.
-4. Every coin Tomas earned went into a jar under the floorboards for that fee. The day he disappeared, he told her he'd found "an easy job, five silver for an afternoon," and that it would almost fill the jar.
+3. Their daughter, Sofia, is six. She's been sick since winter, and the healers at the cathedral can't fix it. She needs surgery from a surgeon in the Upper Town, who wants 10 gold up front before he'll touch her.
+4. Every coin Tomas earned went into a jar under the floorboards for that fee. The day he disappeared, he told her he'd found "an easy job, five silver for an afternoon," and that it would almost fill the jar. There's a little under 9 gold in it now.
 
 So the man who attacked them wasn't a thug. He was a desperate father who took the wrong job. The five silver he was paid is in Ander's purse.
 
-**A way to make it right.** If the crew wants to help, the surgeon's fee is something they can pay, or raise. Set the fee to whatever would hurt a little to hand over. If they pay it, Sofia gets her surgery, and Lucia never forgets the crew's faces, for better or worse depending on what they told her.
+**A way to make it right.** If the crew wants to help, the surgeon's fee is 10 gold. With the jar she's only about a gold short, but the landlord wants the rent first, and the rent would empty the jar. The crew can pay the whole fee, or just what she's short and the rent. If they pay it, Sofia gets her surgery, and Lucia never forgets the crew's faces, for better or worse depending on what they told her.
 
 **How it can go.**
 
