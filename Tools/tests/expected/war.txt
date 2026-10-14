@@ -3,5 +3,5 @@ campaign: Xuna 48.7 pts +0.06, Rin 16.5 pts −0.11, Ander 73.2 pts +0.18, Ethal
 session: Xuna +0.06, Rin −0.11, Ander +0.18, Ethal +0.06
 Rin dropped: downs 0 -> 1
 Rin after: −0.17
-board: Value above a fill-in ★ Ander +0.20 73 points 2 Ethal Vaelor +0.08 50 points 3 Xuna Kor'larym +0.07 49 points 4 Rin Amakiir −0.17 2 points
-rules block true, card true
+board: none
+rules block true, card false

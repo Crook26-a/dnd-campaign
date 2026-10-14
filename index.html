@@ -5753,9 +5753,6 @@ const LEADER_BOARDS = [
   ["taken", "Took the most punishment", r=>r.taken],
   ["spells", "Most spells cast", r=>r.spells],
   ["loot", "Most loot found", r=>r.loot, v=>`${fmtGp(v)} gp`],
-  ["war", "Value above a fill-in", r=>r.war, v=>warWord(v), r=>`${Math.round(r.pts)} points`, true],
-  ["warF", "Value in fights", r=>r.warF, v=>warWord(v), r=>`${Math.round(r.ptsF)} points`, true],
-  ["warO", "Value outside fights", r=>r.warO, v=>warWord(v), r=>`${Math.round(r.ptsO)} points`, true],
   ["potS", "Player of the session", r=>r.potS, v=>`${v}×`],
   ["potB", "Player of the battle", r=>r.potB, v=>`${v}×`],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
@@ -5857,7 +5854,7 @@ function awardsTvHtml(sess){
   const A = awardsOf(), rec = A.sessions.find(s=>s.sess===sess); if(!rec) return `<div class="lb lb-tv"><p class="lb-none">Nothing declared yet.</p></div>`;
   const bs = A.battles.filter(b=>b.sess===sess), who = id => `${esc(awardName(id))}${awardPlayer(id) ? `<small>${esc(awardPlayer(id))}</small>` : ""}`;
   return `<div class="lb lb-tv aw-tv"><div class="lb-h">Player of the Session</div><div class="lb-when">${esc(rec.label || "")}</div>
-    <div class="aw-star">★</div><div class="aw-name">${who(rec.who)}</div>${rec.war!=null ? `<div class="aw-sub">value ${warWord(rec.war)}</div>` : ""}
+    <div class="aw-star">★</div><div class="aw-name">${who(rec.who)}</div><div class="aw-sub"></div>
     ${bs.length ? `<div class="aw-bt">Players of the battles</div>${bs.map(b=>`<div class="aw-row"><span>${esc(b.place || "A fight")}</span><b>${who(b.who)}</b></div>`).join("")}` : ""}</div>`;
 }
 function awardsBlock(){
@@ -7683,7 +7680,7 @@ function pcStatsBlock(c, i){
   const cell = (k,v) => `<div class="st"><b>${v}</b><span>${k}</span></div>`;
   return `<details class="pcset pcstats" data-invfor="pcstats:${c.id}" ${openInv.has("pcstats:"+c.id)?"open":""}><summary>Stats</summary>
       <div class="statgrid">${cell("kills", S.kills||0)}${cell("damage dealt", S.dealt||0)}${cell("damage taken", S.taken||0)}
-        ${cell("healing given", S.healed||0)}${cell("attacks hit", `${S.hits||0}/${S.attacks||0}`)}${(()=>{ const w = warRows(leaderRows("all")).find(r=>r.c.id===c.id); return w && w.war!=null ? cell("value (like WAR)", warWord(w.war)) : ""; })()}${cell("loot found", `${fmtGp(S.loot||0)} gp`)}${cell("XP", (+c.xp||0).toLocaleString())}
+        ${cell("healing given", S.healed||0)}${cell("attacks hit", `${S.hits||0}/${S.attacks||0}`)}${cell("loot found", `${fmtGp(S.loot||0)} gp`)}${cell("XP", (+c.xp||0).toLocaleString())}
         ${cell("items carried", inv.reduce((a,e)=>a+(e.qty||1),0))}${cell("purse + items", `~${fmtGp(gp + purseGp(purse))} gp`)}</div>
       ${Object.keys(S.spells||{}).length?`<div class="sbl"><b>Spells cast</b> ${list(S.spells)}</div>`:""}
       ${Object.keys(S.abilities||{}).length?`<div class="sbl"><b>Abilities used</b> ${list(S.abilities)}</div>`:""}
