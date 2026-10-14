@@ -216,6 +216,17 @@ For monsters, look for giant octopus, pirate or bandit, and bandit captain stat 
 
 **Who she is.** [[npc:ln_vela|Lucia Vela]], a net-mender from the harbor. Her husband, Tomas Vela, was one of the deckhands Ander rolled into the water. She doesn't know he was hired to steal anything. She only knows he went out for a day's work and never came back.
 
+**The more they talk to her, the worse it gets.** Don't give it all at once. Each time they ask another question, stay with her, or offer help, she tells them a little more:
+
+1. Tomas took any work he could find. Hauling, gutting fish, night watch on the warehouses. He'd stopped sleeping.
+2. He sold his little fishing boat in the spring. They're behind on the rent, and the landlord has been knocking.
+3. Their daughter, Sofia, is six. She's been sick since winter, and the healers at the cathedral can't fix it. She needs surgery from a surgeon in the Upper Town, who wants his fee in gold before he'll touch her.
+4. Every coin Tomas earned went into a jar under the floorboards for that fee. The day he disappeared, he told her he'd found "an easy job, five silver for an afternoon," and that it would almost fill the jar.
+
+So the man who attacked them wasn't a thug. He was a desperate father who took the wrong job. The five silver he was paid is in Ander's purse.
+
+**A way to make it right.** If the crew wants to help, the surgeon's fee is something they can pay, or raise. Set the fee to whatever would hurt a little to hand over. If they pay it, Sofia gets her surgery, and Lucia never forgets the crew's faces, for better or worse depending on what they told her.
+
 **How it can go.**
 
 - **They tell her the truth.** She falls apart, then asks where he is so she can bury him. The harbor has had all the time they were away to take the body. If they help her look, the twins [[npc:ln_twins|Nico and Lina]] know where the tide washes things up under the bridge.
