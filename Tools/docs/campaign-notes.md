@@ -206,36 +206,21 @@ For monsters, look for giant octopus, pirate or bandit, and bandit captain stat 
 
 ## When they return to Kalatecha
 
-### The widow on the pier
+### The widow on the pier (about 5 minutes)
 
-**What happened.** After the dock ambush in Session 1, Ander rolled the dead deckhands into the harbor and kept the 15 silver they carried. They were already dead when they went in. Each of them had been paid five silver to grab the lantern. The captain reported the fight to the City Guard. [[npc:ln_okoro|Sergeant Okoro]] wrote it down, but nobody really investigated, and nobody went looking for the dead men's families.
+**What happened.** After the dock ambush in Session 1, Ander rolled the dead deckhands into the harbor and kept the 15 silver they carried. The captain told the City Guard, but nobody looked for the dead men's families.
 
-**The scene.** Run it the first time the crew steps onto the pier after they come back. Read:
+**The scene.** The first time the crew steps onto the pier after they come back, read:
 
-> The pier is busy, but one woman isn't working. Her eyes are red and swollen, and she's been going from sailor to sailor. When she sees the Sallowmay, she pushes through the crowd, grabs a fistful of Ander's coat and holds on. "You were here. You were on this pier the day you sailed. My Tomas took a job on the docks that day. He said he'd be home by supper with five silver. He never came home." Her voice breaks. "Do you know what happened to him? Please. Anything."
+> A woman with red, swollen eyes pushes through the crowd, grabs a fistful of Ander's coat and holds on. "You were here the day you sailed. My Tomas took a job on the docks that day, five silver for an afternoon. He never came home. Do you know what happened to him? Please."
 
-**Who she is.** [[npc:ln_vela|Lucia Vela]], a net-mender from the harbor. Her husband, Tomas Vela, was one of the deckhands Ander rolled into the water. She doesn't know he was hired to steal anything. She only knows he went out for a day's work and never came back.
-
-**The more they talk to her, the worse it gets.** Don't give it all at once. Each time they ask another question, stay with her, or offer help, she tells them a little more:
-
-1. Tomas took any work he could find. Hauling, gutting fish, night watch on the warehouses. He'd stopped sleeping.
-2. He sold his little fishing boat in the spring. They're behind on the rent, and the landlord has been knocking.
-3. Their daughter, Sofia, is six. She's been sick since winter, and the healers at the cathedral can't fix it. She needs surgery from a surgeon in the Upper Town, who wants 10 gold up front before he'll touch her.
-4. Every coin Tomas earned went into a jar under the floorboards for that fee. The day he disappeared, he told her he'd found "an easy job, five silver for an afternoon," and that it would almost fill the jar. . The landlord wants them out by the end of the month. Under Kalatecha's law, when a parent or a child dies, the family can't be evicted from their home for the year of mourning. But there's no body, so the landlord says Tomas just skipped town and left them, and they'll have to live with it. Lucia won't hear it. Tomas loved Sofia more than anything, and he would never have walked out on them. Something happened to him. She knows it.
-
-So the man who attacked them wasn't a thug. He was a desperate father who took the wrong job. The five silver he was paid is in Ander's purse.
-
-**The law of mourning (Kalatecha).** If a parent or a child dies, their family can't be evicted from their home for one year, the legal period of grieving. The death has to be shown: a body, or the sworn word of a witness before the Admiralty. That makes the crew's honesty worth something. Their word could keep Lucia and Sofia in their home.
-
-**A way to make it right.** If the crew wants to help, the surgeon's fee is 10 gold. With the jar she's only about a gold short, but the landlord wants the rent first, and the rent would empty the jar. The crew can pay the whole fee, or just what she's short and the rent. If they pay it, Sofia gets her surgery, and Lucia never forgets the crew's faces, for better or worse depending on what they told her.
+**What she tells them, if they stay and listen.** [[npc:ln_vela|Lucia Vela]]'s husband Tomas took the job because their daughter Sofia needs surgery that costs 10 gold. Now the landlord wants them out. Kalatecha's law protects a family for a year of mourning when a parent or a child dies, but the death has to be shown: a body, or a witness's sworn word before the Admiralty. With no body, the landlord says Tomas just skipped town. Lucia knows he'd never have left Sofia.
 
 **How it can go.**
 
-- **They tell her the truth.** She falls apart, then asks where he is so she can bury him. If they'll swear to what happened before [[npc:ln_quell|Commodore Quell]] at the Admiralty, the landlord can't put them out. The harbor has had all the time they were away to take the body. If they help her look, the twins [[npc:ln_twins|Nico and Lina]] know where the tide washes things up under the bridge.
-- **They lie or say nothing.** She lets go and walks away, but she keeps asking around the docks. People saw the fight. Sooner or later, someone tells her which crew it was.
-- **They give her money.** The 15 silver from the bodies was partly her husband's pay. If Ander gives her any of it, she knows the coins are from the docks and asks why he has them.
-
-**The consequence.** This is a quiet consequence, not a punishment. Let it sting. [[npc:ln_hargrove|Hargrove-Vance]] keeps a journal of the crew's mistakes, and a grieving widow and a missing body are just what he wants. If the crew lies to her, he finds her before they sail again.
+- **The truth.** It breaks her heart, but if they swear to it at the Admiralty, she and Sofia keep their home.
+- **A lie, or nothing.** She keeps asking around the docks, and sooner or later someone tells her which crew it was.
+- **Money.** The fee is 10 gold, and Ander's silver was partly Tomas's pay.
 
 ## Still to decide
 
