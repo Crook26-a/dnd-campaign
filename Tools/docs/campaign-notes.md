@@ -225,7 +225,7 @@ For monsters, look for giant octopus, pirate or bandit, and bandit captain stat 
 
 So the man who attacked them wasn't a thug. He was a desperate father who took the wrong job. The five silver he was paid is in Ander's purse.
 
-**The law of mourning (Kalatecha).** If a parent or a child dies, their family can't be evicted from their home for one year, the legal period of grieving. The death has to be shown: a body, or (your call) the sworn word of a witness before the Admiralty. That makes the crew's honesty worth something. Their word could keep Lucia and Sofia in their home.
+**The law of mourning (Kalatecha).** If a parent or a child dies, their family can't be evicted from their home for one year, the legal period of grieving. The death has to be shown: a body, or the sworn word of a witness before the Admiralty. That makes the crew's honesty worth something. Their word could keep Lucia and Sofia in their home.
 
 **A way to make it right.** If the crew wants to help, the surgeon's fee is 10 gold. With the jar she's only about a gold short, but the landlord wants the rent first, and the rent would empty the jar. The crew can pay the whole fee, or just what she's short and the rent. If they pay it, Sofia gets her surgery, and Lucia never forgets the crew's faces, for better or worse depending on what they told her.
 
