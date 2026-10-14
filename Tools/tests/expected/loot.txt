@@ -1,0 +1,4 @@
+split 10 gp 5 sp: 5 sp, 10 gp -> Xuna 3.2, Rin 3.1, Ander 2.1, Ethal 2.1
+red cap 400, potion of healing 50, longsword 15
+Xuna after the cap 403.2
+card true, board true, fix list true

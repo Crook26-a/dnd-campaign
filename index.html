@@ -5646,7 +5646,7 @@ function xpRules(){
   if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; if(!isFinite(+r.heal)) r.heal = XP_RULES_DEFAULT.heal; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
-const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops"];
+const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot"];
 /* where every party member's tallies stand now (spells as one count) */
 function statSnap(){
   const out = {};
@@ -5730,7 +5730,7 @@ function checkXp(who, dc, natOf, what){
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
 }
 /* correcting a character's tallies by hand (something logged wrong): logged, and the party's Undo takes it back */
-const STAT_FIX = [["dealt","Damage dealt"],["taken","Damage taken"],["healed","Healing given"],["kills","Foes brought down"],["attacks","Attacks made"],["hits","Attacks that hit"],["crits","Critical hits"],["greats","Great checks"]];
+const STAT_FIX = [["dealt","Damage dealt"],["taken","Damage taken"],["healed","Healing given"],["kills","Foes brought down"],["attacks","Attacks made"],["hits","Attacks that hit"],["crits","Critical hits"],["greats","Great checks"],["loot","Loot found (gp)"]];
 document.addEventListener("change", e=>{
   const t = e.target.closest("[data-statfix]"); if(!t) return;
   const c = [...partyRoster(), ...companions()].find(x=>x.id===t.dataset.pcid); if(!c) return;
@@ -5746,12 +5746,13 @@ const LEADER_BOARDS = [
   ["aim", "Best aim", r=>r.attacks >= 3 ? r.hits / r.attacks : null, v=>`${Math.round(v*100)}%`, r=>`${r.hits} of ${r.attacks}`],
   ["taken", "Took the most punishment", r=>r.taken],
   ["spells", "Most spells cast", r=>r.spells],
+  ["loot", "Most loot found", r=>r.loot, v=>`${fmtGp(v)} gp`],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
 ];
 function leaderRows(scope){
   const now = statSnap(), base = scope==="session" && root.statMarks ? root.statMarks.stats || {} : null;
   return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
-    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), xp:+c.xp||0 }; });
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), xp:+c.xp||0 }; });
 }
 function leaderHtml(scope, tv){
   const rows = leaderRows(scope), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
@@ -6893,7 +6894,7 @@ function setItemDc(st, id, dc){
   st.hide = st.hide || {}; if(dc) st.hide[id] = dc; else delete st.hide[id];
   if(st.found) delete st.found[id];
 }
-function forgetItem(st, id){ if(!(st.items||[]).includes(id)){ if(st.hide) delete st.hide[id]; if(st.found) delete st.found[id]; if(st.where) delete st.where[id]; } }
+function forgetItem(st, id){ if(!(st.items||[]).includes(id)){ if(st.ours){ delete st.ours[id]; if(!Object.keys(st.ours).length) delete st.ours; } if(st.hide) delete st.hide[id]; if(st.found) delete st.found[id]; if(st.where) delete st.where[id]; } }
 /* one searcher's roll. o.see("x,y"): can they see that square (line of sight and light, on an open battle map)? —
    things on the map they can't see stay hidden. o.wasHidden: the pieces hidden before anyone searched this time, so
    what's inside one waits for a search of that piece even if someone else just found it */
@@ -6963,13 +6964,19 @@ function wirePlaceSearch(el, n, after){
     runPlaceSearch(n, siteOf(n), rolls); psearch.tot = {}; touch(); after(); };
 }
 const invGp = inv => (inv||[]).reduce((a,e)=>{ const x = e.id ? libLootById(e.id) : null; return a + (x ? (x.gp!=null ? x.gp : valueCp(x.value)/100) : 0)*(e.qty||1); }, 0);
+/* what one item is worth in gp: its listed price, or else its rarity's value from the 2024 rules' table (half for a potion) */
+const itemGp = x => { if(!x) return 0; if(x.gp!=null) return +x.gp||0; const v = valueCp(x.value)/100; if(v) return v;
+  const g = rarityTokens(x.rarity).map(t=>RARITY_GP[t]).filter(v=>v!=null); return g.length ? Math.min(...g) * (/potion/i.test(x.cat||x.kind||"") ? 0.5 : 1) : 0; };
+/* loot found (a stat): the gp worth of what a character takes from bodies and places, counted as they take it */
+const tallyLoot = (p, gp) => { if(p && gp > 0){ const S = statsOf(p); S.loot = Math.round(((+S.loot||0) + gp) * 100) / 100; } };
+const entriesGp = list => (list||[]).reduce((a,e)=>a + (e.id ? itemGp(libLootById(e.id)) : 0) * (e.qty||1), 0);
 /* coins shared out evenly, denomination by denomination, odd coins one at a time from the top */
 function splitCoins(purse){
   const pcs = partyRoster(), parts = [];
   for(const [k] of COINS){
     const total = +purse[k]||0; if(!total) continue;
     const each = Math.floor(total/pcs.length), extra = total - each*pcs.length;
-    pcs.forEach((p,j)=>{ purseOf(p)[k] += each + (j<extra?1:0); });
+    pcs.forEach((p,j)=>{ const got = each + (j<extra?1:0); purseOf(p)[k] += got; tallyLoot(p, got * COIN_GP[k]); });
     parts.push(`${total} ${k}`); purse[k] = 0;
   }
   return parts.join(", ");
@@ -7041,6 +7048,7 @@ function wireInv(el, n, st){
   const handOver = (p, x, list) => {
     p.inv = Array.isArray(p.inv) ? p.inv : [];
     for(const e of list) p.inv.push({ ...(e.id ? { id:e.id } : { text:e.text }), qty:e.qty||1, from:x.label, at:today() });
+    tallyLoot(p, entriesGp(list));
   };
   /* a body with nothing left on it is cleared away */
   const tidy = () => { if(st.bodies){ st.bodies = st.bodies.filter(b=>b.inv.length || purseGp(b.purse)); if(!st.bodies.length) delete st.bodies; } };
@@ -7058,7 +7066,7 @@ function wireInv(el, n, st){
     const x = own(s.dataset.iv), p = pc(s.value); if(!x || !p) return;
     const got = x.inv.filter(e=>e.found), coin = x.pfound ? COINS.filter(([k])=>x.purse[k]).map(([k])=>`${x.purse[k]} ${k}`).join(", ") : "";
     handOver(p, x, got); x.inv = x.inv.filter(e=>!e.found);
-    if(x.pfound){ const pu = purseOf(p); for(const [k] of COINS){ pu[k] += x.purse[k]; x.purse[k] = 0; } }
+    if(x.pfound){ const pu = purseOf(p); tallyLoot(p, purseGp(x.purse)); for(const [k] of COINS){ pu[k] += x.purse[k]; x.purse[k] = 0; } }
     partyDoing(`Everything found on ${x.label}`, p); tidy(); saveParty(); redo();
     flash(`${p.name||"They"} takes what was found on ${x.label}: ${[got.length?`${got.length} item${got.length===1?"":"s"}`:"", coin].filter(Boolean).join(" and ")}.`);
   });
@@ -7563,7 +7571,7 @@ function pcStatsBlock(c, i){
   const cell = (k,v) => `<div class="st"><b>${v}</b><span>${k}</span></div>`;
   return `<details class="pcset pcstats" data-invfor="pcstats:${c.id}" ${openInv.has("pcstats:"+c.id)?"open":""}><summary>Stats</summary>
       <div class="statgrid">${cell("kills", S.kills||0)}${cell("damage dealt", S.dealt||0)}${cell("damage taken", S.taken||0)}
-        ${cell("healing given", S.healed||0)}${cell("attacks hit", `${S.hits||0}/${S.attacks||0}`)}${cell("XP", (+c.xp||0).toLocaleString())}
+        ${cell("healing given", S.healed||0)}${cell("attacks hit", `${S.hits||0}/${S.attacks||0}`)}${cell("loot found", `${fmtGp(S.loot||0)} gp`)}${cell("XP", (+c.xp||0).toLocaleString())}
         ${cell("items carried", inv.reduce((a,e)=>a+(e.qty||1),0))}${cell("purse + items", `~${fmtGp(gp + purseGp(purse))} gp`)}</div>
       ${Object.keys(S.spells||{}).length?`<div class="sbl"><b>Spells cast</b> ${list(S.spells)}</div>`:""}
       ${Object.keys(S.abilities||{}).length?`<div class="sbl"><b>Abilities used</b> ${list(S.abilities)}</div>`:""}
@@ -9032,7 +9040,7 @@ function wireSpotPanel(el, n){
         lib().loot.push(it); id = it.id; }
       partyDoing(`${name} put away`, c);
       if((e.qty||1) > 1) e.qty = (e.qty||1) - 1; else c.inv.splice(k, 1);
-      placeItem(s, id, key);
+      (s.ours = s.ours || {})[placeItem(s, id, key)] = true;
       saveParty(); redo();
       flash(`${c.name||"They"} put ${name} in ${spotLabel(n, battleSpot)}.${e.attuned && (e.qty||1)<=1 ? " No longer attuned." : ""}`);
       gameLog("loot", `${c.name||"Someone"} put ${name} in ${spotLabel(n, battleSpot)} at ${placeLabel(n)}`);
@@ -9070,7 +9078,7 @@ function wireSpotPanel(el, n){
   if(cdc) cdc.onchange = ()=>{ const pile = (st().coinsAt||{})[spotKey(battleSpot)]; if(!pile) return; pile.dc = +cdc.value||0; delete pile.found; redo(); };
   const cgv = el.querySelector(".sp-coingive");
   if(cgv) cgv.onchange = ()=>{ const p = partyRoster().find(q=>q.id===cgv.value), s = st(), k = spotKey(battleSpot), pile = (s.coinsAt||{})[k]; if(!p || !pile) return;
-    const said = pileWord(pile), purse = purseOf(p); for(const [c] of COINS) purse[c] += +pile[c]||0; delete s.coinsAt[k];
+    const said = pileWord(pile), purse = purseOf(p); for(const [c] of COINS) purse[c] += +pile[c]||0; tallyLoot(p, purseGp(pile)); delete s.coinsAt[k];
     partyDoing(`${said} given`, p); saveParty(); redo(); flash(`${said} goes to ${p.name||"them"}.`); };
   const putIn = id => { const s = st(), dc = +(el.querySelector(".sp-dc")||{}).value || 0;
     const tok = placeItem(s, id, spotKey(battleSpot));
@@ -9092,8 +9100,9 @@ function wireSpotPanel(el, n){
   el.querySelectorAll("[data-spotgive]").forEach(s=>s.onchange = ()=>{
     const p = partyRoster().find(q=>q.id===s.value); if(!p) return;
     const S = st(), id = s.dataset.spotgive, i = S.items.indexOf(id); if(i<0) return;
-    S.items.splice(i, 1); forgetItem(S, id);
     partyDoing(`${(libLootById(id)||{}).name||"Item"} given`, p);
+    if(!(S.ours||{})[id]) tallyLoot(p, itemGp(libLootById(id)));            // something the party put away themselves isn't found loot
+    S.items.splice(i, 1); forgetItem(S, id);
     p.inv = Array.isArray(p.inv) ? p.inv : []; p.inv.push({ id:baseId(id), from:placeLabel(n), at:today() });
     saveParty(); redo(); flash(`${(libLootById(id)||{}).name||"Item"} goes to ${p.name||"them"}.`);
     gameLog("loot", `${p.name||"Someone"} took ${(libLootById(id)||{}).name||"an item"} from ${battleSpot ? `${spotLabel(n, battleSpot)} at ` : ""}${placeLabel(n)}`);
@@ -9888,7 +9897,7 @@ function restoreSnap(c, s){
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; } }
   }
 }
-const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
+const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
 function damageFoe(x, v){ if(x.max==null) return false; const was = x.hp; x.hp = Math.max(0, x.hp - v); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); return was>0 && x.hp<=0; }
 function damagePc(p, v){
   pcState(p); let hp = numOr(p.hp, 0); const was = hp;
