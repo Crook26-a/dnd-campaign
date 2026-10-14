@@ -5228,6 +5228,15 @@
                ],
     "gameLog":  [
                     {
+                        "id":  "glsess1",
+                        "t":  "2026-10-10T22:40:05.171Z",
+                        "day":  1,
+                        "hour":  null,
+                        "time":  "day",
+                        "kind":  "session",
+                        "text":  "Session 1"
+                    },
+                    {
                         "id":  "glz93q34",
                         "t":  "2026-10-10T22:40:06.171Z",
                         "day":  1,
