@@ -5655,6 +5655,7 @@ const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","gr
 function statSnap(){
   const out = {};
   for(const c of partyRoster()){ const S = statsOf(c), o = {}; for(const k of STAT_KEYS) o[k] = +S[k] || 0;
+    const F = S.fight || {}; for(const k of STAT_KEYS) o["f_"+k] = +F[k] || 0;      // the part of each that happened in fights
     o.spells = Object.values(S.spells||{}).reduce((a, b)=>a + (+b||0), 0); out[c.id] = o; }
   return out;
 }
@@ -5753,6 +5754,8 @@ const LEADER_BOARDS = [
   ["spells", "Most spells cast", r=>r.spells],
   ["loot", "Most loot found", r=>r.loot, v=>`${fmtGp(v)} gp`],
   ["war", "Value above a fill-in", r=>r.war, v=>warWord(v), r=>`${Math.round(r.pts)} points`, true],
+  ["warF", "Value in fights", r=>r.warF, v=>warWord(v), r=>`${Math.round(r.ptsF)} points`, true],
+  ["warO", "Value outside fights", r=>r.warO, v=>warWord(v), r=>`${Math.round(r.ptsO)} points`, true],
   ["potS", "Player of the session", r=>r.potS, v=>`${v}×`],
   ["potB", "Player of the battle", r=>r.potB, v=>`${v}×`],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
@@ -5761,10 +5764,13 @@ function leaderRows(scope){
   const now = statSnap(), base = scope==="session" && root.statMarks ? root.statMarks.stats || {} : null;
   const aw = awardsOf(), k = sessKey(), inS = x => scope!=="session" || x.sess===k;
   return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
-    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, xp:+c.xp||0 }; });
+    const d = k => (a[k]||0) - (base ? (b[k]||0) : 0), keep = (k, x) => k==="chk" ? x : Math.max(0, x);
+    const inF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d("f_"+k))])), outF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d(k) - d("f_"+k))]));
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, inF:statRow(c, inF), outF:statRow(c, outF), xp:+c.xp||0 }; });
 }
 function leaderHtml(scope, tv){
   const rows = warRows(leaderRows(scope)), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
+  { const f = warRows(rows.map(r=>r.inF)), o = warRows(rows.map(r=>r.outF)); rows.forEach((r, i)=>{ r.warF = f[i].war; r.ptsF = f[i].pts; r.warO = o[i].war; r.ptsO = o[i].pts; }); }
   const boards = LEADER_BOARDS.map(([k, title, get, fmt, sub, neg])=>{
     const list = rows.map(r=>({ r, v:get(r) })).filter(x=>x.v!=null && (neg ? true : x.v > 0)).sort((a, b)=>b.v - a.v);
     if(!list.length && !tv) return `<div class="lb-card"><div class="lb-t">${title}</div><p class="lb-none">Nobody yet</p></div>`;
@@ -7606,6 +7612,9 @@ function wireFight(n, st){
       { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
         const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
         for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
+        /* what each did in this fight goes into their in-fight tallies, so the value score can be split in fights and out of them */
+        for(const [id, dl] of Object.entries(delta)){ const p = partyRoster().find(q=>q.id===id); if(!p) continue; const S = statsOf(p), F = S.fight = S.fight || {};
+          for(const k of STAT_KEYS) F[k] = Math.round(((+F[k]||0) + (+dl[k]||0)) * 100) / 100; }
         if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; 
         /* how big the fight was (all its enemies' hit points), so the value score knows what a fight takes; and who was its best */
         const hp = E.reduce((s, y)=>s + (+y.max||0), 0); if(hp){ const f = root.fightHp = root.fightHp || { hp:0, n:0 }; f.hp += hp; f.n += 1; } battleAward(placeLabel(n), delta, hp); }

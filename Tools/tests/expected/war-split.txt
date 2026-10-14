@@ -1,0 +1,2 @@
+Value above a fill-in ★ Ander +0.18 73 points 2 Ethal Vaelor +0.06 50 points 3 Xuna Kor'larym +0.06 49 points 4 Rin Amakiir −0.11 17 points / Value in fights ★ Ander +0.22 73 points 2 Xuna Kor'larym +0.03 37 points 3 Ethal Vaelor +0.02 34 points 4 Rin Amakiir −0.12 8 points / Value outside fights ★ Ethal Vaelor +0.05 16 points 2 Xuna Kor'larym +0.02 12 points 3 Rin Amakiir +0.01 9 points 4 Ander −0.04 0 points
+tv true

@@ -2877,7 +2877,21 @@
 
                                                    },
                                      "greats":  1,
-                                     "chk":  11.67
+                                     "chk":  11.67,
+                                     "fight":  {
+                                                   "kills":  0,
+                                                   "dealt":  31,
+                                                   "taken":  0,
+                                                   "healed":  6,
+                                                   "attacks":  2,
+                                                   "hits":  2,
+                                                   "crits":  0,
+                                                   "greats":  0,
+                                                   "flops":  0,
+                                                   "loot":  0,
+                                                   "downs":  0,
+                                                   "chk":  0
+                                               }
                                  }
                    },
                    {
@@ -3102,7 +3116,21 @@
                                      "abilities":  {
 
                                                    },
-                                     "loot":  5
+                                     "loot":  5,
+                                     "fight":  {
+                                                   "kills":  0,
+                                                   "dealt":  8,
+                                                   "taken":  0,
+                                                   "healed":  0,
+                                                   "attacks":  1,
+                                                   "hits":  1,
+                                                   "crits":  0,
+                                                   "greats":  0,
+                                                   "flops":  0,
+                                                   "loot":  0,
+                                                   "downs":  0,
+                                                   "chk":  0
+                                               }
                                  }
                    },
                    {
@@ -3334,7 +3362,21 @@
                                      "abilities":  {
 
                                                    },
-                                     "loot":  1.5
+                                     "loot":  1.5,
+                                     "fight":  {
+                                                   "kills":  2,
+                                                   "dealt":  65,
+                                                   "taken":  20,
+                                                   "healed":  0,
+                                                   "attacks":  2,
+                                                   "hits":  2,
+                                                   "crits":  0,
+                                                   "greats":  0,
+                                                   "flops":  0,
+                                                   "loot":  0,
+                                                   "downs":  0,
+                                                   "chk":  0
+                                               }
                                  }
                    },
                    {
@@ -3568,7 +3610,21 @@
                                      "abilities":  {
 
                                                    },
-                                     "loot":  160
+                                     "loot":  160,
+                                     "fight":  {
+                                                   "kills":  1,
+                                                   "dealt":  25,
+                                                   "taken":  0,
+                                                   "healed":  0,
+                                                   "attacks":  2,
+                                                   "hits":  2,
+                                                   "crits":  0,
+                                                   "greats":  0,
+                                                   "flops":  0,
+                                                   "loot":  0,
+                                                   "downs":  0,
+                                                   "chk":  0
+                                               }
                                  }
                    }
                ],
