@@ -5746,7 +5746,6 @@ const LEADER_BOARDS = [
   ["aim", "Best aim", r=>r.attacks >= 3 ? r.hits / r.attacks : null, v=>`${Math.round(v*100)}%`, r=>`${r.hits} of ${r.attacks}`],
   ["taken", "Took the most punishment", r=>r.taken],
   ["spells", "Most spells cast", r=>r.spells],
-  ["greats", "Great checks", r=>r.greats],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
 ];
 function leaderRows(scope){
