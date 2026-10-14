@@ -221,15 +221,17 @@ For monsters, look for giant octopus, pirate or bandit, and bandit captain stat 
 1. Tomas took any work he could find. Hauling, gutting fish, night watch on the warehouses. He'd stopped sleeping.
 2. He sold his little fishing boat in the spring. They're behind on the rent, and the landlord has been knocking.
 3. Their daughter, Sofia, is six. She's been sick since winter, and the healers at the cathedral can't fix it. She needs surgery from a surgeon in the Upper Town, who wants 10 gold up front before he'll touch her.
-4. Every coin Tomas earned went into a jar under the floorboards for that fee. The day he disappeared, he told her he'd found "an easy job, five silver for an afternoon," and that it would almost fill the jar. There's a little under 9 gold in it now.
+4. Every coin Tomas earned went into a jar under the floorboards for that fee. The day he disappeared, he told her he'd found "an easy job, five silver for an afternoon," and that it would almost fill the jar. . The landlord wants them out by the end of the month. Under Kalatecha's law, when a parent or a child dies, the family can't be evicted from their home for the year of mourning. But there's no body, so the landlord says Tomas just skipped town and left them, and they'll have to live with it. Lucia won't hear it. Tomas loved Sofia more than anything, and he would never have walked out on them. Something happened to him. She knows it.
 
 So the man who attacked them wasn't a thug. He was a desperate father who took the wrong job. The five silver he was paid is in Ander's purse.
+
+**The law of mourning (Kalatecha).** If a parent or a child dies, their family can't be evicted from their home for one year, the legal period of grieving. The death has to be shown: a body, or (your call) the sworn word of a witness before the Admiralty. That makes the crew's honesty worth something. Their word could keep Lucia and Sofia in their home.
 
 **A way to make it right.** If the crew wants to help, the surgeon's fee is 10 gold. With the jar she's only about a gold short, but the landlord wants the rent first, and the rent would empty the jar. The crew can pay the whole fee, or just what she's short and the rent. If they pay it, Sofia gets her surgery, and Lucia never forgets the crew's faces, for better or worse depending on what they told her.
 
 **How it can go.**
 
-- **They tell her the truth.** She falls apart, then asks where he is so she can bury him. The harbor has had all the time they were away to take the body. If they help her look, the twins [[npc:ln_twins|Nico and Lina]] know where the tide washes things up under the bridge.
+- **They tell her the truth.** She falls apart, then asks where he is so she can bury him. If they'll swear to what happened before [[npc:ln_quell|Commodore Quell]] at the Admiralty, the landlord can't put them out. The harbor has had all the time they were away to take the body. If they help her look, the twins [[npc:ln_twins|Nico and Lina]] know where the tide washes things up under the bridge.
 - **They lie or say nothing.** She lets go and walks away, but she keeps asking around the docks. People saw the fight. Sooner or later, someone tells her which crew it was.
 - **They give her money.** The 15 silver from the bodies was partly her husband's pay. If Ander gives her any of it, she knows the coins are from the docks and asks why he has them.
 
