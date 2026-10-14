@@ -5646,7 +5646,7 @@ function xpRules(){
   if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; if(!isFinite(+r.heal)) r.heal = XP_RULES_DEFAULT.heal; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
-const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot"];
+const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk"];
 /* where every party member's tallies stand now (spells as one count) */
 function statSnap(){
   const out = {};
@@ -5716,6 +5716,7 @@ function checkXp(who, dc, natOf, what){
     if(!x.key.startsWith("pc:")) continue;
     const c = x.o, tot = Math.round(+ta.tot[x.key]), lv = clampLv(c.level), S = statsOf(c), over = tot - dc;
     if(!isFinite(over)) continue;
+    S.chk = Math.round(((+S.chk||0) + warCheckPts(over)) * 100) / 100;      // for the value score
     if(over < 0){                                           // a miss: a share of what beating it by as much would earn, but only out of XP earned this session
       const floor = root.statMarks && root.statMarks.xp ? root.statMarks.xp[c.id] : null;
       const lose = floor==null ? 0 : Math.min(Math.round(checkXpFor(-over, lv, R) * Math.max(0, +R.missPct||0) / 100), Math.max(0, (+c.xp||0) - floor));
@@ -5730,7 +5731,7 @@ function checkXp(who, dc, natOf, what){
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
 }
 /* correcting a character's tallies by hand (something logged wrong): logged, and the party's Undo takes it back */
-const STAT_FIX = [["dealt","Damage dealt"],["taken","Damage taken"],["healed","Healing given"],["kills","Foes brought down"],["attacks","Attacks made"],["hits","Attacks that hit"],["crits","Critical hits"],["greats","Great checks"],["loot","Loot found (gp)"]];
+const STAT_FIX = [["dealt","Damage dealt"],["taken","Damage taken"],["healed","Healing given"],["kills","Foes brought down"],["attacks","Attacks made"],["hits","Attacks that hit"],["crits","Critical hits"],["greats","Great checks"],["loot","Loot found (gp)"],["downs","Times dropped to 0 hp"]];
 document.addEventListener("change", e=>{
   const t = e.target.closest("[data-statfix]"); if(!t) return;
   const c = [...partyRoster(), ...companions()].find(x=>x.id===t.dataset.pcid); if(!c) return;
@@ -5747,17 +5748,18 @@ const LEADER_BOARDS = [
   ["taken", "Took the most punishment", r=>r.taken],
   ["spells", "Most spells cast", r=>r.spells],
   ["loot", "Most loot found", r=>r.loot, v=>`${fmtGp(v)} gp`],
+  ["war", "Value above a fill-in", r=>r.war, v=>warWord(v), r=>`${Math.round(r.pts)} points`, true],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
 ];
 function leaderRows(scope){
   const now = statSnap(), base = scope==="session" && root.statMarks ? root.statMarks.stats || {} : null;
   return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
-    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), xp:+c.xp||0 }; });
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), xp:+c.xp||0 }; });
 }
 function leaderHtml(scope, tv){
-  const rows = leaderRows(scope), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
-  const boards = LEADER_BOARDS.map(([k, title, get, fmt, sub])=>{
-    const list = rows.map(r=>({ r, v:get(r) })).filter(x=>x.v!=null && x.v > 0).sort((a, b)=>b.v - a.v);
+  const rows = warRows(leaderRows(scope)), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
+  const boards = LEADER_BOARDS.map(([k, title, get, fmt, sub, neg])=>{
+    const list = rows.map(r=>({ r, v:get(r) })).filter(x=>x.v!=null && (neg ? true : x.v > 0)).sort((a, b)=>b.v - a.v);
     if(!list.length && !tv) return `<div class="lb-card"><div class="lb-t">${title}</div><p class="lb-none">Nobody yet</p></div>`;
     if(!list.length) return "";
     return `<div class="lb-card"><div class="lb-t">${title}</div>${list.map((x, i)=>`<div class="lb-row${i===0 ? " top" : ""}"><span class="lb-p">${i===0 ? "★" : i+1}</span><span class="lb-n">${esc(x.r.c.name || "Someone")}</span><span class="lb-v">${fmt ? fmt(x.v) : x.v.toLocaleString()}${sub ? `<small>${sub(x.r)}</small>` : ""}</span></div>`).join("")}</div>`;
@@ -5799,6 +5801,40 @@ document.addEventListener("change", e=>{
   const t = e.target.closest("[data-xpr]"); if(!t) return; const R = xpRules(), [a, b] = t.dataset.xpr.split(".");
   const v = t.type==="checkbox" ? t.checked : Math.max(0, +t.value || 0);
   if(b) R[a][b] = v; else R[a] = v; saveParty();
+});
+/* ══ THE VALUE SCORE (Joseph's table rule, after baseball's WAR): everything a character does turned into points (a
+   point is a hit point of damage), less what a replacement-level fill-in would manage (a share of the party's
+   average), over the hit points of a typical fight. +0.25 = a quarter of a fight better than a fill-in. ══ */
+const WAR_DEFAULT = { dealt:1, healed:1, kill:3, loot:10, taken:0.5, miss:0.5, down:5, repl:80 };
+const warRules = () => (root.warRules = { ...WAR_DEFAULT, ...(root.warRules||{}) });
+/* a check's points: one for each over the DC (meeting it is 1) up to 10, a third of one past that; a miss costs half as much */
+const warCheckPts = over => { const m = Math.abs(over), p = m <= 10 ? Math.max(1, m) : 10 + (m - 10) / 3; return over < 0 ? -p / 2 : p; };
+/* a typical fight: the average of all the enemies' hit points in each fight ended so far */
+const fightSize = () => { const f = root.fightHp; return f && f.n ? f.hp / f.n : 0; };
+function warRows(rows){
+  const W = warRules(), perHit = rows.reduce((a, r)=>a + r.dealt, 0) / Math.max(1, rows.reduce((a, r)=>a + r.hits, 0)) || 5;
+  for(const r of rows){ const lv = clampLv(r.c.level), avg = r.hits ? r.dealt / r.hits : perHit;     // a miss costs part of what their hits do
+    r.pts = r.dealt*W.dealt + r.healed*W.healed + r.kills*W.kill*lv + r.chk + (W.loot ? r.loot / W.loot : 0)
+          - r.taken*W.taken - Math.max(0, r.attacks - r.hits)*W.miss*avg - r.downs*W.down*lv; }
+  const mean = rows.reduce((a, r)=>a + r.pts, 0) / Math.max(1, rows.length), rep = Math.max(0, mean) * W.repl / 100, size = fightSize();
+  for(const r of rows) r.war = size && rows.some(q=>q.pts) ? (r.pts - rep) / size : null;
+  return rows;
+}
+const warWord = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2);
+function warRulesBlock(){
+  const W = warRules(), num = (k, w) => `<input class="mono" data-war="${k}" type="number" min="0" step="any" value="${W[k]}" style="width:${w||46}px">`, size = fightSize();
+  return `<details class="partysec" data-invfor="party:warrules" ${openInv.has("party:warrules")?"open":""}><summary class="eyebrow">The value score <small>your table rule, like WAR</small></summary>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Everything they do as points (a point = a hit point of damage), less a fill-in's points, over a typical fight's hit points${size ? ` (${Math.round(size)} so far)` : " (none ended yet)"}. +0.25 = a quarter of a fight better than a fill-in. It doesn't touch XP.</p>
+    <div class="xprule">Points: damage dealt ${num("dealt")} a hit point · healing ${num("healed")} a hit point · each foe brought down ${num("kill")} × level · a check, a point for each over the DC up to 10 and ⅓ past that · 1 for every ${num("loot")} gp of loot found.<br>
+      Against: damage taken ${num("taken")} a hit point · each missed attack ${num("miss")} × what their hits do on average · dropping to 0 hp ${num("down")} × level · a failed check, half its margin.<br>
+      The fill-in: ${num("repl")} % of the party's average.</div>
+    <button class="btn wide" data-war="reset" style="margin-top:6px">Back to the starting numbers</button></details>`;
+}
+document.addEventListener("change", e=>{
+  const t = e.target.closest("input[data-war]"); if(!t) return; warRules()[t.dataset.war] = Math.max(0, +t.value || 0); touch(); renderPane(true); refreshLeadersOnTv();
+});
+document.addEventListener("click", e=>{
+  const b = e.target.closest('button[data-war="reset"]'); if(!b) return; root.warRules = { ...WAR_DEFAULT }; touch(); renderPane(true); refreshLeadersOnTv();
 });
 
 /* a character's spells, laid out like the sheet: by level, with that level's slots, each spell with
@@ -6036,6 +6072,7 @@ function renderParty(){
 
     ${leaderBlock()}
     ${xpRulesBlock()}
+    ${warRulesBlock()}
 
     <details class="partysec" data-invfor="party:xplog" ${openInv.has("party:xplog")?"open":""}><summary class="eyebrow">XP log${log.length?` <small>${log.length}</small>`:""}</summary>
     ${log.length ? `<div class="xplog">${log.map(e=>`<div class="stat"><span class="k">${esc(e.at)} · ${esc(e.note||"XP")}</span><span class="v">${e.per ? partyRoster().filter(c=>e.per[c.id]).map(c=>`${esc((c.name||"").split(" ")[0])} ${e.per[c.id] > 0 ? "+" : ""}${e.per[c.id].toLocaleString()}`).join(", ") : `+${(+e.each||0).toLocaleString()} each`}</span></div>`).join("")}</div>
@@ -7506,6 +7543,8 @@ function wireFight(n, st){
         const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
         for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
         if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; }
+      /* how big the fight was (all its enemies' hit points), so the value score knows what a fight takes */
+      { const hp = E.reduce((s, y)=>s + (+y.max||0), 0); if(hp){ const f = root.fightHp = root.fightHp || { hp:0, n:0 }; f.hp += hp; f.n += 1; } }
       /* the fallen stay here to be searched — whoever ran or still stands keeps their things */
       const laid = layBodies(st, c.list.filter(y=>!y.ally && !y.neutral && y.max!=null && y.hp<=0 && !y.fled));
       if(laid) flash(`${laid} bod${laid===1?"y":"ies"} left here to search — see "On the fallen" under Loot here.`);
@@ -7571,7 +7610,7 @@ function pcStatsBlock(c, i){
   const cell = (k,v) => `<div class="st"><b>${v}</b><span>${k}</span></div>`;
   return `<details class="pcset pcstats" data-invfor="pcstats:${c.id}" ${openInv.has("pcstats:"+c.id)?"open":""}><summary>Stats</summary>
       <div class="statgrid">${cell("kills", S.kills||0)}${cell("damage dealt", S.dealt||0)}${cell("damage taken", S.taken||0)}
-        ${cell("healing given", S.healed||0)}${cell("attacks hit", `${S.hits||0}/${S.attacks||0}`)}${cell("loot found", `${fmtGp(S.loot||0)} gp`)}${cell("XP", (+c.xp||0).toLocaleString())}
+        ${cell("healing given", S.healed||0)}${cell("attacks hit", `${S.hits||0}/${S.attacks||0}`)}${(()=>{ const w = warRows(leaderRows("all")).find(r=>r.c.id===c.id); return w && w.war!=null ? cell("value (like WAR)", warWord(w.war)) : ""; })()}${cell("loot found", `${fmtGp(S.loot||0)} gp`)}${cell("XP", (+c.xp||0).toLocaleString())}
         ${cell("items carried", inv.reduce((a,e)=>a+(e.qty||1),0))}${cell("purse + items", `~${fmtGp(gp + purseGp(purse))} gp`)}</div>
       ${Object.keys(S.spells||{}).length?`<div class="sbl"><b>Spells cast</b> ${list(S.spells)}</div>`:""}
       ${Object.keys(S.abilities||{}).length?`<div class="sbl"><b>Abilities used</b> ${list(S.abilities)}</div>`:""}
@@ -9897,7 +9936,7 @@ function restoreSnap(c, s){
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; } }
   }
 }
-const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
+const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
 function damageFoe(x, v){ if(x.max==null) return false; const was = x.hp; x.hp = Math.max(0, x.hp - v); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); return was>0 && x.hp<=0; }
 function damagePc(p, v){
   pcState(p); let hp = numOr(p.hp, 0); const was = hp;
@@ -9905,6 +9944,7 @@ function damagePc(p, v){
   if(rest>0 && hp<=0) p.death.f = Math.min(3, p.death.f+1);
   hp = Math.max(0, hp - rest); p.hp = hp;
   if(hp<=0 && !p.conds.includes("Unconscious")) p.conds.push("Unconscious");
+  if(was>0 && hp<=0) statsOf(p).downs += 1;      // dropped to 0 hp: counts against their value score
   if(hp<=0) delete p.shape;                                      // Wild Shape ends when they go down
   return was>0 && hp<=0;
 }
