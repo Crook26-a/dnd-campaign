@@ -13385,6 +13385,9 @@ function setScene(d, key){
   const s = sceneOf(d, key); if(!s) return;
   if(journeyPlay) pauseJourney(); if(typeof voyagePlay!=="undefined" && voyagePlay) stopCourse(false);
   if(battleOf) closeBattle(true);
+  /* creatures an earlier scene put on a map go again, as long as their fight never started: each scene's map is its own */
+  for(const nd of [...(root.nodes||[]), ...Object.values(plans).flatMap(p=>p.nodes||[])]){ const c0 = nd.site && nd.site.combat;
+    if(c0 && c0.fromScene && calmOf(c0) && !(s.open && s.open.battle && nd.id===s.open.node)) delete nd.site.combat; }
   /* the ship, where the scene has her */
   if(s.ship){ const sh = root.nodes.find(n=>n.id===s.ship.id); if(sh){ sh.x = s.ship.x; sh.y = s.ship.y; } }
   /* the time of day (the day count stays as it is) */
@@ -13399,7 +13402,10 @@ function setScene(d, key){
     const n = nodeById(o.node);
     if(n){ select("node", n.id);
       if(o.battle){
-        openBattle(n); const c = n.site.combat;
+        /* the battle map starts fresh: the place's own planned creatures, then the scene's (a fight already going there is only reset if the DM says so) */
+        const st0 = siteOf(n);
+        if(st0.combat && (calmOf(st0.combat) || confirm(`A fight is under way at ${placeLabel(n)}. Start this scene's map fresh?`))) delete st0.combat;
+        openBattle(n); const c = n.site.combat; c.fromScene = key;
         const want = {}; for(const f of s.foes||[]) (want[f.id] = want[f.id] || []).push(f);
         for(const [id, list] of Object.entries(want)){
           const have = c.list.filter(x=>x.foe===id && !(x.max!=null && x.hp<=0) && !x.fled);
