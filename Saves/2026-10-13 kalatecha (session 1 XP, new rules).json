@@ -11829,5 +11829,98 @@
     "fightHp":  {
                     "hp":  192,
                     "n":  1
-                }
+                },
+    "statMarks":  {
+                      "label":  "Session 1",
+                      "t":  "sm_s1",
+                      "stats":  {
+                                    "pc1":  {
+                                                "kills":  0,
+                                                "dealt":  0,
+                                                "taken":  0,
+                                                "healed":  0,
+                                                "attacks":  0,
+                                                "hits":  0,
+                                                "crits":  0,
+                                                "greats":  0,
+                                                "flops":  0,
+                                                "loot":  0,
+                                                "downs":  0,
+                                                "chk":  0,
+                                                "spells":  0
+                                            },
+                                    "pc2":  {
+                                                "kills":  0,
+                                                "dealt":  0,
+                                                "taken":  0,
+                                                "healed":  0,
+                                                "attacks":  0,
+                                                "hits":  0,
+                                                "crits":  0,
+                                                "greats":  0,
+                                                "flops":  0,
+                                                "loot":  0,
+                                                "downs":  0,
+                                                "chk":  0,
+                                                "spells":  0
+                                            },
+                                    "pc3":  {
+                                                "kills":  0,
+                                                "dealt":  0,
+                                                "taken":  0,
+                                                "healed":  0,
+                                                "attacks":  0,
+                                                "hits":  0,
+                                                "crits":  0,
+                                                "greats":  0,
+                                                "flops":  0,
+                                                "loot":  0,
+                                                "downs":  0,
+                                                "chk":  0,
+                                                "spells":  0
+                                            },
+                                    "pc4":  {
+                                                "kills":  0,
+                                                "dealt":  0,
+                                                "taken":  0,
+                                                "healed":  0,
+                                                "attacks":  0,
+                                                "hits":  0,
+                                                "crits":  0,
+                                                "greats":  0,
+                                                "flops":  0,
+                                                "loot":  0,
+                                                "downs":  0,
+                                                "chk":  0,
+                                                "spells":  0
+                                            }
+                                },
+                      "xp":  {
+                                 "pc1":  900,
+                                 "pc2":  900,
+                                 "pc3":  900,
+                                 "pc4":  900
+                             }
+                  },
+    "awards":  {
+                   "battles":  [
+                                   {
+                                       "id":  "aw_s1dock",
+                                       "at":  "2026-10-11",
+                                       "day":  1,
+                                       "place":  "Dock Ambush (Scene 5)",
+                                       "sess":  "sm_s1",
+                                       "who":  "pc3",
+                                       "war":  {
+                                                   "pc1":  0.03,
+                                                   "pc2":  -0.12,
+                                                   "pc3":  0.22,
+                                                   "pc4":  0.02
+                                               }
+                                   }
+                               ],
+                   "sessions":  [
+
+                                ]
+               }
 }

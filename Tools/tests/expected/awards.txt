@@ -1,0 +1,6 @@
+arrays true true
+block: PLAYERS OF THE SESSION YOUR TABLE RULE Player of the session (Session 1): Xuna Kor'larym Rin Amakiir Ander Ethal Vaelor By the value score: Ander +0.18. PLAYERS OF THE BATTLES Dock Ambush (Scene 5) Xuna Kor'larym Rin Amakiir Ander Ethal Vaelor Declare them on
+showing awards | tv: Player of the Session Session 1 ★ Ander Benjamin value +0.18 Players of the battles Dock Ambush (Scene 5) Ander Benjamin
+log: Player of the session (Session 1): Ander
+new battle to Xuna Kor'larym {"pc1":0.29,"pc2":-0.19}
+boards: Player of the session ★ Ander 1× / Player of the battle ★ Xuna Kor'larym 1× 2 Ander 1×

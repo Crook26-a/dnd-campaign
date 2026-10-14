@@ -763,6 +763,8 @@
   .lb-row.top{font-weight:600} .lb-row.top .lb-p{color:var(--lead)}
   .lb-p{flex:0 0 14px;font-family:var(--mono);color:var(--ink-faint)} .lb-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .lb-v{font-family:var(--mono)} .lb-v small{display:block;font-size:9px;color:var(--ink-faint);text-align:right}
   .lb-none{font-size:11.5px;color:var(--ink-faint);margin:0}
+  .aw-tv{text-align:center;width:min(1000px,90vw)} .aw-star{font-size:min(8vh,70px);color:#a8782a;line-height:1;margin-top:1vh} .aw-name{font-family:var(--serif);font-size:min(7vh,64px);color:#3a2e1e} .aw-name small,.aw-row small{display:block;font-family:var(--mono);font-size:min(1.8vh,15px);letter-spacing:.1em;text-transform:uppercase;color:#6d5c43} .aw-sub{font-family:var(--mono);font-size:min(2vh,17px);color:#6d5c43;margin-bottom:3vh}
+  .aw-bt{font-family:var(--serif);font-variant:small-caps;letter-spacing:.08em;font-size:min(3.4vh,30px);color:#3a2e1e;border-top:1px solid #6d5c43;padding-top:2vh;margin:1vh auto 1vh;width:70%} .aw-row{display:flex;justify-content:space-between;align-items:baseline;gap:2vw;width:70%;margin:0 auto;padding:.6vh 0;font-size:min(2.6vh,22px);text-align:left} .aw-row b{font-family:var(--serif);text-align:right}
   .lb-tv{width:min(1400px,94vw);background:#efe4c6;border:2px solid #3a2e1e;box-shadow:0 0 0 6px #efe4c6,0 0 0 8px #6d5c43,0 10px 40px rgba(0,0,0,.35);padding:3vh 3vw}
   .lb-tv .lb-h{font-family:var(--serif);font-size:min(6vh,54px);text-align:center;font-variant:small-caps;letter-spacing:.08em;color:#3a2e1e}
   .lb-tv .lb-when{text-align:center;font-size:min(1.8vh,15px);margin-bottom:2vh}
@@ -1866,6 +1868,7 @@ function sendPlayers(now){
       }
       else if(playerShow.kind==="board"){ const bn = boardByKey(playerShow.id); msg = bn && bn.board ? { kind:"board", html:boardHtml(bn) } : { kind:"blank" }; }
       else if(playerShow.kind==="leaders") msg = { kind:"board", html:leaderHtml(playerShow.scope || leaderScope, true) };
+      else if(playerShow.kind==="awards") msg = { kind:"board", html:awardsTvHtml(playerShow.sess || sessKey()) };
       else if(playerShow.kind==="standing") msg = { kind:"board", html:`<div class="lb lb-tv"><div class="lb-h">Who is where</div>${xpStanding(partyRoster(), true)}</div>` };
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
       else msg = playerMapScene();
@@ -2005,6 +2008,7 @@ function renderPScreen(){
     <p class="grouplab" style="margin-top:10px">Leaderboards</p>
     <div class="adrow"><span>Who's leading<br><small>${leaderScope==="session" ? "this session" : "the whole campaign"} (change it in the Party tab)</small></span>${showBtn("leaders", playerShow.kind==="leaders" ? "Showing" : "Show")}</div>
     <div class="adrow"><span>Who is where<br><small>levels and XP, how close each is</small></span>${showBtn("standing", playerShow.kind==="standing" ? "Showing" : "Show")}</div>
+    ${playerShow.kind==="awards" ? `<div class="adrow"><span>Players of the session<br><small>declared from the Party tab</small></span>${showBtn("awards", "Showing")}</div>` : ""}
     <p class="grouplab" style="margin-top:10px">Mission boards</p>
     ${boardsAll().length ? boardsAll().map(({ plan, n })=>{ const k = boardKey(plan, n); return `<div class="adrow"><span>${esc(n.board.title || placeLabel(n))}<br><small>${esc(placeLabel(n))}</small></span>${showBtn("board", playerShow.kind==="board"&&playerShow.id===k?"Showing":"Show", k)}</div>`; }).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">None yet. Any place can have one: "Put up a mission board here" at the bottom of its panel (DM mode).</p>`}`;
@@ -5749,12 +5753,15 @@ const LEADER_BOARDS = [
   ["spells", "Most spells cast", r=>r.spells],
   ["loot", "Most loot found", r=>r.loot, v=>`${fmtGp(v)} gp`],
   ["war", "Value above a fill-in", r=>r.war, v=>warWord(v), r=>`${Math.round(r.pts)} points`, true],
+  ["potS", "Player of the session", r=>r.potS, v=>`${v}×`],
+  ["potB", "Player of the battle", r=>r.potB, v=>`${v}×`],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
 ];
 function leaderRows(scope){
   const now = statSnap(), base = scope==="session" && root.statMarks ? root.statMarks.stats || {} : null;
+  const aw = awardsOf(), k = sessKey(), inS = x => scope!=="session" || x.sess===k;
   return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
-    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), xp:+c.xp||0 }; });
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, xp:+c.xp||0 }; });
 }
 function leaderHtml(scope, tv){
   const rows = warRows(leaderRows(scope)), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
@@ -5811,16 +5818,72 @@ const warRules = () => (root.warRules = { ...WAR_DEFAULT, ...(root.warRules||{})
 const warCheckPts = over => { const m = Math.abs(over), p = m <= 10 ? Math.max(1, m) : 10 + (m - 10) / 3; return over < 0 ? -p / 2 : p; };
 /* a typical fight: the average of all the enemies' hit points in each fight ended so far */
 const fightSize = () => { const f = root.fightHp; return f && f.n ? f.hp / f.n : 0; };
-function warRows(rows){
+function warRows(rows, size){
   const W = warRules(), perHit = rows.reduce((a, r)=>a + r.dealt, 0) / Math.max(1, rows.reduce((a, r)=>a + r.hits, 0)) || 5;
   for(const r of rows){ const lv = clampLv(r.c.level), avg = r.hits ? r.dealt / r.hits : perHit;     // a miss costs part of what their hits do
     r.pts = r.dealt*W.dealt + r.healed*W.healed + r.kills*W.kill*lv + r.chk + (W.loot ? r.loot / W.loot : 0)
           - r.taken*W.taken - Math.max(0, r.attacks - r.hits)*W.miss*avg - r.downs*W.down*lv; }
-  const mean = rows.reduce((a, r)=>a + r.pts, 0) / Math.max(1, rows.length), rep = Math.max(0, mean) * W.repl / 100, size = fightSize();
+  const mean = rows.reduce((a, r)=>a + r.pts, 0) / Math.max(1, rows.length), rep = Math.max(0, mean) * W.repl / 100; if(size==null) size = fightSize();
   for(const r of rows) r.war = size && rows.some(q=>q.pts) ? (r.pts - rep) / size : null;
   return rows;
 }
 const warWord = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2);
+/* ══ PLAYERS OF THE BATTLE AND OF THE SESSION (Joseph's table rule): the best value score in each fight (picked when
+   it ends) and over the session. The DM can change either, then declares them on the players' screen at the end. ══ */
+const awardsOf = () => (root.awards = root.awards || { battles:[], sessions:[] });
+const sessKey = () => root.statMarks ? (root.statMarks.t || root.statMarks.label || "session") : null;
+const statRow = (c, o) => ({ c, kills:0, dealt:0, taken:0, healed:0, attacks:0, hits:0, loot:0, downs:0, chk:0, ...o });
+function battleAward(place, delta, hp){
+  const rows = partyRoster().filter(c=>delta[c.id]).map(c=>statRow(c, delta[c.id]));
+  if(!rows.length || !hp) return; warRows(rows, hp); if(!rows.some(r=>r.pts > 0)) return;
+  const top = rows.reduce((a, r)=>r.pts > a.pts ? r : a);
+  awardsOf().battles.push({ id:uid("aw"), at:today(), day:campaignDay(), place, sess:sessKey(), who:top.c.id, war:Object.fromEntries(rows.map(r=>[r.c.id, Math.round(r.war*100)/100])) });
+}
+const awardName = id => { const c = partyRoster().find(q=>q.id===id); return c ? c.name || "Someone" : "Someone"; };
+const awardPlayer = id => { const c = partyRoster().find(q=>q.id===id); return c && c.player ? c.player : ""; };
+/* this session's picks: the declared one if there is one, else the top value score */
+function sessionAwards(){
+  const k = sessKey(), A = awardsOf(), rows = warRows(leaderRows("session")), top = rows.filter(r=>r.war!=null).sort((a, b)=>b.pts - a.pts)[0];
+  const rec = A.sessions.find(s=>s.sess===k);
+  return { k, rec, rows, top, who:rec ? rec.who : top ? top.c.id : null, battles:A.battles.filter(b=>b.sess===k) };
+}
+function awardsTvHtml(sess){
+  const A = awardsOf(), rec = A.sessions.find(s=>s.sess===sess); if(!rec) return `<div class="lb lb-tv"><p class="lb-none">Nothing declared yet.</p></div>`;
+  const bs = A.battles.filter(b=>b.sess===sess), who = id => `${esc(awardName(id))}${awardPlayer(id) ? `<small>${esc(awardPlayer(id))}</small>` : ""}`;
+  return `<div class="lb lb-tv aw-tv"><div class="lb-h">Player of the Session</div><div class="lb-when">${esc(rec.label || "")}</div>
+    <div class="aw-star">★</div><div class="aw-name">${who(rec.who)}</div>${rec.war!=null ? `<div class="aw-sub">value ${warWord(rec.war)}</div>` : ""}
+    ${bs.length ? `<div class="aw-bt">Players of the battles</div>${bs.map(b=>`<div class="aw-row"><span>${esc(b.place || "A fight")}</span><b>${who(b.who)}</b></div>`).join("")}` : ""}</div>`;
+}
+function awardsBlock(){
+  const S = sessionAwards(), opts = sel => partyRoster().map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(c.name||"Character")}</option>`).join(""), showing = playerShow.kind==="awards";
+  const body = !S.k ? `<p class="empty-note" style="font-size:11.5px;margin:0">Start a session (the log) first: the players are picked from what happens after it.</p>`
+    : `<div class="xprule">Player of the session (${esc(root.statMarks.label || "this session")}): <select data-aw="sess">${opts(S.who)}</select>
+        ${S.top ? `<br><small>By the value score: ${esc(S.top.c.name||"")} ${warWord(S.top.war)}.${S.rec && S.rec.shown ? " Declared." : ""}</small>` : ""}</div>
+      <p class="grouplab" style="margin:6px 0 3px">Players of the battles</p>
+      ${S.battles.length ? S.battles.map(b=>`<div class="pcrow" style="align-items:center"><span style="flex:1;font-size:12px">${esc(b.place||"A fight")}</span><select data-aw="battle" data-id="${b.id}">${opts(b.who)}</select></div>`).join("")
+        : `<p class="empty-note" style="font-size:11.5px;margin:0">No fights ended this session yet.</p>`}
+      <button class="btn wide" data-aw="${showing ? "off" : "show"}" style="margin-top:6px">${showing ? "Take it off the players' screen" : S.rec && S.rec.shown ? "Show it on the players' screen again" : "Declare them on the players' screen"}</button>`;
+  return `<details class="partysec" data-invfor="party:awards" ${openInv.has("party:awards")?"open":""}><summary class="eyebrow">Players of the session <small>your table rule</small></summary>${body}</details>`;
+}
+function pickSessionAward(who, show){
+  const S = sessionAwards(); if(!S.k) return; const A = awardsOf(), row = S.rows.find(r=>r.c.id===who);
+  let rec = S.rec; if(!rec){ rec = { id:uid("aw"), sess:S.k, label:root.statMarks.label || "" }; A.sessions.push(rec); }
+  rec.who = who; rec.at = today(); rec.war = row && row.war!=null ? Math.round(row.war*100)/100 : null;
+  if(show){ if(!rec.shown) gameLog("note", `Player of the session (${rec.label || "this session"}): ${awardName(who)}`); rec.shown = true; }
+  touch(); saveParty();
+}
+document.addEventListener("change", e=>{
+  const t = e.target.closest("select[data-aw]"); if(!t) return;
+  if(t.dataset.aw==="sess") pickSessionAward(t.value, false);
+  else { const b = awardsOf().battles.find(x=>x.id===t.dataset.id); if(b){ b.who = t.value; touch(); saveParty(); } }
+  renderPane(true); if(playerShow.kind==="awards" || playerShow.kind==="leaders") sendPlayers(true);
+});
+document.addEventListener("click", e=>{
+  const b = e.target.closest("button[data-aw]"); if(!b) return;
+  if(b.dataset.aw==="show"){ const S = sessionAwards(); if(!S.who) return; pickSessionAward(S.who, true); playerShow = { kind:"awards", sess:S.k }; }
+  else playerShow = { kind:"map" };
+  sendPlayers(true); renderPScreen(); renderPane(true);
+});
 function warRulesBlock(){
   const W = warRules(), num = (k, w) => `<input class="mono" data-war="${k}" type="number" min="0" step="any" value="${W[k]}" style="width:${w||46}px">`, size = fightSize();
   return `<details class="partysec" data-invfor="party:warrules" ${openInv.has("party:warrules")?"open":""}><summary class="eyebrow">The value score <small>your table rule, like WAR</small></summary>
@@ -6071,6 +6134,7 @@ function renderParty(){
     ${addCompanionBlock(pcs)}
 
     ${leaderBlock()}
+    ${awardsBlock()}
     ${xpRulesBlock()}
     ${warRulesBlock()}
 
@@ -7542,9 +7606,9 @@ function wireFight(n, st){
       { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
         const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
         for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
-        if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; }
-      /* how big the fight was (all its enemies' hit points), so the value score knows what a fight takes */
-      { const hp = E.reduce((s, y)=>s + (+y.max||0), 0); if(hp){ const f = root.fightHp = root.fightHp || { hp:0, n:0 }; f.hp += hp; f.n += 1; } }
+        if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; 
+        /* how big the fight was (all its enemies' hit points), so the value score knows what a fight takes; and who was its best */
+        const hp = E.reduce((s, y)=>s + (+y.max||0), 0); if(hp){ const f = root.fightHp = root.fightHp || { hp:0, n:0 }; f.hp += hp; f.n += 1; } battleAward(placeLabel(n), delta, hp); }
       /* the fallen stay here to be searched — whoever ran or still stands keeps their things */
       const laid = layBodies(st, c.list.filter(y=>!y.ally && !y.neutral && y.max!=null && y.hp<=0 && !y.fled));
       if(laid) flash(`${laid} bod${laid===1?"y":"ies"} left here to search — see "On the fallen" under Loot here.`);
@@ -11635,7 +11699,7 @@ function gameLog(kind, text){
   const L = gameLogList(), s = String(text).trim().replace(/\.$/, ""), last = L[L.length-1], now = new Date();
   if(last && last.text===s && kind!=="loot" && now - new Date(last.t) < 5000) return;      // the same thing twice from one click (loot can really happen twice)
   L.push({ id:uid("gl"), t:now.toISOString(), day:campaignDay(), hour:root.hour, time:timeOfDay(), kind, text:s });
-  if(kind==="session") root.statMarks = { label:s, stats:statSnap(), xp:Object.fromEntries(partyRoster().map(c=>[c.id, +c.xp||0])) };     // and where each one's XP stood: a missed check can't take them below it      // "this session" on the leaderboards counts from here
+  if(kind==="session") root.statMarks = { label:s, t:uid("sm"), stats:statSnap(), xp:Object.fromEntries(partyRoster().map(c=>[c.id, +c.xp||0])) };     // and where each one's XP stood: a missed check can't take them below it      // "this session" on the leaderboards counts from here
   if(L.length > GLOG_MAX) L.splice(0, L.length - GLOG_MAX);
   markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
   if(pane==="notes") refreshGameLog();
