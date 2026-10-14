@@ -3031,6 +3031,12 @@
                                    {
                                        "text":  "Black pirate flag with a dragon and bones",
                                        "qty":  1
+                                   },
+                                   {
+                                       "id":  "srd:mace",
+                                       "qty":  1,
+                                       "from":  "Dock Ambush",
+                                       "at":  "2026-10-11"
                                    }
                                ],
                        "purse":  {
@@ -3094,7 +3100,8 @@
                                                 },
                                      "abilities":  {
 
-                                                   }
+                                                   },
+                                     "loot":  5
                                  }
                    },
                    {
@@ -3325,7 +3332,8 @@
                                                 },
                                      "abilities":  {
 
-                                                   }
+                                                   },
+                                     "loot":  1.5
                                  }
                    },
                    {
@@ -3558,7 +3566,8 @@
                                                 },
                                      "abilities":  {
 
-                                                   }
+                                                   },
+                                     "loot":  160
                                  }
                    }
                ],
