@@ -2603,7 +2603,7 @@
                        "species":  "Elf (Drow)",
                        "cls":  "Druid",
                        "level":  3,
-                       "xp":  1092,
+                       "xp":  1197,
                        "ac":  "16",
                        "hp":  24,
                        "hpMax":  "24",
@@ -2875,7 +2875,8 @@
                                                 },
                                      "abilities":  {
 
-                                                   }
+                                                   },
+                                     "greats":  1
                                  }
                    },
                    {
@@ -3587,6 +3588,16 @@
                                   "pc2"
                               ],
                       "note":  "Rin healing Ander for 8 outside a fight"
+                  },
+                  {
+                      "at":  "2026-10-11",
+                      "per":  {
+                                  "pc1":  105
+                              },
+                      "ids":  [
+                                  "pc1"
+                              ],
+                      "note":  "Navigation check as they cast off: Xuna beat it by 15 (Survival 25, DC 10)"
                   }
               ],
     "regions":  [
@@ -5954,6 +5965,15 @@
                         "time":  "night",
                         "kind":  "move",
                         "text":  "The party: Aboard The Sallowmay (in port at Kalatecha)"
+                    },
+                    {
+                        "id":  "glnavxp",
+                        "t":  "2026-10-13T21:57:26.048Z",
+                        "day":  1,
+                        "hour":  22,
+                        "time":  "night",
+                        "kind":  "xp",
+                        "text":  "XP (Navigation check as they cast off: Xuna beat it by 15 (Survival 25, DC 10)): Xuna +105"
                     }
                 ],
     "shipsLog":  [
