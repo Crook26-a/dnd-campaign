@@ -774,6 +774,11 @@
   .xpdue{border:1px solid var(--rule);background:var(--paper);padding:2px 8px 8px;margin:0 0 10px;border-radius:3px}
   .xprule{font-size:12px;line-height:1.9;color:var(--ink-soft)} .xprule input{padding:1px 4px}
   .tanat{flex:none;margin:0;font-size:10.5px;white-space:nowrap;color:var(--ink-soft)}
+  .scenebar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-2px 0 8px;font-size:11.5px;color:var(--ink-soft)} .scenebar span{flex:1;min-width:120px}
+  .scenebar .scenego{background:var(--lead);color:var(--paper-lit);border-color:var(--lead);padding:3px 10px}
+  .scenesm{border:1px solid var(--rule);background:var(--paper);font-size:10.5px;padding:1px 6px;cursor:pointer;color:var(--ink-soft);border-radius:3px}
+  .scenebar.none{opacity:.7} .scenebar.none:hover{opacity:1}
+  .scenebtn{border:1px solid var(--lead);background:var(--paper);color:var(--lead);font-size:10px;padding:0 5px;border-radius:3px;cursor:pointer;margin-left:2px}
   .taresult{margin:2px 0 8px;padding:5px 8px;border:1px solid var(--rule);border-left:3px solid var(--lead);background:var(--paper);font-size:12.5px;line-height:1.4}
   .xpstand{width:100%;border-collapse:collapse;font-size:12px;margin:0 0 12px} .xpstand th{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:normal;text-align:right;padding:2px 4px}
   .xpstand td{text-align:right;padding:4px;border-top:1px dotted var(--rule);font-family:var(--mono);white-space:nowrap} .xpstand td:first-child,.xpstand th:first-child{text-align:left;font-family:var(--serif)}
@@ -13218,7 +13223,10 @@ function mdHtml(d, session){
       const pin = b.place ? `<button class="pinbtn${mapMark && placeKey(b.place)===placeKey(mapMark)?" on":""}" data-dplace="${esc(b.place)}" title="Show ${esc(linkLabel("place", b.place))} on the map">📍</button>` : "";
       const min = b.min ? `<small class="mono dmin">${b.min} min</small>` : "";
       if(session && b.lv===2){ const p = parts[pi++];
-        h += `<div class="dh2 part${done[p.key]?" done":""}" id="dp-${esc(p.key)}"><input type="checkbox" data-dpart="${esc(p.key)}" ${done[p.key]?"checked":""} title="Done"><span class="dht">${mdInline(b.text)}</span>${min}${pin}</div>`; }
+        h += `<div class="dh2 part${done[p.key]?" done":""}" id="dp-${esc(p.key)}"><input type="checkbox" data-dpart="${esc(p.key)}" ${done[p.key]?"checked":""} title="Done"><span class="dht">${mdInline(b.text)}</span>${min}${pin}</div>`;
+        const sc = sceneOf(d, p.key);
+        h += sc ? `<div class="scenebar"><button class="btn scenego" data-dscene="${esc(p.key)}">▶ Set the scene</button><span>${esc(sceneWord(sc))}</span><button class="scenesm" data-dscenesave="${esc(p.key)}" title="Replace this setup with the map as it is now">Save the map here</button><button class="scenesm" data-dsceneclear="${esc(p.key)}" title="Remove this scene's setup">×</button></div>`
+          : `<div class="scenebar none"><button class="scenesm" data-dscenesave="${esc(p.key)}" title="Arrange the map for this part (where the party is, the time, the battle map and who's on it), then press this: one click sets it up again at the table">Save the map as this scene's setup</button></div>`; }
       else h += `<div class="dh${b.lv}"><span class="dht">${mdInline(b.text)}</span>${min}${pin}</div>`;
     }
     else if(b.t==="q") h += `<blockquote class="readaloud">${b.lines.map(l=>`<p>${mdInline(l)}</p>`).join("")}</blockquote>`;
@@ -13351,6 +13359,77 @@ function newDoc(kind){
   stampDoc(d); docsAll().push(d); saveParty(); return d;
 }
 /* ── the Session tab ── */
+/* ══════════════════════════════════════════════════════════════
+   SCENE SETUPS — a part of a session script can carry a setup
+   (d.setups[part key]): where the party is (all together), the time of
+   day, where a ship lies, the place to open (its battle map, calm, if
+   asked) and the creatures on it. ▶ Set the scene puts the map that way
+   in one click; "Save the map as this scene" records it from the map as
+   it stands, so the DM can arrange a scene beforehand. Creatures already
+   there aren't added twice, so pressing it again is safe.
+   ══════════════════════════════════════════════════════════════ */
+const sceneOf = (d, key) => (d && d.setups && d.setups[key]) || null;
+function sceneWord(s){
+  if(!s) return "";
+  const bits = [];
+  if(s.at) bits.push(`the party ${atWord(s.at)}`);
+  if(s.time) bits.push(TIME_WORD[s.time] + (s.hour!=null ? ` (about ${hourWord(s.hour)})` : ""));
+  if(s.ship){ const sh = root.nodes.find(n=>n.id===s.ship.id); if(sh) bits.push(`${sh.name||"the ship"} placed`); }
+  if(s.open){ const host = s.open.plan ? plans[s.open.plan] : root, n = host && (host.nodes||[]).find(x=>x.id===s.open.node);
+    bits.push(`${s.open.battle ? "opens the battle map of" : "shows"} ${n ? placeLabel(n) : "a place"}`); }
+  const by = {}; for(const f of s.foes||[]){ const m = foeById(f.id); const nm = m ? m.name : "someone"; by[nm] = (by[nm]||0) + 1; }
+  if(Object.keys(by).length) bits.push(Object.entries(by).map(([k, v])=>v > 1 ? `${v} × ${k}` : k).join(", "));
+  return bits.join(" · ");
+}
+function setScene(d, key){
+  const s = sceneOf(d, key); if(!s) return;
+  if(journeyPlay) pauseJourney(); if(typeof voyagePlay!=="undefined" && voyagePlay) stopCourse(false);
+  if(battleOf) closeBattle(true);
+  /* the ship, where the scene has her */
+  if(s.ship){ const sh = root.nodes.find(n=>n.id===s.ship.id); if(sh){ sh.x = s.ship.x; sh.y = s.ship.y; } }
+  /* the time of day (the day count stays as it is) */
+  if(s.time){ root.timeOfDay = s.time; root.hour = s.hour!=null ? s.hour : PHASE_HOUR[s.time]; syncTimeBar(); }
+  /* the party, all together */
+  if(s.at){ const gs = groupsOf(), g = gs[0]; g.members = partyRoster().map(c=>c.id); g.at = { ...s.at }; root.groups = [g]; root.activeGroup = g.id; }
+  saveParty(); touch();
+  /* the place: shown, or its battle map opened (calm) with the scene's creatures on it */
+  const o = s.open;
+  if(o){
+    if((o.plan||null)!==(planOf||null)){ planFrom = null; if(o.plan) enterPlan(o.plan); else leavePlan(); }
+    const n = nodeById(o.node);
+    if(n){ select("node", n.id);
+      if(o.battle){
+        openBattle(n); const c = n.site.combat;
+        const want = {}; for(const f of s.foes||[]) (want[f.id] = want[f.id] || []).push(f);
+        for(const [id, list] of Object.entries(want)){
+          const have = c.list.filter(x=>x.foe===id && !(x.max!=null && x.hp<=0) && !x.fled);
+          list.forEach((f, k)=>{ let x = have[k];
+            if(!x){ x = addToFight(c, id, f.side==="ally"); if(x && f.side==="neutral"){ x.neutral = true; x.ally = false; } }
+            if(!x) return;
+            if(f.at){ (c.pos = c.pos || {})[x.id] = { x:f.at[0], y:f.at[1] }; }
+            if(f.hide > 0) (c.stealth = c.stealth || {})[x.id] = { hide:f.hide };
+          });
+        }
+        placeTokens(c); touch(); renderBattle(); renderBattlePanel();
+      } else if(planOf || !o.plan) showPlace(o.plan ? `${o.plan}/${o.node}` : o.node);
+    }
+  }
+  render(); renderPane(true); renderChips(); sendPlayers(true);
+  flash(`Scene set: ${sceneWord(s)}.`);
+}
+/* the map as it stands, kept as this part's setup */
+function captureScene(d, key){
+  const g = activeGroup(), s = { at:{ ...g.at }, time:timeOfDay(), hour:clockHour() };
+  const ship = partyShip(); if(ship) s.ship = { id:ship.id, x:Math.round(ship.x), y:Math.round(ship.y) };
+  if(battleOf){ const n = bnode(), c = n && n.site && n.site.combat;
+    s.open = { plan:planOf||null, node:battleOf.nodeId, battle:true };
+    if(c) s.foes = c.list.filter(x=>!(x.max!=null && x.hp<=0) && !x.fled).map(x=>{ const p = (c.pos||{})[x.id], h = ((c.stealth||{})[x.id]||{}).hide;
+      return { id:x.foe, ...(p ? { at:[p.x, p.y] } : {}), ...(h > 0 ? { hide:h } : {}), ...(x.ally ? { side:"ally" } : x.neutral ? { side:"neutral" } : {}) }; });
+  }
+  else if(sel && sel.kind==="node") s.open = { plan:planOf||null, node:sel.id, battle:false };
+  (d.setups = d.setups || {})[key] = s; saveParty();
+  flash(`Saved as this scene: ${sceneWord(s)}.`);
+}
 function renderSession(){
   const S = sessionDocs(), el = $("#pane-session");
   if(!S.find(d=>d.id===sessOpen)) sessOpen = S.length ? S[S.length-1].id : null;
@@ -13364,7 +13443,7 @@ function renderSession(){
   const next = parts.find(p=>!done[p.key]);
   h += `<details class="runsheet" open><summary>Run sheet <small class="mono">${parts.filter(p=>done[p.key]).length} of ${parts.length} done${mins?` · ${doneMin} of ${mins} min`:""}</small></summary>
       ${parts.map((p, i)=>`<div class="rsrow${done[p.key]?" done":""}${p===next?" next":""}"><input type="checkbox" data-dpart="${esc(p.key)}" ${done[p.key]?"checked":""} title="Done">
-        <button class="rsgo" data-dgo="${esc(p.key)}" title="Go to it in the script">${mdInline(p.text)}</button>${p.min?`<small class="mono">${p.min}′</small>`:""}${p.place?`<button class="pinbtn${mapMark && placeKey(p.place)===placeKey(mapMark)?" on":""}" data-dplace="${esc(p.place)}" title="Show ${esc(linkLabel("place", p.place))} on the map">📍</button>`:""}</div>`).join("")}
+        <button class="rsgo" data-dgo="${esc(p.key)}" title="Go to it in the script">${mdInline(p.text)}</button>${p.min?`<small class="mono">${p.min}′</small>`:""}${p.place?`<button class="pinbtn${mapMark && placeKey(p.place)===placeKey(mapMark)?" on":""}" data-dplace="${esc(p.place)}" title="Show ${esc(linkLabel("place", p.place))} on the map">📍</button>`:""}${sceneOf(d, p.key) ? `<button class="scenebtn" data-dscene="${esc(p.key)}" title="Set the scene: ${esc(sceneWord(sceneOf(d, p.key)))}">▶</button>` : ""}</div>`).join("")}
       <div class="pcrow" style="margin-top:6px">${next?`<button class="btn" style="flex:1" data-dgo="${esc(next.key)}">Up next: ${mdInline(next.text)}</button>`:`<span class="empty-note" style="flex:1;margin:0">All done.</span>`}
         <button class="btn" data-dact="clearchecks" title="Untick every part and checkbox, to run it again">Clear</button></div></details>
     <div class="pcrow"><button class="btn" style="flex:1" data-dact="edit">Edit the script</button><button class="btn danger" data-dact="deldoc">Delete</button></div>
@@ -13410,8 +13489,11 @@ function wireDocPane(paneId){
     if(t.dataset.dline!=null){ toggleDocLine(d, +t.dataset.dline); renderPane(true); return; }
   });
   el.addEventListener("click", e=>{
-    const b = e.target.closest("[data-dact],[data-dplace],[data-dgo],[data-dopen],[data-dl],[data-dtoc]"); if(!b) return;
+    const b = e.target.closest("[data-dact],[data-dplace],[data-dgo],[data-dopen],[data-dl],[data-dtoc],[data-dscene],[data-dscenesave],[data-dsceneclear]"); if(!b) return;
     const d = cur();
+    if(b.dataset.dscene!=null){ setScene(d, b.dataset.dscene); return; }
+    if(b.dataset.dscenesave!=null){ if(sceneOf(d, b.dataset.dscenesave) && !confirm("Replace this scene's setup with the map as it is now?")) return; captureScene(d, b.dataset.dscenesave); renderPane(true); renderSession(); return; }
+    if(b.dataset.dsceneclear!=null){ if(!confirm("Remove this scene's setup?")) return; delete d.setups[b.dataset.dsceneclear]; saveParty(); renderSession(); return; }
     if(b.dataset.dplace!=null){ showPlace(b.dataset.dplace); return; }
     if(b.dataset.dl){ const k = b.dataset.dl, id = b.dataset.id;
       if(k==="place") return showPlace(id);

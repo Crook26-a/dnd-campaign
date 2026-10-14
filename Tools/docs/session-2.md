@@ -2,7 +2,7 @@
 
 Session 2 takes the Sallowmay out of Kalatecha on the night of day 1, across two days of open sea (with merrow at dusk on day 2 and a long rest that night), through the reef by the false light, and ashore on Lantern Rock as far as the ship graveyard. It runs about 2 hours 25 minutes plus a 15-minute break. Wreckers' Cove, the lighthouse and the firebird are Session 3.
 
-Tick each part as you finish it. The 📍 beside a part shows its place on the map. Read-aloud text is in the shaded boxes; paraphrase it freely. If you're running long, play one beat on day 2 instead of two, and skip the Sentry's Perch: the cove simply isn't warned.
+Tick each part as you finish it. The 📍 beside a part shows its place on the map. **▶ Set the scene** (in the run sheet, and under each part's heading) does the setting up in one click: where the party is, the time of day, where the ship is, and the right map or battle map, with tonight's enemies already placed. The "In the app" steps below are there if you'd rather do it by hand. Read-aloud text is in the shaded boxes; paraphrase it freely. If you're running long, play one beat on day 2 instead of two, and skip the Sentry's Perch: the cove simply isn't warned.
 
 ## Before the players arrive
 
