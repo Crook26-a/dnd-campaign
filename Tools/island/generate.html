@@ -1,0 +1,87 @@
+// uses: save Saves/2026-10-13 kalatecha (session 1 XP, new rules).json
+;setTimeout(async ()=>{ const out = {}; const log = [];
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await new Promise(r=>setTimeout(r, 300));
+  const P = s => s.trim().split(/\s+/).map(t=>{ const [x, y] = t.split(',').map(Number); return { x, y }; });
+  const ISLE = P(window.__ISLE || "-12,12 -8,-8 -22,-26 -36,-40 -30,-70 -20,-110 -30,-140 -50,-190 -70,-250 -40,-300 -60,-360 -90,-400 -60,-450 -30,-490 15,-500 28,-525 10,-555 20,-600 60,-620 100,-640 150,-660 190,-690 240,-660 280,-630 330,-650 390,-610 410,-578 440,-576 480,-600 540,-640 590,-680 620,-760 680,-780 720,-700 700,-600 680,-500 720,-420 700,-320 640,-260 560,-240 500,-200 470,-120 480,-40 530,20 600,60 660,120 700,200 690,262 668,300 680,330 640,380 560,390 500,360 460,340 420,380 380,450 330,520 300,600 250,680 200,720 170,700 180,620 150,540 100,470 50,400 20,330 -10,260 -30,180 -45,110 -40,70 -38,50 -14,32");
+  const inside = (pt, poly) => { let c = false; for(let i=0, j=poly.length-1; i<poly.length; j=i++){ const a = poly[i], b = poly[j]; if(((a.y>pt.y)!==(b.y>pt.y)) && pt.x < (b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x) c = !c; } return c; };
+  const segD = (p, a, b) => { const dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy; let t = L ? ((p.x-a.x)*dx+(p.y-a.y)*dy)/L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy); };
+  const lineD = (p, poly, closed) => { let m = 1e9; const n = poly.length; for(let i=0; i<(closed?n:n-1); i++) m = Math.min(m, segD(p, poly[i], poly[(i+1)%n])); return m; };
+  const HILLDEFS = [["Inland Hills", "150,-110 210,-140 260,-100 270,-30 240,40 180,60 140,10 130,-60"],
+    ["", "290,-440 340,-450 380,-420 370,-360 320,-345 285,-375"], ["", "330,-250 380,-270 405,-200 395,-120 350,-100 320,-160"],
+    ["", "638,-700 655,-688 652,-610 641,-580 630,-615 627,-672"], ["", "215,500 255,488 282,515 272,572 242,598 222,560"]];
+  const ISLETS = ["760,-740 776,-750 786,-732 770,-724", "-120,-430 -102,-440 -94,-420 -112,-414", "-118,-330 -110,-336 -104,-326 -112,-320", "250,770 268,764 276,782 258,788", "560,-130 574,-138 584,-122 568,-114"];
+  /* a rugged edge: each stretch gets a crooked midpoint, again and again (seeded, so it comes out the same each run) */
+  let seed = 4242; const rnd = () => { seed = (seed*16807) % 2147483647; return (seed-1)/2147483646; };
+  const keep = root.nodes.filter(n=>["kcity","ns79dej","ns6744a","ns4g5g2","ns4eb21","kship","kundaunted"].includes(n.id));
+  const frac = (pts, depth, rough) => { let r = pts.map(p=>({ ...p }));
+    for(let d=0; d<depth; d++){ const nx = []; for(let i=0;i<r.length;i++){ const a = r[i], b = r[(i+1)%r.length]; nx.push(a);
+        const mx = (a.x+b.x)/2, my = (a.y+b.y)/2, L = Math.hypot(b.x-a.x, b.y-a.y), near = keep.some(n=>Math.hypot(n.x-mx, n.y-my) < 70);
+        const amp = (rnd()*2-1) * L * rough * Math.pow(.6, d) * (near ? .12 : 1);
+        nx.push({ x:Math.round(mx - (b.y-a.y)/(L||1)*amp), y:Math.round(my + (b.x-a.x)/(L||1)*amp) }); }
+      r = nx; }
+    return r; };
+  const ISLE2 = frac(ISLE, 3, .34);
+  const HILLS2 = HILLDEFS.map(([name, s])=>({ name, pts:frac(P(s), 3, .38) }));
+  const ISLETS2 = ISLETS.map(s=>frac(P(s), 2, .3));
+  const coast = samplePath(ISLE2, true, 6, false), hills = HILLS2.map(h=>samplePath(h.pts, true, 6, false));
+  ISLETS2.forEach((r, i)=>{ if(r.some(p=>inside(p, coast))) log.push('ISLET ON LAND ' + i); });
+  hills.forEach((h, hi)=>{ const off = h.filter(p=>!inside(p, coast) || lineD(p, coast, true) < 10).length, wet = h.filter(p=>!inside(p, coast)).length; if(off) log.push('HILLS NEAR SEA #' + hi + ' ' + off + ' (in the sea ' + wet + ')'); });
+  for(const n of root.nodes){ const d = Math.min(...hills.map(h=>lineD(n, h, true))); if(d < 25 && !hills.some(h=>inside(n, h))) log.push('close to hills: ' + n.name + ' ' + (d/10).toFixed(1)); }
+  out.isle = ISLE2.map(p=>p.x+','+p.y).join(' '); out.hills = HILLS2.map(h=>({ name:h.name, pts:h.pts.map(p=>p.x+','+p.y).join(' ') })); out.islets = ISLETS2.map(r=>r.map(p=>p.x+','+p.y).join(' '));
+  const roads = root.roads.map(r=>samplePath(roadPts(r), false, 10, r.straight));
+  /* checks: everything on the island stays on land, the ships and Lantern Rock in the water */
+  for(const n of root.nodes){ const on = inside(n, coast), d = lineD(n, coast, true);
+    const sea = ['kship','kundaunted','klantern'].includes(n.id);
+    if(sea ? on : !on) log.push('WRONG SIDE ' + n.name); else log.push(n.name + ' ' + (sea?'sea':'land') + ' ' + (d/10).toFixed(1) + ' mi from coast'); }
+  roads.forEach((sm, i)=>{ const bad = sm.filter(p=>!inside(p, coast)).length, near = Math.min(...sm.map(p=>lineD(p, coast, true))); log.push('road ' + root.roads[i].id + ' off-island ' + bad + ', closest ' + (near/10).toFixed(1) + ' mi'); });
+  for(const n of root.nodes){ if(hills.some(h=>inside(n, h))) log.push('IN HILLS ' + n.name); }
+  /* woods: every 8 px of land that isn't hills, roads, towns or the shore */
+  const G = 8, xs = coast.map(p=>p.x), ys = coast.map(p=>p.y), x0 = Math.floor(Math.min(...xs)/G)*G - G, y0 = Math.floor(Math.min(...ys)/G)*G - G;
+  const W = Math.ceil((Math.max(...xs)-x0)/G)+2, H = Math.ceil((Math.max(...ys)-y0)/G)+2, grid = new Uint8Array(W*H);
+  const clear = { city:70, town:45, post:28, toll:24, light:30 };
+  const places = root.nodes.filter(n=>clear[n.kind]);
+  for(let j=0; j<H; j++) for(let i=0; i<W; i++){ const p = { x:x0+i*G+G/2, y:y0+j*G+G/2 };
+    if(!inside(p, coast) || lineD(p, coast, true) < 14) continue;
+    if(hills.some(h=>inside(p, h) || lineD(p, h, true) < 6)) continue;
+    if(roads.some(sm=>lineD(p, sm, false) < 24)) continue;
+    if(places.some(n=>Math.hypot(p.x-n.x, p.y-n.y) < clear[n.kind])) continue;
+    grid[j*W+i] = 1; }
+  /* no holes: a clearing shut inside a wood gets a slit up to open ground */
+  for(let pass=0; pass<40; pass++){
+    const outside = new Uint8Array(W*H), st = []; for(let i=0;i<W;i++){ st.push([i,0],[i,H-1]); } for(let j=0;j<H;j++){ st.push([0,j],[W-1,j]); }
+    while(st.length){ const [i,j] = st.pop(); if(i<0||j<0||i>=W||j>=H) continue; const k = j*W+i; if(outside[k] || grid[k]) continue; outside[k] = 1; st.push([i+1,j],[i-1,j],[i,j+1],[i,j-1]); }
+    let hole = -1; for(let k=0;k<W*H;k++) if(!grid[k] && !outside[k]){ hole = k; break; }
+    if(hole<0) break;
+    const i = hole % W; let j = Math.floor(hole / W) - 1; while(j>=0 && grid[j*W+i]){ grid[j*W+i] = 0; j--; }
+  }
+  /* label the woods, trace each one's outline along the cell edges */
+  const lab = new Int32Array(W*H), comps = []; let nl = 0;
+  for(let k=0;k<W*H;k++) if(grid[k] && !lab[k]){ nl++; const st = [k], cells = []; lab[k] = nl;
+    while(st.length){ const c = st.pop(); cells.push(c); const i = c % W, j = Math.floor(c / W);
+      for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){ const ii = i+a, jj = j+b; if(ii<0||jj<0||ii>=W||jj>=H) continue; const q = jj*W+ii; if(grid[q] && !lab[q]){ lab[q] = nl; st.push(q); } } }
+    comps.push({ id:nl, cells }); }
+  const trace = c => { const L = c.id, on = (i, j) => i>=0 && j>=0 && i<W && j<H && lab[j*W+i]===L;
+    const edges = new Map(), key = (x, y) => x + ',' + y;
+    for(const k of c.cells){ const i = k % W, j = Math.floor(k / W);
+      if(!on(i, j-1)) edges.set(key(i, j), [i+1, j]); if(!on(i+1, j)) edges.set(key(i+1, j), [i+1, j+1]);
+      if(!on(i, j+1)) edges.set(key(i+1, j+1), [i, j+1]); if(!on(i-1, j)) edges.set(key(i, j+1), [i, j]); }
+    let best = null;
+    while(edges.size){ const k0 = edges.keys().next().value; let [x, y] = k0.split(',').map(Number); const loop = [];
+      while(true){ const k = key(x, y), nx = edges.get(k); if(!nx) break; edges.delete(k); loop.push({ x:x0+x*G, y:y0+y*G }); [x, y] = nx; }
+      if(!best || loop.length > best.length) best = loop; }
+    return best; };
+  const simplify = (pts, tol) => { const dp = (a, b) => { let m = 0, mi = -1; for(let i=a+1;i<b;i++){ const d = segD(pts[i], pts[a], pts[b % pts.length]); if(d>m){ m = d; mi = i; } } if(m <= tol) return [pts[a]]; return [...dp(a, mi), ...dp(mi, b)]; };
+    const n = pts.length; let far = 0, fd = 0; for(let i=0;i<n;i++){ const d = Math.hypot(pts[i].x-pts[0].x, pts[i].y-pts[0].y); if(d>fd){ fd = d; far = i; } }
+    return [...dp(0, far), ...dp(far, n)]; };
+  const old = root.shapes.filter(s=>s.kind==='wood').map(s=>({ name:s.name, c:{ x:s.pts.reduce((a,p)=>a+p.x,0)/s.pts.length, y:s.pts.reduce((a,p)=>a+p.y,0)/s.pts.length } }));
+  const woods = comps.filter(c=>c.cells.length >= 30).sort((a,b)=>b.cells.length - a.cells.length).map(c=>{ const pts = simplify(trace(c), 7); const cx = c.cells.reduce((a,k)=>a + k % W, 0)/c.cells.length*G + x0, cy = c.cells.reduce((a,k)=>a + Math.floor(k / W), 0)/c.cells.length*G + y0; return { pts, n:c.cells.length, cx, cy }; });
+  const used = new Set();
+  for(const w of woods){ let b = null, bd = 1e9; for(const o of old){ if(!o.name || used.has(o.name)) continue; const d = Math.hypot(o.c.x-w.cx, o.c.y-w.cy); if(d<bd){ bd = d; b = o; } } if(b && bd < 260){ used.add(b.name); w.name = b.name; } else w.name = ''; }
+  out.woods = woods.map(w=>({ name:w.name, n:w.n, c:Math.round(w.cx)+','+Math.round(w.cy), pts:w.pts.map(p=>Math.round(p.x)+','+Math.round(p.y)).join(' ') }));
+  out.log = log; out.area = (comps.reduce((a,c)=>a+c.cells.length,0)*G*G/100).toFixed(0) + ' sq mi of wood';
+  out.dropped = comps.filter(c=>c.cells.length < 30).length;
+ }catch(e){ out.err = e.message + ' ' + (e.stack||'').split('\n')[1]; }
+ const pre = document.createElement('pre'); pre.id = 'OUT'; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
+ document.title = 'RES done';
+},1500);</script>
+</body>
