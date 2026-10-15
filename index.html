@@ -6954,6 +6954,10 @@ function libForm(cat, x){
         <div class="field" style="flex:1"><label>Kind</label><select ${a} data-f="kind">${LOOT_KINDS.map(k=>`<option ${k===x.kind?"selected":""}>${k}</option>`).join("")}</select></div>
         <div class="field" style="flex:1"><label>Rarity</label><select ${a} data-f="rarity"><option value="">—</option>${RARITIES.map(r=>`<option ${r===x.rarity?"selected":""}>${r}</option>`).join("")}</select></div></div>
       <div class="pcrow">${t("value","Value",1, rarityGuess(x.rarity, x.kind==="potion") || "50 gp")}${t("wt","Weight",.6,"lb")}</div>
+      ${(()=>{ const k = `lootsold:${x.id}`, on = x.soldAt || [];
+        return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)?"open":""}><summary>Sold at${on.length ? ` <small>${esc(on.map(s=>(SHOP_TEMPLATES[s]||{}).label||s).join(", "))}</small>` : " <small>not sold in shops</small>"}</summary>
+          <p class="empty-note" style="font-size:11px;margin:2px 0 6px">Tick the kinds of shop that sell it: it can turn up in their stock.</p>
+          <div class="checks" style="display:flex;flex-wrap:wrap;gap:2px 10px">${Object.entries(SHOP_TEMPLATES).map(([id, s])=>`<label class="check" style="margin:0"><input type="checkbox" data-lib="loot" data-id="${x.id}" data-soldat="${id}" ${on.includes(id)?"checked":""}> ${s.label}</label>`).join("")}</div></details>`; })()}
       ${ta("desc","What it is","A lantern that burns without oil…",3)}
       ${(()=>{ const k = `lootsec:${x.id}`, has = itemStatLine(x);
         return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)||has?"open":""}><summary>Item stats${has?` <small>${esc(has)}</small>`:""}</summary>
@@ -7185,6 +7189,8 @@ $("#pane-library").addEventListener("input", e=>{ const t = e.target; if(t.datas
   const x = libFind(t.dataset.lib, t.dataset.id); if(x){ compFromForm(t, x); if(!(libDraft && libDraft.x===x)) saveParty(); } });
 $("#pane-library").addEventListener("change", e=>{
   const t = e.target, cat = t.dataset.lib, k = t.dataset.f;
+  if(cat==="loot" && t.dataset.soldat){ const x = libFind(cat, t.dataset.id); if(!x) return; const s = new Set(x.soldAt||[]); if(t.checked) s.add(t.dataset.soldat); else s.delete(t.dataset.soldat);
+    if(s.size) x.soldAt = [...s]; else delete x.soldAt; saveParty(); renderLibList(); return; }
   if(cat && t.dataset.comp!=null){ const x = libFind(cat, t.dataset.id); if(!x) return; compFromForm(t, x); if(!(libDraft && libDraft.x===x)) saveParty(); renderLibList(); return; }
   /* a weapon picked for a person's attacks: worked out from their sheet */
   if(cat && t.dataset.libweap!=null){ const x = libFind(cat, t.dataset.id), at = x && t.value && weaponAttack(x, t.value); if(!at) return;
@@ -10813,6 +10819,7 @@ function renderPlayNow(){
       ${filesBlock(p, "npc:"+p.id, true)}
     </div>`).join("") : `<p class="empty-note" style="margin:0 0 8px">Nobody in particular.</p>`);
 
+  h += shopBlock(n);
   if(st && (st.foes||[]).length){
     const chk = checkSite(st, st.level||n.level||1);
     const tone = { light:"var(--ink-faint)", fair:"var(--r1)", hard:"var(--r3)", deadly:"var(--lead)" }[chk.verdict];
@@ -10843,7 +10850,8 @@ function renderPlayNow(){
         + (partySize()>1 && coinShown(st) ? `<button class="btn wide" id="pl-coins" style="margin:3px 0 6px">Roll it and split among the party</button>` : "") : "")
     + (left ? `<div class="sbl"><b>Coin left here</b> ${COINS.filter(([k])=>st.coins[k]).map(([k])=>`${st.coins[k]} ${k}`).join(", ")}</div>`
         + (partySize()>1 ? `<button class="btn wide" id="pl-coinsplit" style="margin:3px 0 6px">Split it among the party</button>` : "") : "")
-    + items.map((id,i)=>{ const x = libLootById(id), dc = itemDc(st,id), shown = itemShown(st,id);
+    + items.map((id,i)=>{ if(n.shop && (n.shop.items||[]).includes(id)) return "";        // for sale, listed under the shop
+        const x = libLootById(id), dc = itemDc(st,id), shown = itemShown(st,id);
         return `<div class="librow${partySize()>1?" give":""}"><span><span class="libref" data-libopen="loot:${baseId(id)}">${x?esc(x.name):"<i>missing from the library</i>"}</span>${x&&lootLabel(x)?` <small>· ${esc(lootLabel(x))}</small>`:""}${st.where&&st.where[id]?` <small>· in a ${esc((spotTile(bmapOf(n), { x:+st.where[id].split(",")[0], y:+st.where[id].split(",")[1] })||{name:"container"}).name.toLowerCase())} on its map</small>`:""}
             ${shown ? (dc?`<small class="ivst found">found</small>`:"") : hidTag(dc)}
             <select class="pl-dc" data-gi="${i}" title="How hard it is to find. Plain sight: the players can just take it.">${dcOptions(dc)}</select></span>
@@ -11571,6 +11579,156 @@ const kindOptions = cur => `<option value="">Anyone (by class)</option>${PEOPLE_
 const pickWeighted = w => { const e = Object.entries(w||{}), sum = e.reduce((a, [, v])=>a + v, 0); let r = Math.random()*sum; for(const [k, v] of e){ r -= v; if(r < 0) return k; } return e.length ? e[e.length-1][0] : ""; };
 /* from the kind's own list mostly, now and then the general one */
 const kindPick = (own, general, p = .8) => own && own.length && (!general || Math.random() < p) ? pickOne(own) : pickOne(general);
+/* ══ SHOPS (Joseph, 2026-10-15) ══ a building made into a kind of shop: its stock rolled at random from what that kind
+   of shop sells (SRD 5.2 gear at its listed price, the shop's own goods, and any library item marked "Sold at" it), a
+   keeper rolled as the right kind of person, now and then a hand to help. The shop's own goods are priced by this app:
+   Joseph's table rule, noted on each one when it first goes into the library. Selling takes the price out of the buyer's
+   purse (making change) and puts the item in their pack. */
+const SHOP_TEMPLATES = {
+  bakery:{ label:"Bakery", keeper:"baker", staff:["baker"], n:[4,7],
+    srd:["Rations"],
+    goods:[["Loaf of bread","2 cp","A round loaf, still warm."],["Ship's biscuit, a dozen","5 cp","Hard enough to break teeth, and keeps for months."],["Sweet bun","1 cp","Glazed with honey."],
+      ["Meat pie","3 cp","Mutton and onion in a thick crust."],["Honey cake","1 sp","Dense, sticky and spiced."],["Seed cake","2 sp","Caraway and butter."],["Festival loaf","5 sp","Braided, with dried fruit and saffron."],["Wedding cake","5 gp","Three tiers, to order."]] },
+  butcher:{ label:"Butcher", keeper:"butcher", staff:["butcher"], n:[4,6],
+    srd:[],
+    goods:[["Salt pork, a pound","4 cp","Keeps on a voyage."],["Smoked ham","5 sp","A whole leg, black with smoke."],["String of sausages","1 sp","A yard of them."],["Joint of mutton","3 sp","For the pot or the spit."],
+      ["Cask of salt beef","4 gp","A ship's ration for a month, give or take."],["Pigs' trotters","1 cp","For soup."],["Crock of lard","5 cp","For cooking, candles or boots."]] },
+  smithy:{ label:"Smithy", keeper:"smith", staff:["smith"], n:[5,8],
+    srd:["Dagger","Handaxe","Light Hammer","Sickle","Spear","Mace","Warhammer","Crowbar","Chain","Manacles","Hammer","Spikes, Iron","Shovel","Grappling Hook"],
+    goods:[["Set of horseshoes","1 sp","Four, with nails."],["Bag of iron nails","5 cp","A hundred or so."],["Ship's fittings","2 gp","Hinges, rings and cleats."]] },
+  armourer:{ label:"Armourer", keeper:"smith", staff:["smith"], n:[3,6],
+    srd:["Leather Armor","Studded Leather Armor","Hide Armor","Chain Shirt","Scale Mail","Breastplate","Ring Mail","Chain Mail","Shield"],
+    goods:[["Armour repair","5 sp","A day's work on dents and broken links."]] },
+  bowyer:{ label:"Bowyer and fletcher", keeper:"carpenter", staff:["carpenter"], n:[4,7],
+    srd:["Shortbow","Longbow","Light Crossbow","Heavy Crossbow","Hand Crossbow","Arrows (20)","Bolts (20)","Case, Crossbow Bolt","Quiver","Sling","Dart"],
+    goods:[["Spare bowstring","1 sp","Waxed linen."],["Fletching feathers, a bundle","2 cp","Goose and gull."]] },
+  tailor:{ label:"Tailor", keeper:"tailor", staff:["tailor"], n:[4,6],
+    srd:["Clothes, Common","Clothes, fine","Clothes, Traveler's","Clothes, costume"],
+    goods:[["Wool cloak","5 sp","Heavy, and warm when wet."],["Silk scarf","1 gp","Dyed in the colours of a far island."],["Oilskin coat","2 gp","Sheds rain and spray."],["Mending","2 cp","While you wait."]] },
+  general:{ label:"General store", keeper:"merchant", staff:["servant"], n:[6,10],
+    srd:["Backpack","Bedroll","Blanket","Candle","Chalk (1 piece)","Flask","Ball Bearings (bag of 1000)","Caltrops (bag of 20)","Rope","Torch","Tinderbox","Waterskin","Rations","Pouch","Sack","Lamp","Oil","Mess Kit","Soap","Bucket","Basket"],
+    goods:[["Tin of boot grease","1 cp","Keeps leather supple."]] },
+  chandlery:{ label:"Chandlery", keeper:"chandler", staff:["ropemaker","dockhand"], n:[5,8],
+    srd:["Rope","Lantern, Hooded","Lantern, Bullseye","Oil","Candle","Grappling Hook","Block and Tackle","Pole","Bucket","Chain","Spyglass","Navigator's Tools"],
+    goods:[["Bucket of tar","2 sp","For seams and rigging."],["Bolt of sailcloth","5 gp","Enough to patch a mainsail."],["Oakum, a bale","1 sp","Old rope picked apart, for caulking."]] },
+  apothecary:{ label:"Apothecary", keeper:"apothecary", staff:["apothecary"], n:[3,6],
+    srd:["Potion of Healing","Antitoxin","Healer's Kit","Herbalism Kit","Perfume","Acid","Alchemist's Fire"],
+    goods:[["Willow-bark tea","2 cp","For aches and fevers."],["Seasick tonic","5 sp","Ginger and something stronger."],["Burn salve","1 sp","Aloe and honey."],["Sleeping draught","2 sp","A night's sleep, guaranteed."]] },
+  jeweller:{ label:"Jeweller", keeper:"jeweller", staff:["servant"], n:[3,5],
+    srd:["Jeweler's Tools"],
+    goods:[["Silver ring","5 gp","Plain, well made."],["Coral bracelet","10 gp","Red coral from the southern reefs."],["Pearl earrings","25 gp","A matched pair."],["Gold chain","50 gp","Heavy enough to impress."],["Sapphire brooch","100 gp","Set in silver, very old."],["Engraving","5 gp","A name, a crest or a promise."]] },
+  books:{ label:"Bookseller", keeper:"scholar", staff:["clerk"], n:[4,6],
+    srd:["Book","Paper","Parchment","Ink","Ink Pen","Map","Case, Map or Scroll"],
+    goods:[["Almanac of the tides","5 gp","High and low water for every port that matters."],["Book of sea shanties","2 gp","Words and tunes, with rude verses."],["Children's primer","5 sp","Letters and numbers, with pictures of ships."]] },
+  maps:{ label:"Map-maker", keeper:"scholar", staff:["clerk"], n:[3,5],
+    srd:["Map","Cartographer's Tools","Navigator's Tools","Case, Map or Scroll","Spyglass","Parchment"],
+    goods:[["Chart of the home waters","10 gp","Coast, soundings and the safe channels."],["Tide tables","1 gp","For the coming year."],["A map copied","2 gp","Bring the map, collect it tomorrow."]] },
+  tavern:{ label:"Tavern", keeper:"innkeeper", staff:["servant","innkeeper"], n:[5,8],
+    srd:[],
+    goods:[["Mug of ale","4 cp","Brown and bitter."],["Mug of cider","2 cp","Cold and sweet."],["Bottle of wine","2 sp","Red, from the inland hills."],["Bottle of rum","1 gp","Dark, from the far islands."],
+      ["Bowl of fish stew and bread","4 cp","Hot and filling."],["Roast fowl","3 sp","With bread and onions."],["Bed in the common room","5 cp","A blanket by the fire."],["A room for the night","5 sp","A door that locks and a straw mattress."]] },
+  stables:{ label:"Stables", keeper:"farmer", staff:["servant"], n:[3,5],
+    srd:["Saddle (Riding)","Feed (per day)"],
+    goods:[["Stabling for a night","5 sp","Stall, straw and water."],["A horse for hire, a day","2 gp","Returned by sundown, or else."],["Feed, a day","5 cp","Oats and hay."]] },
+  fishmonger:{ label:"Fishmonger", keeper:"fisher", staff:["fisher"], n:[4,6],
+    srd:[],
+    goods:[["Fresh fish","1 cp","Caught this morning."],["Salt cod, a side","3 sp","Keeps for months."],["Basket of crabs","4 cp","Still moving."],["Smoked eel","1 sp","A delicacy, they say."],["Barrel of salted herring","3 gp","A ship's worth."]] }
+};
+const shopOptions = cur => Object.entries(SHOP_TEMPLATES).map(([id, t])=>`<option value="${id}" ${cur===id?"selected":""}>${t.label}</option>`).join("");
+/* a shop's own goods go into the library the first time they're stocked, priced by this app (Joseph's table rule) */
+function shopGood(tid, [name, value, desc]){
+  const L = lib().loot; let x = L.find(q=>q.shopGood && q.name===name);
+  if(!x){ x = { id:uid("ll"), name, kind:"gear", rarity:"Mundane", value, desc, notes:"Price: your table rule (a shop's own goods; the SRD doesn't price it).", soldAt:[tid], shopGood:true }; L.push(x); }
+  return x;
+}
+/* what a kind of shop can stock: its SRD gear, its own goods (named, made on demand), and library items sold there */
+function shopPool(tid){
+  const T = SHOP_TEMPLATES[tid]; if(!T) return [];
+  return [...T.srd.map(nm=>{ const x = lootByName(nm); return x ? { id:x.id } : null; }).filter(Boolean),
+    ...T.goods.map(gd=>({ good:gd })),
+    ...lib().loot.filter(x=>!x.shopGood && (x.soldAt||[]).includes(tid)).map(x=>({ id:x.id }))];
+}
+const shopItemId = (tid, e) => e.id || shopGood(tid, e.good).id;
+/* its price at this shop, in copper: the item's value (or its rarity's) times the shop's prices */
+const shopPrice = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*100*((n.shop && +n.shop.price) || 1)));
+/* roll the stock afresh: what was for sale goes, a new handful comes in, one to three of each */
+function shopRestock(n){
+  const S = n.shop, T = SHOP_TEMPLATES[S && S.tpl]; if(!T) return;
+  const st = siteOf(n); st.items = (st.items||[]).filter(t=>!(S.items||[]).includes(t)); (S.items||[]).forEach(t=>forgetItem(st, t));
+  const pool = shopPool(S.tpl).sort(()=>Math.random()-.5), want = Math.min(pool.length, T.n[0] + Math.floor(Math.random()*(T.n[1]-T.n[0]+1)));
+  S.items = [];
+  for(const e of pool.slice(0, want)){ const id = shopItemId(S.tpl, e); for(let q = 1 + Math.floor(Math.random()*3); q > 0; q--) S.items.push(placeItem(st, id, null)); }
+}
+/* open a shop: its keeper (and sometimes a hand) rolled as the right kind of person, saved and met here */
+function shopOpen(n, tid){
+  const T = SHOP_TEMPLATES[tid]; if(!T) return;
+  n.shop = { tpl:tid, price:1, items:[] };
+  const lv = Math.max(1, partyAvgLevel()), met = n.npcs = n.npcs || [], here = met.map(libNpcById).filter(Boolean);
+  /* someone already works here: they keep it. Otherwise a keeper of the right kind is rolled */
+  let keeper = here[0];
+  if(!keeper){ keeper = personToLibrary(genPerson({ kind:T.keeper, level:lv, disp:"neutral", type:"Humanoid" }));
+    keeper.where = placeLabel(n); keeper.role = `${keeper.role} · keeps ${n.name || "the " + T.label.toLowerCase()}`; met.push(keeper.id); }
+  n.shop.keeper = keeper.id;
+  if(!here.length && T.staff && T.staff.length && Math.random() < .5){ const h = personToLibrary(genPerson({ kind:pickOne(T.staff), level:lv, disp:"neutral", type:"Humanoid" })); h.where = placeLabel(n); met.push(h.id); n.shop.staff = [h.id]; }
+  if(!n.name) n.name = `${String(keeper.name||"").split(" ").slice(-1)[0]}'s ${T.label}`;
+  if(n.premises){ n.premises.keeper = { name:keeper.name, note:keeper.look }; }
+  /* what's already lying here in plain sight is for sale too, with a fresh stock on top */
+  const st0 = siteOf(n), had = (st0.items||[]).filter(t=>itemShown(st0, t) && !itemDc(st0, t));
+  shopRestock(n); n.shop.items = [...had, ...n.shop.items];
+  gameLog("note", `${placeLabel(n)} is now a ${T.label.toLowerCase()}, kept by ${keeper.name}`);
+}
+/* paying: the price out of a purse, making change in gold, silver and copper; false if it can't be met */
+function payFrom(purse, cp){
+  const have = Math.round(purseGp(purse)*100); if(have < cp) return false;
+  let left = have - cp; for(const k of ["pp","ep"]) purse[k] = 0;
+  purse.gp = Math.floor(left/100); left -= purse.gp*100; purse.sp = Math.floor(left/10); purse.cp = left - purse.sp*10;
+  return true;
+}
+function shopSell(n, tok, pid){
+  const p = partyRoster().find(q=>q.id===pid), S = n.shop, st = n.site; if(!p || !S || !st) return;
+  const i = st.items.indexOf(tok); if(i < 0) return; const id = baseId(tok), x = libLootById(id), cp = shopPrice(n, id);
+  partyDoing(`Bought ${(x||{}).name||"something"}`, p);
+  if(!payFrom(purseOf(p), cp)){ flash(`${p.name||"They"} can't afford it: ${cpStr(cp)}, with ${cpStr(Math.round(purseGp(purseOf(p))*100))} in their purse.`); return; }
+  st.items.splice(i, 1); S.items = (S.items||[]).filter((t, k)=>!(t===tok && k===S.items.indexOf(tok))); forgetItem(st, tok);
+  p.inv = Array.isArray(p.inv) ? p.inv : []; p.inv.push({ id, qty:1, from:placeLabel(n), at:today() });
+  saveParty(); touch();
+  gameLog("loot", `${p.name||"Someone"} bought ${(x||{}).name||"something"} at ${placeLabel(n)} for ${cpStr(cp)}`);
+  flash(`${p.name||"They"} bought ${(x||{}).name||"it"} for ${cpStr(cp)}.`);
+}
+/* the shop on a place's card (DM mode) and in its Build panel */
+function shopBlock(n){
+  if(!n.shop) return hasFootprint(n) || ["store","provision","market","smith","apothecary","inn","stable","stall","tent","shipwright","warehouse","fence"].includes(n.kind)
+    ? `<div class="pcrow" style="margin:6px 0 8px"><select data-shop="tpl" style="flex:1;min-width:0"><option value="">Make it a shop…</option>${shopOptions("")}</select><button class="btn" data-shopb="open">Open it</button></div>` : "";
+  const S = n.shop, T = SHOP_TEMPLATES[S.tpl] || { label:"Shop" }, st = n.site || {}, keep = libNpcById(S.keeper);
+  const counts = {}; for(const t of (S.items||[])) if((st.items||[]).includes(t)){ const id = baseId(t); counts[id] = (counts[id]||0) + 1; }
+  const firstTok = id => (S.items||[]).find(t=>baseId(t)===id && (st.items||[]).includes(t));
+  const who = partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")} (${cpStr(Math.round(purseGp(purseOf(p))*100))})</option>`).join("");
+  return `<p class="eyebrow spaced">The ${esc(T.label.toLowerCase())}</p>
+    ${keep ? `<div class="sbl"><b>Kept by</b> <span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span></div>` : ""}
+    <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Prices</label><select data-shop="price">${[[.75,"Cheap (×¾)"],[1,"The going rate"],[1.25,"Dear (×1¼)"],[1.5,"Very dear (×1½)"],[2,"Robbery (×2)"]].map(([v, l])=>`<option value="${v}" ${(+S.price||1)===v?"selected":""}>${l}</option>`).join("")}</select></div>
+    <p class="grouplab" style="margin:6px 0 3px">For sale</p>
+    ${Object.keys(counts).length ? Object.entries(counts).map(([id, q])=>{ const x = libLootById(id);
+        return `<div class="librow give"><span><span class="libref" data-libopen="loot:${id}">${esc(x ? x.name : id)}</span>${q > 1 ? ` <small>×${q}</small>` : ""} <small class="mono">${cpStr(shopPrice(n, id))}</small>${x && x.shopGood ? ` <small title="Priced by your table rule">✦</small>` : ""}</span>
+          ${partySize() ? `<select data-shopsell="${esc(firstTok(id))}" title="Sell one to…"><option value="">Sell to…</option>${who}</select>` : ""}</div>`; }).join("")
+      : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Sold out.</p>`}
+    <p class="empty-note" style="font-size:10.5px;margin:2px 0 6px">✦ priced by your table rule; the rest at the SRD's prices.</p>
+    <div class="pcrow"><button class="btn" style="flex:1" data-shopb="restock">New stock</button><button class="btn" style="flex:1" data-shopb="close">Close the shop</button></div>`;
+}
+document.addEventListener("change", e=>{
+  const t = e.target; const n = sel && sel.kind==="node" ? nodeById(sel.id) : null; if(!n) return;
+  if(t.dataset.shop==="price" && n.shop){ n.shop.price = +t.value || 1; touch(); renderPane(true); }
+  else if(t.dataset.shopsell!=null && t.value){ shopSell(n, t.dataset.shopsell, t.value); renderPane(true); }
+});
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-shopb]"); if(!b) return; const n = sel && sel.kind==="node" ? nodeById(sel.id) : null; if(!n) return;
+  const a = b.dataset.shopb;
+  if(a==="open"){ const s = b.parentElement.querySelector('[data-shop="tpl"]'), tid = s && s.value; if(!tid){ flash("Pick a kind of shop first."); return; }
+    shopOpen(n, tid); saveParty(); touch(); render(); flash(`${placeLabel(n)} is open: ${(n.shop.items||[]).length} things for sale.`); }
+  else if(a==="restock" && n.shop){ shopRestock(n); saveParty(); touch(); flash("New stock in."); }
+  else if(a==="close" && n.shop){ if(!confirm(`Close ${placeLabel(n)}? Its stock goes; its keeper stays in the library.`)) return;
+    const st = siteOf(n); st.items = (st.items||[]).filter(t=>!(n.shop.items||[]).includes(t)); (n.shop.items||[]).forEach(t=>forgetItem(st, t)); delete n.shop; touch(); }
+  renderPane(true);
+});
 let genOpts = { level:null, disp:"", type:"Humanoid", role:"", kind:"", species:"", align:"", diff:"mod", xp:0 }, genResult = null;
 /* an encounter's XP: the party's 2024 budget at the difficulty picked (Low, Moderate, High), or exactly the XP asked for */
 const DIFF_KEYS = [["lo","Low"],["mod","Moderate"],["hi","High"]];
@@ -12699,7 +12857,7 @@ function wireFootprint(n){
 function premisesPanel(n){
   const kd = KINDS[n.kind] || {};
   const use = kd.svc || "";
-  if(!n.premises) return `
+  if(!n.premises) return `${shopBlock(n)}
     <p class="eyebrow spaced">Inside</p>
     <p class="empty-note" style="margin:0 0 9px">${use
       ? `A ${kd.label.toLowerCase()} with nobody in it is a shape on a drawing.`
@@ -12707,7 +12865,7 @@ function premisesPanel(n){
     <button class="btn wide" id="pr-add">Put somebody in it</button>`;
 
   const p = n.premises;
-  return `
+  return `${shopBlock(n)}
     <p class="eyebrow spaced">Inside</p>
     ${use?`<p class="empty-note" style="margin:-2px 0 10px">This sites the <b>${esc(use)}</b> service for ${esc(planParentName())}.</p>`:""}
 

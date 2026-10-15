@@ -1,0 +1,25 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ') : 'none';
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await wait(300); setDmMode(true);
+  const miss = []; for(const [id, t] of Object.entries(SHOP_TEMPLATES)){ for(const nm of t.srd) if(!lootByName(nm)) miss.push(id + ':' + nm); if(!PEOPLE_KINDS[t.keeper]) miss.push(id + ' keeper ' + t.keeper); (t.staff||[]).forEach(s=>{ if(!PEOPLE_KINDS[s]) miss.push(id + ' staff ' + s); }); }
+  out.push(Object.keys(SHOP_TEMPLATES).length + ' templates; not found: ' + (miss.join(', ') || 'none'));
+  enterPlan('kcity'); await wait(80); const n = doc.nodes.find(q=>q.id==='pware1'); select('node', n.id); renderPane(true); await wait(30);
+  const el = document.getElementById('pane-inspect'); const s = el.querySelector('[data-shop="tpl"]'); out.push('make-a-shop select ' + !!s);
+  s.value = 'bakery'; el.querySelector('[data-shopb="open"]').click(); await wait(40);
+  out.push('opened: ' + n.name + ' | keeper ' + (libNpcById(n.shop.keeper)||{}).name + ' (' + (libNpcById(n.shop.keeper)||{}).role + ') | ' + n.shop.items.length + ' items');
+  out.push('card: ' + txt(el).match(/THE BAKERY.*?Close the shop/i));
+  const R = partyRoster(), p = R[0], before = JSON.stringify(purseOf(p)), tok = el.querySelector('[data-shopsell]').dataset.shopsell, price = shopPrice(n, baseId(tok));
+  const sl = el.querySelector('[data-shopsell]'); sl.value = p.id; sl.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  out.push('sold ' + libLootById(baseId(tok)).name + ' for ' + cpStr(price) + ': purse ' + before + ' -> ' + JSON.stringify(purseOf(p)) + ', in pack ' + p.inv.some(e=>e.id===baseId(tok)) + ', left for sale ' + n.shop.items.length);
+  const broke = R[1]; broke.purse = { cp:0, sp:0, ep:0, gp:0, pp:0 }; renderPane(true); await wait(20);
+  const sl2 = document.querySelector('#pane-inspect [data-shopsell]'); sl2.value = broke.id; sl2.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); out.push('broke buyer: still for sale ' + n.shop.items.length);
+  document.querySelector('#pane-inspect [data-shopb="restock"]').click(); await wait(30); out.push('restocked: ' + n.shop.items.length + ' items, site has ' + n.site.items.length);
+  const goods = lib().loot.filter(x=>x.shopGood).map(x=>x.name + ' ' + x.value); out.push('goods in the library: ' + goods.join(', '));
+  /* a custom item sold at a bakery */
+  { const ch = doc.nodes.find(q=>q.id==='pchand'), had = (ch.site.items||[]).length, ppl = (ch.npcs||[]).map(i=>(libNpcById(i)||{}).name);
+    shopOpen(ch, 'chandlery'); out.push('Benedetti: kept by ' + (libNpcById(ch.shop.keeper)||{}).name + ' (was ' + ppl.join(',') + '), ' + ch.shop.items.length + ' for sale, ' + had + ' of them there already'); }
+  lib().loot.push({ id:'ll_testcake', name:'Kalatecha sea-salt bun', kind:'gear', value:'3 cp', soldAt:['bakery'] }); out.push('pool has the custom bun ' + shopPool('bakery').some(e=>e.id==='ll_testcake'));
+ }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');
+},1500);</script>
+</body>
