@@ -3952,7 +3952,7 @@ function placeLabels(reqs, obstacles, inv){
 /* over the map: a scale bar, and on the sea chart the map's title in a cartouche */
 function mapFurniture(){
   let el = $("#mapfurn"); if(!el){ $("#field").insertAdjacentHTML("beforeend", `<div id="mapfurn"><div class="cartouche"></div><div class="scalebar"></div><div class="rosebox" hidden></div></div>`); el = $("#mapfurn"); }
-  { const rb = el.querySelector(".rosebox"), on = !planOf && doc===root && !(typeof battleOf!=="undefined" && battleOf) && (root.shapes||[]).some(s=>s.kind==="water");
+  { const rb = el.querySelector(".rosebox"), on = !(typeof battleOf!=="undefined" && battleOf) && (planOf ? true : doc===root && (root.shapes||[]).some(s=>s.kind==="water"));
     if(on && !rb.firstChild) rb.innerHTML = roseCorner(); rb.hidden = !on; }
   const per = (doc.ppm||10) * view.k, nice = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000].find(v=>v*per >= 70) || 1000, px = Math.round(nice*per);
   el.querySelector(".scalebar").innerHTML = `<div class="sb-bar" style="width:${px}px"><span></span><span></span></div><div class="sb-lab">${nice} ${UNIT()}</div>`;
@@ -4027,6 +4027,55 @@ function marketAwnings(sh, inv){
     s += `<g transform="translate(${k1(x)} ${k1(y)}) rotate(${k1(rnd()*30-15)})"><rect x="${k1(-w/2+1.2)}" y="${k1(-h/2+1.6)}" width="${k1(w)}" height="${k1(h)}" fill="#3a2e1e" opacity=".2"/><rect x="${k1(-w/2)}" y="${k1(-h/2)}" width="${k1(w)}" height="${k1(h)}" fill="url(#pawn${got%2})" stroke="#3a2e1e" stroke-width="${k1(.7*inv)}"/></g>`; got++; }
   return `<g pointer-events="none">${s}</g>`;
 }
+/* a town wall on a plan: a shadow, dressed stone with a dark face, merlons along both edges and the wall-walk between */
+function stoneWall(d, on){
+  const t = 2.6*(doc.ppm || 5), j = `fill="none" stroke-linejoin="round" stroke-linecap="round"`;
+  return `<g pointer-events="none"><path d="${d}" ${j} stroke="#3a2e1e" stroke-opacity=".22" stroke-width="${k1(t+2)}" transform="translate(${k1(t*.25)} ${k1(t*.3)})"/>`
+    + `<path d="${d}" ${j} stroke="${on ? "var(--lead)" : "#54483a"}" stroke-width="${k1(t+1.6)}"/><path d="${d}" ${j} stroke="#a99b7c" stroke-width="${k1(t)}"/>`
+    + `<path d="${d}" fill="none" stroke="#8c7e63" stroke-width="${k1(t)}" stroke-dasharray="${k1(t*.36)} ${k1(t*.3)}"/>`
+    + `<path d="${d}" ${j} stroke="#c2b594" stroke-width="${k1(t*.46)}"/></g>`;
+}
+/* green ground on a plan: trees scattered through a green or a wood, an orchard's rows, a garden's beds, a graveyard's stones,
+   hatching on bare rock. Kept, since it doesn't change with the zoom. */
+const groundCache = new Map();
+function planGround(sh){
+  const kind = sh.kind; if(!["green","garden","orchard","graveyard","rock"].includes(kind) || !sh.closed || (sh.pts||[]).length < 3) return "";
+  const ppm = doc.ppm || 5, key = `${sh.id}|${kind}|${ptsKey(sh.pts)}|${sh.straight?1:0}|${ppm}`;
+  if(groundCache.has(key)) return groundCache.get(key);
+  const ring = shapeRing(sh), rnd = seeded("gr" + key), sp = { green:8, orchard:6, garden:5, graveyard:4, rock:7 }[kind]*ppm, w = .12*ppm;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of ring){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const greens = ["#6f8f5a","#7d9b63","#62824f","#86a26a"], loose = kind==="green" || kind==="rock";
+  let s = "", n = 0;
+  for(let y = y0 + sp/2, row = 0; y < y1 && n < 2600; y += sp*(loose ? .86 : 1), row++) for(let x = x0 + sp/2 + (loose && row%2 ? sp/2 : 0); x < x1 && n < 2600; x += sp){
+    const px = loose ? x + (rnd()-.5)*sp*.8 : x, py = loose ? y + (rnd()-.5)*sp*.7 : y;
+    if(!inRing(ring, px, py) || ringDist(ring, px, py) < sp*.4) continue;
+    if(kind==="green"){ if(rnd() < .3) continue; n++; const r = (1.7 + rnd()*1.7)*ppm, c = greens[Math.floor(rnd()*greens.length)];
+      s += `<circle cx="${k1(px+r*.35)}" cy="${k1(py+r*.45)}" r="${k1(r)}" fill="#3a2e1e" opacity=".17"/><circle cx="${k1(px)}" cy="${k1(py)}" r="${k1(r)}" fill="${c}" stroke="#4a6238" stroke-width="${k1(w)}"/><circle cx="${k1(px-r*.3)}" cy="${k1(py-r*.3)}" r="${k1(r*.42)}" fill="#a7c08b" opacity=".55"/>`; }
+    else if(kind==="orchard"){ n++; const r = 1.4*ppm;
+      s += `<circle cx="${k1(px+r*.3)}" cy="${k1(py+r*.4)}" r="${k1(r)}" fill="#3a2e1e" opacity=".15"/><circle cx="${k1(px)}" cy="${k1(py)}" r="${k1(r)}" fill="#7d9b63" stroke="#4a6238" stroke-width="${k1(w)}"/>`; }
+    else if(kind==="garden"){ n++; s += `<path d="M${k1(px-sp*.4)} ${k1(py)} L${k1(px+sp*.4)} ${k1(py)}" stroke="#5e7a4e" stroke-width="${k1(.9*ppm)}" stroke-linecap="round" opacity=".55"/>`; }
+    else if(kind==="graveyard"){ n++; s += `<rect x="${k1(px-.5*ppm)}" y="${k1(py-.7*ppm)}" width="${k1(ppm)}" height="${k1(1.4*ppm)}" rx="${k1(.4*ppm)}" fill="#d6d2c4" stroke="#5f5f48" stroke-width="${k1(w)}"/>`; }
+    else { n++; s += `<path d="M${k1(px)} ${k1(py)} l${k1(1.8*ppm)} ${k1(1.2*ppm)} M${k1(px+.6*ppm)} ${k1(py-.5*ppm)} l${k1(1.6*ppm)} ${k1(1.1*ppm)}" stroke="#5f5546" stroke-width="${k1(w*1.6)}" opacity=".55"/>`; }
+  }
+  const out = `<g pointer-events="none">${s}</g>`; groundCache.set(key, out); return out;
+}
+/* the small things on a plan, drawn as what they are: a ship's hull with her deck and masts, a rowboat, a stall
+   under its awning, a tent, a well, a monument (w along the building's length, h across it) */
+const PLAN_SMALL = {
+  ship:(w, h, inv)=>{ const L = w/2, B = h/2, bw = Math.min(h*.9, L);
+    const hull = `M${k1(-L)} ${k1(-B*.75)} L${k1(L-bw)} ${k1(-B)} Q${k1(L)} 0 ${k1(L-bw)} ${k1(B)} L${k1(-L)} ${k1(B*.75)} Z`;
+    const deck = `M${k1(-L+h*.22)} ${k1(-B*.5)} L${k1(L-bw*1.05)} ${k1(-B*.66)} Q${k1(L-h*.35)} 0 ${k1(L-bw*1.05)} ${k1(B*.66)} L${k1(-L+h*.22)} ${k1(B*.5)} Z`;
+    let s = `<path d="${hull}" fill="#3a2e1e" opacity=".22" transform="translate(${k1(h*.18)} ${k1(h*.22)})"/><path d="${hull}" fill="#6f4c30" stroke="#3a2e1e" stroke-width="${k1(.8*inv)}"/><path d="${deck}" fill="#b08a5c"/>`;
+    for(let x = -L + h*.5; x < L - bw; x += h*.28) s += `<path d="M${k1(x)} ${k1(-B*.55)} L${k1(x)} ${k1(B*.55)}" stroke="#8a6a44" stroke-width="${k1(.35*inv)}" opacity=".7"/>`;
+    for(const fx of [-.32, .2]) s += `<path d="M${k1(L*fx)} ${k1(-B*1.05)} L${k1(L*fx)} ${k1(B*1.05)}" stroke="#efe4c6" stroke-width="${k1(h*.13)}" stroke-linecap="round"/><circle cx="${k1(L*fx)}" cy="0" r="${k1(h*.1)}" fill="#3a2e1e"/>`;
+    return s; },
+  boat:(w, h, inv)=>{ const L = w/2, B = h/2, hull = `M${k1(-L)} ${k1(-B*.75)} L${k1(L*.25)} ${k1(-B)} Q${k1(L)} 0 ${k1(L*.25)} ${k1(B)} L${k1(-L)} ${k1(B*.75)} Z`;
+    return `<path d="${hull}" fill="#3a2e1e" opacity=".2" transform="translate(${k1(h*.15)} ${k1(h*.2)})"/><path d="${hull}" fill="#8a6440" stroke="#3a2e1e" stroke-width="${k1(.6*inv)}"/><path d="M${k1(-L*.2)} ${k1(-B*.8)} L${k1(-L*.2)} ${k1(B*.8)} M${k1(L*.25)} ${k1(-B*.85)} L${k1(L*.25)} ${k1(B*.85)}" stroke="#c9a77a" stroke-width="${k1(h*.12)}"/>`; },
+  stall:(w, h, inv)=>`<rect x="${k1(-w/2+h*.15)}" y="${k1(-h/2+h*.2)}" width="${k1(w)}" height="${k1(h)}" fill="#3a2e1e" opacity=".2"/><rect x="${k1(-w/2)}" y="${k1(-h/2)}" width="${k1(w)}" height="${k1(h)}" fill="url(#pawn0)" stroke="#3a2e1e" stroke-width="${k1(.7*inv)}"/>`,
+  tent:(w, h, inv)=>`<rect x="${k1(-w/2+h*.15)}" y="${k1(-h/2+h*.2)}" width="${k1(w)}" height="${k1(h)}" rx="${k1(h*.1)}" fill="#3a2e1e" opacity=".2"/><rect x="${k1(-w/2)}" y="${k1(-h/2)}" width="${k1(w)}" height="${k1(h)}" rx="${k1(h*.1)}" fill="#e2d6b8" stroke="#3a2e1e" stroke-width="${k1(.7*inv)}"/><path d="M${k1(-w/2)} 0 L${k1(w/2)} 0" stroke="#8a7a5a" stroke-width="${k1(.6*inv)}"/><path d="M${k1(-w/2)} ${k1(-h/2)} L${k1(-w/2+h*.4)} 0 L${k1(-w/2)} ${k1(h/2)} M${k1(w/2)} ${k1(-h/2)} L${k1(w/2-h*.4)} 0 L${k1(w/2)} ${k1(h/2)}" fill="none" stroke="#8a7a5a" stroke-width="${k1(.5*inv)}"/>`,
+  well:(w, h, inv)=>{ const r = Math.min(w, h)/2; return `<circle r="${k1(r)}" fill="#8d9294" stroke="#3a2e1e" stroke-width="${k1(.7*inv)}"/><circle r="${k1(r*.55)}" fill="#5f8a92"/>`; },
+  statue:(w, h, inv)=>{ const r = Math.min(w, h)/2; return `<rect x="${k1(-r)}" y="${k1(-r)}" width="${k1(r*2)}" height="${k1(r*2)}" fill="#b3aa96" stroke="#3a2e1e" stroke-width="${k1(.7*inv)}"/><circle r="${k1(r*.5)}" fill="#7f776a"/>`; }
+};
 /* the patterns those use, put into the map's defs once */
 function planPatterns(){
   const defs = svg.querySelector("defs"); if(!defs || defs.querySelector("#pflag")) return;
@@ -4078,6 +4127,8 @@ function render(){
       /* on a plan: cobbles in a street or lane (two staggered courses), planks across a pier */
       if(planOf && !on && (sh.kind==="street" || sh.kind==="lane"))
         s += `<path d="${d}" fill="none" stroke="url(#pcob)" stroke-width="${wS}" pointer-events="none"/>`;      // the cobblestone texture, painted into the street
+      else if(planOf && !on && sh.kind==="pier" && sh.stone)        // a stone mole or breakwater: dressed blocks, not planks
+        s += `<path d="${d}" fill="none" stroke="#6d6250" stroke-width="${wS+3}" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#a89e88" stroke-width="${wS}" stroke-linecap="round"/><path d="${d}" fill="none" stroke="url(#pflag)" stroke-width="${wS}" pointer-events="none"/>`;
       else if(planOf && !on && sh.kind==="pier")
         s += `<path d="${d}" fill="none" stroke="#5f4a2c" stroke-opacity=".6" stroke-width="${k1(wS*.94)}" stroke-dasharray="1.2 4" pointer-events="none"/>`;
     }
@@ -4102,6 +4153,7 @@ function render(){
         if(sh.kind==="water") s += planShore(sh, d, inv);
         if(kd.paved) s += `<path d="${d}" fill="url(#pflag)" pointer-events="none"/>`;
         if(sh.kind==="market") s += marketAwnings(sh, inv);
+        s += planGround(sh);
       }
       /* a built block: on a plan, filled with houses; elsewhere ruled across, the way a plan hatches roofed ground */
       if(kd.hatch && planOf && sh.kind==="block") s += blockHouses(sh, inv);
@@ -4115,6 +4167,8 @@ function render(){
            + `<clipPath id="clip-${sh.id}"><path d="${d}"/></clipPath>`;
       }
     }
+    else if(planOf && kd.wall)
+      s += stoneWall(d, on);
     else
       s += `<path class="shape" d="${d}" fill="none" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
     /* engraved shoreline: parallel strokes falling away on one side */
@@ -4131,8 +4185,8 @@ function render(){
         s += `<path class="hachure" d="${p}" stroke="${kd.stroke}" stroke-width="${inv}" opacity="${0.42/band}"/>`;
       }
     }
-    /* merlons along a town wall */
-    if(kd.wall){
+    /* merlons along a town wall (on a plan the stone wall carries its own) */
+    if(kd.wall && !planOf){
       for(let i=2;i<sm.length;i+=4){
         const a=sm[i-1], b=sm[i], L=Math.hypot(b.x-a.x,b.y-a.y)||1;
         const nx=-(b.y-a.y)/L*3, ny=(b.x-a.x)/L*3;
@@ -4140,7 +4194,7 @@ function render(){
       }
     }
     /* cliff ticks along an impasse */
-    else if(kd.barrier){
+    else if(kd.barrier && !kd.wall){
       for(let i=1;i<sm.length;i+=3){
         const a=sm[i-1], b=sm[i], L=Math.hypot(b.x-a.x,b.y-a.y)||1;
         const nx=-(b.y-a.y)/L*5.5, ny=(b.x-a.x)/L*5.5;
@@ -4216,6 +4270,9 @@ function render(){
         s += `<rect class="fp" data-node="${n.id}" x="${-wpx/2}" y="${-dpx/2}" width="${wpx}" height="${dpx}" style="fill:transparent" stroke="${on?"var(--lead)":"none"}" stroke-width="${2.2*inv}"/>`;
         const bs = Math.min(inv*.8, Math.min(wpx, dpx)/30);
         if(bs > 0.0001) s += `<g transform="rotate(${-(f.rot||0)}) scale(${bs})" style="pointer-events:none"><circle r="12.5" fill="${hex}" fill-opacity=".9" stroke="#3a2e1e" stroke-width="1"/><g transform="scale(.82)">${kd.draw("#efe4c6")}</g></g>`;
+      } else if(PLAN_SMALL[n.kind]){
+        s += PLAN_SMALL[n.kind](wpx, dpx, inv);
+        s += `<rect class="fp" data-node="${n.id}" x="${-wpx/2}" y="${-dpx/2}" width="${wpx}" height="${dpx}" style="fill:transparent" stroke="${on?"var(--lead)":"none"}" stroke-width="${2*inv}"/>`;
       } else {
         s += `<rect class="fp" data-node="${n.id}" x="${-wpx/2}" y="${-dpx/2}" width="${wpx}" height="${dpx}"
               rx="${Math.min(wpx,dpx)*0.06}" fill="${hex}" fill-opacity="${on?.42:.3}"
@@ -4247,6 +4304,11 @@ function render(){
       at:[{ x:n.x, y:n.y + 25*inv }, { x:n.x, y:n.y - 17*inv }, { x:n.x + 16*inv, y:n.y + 4*inv, anchor:"start" }, { x:n.x - 16*inv, y:n.y + 4*inv, anchor:"end" }] });
     s += `</g>`;
   }
+  /* on a plan, each district's name across the middle of its buildings, in spaced capitals in its colour */
+  if(planOf && view.k <= .75){ const ppm = doc.ppm || 5;      // zoomed out only: close in, the buildings' own names do the work
+    for(const rg of doc.regions||[]){ const ns = doc.nodes.filter(q=>q.region===rg.id && hasFootprint(q)); if(ns.length < 3 || !rg.name) continue;
+      const cx = ns.reduce((a, q)=>a + q.x, 0)/ns.length, cy = ns.reduce((a, q)=>a + q.y, 0)/ns.length;
+      s += `<text x="${k1(cx)}" y="${k1(cy)}" text-anchor="middle" font-size="${k1(8*ppm)}" letter-spacing="${k1(2.2*ppm)}" style="font-family:var(--serif);fill:${rg.hex};opacity:${view.k > .5 ? .3 : .45};pointer-events:none;paint-order:stroke;stroke:#efe4c6;stroke-width:${k1(.9*ppm)}px;stroke-opacity:.55;stroke-linejoin:round">${esc(String(rg.name).toUpperCase())}</text>`; } }
   s += placeLabels(labels, [...labelBlock, ...glyphBoxes], inv);
   gNodes.innerHTML = s;
 
