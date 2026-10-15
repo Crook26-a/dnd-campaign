@@ -3600,7 +3600,10 @@ const PLAN_SHAPES = {
   /* ── wild ground, for a plan that isn't a town: an island, a headland, a camp ── */
   rock:     { label:"Bare rock", key:"",  fill:"#b3a68c", stroke:"#5f5546" },
   beach:    { label:"Beach",     key:"",  fill:"#ddcda2", stroke:"#9c8a5e", dash:"1 3" },
-  reef:     { label:"Reef",      key:"",  fill:"#b7cbc4", stroke:"#5d8780", dash:"2 3" }
+  reef:     { label:"Reef",      key:"",  fill:"#b7cbc4", stroke:"#5d8780", dash:"2 3" },
+  /* ground zoned to be built up: the town fills it with houses (seen only in Build) */
+  zone:     { label:"Zone",      key:"Z", fill:"none", stroke:"#a8331f", dash:"9 5", zone:true,
+              swatch:`<rect x="-8" y="-6" width="16" height="12" fill="#a8331f" fill-opacity=".12" stroke="#a8331f" stroke-width="1.4" stroke-dasharray="3 2"/>` }
 };
 
 let SHAPE_KINDS = SURVEY_SHAPES;
@@ -4069,26 +4072,28 @@ function townFill(){
   const key = JSON.stringify(doc.roofs||"") + (doc.density||"") + (doc.regions||[]).map(r=>r.id + (r.density||"")).join(",") + shapes.map(q=>q.id + q.kind + ptsKey(q.pts||[]) + (q.w||"")).join("|") + "#" + nodes.map(q=>q.id + q.kind + Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join("|");
   if(townFillCache.key===key) return townFillCache.svg;
   const done = svg => { townFillCache = { key, svg }; return svg; };
+  { const host = (root.nodes||[]).find(n=>n.id===planOf); if(!host || !["city","town","village"].includes(host.kind)) return done(""); }
   const blocks = shapes.filter(q=>q.kind==="block" && q.closed && (q.pts||[]).length > 2), blds = nodes.filter(q=>hasFootprint(q) && !NO_ROOF.has(q.kind));
-  if(!blds.length && !blocks.length) return done("");
+  const zones = shapes.filter(q=>q.kind==="zone" && q.closed && (q.pts||[]).length > 2);
+  if(!blds.length && !blocks.length && !zones.length) return done("");
   /* the town is its buildings (not those in a district outside it), its blocks, and its streets wherever they run near them */
   const regs = doc.regions || [], ri = id => regs.findIndex(r=>r.id===id);
   const D = i => BUILT_DENSITY[(i >= 0 && regs[i] && regs[i].density) || doc.density || "town"] || BUILT_DENSITY.town;
   const reach = Math.max(1, ...[-1, ...regs.map((_, i)=>i)].map(i=>D(i).reach))*ppm, inTown = q => !/outside/i.test(((regs).find(r=>r.id===q.region)||{}).name||"");
-  const anchors = blds.filter(inTown), seeds = [...anchors.map(q=>({ x:q.x, y:q.y, r:ri(q.region) })), ...blocks.flatMap(q=>shapeRing(q).map(p=>({ x:p.x, y:p.y, r:-1 })))];
+  const anchors = blds.filter(inTown), seeds = [...anchors.map(q=>({ x:q.x, y:q.y, r:ri(q.region) })), ...blocks.flatMap(q=>shapeRing(q).map(p=>({ x:p.x, y:p.y, r:-1 }))), ...zones.flatMap(q=>shapeRing(q).map(p=>({ x:p.x, y:p.y, r:-1 })))];
   for(const q of shapes) if((q.kind==="street" || q.kind==="lane") && !q.closed && (q.pts||[]).length > 1)
     for(const p of samplePath(q.pts, false, 6, q.straight)){ let best = null, bd = reach*2.2; for(const a of anchors){ const dd = Math.hypot(a.x-p.x, a.y-p.y); if(dd < bd){ bd = dd; best = a; } } if(best) seeds.push({ x:p.x, y:p.y, r:ri(best.region) }); }
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of seeds){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   x0 -= reach; y0 -= reach; x1 += reach; y1 += reach;
   const W = Math.ceil((x1-x0)/g) + 1, H = Math.ceil((y1-y0)/g) + 1, N = W*H; if(N > 2.5e6) return done("");
-  const taken = new Uint8Array(N), bar = new Uint8Array(N), dist = new Float32Array(N).fill(1e9), segOf = new Int32Array(N).fill(-1), regOf = new Int16Array(N).fill(-1);
+  const taken = new Uint8Array(N), bar = new Uint8Array(N), wet = new Uint8Array(N), dist = new Float32Array(N).fill(1e9), segOf = new Int32Array(N).fill(-1), regOf = new Int16Array(N).fill(-1);
   const cell = (x, y) => { const i = Math.floor((x-x0)/g), j = Math.floor((y-y0)/g); return i<0||j<0||i>=W||j>=H ? -1 : j*W + i; };
   const stamp = (arr, x, y, r, v = 1) => { const r2 = r*r, i0 = Math.max(0, Math.floor((x-r-x0)/g)), i1 = Math.min(W-1, Math.floor((x+r-x0)/g)), j0 = Math.max(0, Math.floor((y-r-y0)/g)), j1 = Math.min(H-1, Math.floor((y+r-y0)/g));
     for(let j=j0; j<=j1; j++) for(let i=i0; i<=i1; i++){ const cx = x0 + (i+.5)*g - x, cy = y0 + (j+.5)*g - y; if(cx*cx + cy*cy <= r2) arr[j*W+i] = v; } };
-  const fillRing = (arr, ring) => { let ry0 = 1e9, ry1 = -1e9; for(const p of ring){ ry0 = Math.min(ry0, p.y); ry1 = Math.max(ry1, p.y); }
+  const fillRing = (arr, ring, val = 1) => { let ry0 = 1e9, ry1 = -1e9; for(const p of ring){ ry0 = Math.min(ry0, p.y); ry1 = Math.max(ry1, p.y); }
     for(let j = Math.max(0, Math.floor((ry0-y0)/g)); j <= Math.min(H-1, Math.floor((ry1-y0)/g)); j++){ const y = y0 + (j+.5)*g, xs = [];
       for(let k=0, l=ring.length-1; k<ring.length; l=k++){ const a = ring[k], b = ring[l]; if((a.y > y) !== (b.y > y)) xs.push(a.x + (y-a.y)*(b.x-a.x)/(b.y-a.y)); }
-      xs.sort((p, q)=>p-q); for(let k=0; k+1<xs.length; k+=2) for(let i = Math.max(0, Math.ceil((xs[k]-x0)/g - .5)); i <= Math.min(W-1, Math.floor((xs[k+1]-x0)/g - .5)); i++) arr[j*W+i] = 1; } };
+      xs.sort((p, q)=>p-q); for(let k=0; k+1<xs.length; k+=2) for(let i = Math.max(0, Math.ceil((xs[k]-x0)/g - .5)); i <= Math.min(W-1, Math.floor((xs[k+1]-x0)/g - .5)); i++) arr[j*W+i] = val; } };
   const along = (sm, fn) => { for(let k=1; k<sm.length; k++){ const a = sm[k-1], b = sm[k], L = Math.hypot(b.x-a.x, b.y-a.y); for(let t=0; t<=L; t+=g*.6) fn(a.x + (b.x-a.x)*t/(L||1), a.y + (b.y-a.y)*t/(L||1), k-1); } };
   /* what's already there: streets (each remembered, for the rows to follow), walls and water (which the town stops at), the rest */
   const streets = [], segs = [];
@@ -4096,20 +4101,29 @@ function townFill(){
     if(kd.road || kd.river || kd.barrier){ const sm = samplePath(q.pts, !!q.closed && !kd.alwaysOpen, 10, q.straight), half = (kd.road ? (q.w==null ? kd.w : q.w)/2 : kd.wall ? 1.6*ppm : 2*ppm) + .8*ppm;
       const street = (q.kind==="street" || q.kind==="lane") && !q.closed, base = segs.length;
       if(street){ streets.push({ sm, half:(q.w==null ? kd.w : q.w)/2 }); for(let k=1; k<sm.length; k++) segs.push({ a:sm[k-1], b:sm[k], half:(q.w==null ? kd.w : q.w)/2 }); }
-      along(sm, (x, y, k)=>{ stamp(taken, x, y, half); if(kd.barrier || kd.river) stamp(bar, x, y, half); if(street){ const c = cell(x, y); if(c >= 0) segOf[c] = base + k; } }); }
-    else if(q.closed && q.pts.length > 2){ const r = shapeRing(q); fillRing(taken, r); if(q.kind==="water") fillRing(bar, r); } }
+      along(sm, (x, y, k)=>{ stamp(taken, x, y, half); if(kd.barrier || kd.river) stamp(bar, x, y, half); if(kd.river) stamp(wet, x, y, half); if(street){ const c = cell(x, y); if(c >= 0) segOf[c] = base + k; } }); }
+    else if(q.closed && q.pts.length > 2 && q.kind!=="zone"){ const r = shapeRing(q); fillRing(taken, r); if(q.kind==="water"){ fillRing(bar, r); fillRing(wet, r); } } }
+  /* the zones: which cell lies in which (the later one drawn wins where they overlap) */
+  const zoneOf = new Int16Array(N).fill(-1); zones.forEach((z, zi)=>fillRing(zoneOf, shapeRing(z), zi));
   for(const q of nodes) if(hasFootprint(q)){ const r = footprintPts(q); fillRing(taken, [...r, r[0]]); const f = footprintOf(q); stamp(taken, q.x, q.y, Math.min(f.w, f.d)*ppm*.5 + ppm); }
   /* the built-up part: out from the buildings and blocks, not across a wall or water */
-  const flood = (start, carry, limit) => { let q = start, h = 0;
+  const flood = (start, carry, limit, B = bar) => { let q = start, h = 0;
     while(h < q.length){ const c = q[h++], i = c % W, j = (c - i) / W, d = dist[c] + g; if(d > limit) continue;
-      for(const n of [i>0 ? c-1 : -1, i<W-1 ? c+1 : -1, j>0 ? c-W : -1, j<H-1 ? c+W : -1]) if(n >= 0 && !bar[n] && d < dist[n]){ dist[n] = d; carry[n] = carry[c]; q.push(n); } } };
+      for(const n of [i>0 ? c-1 : -1, i<W-1 ? c+1 : -1, j>0 ? c-W : -1, j<H-1 ? c+W : -1]) if(n >= 0 && !B[n] && d < dist[n]){ dist[n] = d; carry[n] = carry[c]; q.push(n); } } };
   { const st = []; for(const p of seeds){ const c = cell(p.x, p.y); if(c >= 0 && !bar[c] && dist[c] > 0){ dist[c] = 0; regOf[c] = p.r; st.push(c); } } flood(st, regOf, reach); }
   /* each cell's nearest street (a second spread, from the streets themselves) */
   const built = new Float32Array(dist); dist.fill(1e9);
+  /* the country round it: out from the same places, over walls but not water */
+  const farReach = reach + 160*ppm, tmp = new Int16Array(N);
+  { const st = []; for(const p of seeds){ const c = cell(p.x, p.y); if(c >= 0 && !wet[c] && dist[c] > 0){ dist[c] = 0; st.push(c); } } flood(st, tmp, farReach, wet); }
+  const country = new Float32Array(dist); dist.fill(1e9);
   { const st = []; for(let c=0; c<N; c++) if(segOf[c] >= 0){ dist[c] = 0; st.push(c); } flood(st, segOf, 1e9); }
   const rnd = seeded("town" + key.length + (doc.title||""));
-  const reachAt = c => D(regOf[c]).reach*ppm, inBuilt = c => built[c] < reachAt(c);
-  const edgeOK = c => { const R = reachAt(c); return built[c] < R && (built[c] < R*.6 || rnd() > Math.pow((built[c] - R*.6)/(R*.4), 1.5)); };     // solid in town, thinning out over its last stretch
+  const reachAt = c => D(regOf[c]).reach*ppm, Z = zones.length > 0;
+  const dens = c => Z ? (BUILT_DENSITY[zones[zoneOf[c]] && zones[zoneOf[c]].density] || D(regOf[c])) : D(regOf[c]);
+  const inBuilt = c => Z ? zoneOf[c] >= 0 && !bar[c] : built[c] < reachAt(c);
+  const edgeOK0 = c => { const R = reachAt(c); return built[c] < R && (built[c] < R*.6 || rnd() > Math.pow((built[c] - R*.6)/(R*.4), 1.5)); };
+  const edgeOK = c => Z ? inBuilt(c) && (dens(c).front >= 1 || rnd() < .55) : edgeOK0(c);     // solid in town, thinning out over its last stretch
   const lotFree = poly => { let ry0 = 1e9, ry1 = -1e9, rx0 = 1e9, rx1 = -1e9; for(const p of poly){ ry0 = Math.min(ry0, p.y); ry1 = Math.max(ry1, p.y); rx0 = Math.min(rx0, p.x); rx1 = Math.max(rx1, p.x); }
     const ring = [...poly, poly[0]];
     for(let y = ry0 + g*.4; y < ry1; y += g*.55) for(let x = rx0 + g*.4; x < rx1; x += g*.55){ if(!inRing(ring, x, y)) continue; const c = cell(x, y); if(c < 0 || taken[c] || !inBuilt(c)) return false; }
@@ -4130,7 +4144,7 @@ function townFill(){
         const fw = (4 + rnd()*3)*ppm, dp = (7.5 + rnd()*2)*ppm, p = at(d + fw/2), nx = -p.uy*sd, ny = p.ux*sd, off = half + .7*ppm;
         const corner = (u, v) => ({ x:p.x + p.ux*u + nx*v, y:p.y + p.uy*u + ny*v });
         const lot = [corner(-fw/2, off), corner(fw/2, off), corner(fw/2, off + dp), corner(-fw/2, off + dp)], c = corner(0, off + dp/2), cc = cell(c.x, c.y);
-        if(cc >= 0 && lotFree(lot) && edgeOK(cc) && rnd() < D(regOf[cc]).front){ take(lot); roof(c, Math.atan2(p.uy, p.ux)*180/Math.PI, fw - .5, dp, mat); d += fw; }
+        if(cc >= 0 && lotFree(lot) && edgeOK(cc) && rnd() < dens(cc).front){ take(lot); roof(c, Math.atan2(p.uy, p.ux)*180/Math.PI, fw - .5, dp, mat); d += fw; }
         else d += 1.5*ppm;
       }
     }
@@ -4145,12 +4159,41 @@ function townFill(){
     const cu = Math.round(u/slot)*slot, cv = sv*(off + (k + .5)*row), c = { x:s.a.x + ux*cu - uy*cv, y:s.a.y + uy*cu + ux*cv };
     const cc = cell(c.x, c.y); if(cc < 0 || taken[cc]) continue;
     const box = (w, h) => [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a, b])=>({ x:c.x + ux*a - uy*b, y:c.y + uy*a + ux*b }));
-    const roll = rnd(), ang = Math.atan2(uy, ux)*180/Math.PI, dz = D(regOf[cc]);
+    const roll = rnd(), ang = Math.atan2(uy, ux)*180/Math.PI, dz = dens(cc);
+    if(Z && dz.front >= 1 && k % 4 === 3){ taken[cc] = 1; continue; }        // in a zone, every fourth row is a back lane
     if(roll < dz.house){ const poly = box(slot - .15*ppm, row - .4*ppm); if(lotFree(poly) && edgeOK(cc)){ take(poly); roof(c, ang, slot - .15*ppm, row - .4*ppm, roofPick(rnd)); continue; } }
     if(roll < dz.house + dz.garden){ const poly = box(slot - .1*ppm, row - .1*ppm); if(lotFree(poly)){ take(poly); garden(poly); if(rnd() < .35) tree(c, (1.1 + rnd()*.9)*ppm); continue; } }
     taken[cc] = 1;                                          // a courtyard: left open
   }
-  return done(`<g pointer-events="none">${gardens}${trees}${roofs}</g>`);
+  /* 3. the country: a patchwork of fields with hedges, a grove now and then, the odd farmstead, thinning out with distance */
+  let fields = "";
+  const crops = ["#c9c48a","#b9c27d","#d4c58c","#a9b878","#cdb98a","#bfc98e"], lean = rnd()*180;
+  const countryFree = poly => { let ry0 = 1e9, ry1 = -1e9, rx0 = 1e9, rx1 = -1e9; for(const p of poly){ ry0 = Math.min(ry0, p.y); ry1 = Math.max(ry1, p.y); rx0 = Math.min(rx0, p.x); rx1 = Math.max(rx1, p.x); }
+    const ring = [...poly, poly[0]];
+    for(let y = ry0 + g*.5; y < ry1; y += g*.9) for(let x = rx0 + g*.5; x < rx1; x += g*.9){ if(!inRing(ring, x, y)) continue; const c = cell(x, y); if(c < 0 || taken[c] || wet[c] || inBuilt(c) || country[c] > farReach) return false; }
+    return true; };
+  /* laid on one grid, turned to the town's main run of streets, so the fields meet hedge to hedge; some two plots long */
+  { let sx = 0, sy = 0; for(const { a, b } of segs){ const dx = b.x-a.x, dy = b.y-a.y, L = Math.hypot(dx, dy), t = Math.atan2(dy, dx)*2; sx += Math.cos(t)*L; sy += Math.sin(t)*L; }
+    var fang = segs.length ? Math.atan2(sy, sx)/2 : lean*Math.PI/180; }
+  const F = 13*ppm, FH = 10*ppm, ux = Math.cos(fang), uy = Math.sin(fang), cxm = (x0+x1)/2, cym = (y0+y1)/2, span = Math.hypot(x1-x0, y1-y0)/2;
+  for(let v = -span; v < span; v += FH) for(let u = -span; u < span; ){
+    const len = rnd() < .3 ? 2 : 1, w = F*len, mu = u + w/2, mv = v + FH/2; u += w;
+    const x = cxm + ux*mu - uy*mv, y = cym + uy*mu + ux*mv, c = cell(x, y);
+    if(c < 0 || taken[c] || wet[c] || inBuilt(c) || country[c] > farReach) continue;
+    if(rnd() > 1.65 - country[c]/farReach) continue;                                             // thinning out far from town
+    const poly = [[-w/2,-FH/2],[w/2,-FH/2],[w/2,FH/2],[-w/2,FH/2]].map(([p, q])=>({ x:x + ux*p - uy*q, y:y + uy*p + ux*q }));
+    if(!countryFree(poly)) continue; take(poly);
+    const roll = rnd(), ang = fang*180/Math.PI, tr = `translate(${k1(x)} ${k1(y)}) rotate(${k1(ang)})`;
+    if(roll < .8){
+      const turn = rnd() < .5 ? ` transform="rotate(90)"` : "";
+      fields += `<g transform="${tr}"><rect x="${k1(-w/2)}" y="${k1(-FH/2)}" width="${k1(w)}" height="${k1(FH)}" fill="${crops[Math.floor(rnd()*crops.length)]}" opacity=".78"/><g clip-path="none"><rect x="${k1(-w/2)}" y="${k1(-FH/2)}" width="${k1(w)}" height="${k1(FH)}" fill="url(#pfurrow)" opacity=".45"${turn && w===FH ? turn : ""}/></g><rect x="${k1(-w/2)}" y="${k1(-FH/2)}" width="${k1(w)}" height="${k1(FH)}" fill="none" stroke="#6f8a52" stroke-width="${k1(.55*ppm)}" stroke-opacity=".75" stroke-dasharray="${k1(.9*ppm)} ${k1(.3*ppm)}"/></g>`;
+      if(roll < .07) roof({ x:x + ux*(w/2 - 3*ppm), y:y + uy*(w/2 - 3*ppm) }, ang, 4.5*ppm, 3.5*ppm, roofPick(rnd));      // a farmstead at the field's end
+    } else {
+      fields += `<g transform="${tr}"><rect x="${k1(-w/2)}" y="${k1(-FH/2)}" width="${k1(w)}" height="${k1(FH)}" fill="#a9b67e" opacity=".55"/></g>`;
+      for(let t=0, n = 4 + Math.floor(rnd()*5*len); t<n; t++){ const r = (1.6 + rnd()*1.6)*ppm; tree({ x:x + ux*(rnd()-.5)*w*.85 - uy*(rnd()-.5)*FH*.8, y:y + uy*(rnd()-.5)*w*.85 + ux*(rnd()-.5)*FH*.8 }, r); }
+    }
+  }
+  return done(`<g pointer-events="none">${fields}${gardens}${trees}${roofs}</g>`);
 }
 /* a town wall on a plan: a shadow, dressed stone with a dark face, merlons along both edges and the wall-walk between */
 function stoneWall(d, on){
@@ -4167,14 +4210,14 @@ function planGround(sh){
   const kind = sh.kind; if(!["green","garden","orchard","graveyard","rock"].includes(kind) || !sh.closed || (sh.pts||[]).length < 3) return "";
   const ppm = doc.ppm || 5, key = `${sh.id}|${kind}|${ptsKey(sh.pts)}|${sh.straight?1:0}|${ppm}`;
   if(groundCache.has(key)) return groundCache.get(key);
-  const ring = shapeRing(sh), rnd = seeded("gr" + key), sp = { green:8, orchard:6, garden:5, graveyard:4, rock:7 }[kind]*ppm, w = .12*ppm;
+  const ring = shapeRing(sh), rnd = seeded("gr" + key), sp = { green:6.2, orchard:6, garden:5, graveyard:4, rock:7 }[kind]*ppm, w = .12*ppm;
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of ring){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   const greens = ["#6f8f5a","#7d9b63","#62824f","#86a26a"], loose = kind==="green" || kind==="rock";
   let s = "", n = 0;
   for(let y = y0 + sp/2, row = 0; y < y1 && n < 2600; y += sp*(loose ? .86 : 1), row++) for(let x = x0 + sp/2 + (loose && row%2 ? sp/2 : 0); x < x1 && n < 2600; x += sp){
     const px = loose ? x + (rnd()-.5)*sp*.8 : x, py = loose ? y + (rnd()-.5)*sp*.7 : y;
     if(!inRing(ring, px, py) || ringDist(ring, px, py) < sp*.4) continue;
-    if(kind==="green"){ if(rnd() < .3) continue; n++; const r = (1.7 + rnd()*1.7)*ppm, c = greens[Math.floor(rnd()*greens.length)];
+    if(kind==="green"){ if(rnd() < .1) continue; n++; const r = (1.7 + rnd()*1.7)*ppm, c = greens[Math.floor(rnd()*greens.length)];
       s += `<circle cx="${k1(px+r*.35)}" cy="${k1(py+r*.45)}" r="${k1(r)}" fill="#3a2e1e" opacity=".17"/><circle cx="${k1(px)}" cy="${k1(py)}" r="${k1(r)}" fill="${c}" stroke="#4a6238" stroke-width="${k1(w)}"/><circle cx="${k1(px-r*.3)}" cy="${k1(py-r*.3)}" r="${k1(r*.42)}" fill="#a7c08b" opacity=".55"/>`; }
     else if(kind==="orchard"){ n++; const r = 1.4*ppm;
       s += `<circle cx="${k1(px+r*.3)}" cy="${k1(py+r*.4)}" r="${k1(r)}" fill="#3a2e1e" opacity=".15"/><circle cx="${k1(px)}" cy="${k1(py)}" r="${k1(r)}" fill="#7d9b63" stroke="#4a6238" stroke-width="${k1(w)}"/>`; }
@@ -4205,6 +4248,7 @@ const PLAN_SMALL = {
 function planPatterns(){
   const defs = svg.querySelector("defs"); if(!defs || defs.querySelector("#pflag")) return;
   defs.insertAdjacentHTML("beforeend", `<pattern id="pcob" patternUnits="userSpaceOnUse" width="15" height="15"><rect width="15" height="15" fill="#a3916b"/><g stroke="#7f6d4a" stroke-width=".35"><rect x=".4" y=".4" width="4.3" height="4.3" rx="1.6" fill="#d3c6a2"/><rect x="5.4" y=".5" width="4.2" height="4.2" rx="1.6" fill="#c7b892"/><rect x="10.3" y=".4" width="4.3" height="4.3" rx="1.6" fill="#cfc29c"/><rect x="2.9" y="5.4" width="4.3" height="4.2" rx="1.6" fill="#c9bb95"/><rect x="7.9" y="5.3" width="4.3" height="4.3" rx="1.6" fill="#d6caa6"/><rect x="-2.1" y="5.4" width="4.3" height="4.2" rx="1.6" fill="#cdbf99"/><rect x="12.9" y="5.4" width="4.3" height="4.2" rx="1.6" fill="#cdbf99"/><rect x=".4" y="10.3" width="4.3" height="4.3" rx="1.6" fill="#c5b68f"/><rect x="5.4" y="10.4" width="4.2" height="4.2" rx="1.6" fill="#d1c4a0"/><rect x="10.3" y="10.3" width="4.3" height="4.3" rx="1.6" fill="#c9ba94"/></g></pattern><pattern id="pflag" patternUnits="userSpaceOnUse" width="20" height="14"><path d="M0 0 H20 M0 7 H20 M0 0 V7 M10 7 V14" fill="none" stroke="#7d6a48" stroke-width=".7" opacity=".5"/></pattern>`
+    + `<pattern id="pfurrow" patternUnits="userSpaceOnUse" width="6" height="6"><path d="M0 1.5 H6 M0 4.5 H6" stroke="#8a7a4a" stroke-width=".7"/></pattern>`
     + `<pattern id="pawn0" patternUnits="userSpaceOnUse" width="6" height="6"><rect width="6" height="6" fill="#efe4c6"/><rect width="3" height="6" fill="#b5503a"/></pattern>`
     + `<pattern id="pawn1" patternUnits="userSpaceOnUse" width="6" height="6"><rect width="6" height="6" fill="#efe4c6"/><rect width="3" height="6" fill="#4f6f76"/></pattern>`);
 }
@@ -4272,9 +4316,9 @@ function render(){
     else if(sh.closed && !kd.barrier){
       s += coastRipples(sh, d, inv);
       /* a block of houses on a plan has no outline of its own outside Build: its houses are the block */
-      const blend = planOf && sh.kind==="block" && dmMode && !on;
+      const blend = planOf && (sh.kind==="block" || sh.kind==="zone") && dmMode && !on;
       s += blend ? `<path class="shape" d="${d}" fill="transparent" stroke="none"/>`
-        : `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${planOf && sh.kind==="block" ? "transparent" : kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${planOf && sh.kind==="block" && !on ? `stroke-opacity=".35" stroke-dasharray="${k1(4*inv)} ${k1(3*inv)}"` : kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
+        : `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${planOf && sh.kind==="block" ? "transparent" : sh.kind==="zone" ? "rgba(168,51,31,.05)" : kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${planOf && sh.kind==="block" && !on ? `stroke-opacity=".35" stroke-dasharray="${k1(4*inv)} ${k1(3*inv)}"` : kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
       s += terrainGlyphs(sh);
       if(sh.id===seaId) s += roseArt(inv);
       if(planOf){
@@ -4331,7 +4375,7 @@ function render(){
     }
     /* closed features catch a click anywhere inside, not just on the hairline */
     s += `<path class="shapehit${sh.closed?" fillhit":""}" data-shape="${sh.id}" d="${d}" stroke-width="${Math.max(16,HIT*1.6)*inv}"/>`;
-    if(sh.name && (planOf || view.k >= .15 || ["island","water"].includes(sh.kind))){
+    if(sh.name && !(sh.kind==="zone" && dmMode) && (planOf || view.k >= .15 || ["island","water"].includes(sh.kind))){
       const mid = polyAt(sm, .5);
       if(kd.road){                                   // a street's name runs along it, the right way up
         let deg = (mid.ang||0)*180/Math.PI; if(deg>90||deg<-90) deg += 180;
@@ -4661,7 +4705,7 @@ const PAL_PLACES = { survey:[["Settlements","city town village"],["Along the roa
   plan:[["Lodging and drink","inn stable house hall"],["Trade","market store provision smith apothecary fence stall"],["Civic","reeve archive office gate tower well statue"],
     ["Faith and care","temple healer trainer"],["Docks and water","warehouse shipwright ship boat wreck light tent"],["Out of the way","ruinlet cave"]] };
 const PAL_AREAS = { survey:[["The land","wood grassland hills mountain marsh desert arctic"],["Water and coast","water river island reef"],["In the way","impasse"]],
-  plan:[["Streets and squares","street lane alley square market court"],["Green and open","green garden orchard graveyard yard"],["Buildings and walls","block wall"],["Water and shore","water river pier dock quay beach rock"],["In the way","impasse"]] };
+  plan:[["Streets and squares","street lane alley square market court"],["Green and open","green garden orchard graveyard yard"],["Buildings and walls","zone block wall"],["Water and shore","water river pier dock quay beach rock"],["In the way","impasse"]] };
 var palQuery = "", palShut = new Set();
 function buildPalette(){
   const which = planOf ? "plan" : "survey", byKey = (list, have) => { const used = new Set(), out = list.map(([g, ks])=>[g, ks.split(" ").filter(k=>have.includes(k) && !used.has(k) && used.add(k))]).filter(([, ks])=>ks.length);
@@ -13231,6 +13275,8 @@ function renderInspectInner(){
       ${kd.alwaysOpen?"":`<label class="check"><input id="s-closed" type="checkbox" ${sh.closed?"checked":""}> Closed outline</label>`}
       <label class="check" style="margin-top:6px"><input id="s-straight" type="checkbox" ${sh.straight?"checked":""}> Straight lines between points</label>
       <label class="check" style="margin-top:6px"><input id="s-imp" type="checkbox" ${sh.impassable?"checked":""}> Roads can't cross this</label>
+      ${sh.kind==="zone" ? `<div class="field" style="margin-top:8px"><label>Built up as</label><select id="s-density">${Object.entries(BUILT_DENSITY).filter(([k])=>k!=="none").map(([k, v])=>`<option value="${k}" ${(sh.density||"town")===k?"selected":""}>${v.label}</option>`).join("")}</select></div>
+        <p class="empty-note" style="font-size:11px">The town fills this area with houses, gardens and back lanes, round whatever is already drawn here. Once a plan has a zone, only zoned ground is built up.</p>` : ""}
       ${sh.kind==="island" ? `<div class="field" style="margin-top:8px"><label>Open land here is</label><select id="s-terrain" title="Travel Terrain (2024) for any land on this island not drawn as Forest, Hill, Swamp and so on; 2 miles of shore all round is Coastal">${Object.entries(TERRAINS).filter(([k])=>k!=="coastal").map(([k, T])=>`<option value="${k}" ${(sh.terrain||"grassland")===k?"selected":""}>${T.label}</option>`).join("")}</select></div>` : ""}
       ${kd.road?`
         <div class="field" style="margin-top:12px"><label>Width</label>
@@ -13269,6 +13315,7 @@ function renderInspectInner(){
     const cl = $("#s-closed"); if(cl) cl.onchange = e=>{ sh.closed=e.target.checked; if(sh.closed) editing=null; touch(); renderInspect(); };
     $("#s-imp").onchange = e=>{ sh.impassable=e.target.checked; touch(); };
     if($("#s-terrain")) $("#s-terrain").onchange = e=>{ sh.terrain = e.target.value; touch(); };
+    if($("#s-density")) $("#s-density").onchange = e=>{ sh.density = e.target.value; touch(); render(); };
     $("#s-notes").oninput = e=>{ sh.notes=e.target.value; touch(); };
     const fl = $("#s-flip"); if(fl) fl.onclick = ()=>{ sh.side = sh.side===-1?1:-1; touch(); };
     const w0 = $("#s-w0"); if(w0) w0.oninput = e=>{ sh.w0 = Math.max(.5, Math.min(60, +e.target.value||1.6)); touch(); };

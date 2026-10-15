@@ -13,15 +13,14 @@ function Shp($id, $kind, $name, $pts, [bool]$closed, [bool]$straight, $notes = "
   $o = [ordered]@{ id = $id; kind = $kind; closed = $closed; straight = $straight; name = $name; side = 1; impassable = ($kind -in 'wall','impasse'); notes = $notes; pts = (Pts $pts) }
   if($w -ne $null){ $o.w = $w }; [pscustomobject]$o }
 $k = $d.plans.kcity
-$drop = @("pb4","pb5","pb6","pb7","pb8","pb9","pb10","pterr") + @("kl1","kl2","kl3","kl4","kl5","kl6","kl7","kl8","pterr1","pterr2","pterr3","pterr4","pterr5")
+$drop = @("pb4","pb5","pb6","pb7","pb8","pb9","pb10","pterr") + @("kl1","kl2","kl3","kl4","kl5","kl6","kl7","kl8","pterr1","pterr2","pterr3","pterr4","pterr5","kzu","kzo","kzh")
 $keep = @($k.shapes | Where-Object { $drop -notcontains $_.id })
 $new = @(
-  # the terraces: bands stepping up the eastern hill, white houses between them
-  (Shp "pterr1" "garden" "The Terraces" "3400,420 3900,520 4100,640 4080,705 3880,595 3380,490" $true $false "Terraced gardens and vineyards climbing the hill above the town, with palms along their edges.")
-  (Shp "pterr2" "garden" "" "3350,800 3800,860 4200,1000 4180,1070 3780,935 3330,870" $true $false "")
-  (Shp "pterr3" "garden" "" "3420,1190 3850,1255 4250,1385 4230,1455 3830,1325 3400,1260" $true $false "")
-  (Shp "pterr4" "garden" "" "3650,1485 4000,1565 4220,1685 4200,1755 3980,1635 3630,1555" $true $false "")
-  (Shp "pterr5" "garden" "" "3700,1725 4100,1805 4180,1875 4150,1925 4080,1875 3680,1795" $true $false "")
+  # zoned to be built up (Joseph, 2026-10-15, SimCity style): the hill a village of villas among gardens, the old town a
+  # town, the waterfront packed like a city. The road out past the Customs Post to the olive farm stays country.
+  (Shp "kzu" "zone" "Upper Town" "3150,330 3800,380 4250,700 4350,1300 4250,1900 3850,2080 3560,1700 3360,1100 3250,560" $true $false "The hill above the cathedral: villas, gardens and palms.")
+  (Shp "kzo" "zone" "Old Town" "2380,170 3150,150 3330,520 3360,1120 3540,1520 3650,1880 3780,2120 3640,2300 3000,2280 2480,2280 2180,2220 2330,1820 2390,700" $true $false "")
+  (Shp "kzh" "zone" "The Waterfront" "460,500 820,260 1500,190 2150,150 2460,180 2440,720 2360,780 2380,1950 2180,2180 1950,2330 1620,2440 1480,2260 1950,2060 2190,1880 2250,1450 2200,950 2080,790 1300,720 760,640" $true $false "")
   # lanes: the strip between Warehouse Row and the Fortress Wall
   (Shp "kl1" "lane" "Upper Row" "1000,430 1400,380 1800,330 2200,330 2400,430" $false $false "Behind the warehouses, under the fortress wall." 22)
   (Shp "kl2" "alley" "Rope Walk" "1650,640 1690,400 1720,190" $false $false "" 15)
@@ -40,4 +39,5 @@ $k | Add-Member -NotePropertyName roofs -NotePropertyValue ([pscustomobject][ord
 if($d.plans.thesk){ $d.plans.thesk | Add-Member -NotePropertyName roofs -NotePropertyValue ([pscustomobject][ordered]@{ slate = .65; tile = .3; thatch = .05 }) -Force }
 [IO.File]::WriteAllText($f, ($d | ConvertTo-Json -Depth 80), $utf8)
 $back = [IO.File]::ReadAllText($f, [Text.Encoding]::UTF8) | ConvertFrom-Json
-"kcity: $(@($back.plans.kcity.shapes).Count) shapes, $(@($back.plans.kcity.nodes).Count) places; roofs " + ($back.plans.kcity.roofs | ConvertTo-Json -Compress) + "; Port Hesk roofs " + ($back.plans.thesk.roofs | ConvertTo-Json -Compress)
+$zn = @($back.plans.kcity.shapes | Where-Object { $_.kind -eq "zone" }).Count
+"kcity: $(@($back.plans.kcity.shapes).Count) shapes ($zn zones), $(@($back.plans.kcity.nodes).Count) places; roofs " + ($back.plans.kcity.roofs | ConvertTo-Json -Compress) + "; Port Hesk roofs " + ($back.plans.thesk.roofs | ConvertTo-Json -Compress)
