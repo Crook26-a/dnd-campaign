@@ -1,0 +1,70 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const out = {}; const log = [];
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await new Promise(r=>setTimeout(r, 300));
+  /* a test island out east (Joseph, 2026-10-15): smaller than Kalatecha, well away from it, with varied terrain and a few places */
+  const C = { x:2800, y:-500 };
+  const P = s => s.trim().split(/\s+/).map(t=>{ const [x, y] = t.split(',').map(Number); return { x:x + C.x, y:y + C.y }; });
+  const inside = (pt, poly) => { let c = false; for(let i=0, j=poly.length-1; i<poly.length; j=i++){ const a = poly[i], b = poly[j]; if(((a.y>pt.y)!==(b.y>pt.y)) && pt.x < (b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x) c = !c; } return c; };
+  const segD = (p, a, b) => { const dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy; let t = L ? ((p.x-a.x)*dx+(p.y-a.y)*dy)/L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy); };
+  const lineD = (p, poly, closed) => { let m = 1e9; const n = poly.length; for(let i=0; i<(closed?n:n-1); i++) m = Math.min(m, segD(p, poly[i], poly[(i+1)%n])); return m; };
+  let seed = 9151; const rnd = () => { seed = (seed*16807) % 2147483647; return (seed-1)/2147483646; };
+  const frac = (pts, depth, rough, keep) => { let r = pts.map(p=>({ ...p }));
+    for(let d=0; d<depth; d++){ const nx = []; for(let i=0;i<r.length;i++){ const a = r[i], b = r[(i+1)%r.length]; nx.push(a);
+        const mx = (a.x+b.x)/2, my = (a.y+b.y)/2, L = Math.hypot(b.x-a.x, b.y-a.y), near = (keep||[]).some(n=>Math.hypot(n.x-mx, n.y-my) < 40);
+        const amp = (rnd()*2-1) * L * rough * Math.pow(.6, d) * (near ? .12 : 1);
+        nx.push({ x:Math.round(mx - (b.y-a.y)/(L||1)*amp), y:Math.round(my + (b.x-a.x)/(L||1)*amp) }); }
+      r = nx; }
+    return r; };
+  /* the places (relative to the middle of the island) */
+  const PL = [
+    ["thesk", "Port Hesk", "city", 0, 104, true, "The island's harbour city, at the head of the southern bay."],
+    ["themb", "Emberfold", "town", -45, 22, false, "A market town below the hills, in sight of the mountain's smoke."],
+    ["treed", "Reedmere", "town", -92, 66, false, "A town on stilts and causeways at the edge of the western swamp."],
+    ["tcair", "Cairnby", "village", 180, 118, true, "A fishing village on the south-east shore."],
+    ["ttarn", "Tarnwick", "village", -192, -102, true, "A fishing village tucked behind the north-west cape."],
+    ["tgors", "Gorse End", "post", 88, 42, false, "A waystation where the coast road meets the track up the mountain."],
+    ["tsign", "The Old Signal Tower", "ruin", 92, -78, false, "A broken stone tower high on the mountain's flank. Nobody remembers who built it."],
+    ["tcave", "Ashkell Caves", "cave", 128, -42, false, "Caves in the mountain's eastern foot, warm to the touch."]
+  ];
+  const nodes = PL.map(([id, name, kind, x, y, port, notes])=>({ id, name, kind, x:x + C.x, y:y + C.y, port, notes }));
+  const keep = nodes.filter(n=>n.port);
+  const ISLE = frac(P("-230,20 -215,-40 -240,-90 -200,-122 -150,-150 -90,-140 -40,-175 30,-160 90,-180 150,-150 200,-160 240,-110 225,-60 255,-10 240,50 200,90 212,138 160,165 100,150 60,175 30,138 0,118 -30,135 -50,170 -110,160 -160,130 -200,90 -235,60"), 3, .3, keep);
+  const AREAS = [
+    ["mountain", "Mount Ashkell", "20,-110 80,-122 132,-80 122,-30 70,-8 22,-40"],
+    ["hills", "The Emberfold Hills", "-92,-100 -20,-112 8,-52 -12,-6 -70,-12 -102,-52"],
+    ["wood", "The Ashwood", "142,-122 196,-132 220,-50 206,38 156,68 142,10 152,-62"],
+    ["marsh", "The Reed Fens", "-178,70 -138,58 -112,86 -122,116 -158,114 -184,94"],
+    ["water", "Tarn Lake", "-130,-6 -108,-16 -92,0 -100,20 -124,22"]
+  ].map(([kind, name, s])=>({ kind, name, pts:frac(P(s), 2, .3) }));
+  /* the roads: [from, to, bends, quality 1-10, danger] */
+  const RD = [
+    ["thesk", "themb", "-18,64", 8, ""], ["themb", "ttarn", "-100,-40 -140,-70", 5, ""], ["thesk", "treed", "-48,92", 6, ""],
+    ["treed", "ttarn", "-200,30 -200,-50", 3, ""], ["thesk", "tgors", "44,82", 7, ""], ["tgors", "tcair", "140,84", 5, ""],
+    ["tgors", "tsign", "96,0 80,-40", 2, "dangerous"], ["tgors", "tcave", "120,10", 3, ""]
+  ];
+  const byId = Object.fromEntries(nodes.map(n=>[n.id, n]));
+  const roads = RD.map(([a, b, bends, q, dg], i)=>({ id:"thr" + i, from:a, to:b, pts:P(bends), quality:q, danger:dg }));
+  /* checks */
+  const coast = samplePath(ISLE, true, 6, false);
+  const mtn = samplePath(AREAS[0].pts, true, 6, false), lake = samplePath(AREAS[4].pts, true, 6, false);
+  for(const n of nodes){ const on = inside(n, coast), d = lineD(n, coast, true)/10;
+    if(!on) log.push("IN THE SEA " + n.name); else log.push(n.name + " " + d.toFixed(1) + " mi from the coast" + (n.port && d > 3 ? " (TOO FAR FOR A PORT)" : "") + (!n.port && d < 2 ? " (VERY NEAR THE COAST)" : ""));
+    if(inside(n, mtn) && !["ruin","cave"].includes(n.kind)) log.push("ON THE MOUNTAIN " + n.name);
+    if(inside(n, lake)) log.push("IN THE LAKE " + n.name); }
+  for(const r of roads){ const sm = samplePath([byId[r.from], ...r.pts, byId[r.to]], false, 10, false);
+    const wet = sm.filter(p=>!inside(p, coast)).length, inLake = sm.filter(p=>inside(p, lake)).length;
+    r.miles = Math.round(polyLength(sm)/10*10)/10;
+    log.push("road " + byId[r.from].name + " - " + byId[r.to].name + ": " + r.miles + " mi" + (wet ? " OFF THE ISLAND " + wet : "") + (inLake ? " IN THE LAKE " + inLake : "")); }
+  for(const a of AREAS){ const off = a.pts.filter(p=>!inside(p, coast)).length; if(off) log.push("AREA OFF THE ISLAND " + a.name + " " + off); }
+  const kal = root.shapes.find(s=>s.id==="cisle"), kr = samplePath(kal.pts, true, 2, false);
+  log.push("nearest Kalatecha coast " + Math.round(Math.min(...ISLE.map(p=>lineD(p, kr, true)))/10) + " mi; Kalatecha city " + Math.round(Math.hypot(C.x, C.y)/10) + " mi");
+  let a2 = 0; for(let i=0;i<ISLE.length;i++){ const p = ISLE[i], q = ISLE[(i+1)%ISLE.length]; a2 += p.x*q.y - q.x*p.y; }
+  log.push("area " + Math.round(Math.abs(a2)/2/100) + " sq mi");
+  const str = pts => pts.map(p=>p.x+","+p.y).join(" ");
+  out.isle = str(ISLE); out.areas = AREAS.map(a=>({ kind:a.kind, name:a.name, pts:str(a.pts) })); out.nodes = nodes;
+  out.roads = roads.map(r=>({ ...r, pts:r.pts.map(p=>({ x:p.x, y:p.y })) })); out.log = log;
+ }catch(e){ out.err = e.message + ' ' + (e.stack||'').split('\n')[1]; }
+ const pre = document.createElement('pre'); pre.id = 'OUT'; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
+ document.title = 'RES done';
+},1500);</script>
+</body>
