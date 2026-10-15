@@ -11730,13 +11730,19 @@ function personSheet(g, key, compact, controls){
     ${byLv[L].map(s=>`<div class="sprow"><div class="sprow-h"><span class="libref" data-rollspell="${s.id}" title="Read the whole spell">${esc(s.name)}</span>${uses[s.name.toLowerCase()]?`<small class="mono">${esc(uses[s.name.toLowerCase()])}</small>`:""}</div>
       <div class="sprow-m">${esc(spellMeta(s))}</div><div class="sprow-d">${esc(spellBrief(s))}</div></div>`).join("")}</div>`; }).join("");
   const tactics = (/Tactics:\s*([^\n]+)/.exec(p.notes||"") || [])[1] || "";
+  /* what they have on them: the weapons they fight with, what their kind carries, their purse */
+  const kit = m ? foeKit(m) : [], purseTxt = COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", ");
+  const kitRow = e => { const x = e.id ? libLootById(e.id) : null, nm = x ? x.name : e.text, q = (e.qty||1) > 1 ? ` ×${e.qty}` : "", v = x ? (x.value || (x.gp!=null ? `${x.gp} gp` : "")) : "";
+    return `<div class="sbl">${x ? `<span class="libref" data-libopen="loot:${x.id}">${esc(nm)}</span>` : esc(nm)}${q}${v ? ` <small>${esc(v)}</small>` : ""}${e.dc ? ` <small>hidden, DC ${e.dc}</small>` : ""}</div>`; };
+  const invBody = (kit.length ? kit.map(kitRow).join("") : `<p class="empty-note" style="font-size:11px;margin:0">Nothing worth noting.</p>`) + row("Purse", esc(purseTxt || "empty"));
   return `<div class="pcard npc rolled">
     <div class="pchead"><span class="pcname ro">${esc(p.name)}</span><span class="pclv"><span class="npctag">NPC</span></span></div>
-    <div class="pcsum mono"><b>${esc([p.species, String(g.role||"").toLowerCase()].filter(Boolean).join(" "))}</b> · ${sum}</div>
+    <div class="pcsum mono"><b>${esc([p.species, String(g.occupation||g.role||"").toLowerCase()].filter(Boolean).join(" "))}</b> · ${sum}</div>
     ${controls||""}
     ${sec("who", "Who they are", `${row("Attitude", esc({enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]) + ` <small>— ${esc(DISP_LINE[g.disp])}</small>`)}
-      ${row("Alignment", esc(p.align||""))}${row("Look", esc(p.look))}${row("Voice", esc(p.voice))}${row("Wants", esc(p.wants))}${row("Secret", esc(g.secret))}${row("Purse", COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", "))}
+      ${row("Does", esc(g.occupation||""))}${row("Alignment", esc(p.align||""))}${row("Look", esc(p.look))}${row("Voice", esc(p.voice))}${row("Wants", esc(p.wants))}${row("Secret", esc(g.secret))}${row("Knows", esc(p.knows||""))}${row("Purse", COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", "))}
       ${row("Personality", esc(p.persona||"").replace(/\n/g, "<br>"))}${row("Tactics", esc(tactics))}`, "", true)}
+    ${sec("inv", "Inventory", invBody, String(kit.length + (purseTxt ? 1 : 0)), true)}
     ${sec("sheet", "Character sheet", `${row(g.creature ? "Creature" : "Class", esc(g.role||"") + (p.level ? ` ${esc(p.level)}` : "") + (g.group ? ` <small>(${esc(g.group)})</small>` : ""))}
       ${row("Built from", sb ? `<span class="libref" data-libopen="foes:${sb.id}">${esc(sb.name)}</span> <small>SRD stat block</small>` : "")}
       ${row("Armor Class", esc(String(m.ac)))}${row("Hit Points", `${esc(String(p.hpMax||m.hp))}${g.hd?` <small>(rolled ${esc(g.hd)}; average ${foeMaxHp(sb)})</small>`:""}`)}
