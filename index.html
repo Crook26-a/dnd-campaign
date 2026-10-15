@@ -3971,7 +3971,7 @@ const NO_ROOF = new Set(["ship","boat","wreck","well","statue","stall","tent","c
 const k1 = n => Math.round(n*10)/10;
 /* a roof w across and h deep, centred on 0,0: hipped along its longer side, or a cone for a round tower */
 function roofSvg(w, h, mat, inv, round){
-  const [base, lit, dark] = ROOF[mat] || ROOF.tile, off = Math.min(w, h)*.12;
+  const [base, lit, dark] = Array.isArray(mat) ? mat : (ROOF[mat] || ROOF.tile), off = Math.min(w, h)*.12;
   let s = `<rect x="${k1(-w/2+off*.7)}" y="${k1(-h/2+off)}" width="${k1(w)}" height="${k1(h)}" rx="${k1(round ? Math.min(w,h)/2 : Math.min(w,h)*.04)}" fill="#3a2e1e" opacity=".22"/>`;
   if(round){ const r = Math.min(w, h)/2;
     s += `<circle r="${k1(r)}" fill="${base}"/><path d="M${k1(-r)} 0 A${k1(r)} ${k1(r)} 0 0 1 ${k1(r)} 0 Z" fill="${lit}" opacity=".55"/>`;
@@ -3984,31 +3984,52 @@ function roofSvg(w, h, mat, inv, round){
     + `<path d="M${P(-L/2,-half)} L${P(-rl,0)} L${P(rl,0)} L${P(L/2,-half)} M${P(-L/2,half)} L${P(-rl,0)} M${P(rl,0)} L${P(L/2,half)}" fill="none" stroke="#3a2e1e" stroke-opacity=".45" stroke-width="${k1(.6*inv)}"/>`
     + `<rect x="${k1(-w/2)}" y="${k1(-h/2)}" width="${k1(w)}" height="${k1(h)}" fill="none" stroke="#3a2e1e" stroke-width="${k1(.9*inv)}"/>`;
 }
-/* a block of houses: lots along its longest side, row behind row; the ones near its edge get a roof, the middle is yards */
-function blockHouses(sh, inv){
+/* a roof colour a shade lighter or darker (f above 1 lightens) */
+const shadeHex = (h, f) => "#" + [1, 3, 5].map(i=>Math.max(0, Math.min(255, Math.round(parseInt(h.slice(i, i+2), 16)*f))).toString(16).padStart(2, "0")).join("");
+const shadeRoof = (mat, f) => (ROOF[mat] || ROOF.tile).map(c=>shadeHex(c, f));
+/* a block of houses, the way a street is built: along each side of the block a row of houses fronting its street,
+   gable ends to the street, one roof material to a row with each house a shade different; back gardens in the middle */
+const blockCache = new Map();
+function blockHouses(sh){
   const pts = sh.pts, n = pts.length; if(n < 3) return "";
+  const ck = sh.id + "|" + ptsKey(pts) + "|" + (doc.shapes||[]).map(q=>q.id + ptsKey(q.pts||[]) + (q.w||"")).join(",") + "|" + (doc.nodes||[]).map(q=>Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join(",");
+  if(blockCache.has(ck)) return blockCache.get(ck);
+  if(blockCache.size > 400) blockCache.clear();
+  const inv = 1;
   const ring = shapeRing(sh), ppm = doc.ppm || 5, rnd = seeded("blk" + sh.id + ptsKey(pts));
-  let bi = 0, bl = 0; for(let i=0; i<n; i++){ const a = pts[i], b = pts[(i+1)%n], L = Math.hypot(b.x-a.x, b.y-a.y); if(L > bl){ bl = L; bi = i; } }
-  const a = pts[bi], b = pts[(bi+1)%n], ux = (b.x-a.x)/bl, uy = (b.y-a.y)/bl, vx = -uy, vy = ux, ang = Math.atan2(uy, ux)*180/Math.PI;
-  let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
-  for(const p of ring){ const u = (p.x-a.x)*ux + (p.y-a.y)*uy, v = (p.x-a.x)*vx + (p.y-a.y)*vy; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
-  const depth = 9*ppm, at = (u, v) => ({ x:a.x + ux*u + vx*v, y:a.y + uy*u + vy*v }), mats = ["tile","tile","tile","slate","slate","thatch","timber"];
+  /* the sides: the corners themselves for a straight block, every few samples round a curved one */
+  const side = sh.straight ? pts : ring.filter((_, i)=>i % 6 === 0);
   /* streets and lanes running through the block, and the buildings standing in it, keep their ground */
   const ways = (doc.shapes||[]).filter(q=>(SHAPE_KINDS[q.kind]||{}).road && q.kind!=="pier" && (q.pts||[]).length > 1).map(q=>({ sm:samplePath(q.pts, false, 8, q.straight), half:(q.w==null ? SHAPE_KINDS[q.kind].w : q.w)/2 + 1.5*ppm }));
   const blds = (doc.nodes||[]).filter(q=>hasFootprint(q) && !NO_ROOF.has(q.kind)).map(q=>footprintPts(q));
   const clear = p => !ways.some(w=>ringDist(w.sm, p.x, p.y) < w.half) && !blds.some(r=>inRing([...r, r[0]], p.x, p.y));
-  let s = "";
-  for(let v = v0 + 1; v + depth <= v1 + depth*.35; v += depth){
-    for(let u = u0 + 1; u < u1; ){
-      const wl = (4.5 + rnd()*5)*ppm, gap = rnd() < .08 ? (2 + rnd()*2)*ppm : 0;       // now and then a gap: an alley, a yard
-      const cs = [[u+.6, v+.6], [u+wl-.6, v+.6], [u+wl-.6, v+depth-.6], [u+.6, v+depth-.6]].map(([p, q])=>at(p, q)), c = at(u + wl/2, v + depth/2);
-      if(cs.every(p=>inRing(ring, p.x, p.y)) && ringDist(ring, c.x, c.y) < depth*2.3 && [...cs, c].every(clear)){
-        const m = mats[Math.floor(rnd()*mats.length)];
-        s += `<g transform="translate(${k1(c.x)} ${k1(c.y)}) rotate(${k1(ang)})">${roofSvg(wl - 1.2, depth - 1.2, m, inv*.8, false)}</g>`; }
-      u += wl + gap;
+  const placed = [], hit = (poly, p) => inRing([...poly, poly[0]], p.x, p.y);
+  let s = "", yard = "";
+  const m = side.length;
+  for(let i=0; i<m; i++){
+    const a = side[i], b = side[(i+1)%m], L = Math.hypot(b.x-a.x, b.y-a.y); if(L < 4*ppm) continue;
+    const ux = (b.x-a.x)/L, uy = (b.y-a.y)/L, mid = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+    let vx = -uy, vy = ux; if(!inRing(ring, mid.x + vx*2*ppm, mid.y + vy*2*ppm)){ vx = -vx; vy = -vy; }      // the inward side
+    const ang = Math.atan2(uy, ux)*180/Math.PI, depth = (8 + rnd()*3)*ppm, mat = rnd() < .72 ? "tile" : rnd() < .8 ? "slate" : "thatch";
+    const at = (u, v) => ({ x:a.x + ux*u + vx*v, y:a.y + uy*u + vy*v });
+    for(let t = .4*ppm; t < L - 2.5*ppm; ){
+      let fw = (4 + rnd()*3.5)*ppm; if(t + fw > L - .4*ppm) fw = L - .4*ppm - t; if(fw < 2.8*ppm) break;
+      const dp = depth*(.85 + rnd()*.3), cs = [at(t, .4*ppm), at(t+fw, .4*ppm), at(t+fw, dp), at(t, dp)], c = at(t + fw/2, dp/2 + .2*ppm);
+      const ok = cs.every(p=>inRing(ring, p.x, p.y)) && [...cs, c].every(clear) && !placed.some(q=>hit(q, c) || cs.some(p=>hit(q, p)) || hit(cs, q.c));
+      if(ok){ cs.c = c; placed.push(cs);
+        s += `<g transform="translate(${k1(c.x)} ${k1(c.y)}) rotate(${k1(ang)})">${roofSvg(fw - .5, dp - .6*ppm, shadeRoof(mat, .9 + rnd()*.2), inv*.8, false)}</g>`; }
+      t += fw;
     }
   }
-  return `<g pointer-events="none">${s}</g>`;
+  /* the back gardens: a few trees in the middle, clear of the houses */
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of ring){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  for(let k=0, got=0; k<60 && got < Math.round((x1-x0)*(y1-y0)/(ppm*ppm*700)); k++){
+    const p = { x:x0 + rnd()*(x1-x0), y:y0 + rnd()*(y1-y0) }, r = (1.2 + rnd()*1.2)*ppm;
+    if(!inRing(ring, p.x, p.y) || ringDist(ring, p.x, p.y) < r*1.5 || !clear(p) || placed.some(q=>hit(q, p) || Math.hypot(q.c.x-p.x, q.c.y-p.y) < r + 4*ppm)) continue;
+    got++; yard += `<circle cx="${k1(p.x+r*.3)}" cy="${k1(p.y+r*.4)}" r="${k1(r)}" fill="#3a2e1e" opacity=".15"/><circle cx="${k1(p.x)}" cy="${k1(p.y)}" r="${k1(r)}" fill="#7d9b63" stroke="#4a6238" stroke-width="${k1(.12*ppm)}"/>`;
+  }
+  const out = `<g pointer-events="none"><path d="${pathOf(sh.pts, true, sh.straight)}" fill="#b9b58a" opacity=".35"/>${yard}${s}</g>`;
+  blockCache.set(ck, out); return out;
 }
 /* the shore inside a plan's water: a pale shallow band and three ripple lines, kept inside the water */
 function planShore(sh, d, inv){
@@ -4026,6 +4047,94 @@ function marketAwnings(sh, inv){
     const w = (2.5 + rnd()*2)*ppm, h = (2 + rnd()*1.5)*ppm;
     s += `<g transform="translate(${k1(x)} ${k1(y)}) rotate(${k1(rnd()*30-15)})"><rect x="${k1(-w/2+1.2)}" y="${k1(-h/2+1.6)}" width="${k1(w)}" height="${k1(h)}" fill="#3a2e1e" opacity=".2"/><rect x="${k1(-w/2)}" y="${k1(-h/2)}" width="${k1(w)}" height="${k1(h)}" fill="url(#pawn${got%2})" stroke="#3a2e1e" stroke-width="${k1(.7*inv)}"/></g>`; got++; }
   return `<g pointer-events="none">${s}</g>`;
+}
+/* the rest of the town built up. The built-up part is what lies within reach (55 yards) of its buildings and blocks,
+   spreading out from them but never across a wall or water, and thinning towards its edge. In it every street and
+   lane gets a row of houses down each side, gable ends to the street, and the ground behind is filled row on row,
+   each row parallel to its nearest street, with courtyards and garden plots left between. Worked out on a grid of
+   2-yard cells: everything already on the plan (streets, water, squares, greens, walls, buildings, blocks) is taken
+   first, so the houses fill only what's left. Kept until the plan changes. */
+let townFillCache = { key:"", svg:"" };
+function townFill(){
+  const ppm = doc.ppm || 5, g = 2*ppm, shapes = doc.shapes || [], nodes = doc.nodes || [];
+  const key = shapes.map(q=>q.id + q.kind + ptsKey(q.pts||[]) + (q.w||"")).join("|") + "#" + nodes.map(q=>q.id + q.kind + Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join("|");
+  if(townFillCache.key===key) return townFillCache.svg;
+  const done = svg => { townFillCache = { key, svg }; return svg; };
+  const blocks = shapes.filter(q=>q.kind==="block" && q.closed && (q.pts||[]).length > 2), blds = nodes.filter(q=>hasFootprint(q) && !NO_ROOF.has(q.kind));
+  if(!blds.length && !blocks.length) return done("");
+  const seeds = [...blds.map(q=>({ x:q.x, y:q.y })), ...blocks.flatMap(q=>shapeRing(q))], reach = 55*ppm;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of seeds){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  x0 -= reach; y0 -= reach; x1 += reach; y1 += reach;
+  const W = Math.ceil((x1-x0)/g) + 1, H = Math.ceil((y1-y0)/g) + 1, N = W*H; if(N > 2.5e6) return done("");
+  const taken = new Uint8Array(N), bar = new Uint8Array(N), dist = new Float32Array(N).fill(1e9), segOf = new Int32Array(N).fill(-1);
+  const cell = (x, y) => { const i = Math.floor((x-x0)/g), j = Math.floor((y-y0)/g); return i<0||j<0||i>=W||j>=H ? -1 : j*W + i; };
+  const stamp = (arr, x, y, r, v = 1) => { const r2 = r*r, i0 = Math.max(0, Math.floor((x-r-x0)/g)), i1 = Math.min(W-1, Math.floor((x+r-x0)/g)), j0 = Math.max(0, Math.floor((y-r-y0)/g)), j1 = Math.min(H-1, Math.floor((y+r-y0)/g));
+    for(let j=j0; j<=j1; j++) for(let i=i0; i<=i1; i++){ const cx = x0 + (i+.5)*g - x, cy = y0 + (j+.5)*g - y; if(cx*cx + cy*cy <= r2) arr[j*W+i] = v; } };
+  const fillRing = (arr, ring) => { let ry0 = 1e9, ry1 = -1e9; for(const p of ring){ ry0 = Math.min(ry0, p.y); ry1 = Math.max(ry1, p.y); }
+    for(let j = Math.max(0, Math.floor((ry0-y0)/g)); j <= Math.min(H-1, Math.floor((ry1-y0)/g)); j++){ const y = y0 + (j+.5)*g, xs = [];
+      for(let k=0, l=ring.length-1; k<ring.length; l=k++){ const a = ring[k], b = ring[l]; if((a.y > y) !== (b.y > y)) xs.push(a.x + (y-a.y)*(b.x-a.x)/(b.y-a.y)); }
+      xs.sort((p, q)=>p-q); for(let k=0; k+1<xs.length; k+=2) for(let i = Math.max(0, Math.ceil((xs[k]-x0)/g - .5)); i <= Math.min(W-1, Math.floor((xs[k+1]-x0)/g - .5)); i++) arr[j*W+i] = 1; } };
+  const along = (sm, fn) => { for(let k=1; k<sm.length; k++){ const a = sm[k-1], b = sm[k], L = Math.hypot(b.x-a.x, b.y-a.y); for(let t=0; t<=L; t+=g*.6) fn(a.x + (b.x-a.x)*t/(L||1), a.y + (b.y-a.y)*t/(L||1), k-1); } };
+  /* what's already there: streets (each remembered, for the rows to follow), walls and water (which the town stops at), the rest */
+  const streets = [], segs = [];
+  for(const q of shapes){ const kd = SHAPE_KINDS[q.kind] || {}; if(!(q.pts||[]).length) continue;
+    if(kd.road || kd.river || kd.barrier){ const sm = samplePath(q.pts, !!q.closed && !kd.alwaysOpen, 10, q.straight), half = (kd.road ? (q.w==null ? kd.w : q.w)/2 : kd.wall ? 1.6*ppm : 2*ppm) + .8*ppm;
+      const street = (q.kind==="street" || q.kind==="lane") && !q.closed, base = segs.length;
+      if(street){ streets.push({ sm, half:(q.w==null ? kd.w : q.w)/2 }); for(let k=1; k<sm.length; k++) segs.push({ a:sm[k-1], b:sm[k], half:(q.w==null ? kd.w : q.w)/2 }); }
+      along(sm, (x, y, k)=>{ stamp(taken, x, y, half); if(kd.barrier || kd.river) stamp(bar, x, y, half); if(street){ const c = cell(x, y); if(c >= 0) segOf[c] = base + k; } }); }
+    else if(q.closed && q.pts.length > 2){ const r = shapeRing(q); fillRing(taken, r); if(q.kind==="water") fillRing(bar, r); } }
+  for(const q of nodes) if(hasFootprint(q)){ const r = footprintPts(q); fillRing(taken, [...r, r[0]]); const f = footprintOf(q); stamp(taken, q.x, q.y, Math.min(f.w, f.d)*ppm*.5 + ppm); }
+  /* the built-up part: out from the buildings and blocks, not across a wall or water */
+  const flood = (start, val, limit) => { let q = start, h = 0;
+    while(h < q.length){ const c = q[h++], i = c % W, j = (c - i) / W, d = dist[c] + g; if(d > limit) continue;
+      for(const n of [i>0 ? c-1 : -1, i<W-1 ? c+1 : -1, j>0 ? c-W : -1, j<H-1 ? c+W : -1]) if(n >= 0 && !bar[n] && d < dist[n]){ dist[n] = d; if(val) segOf[n] = segOf[c]; q.push(n); } } };
+  { const st = []; for(const p of seeds){ const c = cell(p.x, p.y); if(c >= 0 && !bar[c] && dist[c] > 0){ dist[c] = 0; st.push(c); } } flood(st, false, reach); }
+  /* each cell's nearest street (a second spread, from the streets themselves) */
+  const built = new Float32Array(dist); dist.fill(1e9);
+  { const st = []; for(let c=0; c<N; c++) if(segOf[c] >= 0){ dist[c] = 0; st.push(c); } flood(st, true, 1e9); }
+  const rnd = seeded("town" + key.length + (doc.title||""));
+  const edgeOK = c => built[c] < reach && (built[c] < reach*.6 || rnd() > Math.pow((built[c] - reach*.6)/(reach*.4), 1.5));     // solid in town, thinning out over its last stretch
+  const lotFree = poly => { let ry0 = 1e9, ry1 = -1e9, rx0 = 1e9, rx1 = -1e9; for(const p of poly){ ry0 = Math.min(ry0, p.y); ry1 = Math.max(ry1, p.y); rx0 = Math.min(rx0, p.x); rx1 = Math.max(rx1, p.x); }
+    const ring = [...poly, poly[0]];
+    for(let y = ry0 + g*.4; y < ry1; y += g*.55) for(let x = rx0 + g*.4; x < rx1; x += g*.55){ if(!inRing(ring, x, y)) continue; const c = cell(x, y); if(c < 0 || taken[c] || built[c] >= reach) return false; }
+    return true; };
+  const take = poly => fillRing(taken, [...poly, poly[0]]);
+  let roofs = "", gardens = "", trees = "";
+  const roof = (c, ang, w, h, mat) => { roofs += `<g transform="translate(${k1(c.x)} ${k1(c.y)}) rotate(${k1(ang)})">${roofSvg(w, h, shadeRoof(mat, .88 + rnd()*.22), .8, false)}</g>`; };
+  const garden = poly => { gardens += `<path d="M${poly.map(q=>`${k1(q.x)} ${k1(q.y)}`).join(" L")} Z" fill="${rnd() < .5 ? "#b6b68a" : "#c1b48e"}" opacity=".5" stroke="#8a7a5a" stroke-opacity=".3" stroke-width="${k1(.15*ppm)}"/>`; };
+  const tree = (p, r) => { trees += `<circle cx="${k1(p.x+r*.3)}" cy="${k1(p.y+r*.4)}" r="${k1(r)}" fill="#3a2e1e" opacity=".15"/><circle cx="${k1(p.x)}" cy="${k1(p.y)}" r="${k1(r)}" fill="#7d9b63" stroke="#4a6238" stroke-width="${k1(.12*ppm)}"/>`; };
+  /* 1. a row of houses down each side of every street */
+  for(const { sm, half } of streets){
+    const run = [0]; for(let k=1; k<sm.length; k++) run.push(run[k-1] + Math.hypot(sm[k].x-sm[k-1].x, sm[k].y-sm[k-1].y));
+    const at = d => { let k = 1; while(k < run.length-1 && run[k] < d) k++; const a = sm[k-1], b = sm[k], L = (run[k]-run[k-1]) || 1, t = (d - run[k-1]) / L; return { x:a.x + (b.x-a.x)*t, y:a.y + (b.y-a.y)*t, ux:(b.x-a.x)/L, uy:(b.y-a.y)/L }; };
+    const total = run[run.length-1];
+    for(const sd of [1, -1]){
+      const mat = rnd() < .75 ? "tile" : "slate";
+      for(let d = 2*ppm; d < total - 2*ppm; ){
+        const fw = (4 + rnd()*3)*ppm, dp = (7.5 + rnd()*2)*ppm, p = at(d + fw/2), nx = -p.uy*sd, ny = p.ux*sd, off = half + .7*ppm;
+        const corner = (u, v) => ({ x:p.x + p.ux*u + nx*v, y:p.y + p.uy*u + ny*v });
+        const lot = [corner(-fw/2, off), corner(fw/2, off), corner(fw/2, off + dp), corner(-fw/2, off + dp)], c = corner(0, off + dp/2), cc = cell(c.x, c.y);
+        if(cc >= 0 && lotFree(lot) && edgeOK(cc)){ take(lot); roof(c, Math.atan2(p.uy, p.ux)*180/Math.PI, fw - .5, dp, mat); d += fw; }
+        else d += 1.5*ppm;
+      }
+    }
+  }
+  /* 2. the ground behind, row on row, each row parallel to its nearest street */
+  const row = 8.5*ppm, slot = 6*ppm;
+  if(segs.length) for(let j=0; j<H; j+=2) for(let i=0; i<W; i+=2){
+    const c0 = j*W + i; if(taken[c0] || built[c0] >= reach || segOf[c0] < 0) continue;
+    const s = segs[segOf[c0]], L = Math.hypot(s.b.x-s.a.x, s.b.y-s.a.y) || 1, ux = (s.b.x-s.a.x)/L, uy = (s.b.y-s.a.y)/L;
+    const px = x0 + (i+.5)*g, py = y0 + (j+.5)*g, u = (px-s.a.x)*ux + (py-s.a.y)*uy, v = (px-s.a.x)*(-uy) + (py-s.a.y)*ux, sv = v < 0 ? -1 : 1;
+    const off = s.half + .7*ppm, k = Math.max(0, Math.floor((Math.abs(v) - off)/row));
+    const cu = Math.round(u/slot)*slot, cv = sv*(off + (k + .5)*row), c = { x:s.a.x + ux*cu - uy*cv, y:s.a.y + uy*cu + ux*cv };
+    const cc = cell(c.x, c.y); if(cc < 0 || taken[cc]) continue;
+    const box = (w, h) => [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a, b])=>({ x:c.x + ux*a - uy*b, y:c.y + uy*a + ux*b }));
+    const roll = rnd(), ang = Math.atan2(uy, ux)*180/Math.PI;
+    if(roll < .74){ const poly = box(slot - .15*ppm, row - .4*ppm); if(lotFree(poly) && edgeOK(cc)){ take(poly); roof(c, ang, slot - .15*ppm, row - .4*ppm, rnd() < .74 ? "tile" : rnd() < .7 ? "slate" : "thatch"); continue; } }
+    if(roll < .97){ const poly = box(slot - .1*ppm, row - .1*ppm); if(lotFree(poly)){ take(poly); garden(poly); if(rnd() < .35) tree(c, (1.1 + rnd()*.9)*ppm); continue; } }
+    taken[cc] = 1;                                          // a courtyard: left open
+  }
+  return done(`<g pointer-events="none">${gardens}${trees}${roofs}</g>`);
 }
 /* a town wall on a plan: a shadow, dressed stone with a dark face, merlons along both edges and the wall-walk between */
 function stoneWall(d, on){
@@ -4156,7 +4265,7 @@ function render(){
         s += planGround(sh);
       }
       /* a built block: on a plan, filled with houses; elsewhere ruled across, the way a plan hatches roofed ground */
-      if(kd.hatch && planOf && sh.kind==="block") s += blockHouses(sh, inv);
+      if(kd.hatch && planOf && sh.kind==="block") s += blockHouses(sh);
       else if(kd.hatch){
         let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
         for(const q of sh.pts){ x0=Math.min(x0,q.x); y0=Math.min(y0,q.y); x1=Math.max(x1,q.x); y1=Math.max(y1,q.y); }
@@ -4222,6 +4331,7 @@ function render(){
     }
     s = s.slice(0, s0) + `<g data-ps="${sh.id}"${sh.hidden?' opacity=".45"':""}>` + s.slice(s0) + `</g>`;
   }
+  if(planOf) s += townFill();                        // the rest of the town, built up along its streets
   gShapes.innerHTML = s;
 
   /* roads */
