@@ -11740,11 +11740,17 @@
     "pictures":  [
                      {
                          "id":  "pic_city",
-                         "name":  "Kalatecha (the city picture)"
+                         "name":  "Kalatecha (the city picture)",
+                         "sess":  [
+                                      "doc_session1"
+                                  ]
                      },
                      {
                          "id":  "pic_hire",
-                         "name":  "The Sallowmay: hiring the crew (Session 1, Scene 1)"
+                         "name":  "The Sallowmay: hiring the crew (Session 1, Scene 1)",
+                         "sess":  [
+                                      "doc_session1"
+                                  ]
                      },
                      {
                          "id":  "pic_hesk",

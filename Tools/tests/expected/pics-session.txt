@@ -1,0 +1,4 @@
+opens on Session 2: PICTURES Session 2 (0) All (3) None for Session 2 yet. Add one below, or pick some from All.
+Session 1: PICTURES Session 1 (2) All (3) Kalatecha (the city picture) ✓ in Session 1 · take out Show × The Sallowmay: hiring the crew (Session 1, Scene 1) ✓ in Session 1 · take out Show ×
+all: PICTURES Session 2 (0) All (3) Kalatecha (the city picture) + Session 2 Show × The Sallowmay: hiring the crew (Session 1, Scene 1) + Session 2 Show × Port Hesk (the city picture) + Session 2 Show ×
+after + Session 2 on Hesk: PICTURES Session 2 (1) All (3) Port Hesk (the city picture) ✓ in Session 2 · take out Show × | sess ["doc_session2"]

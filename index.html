@@ -1983,6 +1983,22 @@ function playerMode(){
   document.addEventListener("dblclick", ()=>{ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); });
 }
 /* ── the DM's controls: a panel off the top bar ── */
+/* pictures by session (p.sess: the session scripts they're for): the panel shows the session open on the Session tab
+   (else the latest), or all of them; a picture added while a session's list is showing goes into that session */
+let picView = "session";
+const picSess = () => { const S = sessionDocs(); return S.find(x=>x.id===sessOpen) || S[S.length-1] || null; };
+const sessShort = d => String(d.title||"this session").split(":")[0].trim() || "this session";
+const inSess = (p, d) => !!d && (p.sess||[]).includes(d.id);
+const picList = () => { const P = pictures(), d = picSess(); return d && picView==="session" ? P.filter(p=>inSess(p, d)) : P; };
+function picTabs(){
+  const d = picSess(), P = pictures(); if(!d) return "";
+  return `<div class="adtabs" style="margin-bottom:4px"><button data-ps="picview" data-k="session" class="${picView==="session"?"on":""}" title="${esc(d.title||"")}">${esc(sessShort(d))} (${P.filter(p=>inSess(p, d)).length})</button><button data-ps="picview" data-k="all" class="${picView==="all"?"on":""}">All (${P.length})</button></div>`;
+}
+function picRowTag(p){
+  const d = picSess(); if(!d) return "";
+  const on = inSess(p, d);
+  return `<br><button class="linkbtn" data-ps="pictag" data-id="${p.id}" style="font-size:10.5px;padding:0;background:none;border:0;cursor:pointer;color:var(--${on?"ink-faint":"lead"})" title="${on?"Take it out of":"Put it in"} ${esc(d.title||"this session")}">${on ? `✓ in ${esc(sessShort(d))} · take out` : `+ ${esc(sessShort(d))}`}</button>`;
+}
 function renderPScreen(){
   const el = document.getElementById("pscreen"); if(!el || el.hidden) return;
   const P = pictures(), up = playersUp(), hidHere = (doc.nodes||[]).filter(n=>n.hidden).length + (doc.shapes||[]).filter(s=>s.hidden).length;
@@ -2005,8 +2021,9 @@ function renderPScreen(){
       <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-ps="print" title="What they've charted, the rest blank graph paper for the navigator">Print their chart</button><button class="btn" style="flex:1" data-ps="printblank" title="Just the home port, on graph paper">Print a blank one</button></div>
       <p class="empty-note" style="font-size:11px;margin:4px 0 6px">Sailing the ship charts her way and passes the time it took. Places turn up on their chart when she comes within the distance above, unless they're marked secret.</p>` : ""}
     <p class="grouplab">Pictures</p>
-    ${P.length ? P.map(p=>`<div class="adrow"><span>${esc(p.name||"Picture")}</span>${showBtn("picture", playerShow.kind==="picture"&&playerShow.id===p.id?"Showing":"Show", p.id)}<button class="fdel" data-ps="del" data-id="${p.id}" title="Remove">×</button></div>`).join("")
-      : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">None yet.</p>`}
+    ${picTabs()}
+    ${picList().length ? picList().map(p=>`<div class="adrow"><span>${esc(p.name||"Picture")}${picRowTag(p)}</span>${showBtn("picture", playerShow.kind==="picture"&&playerShow.id===p.id?"Showing":"Show", p.id)}<button class="fdel" data-ps="del" data-id="${p.id}" title="Remove">×</button></div>`).join("")
+      : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${picSess() && picView==="session" && P.length ? `None for ${esc(sessShort(picSess()))} yet. Add one below, or pick some from All.` : "None yet."}</p>`}
     <button class="btn wide" data-ps="add" style="margin-top:6px">Add a picture…</button><input type="file" id="ps-file" accept="image/*" multiple hidden>
     <p class="grouplab" style="margin-top:10px">Leaderboards</p>
     <div class="adrow"><span>Who's leading<br><small>${leaderScope==="session" ? "this session" : "the whole campaign"} (change it in the Party tab)</small></span>${showBtn("leaders", playerShow.kind==="leaders" ? "Showing" : "Show")}</div>
@@ -2078,6 +2095,9 @@ function wirePScreen(){
       if(b.dataset.k==="picture"){ const pic = pictures().find(x=>x.id===b.dataset.id); gameLog("pic", `Showed the players the picture "${(pic&&pic.name)||"a picture"}"`); } }
     else if(a==="send") sendPlayers(true);
     else if(a==="add"){ el.querySelector("#ps-file").click(); return; }
+    else if(a==="picview") picView = b.dataset.k==="all" ? "all" : "session";
+    else if(a==="pictag"){ const p = pictures().find(x=>x.id===b.dataset.id), d = picSess(); if(!p || !d) return;
+      const was = inSess(p, d); p.sess = (p.sess||[]).filter(x=>x!==d.id); if(!was) p.sess.push(d.id); if(!p.sess.length) delete p.sess; saveParty(); }
     else if(a==="print" || a==="printblank"){ printChart(a==="printblank"); return; }
     else if(a==="brush"){ chartBrush = b.dataset.k || null; if(chartBrush && planOf) flash("Go out to the sea chart to paint it."); else if(chartBrush) flash(`Click or drag on the sea chart to ${chartBrush} it.`); }
     else if(a==="restart"){ if(!confirm("Start the players' chart over: just the home port and the ships? Places they've found stay found.")) return;
@@ -2096,9 +2116,9 @@ function wirePScreen(){
     if(t.dataset.ps==="spot"){ chartOf().spot = Math.max(1, Math.min(100, +t.value||10)); touch(); renderPScreen(); return; }
     if(t.dataset.ps==="edge"){ try{ localStorage.setItem("ordinate-chartedge", t.checked?"1":"0"); }catch(err){} render(); return; }
     if(t.id==="ps-file"){
-      let n = 0;
-      for(const f of [...t.files]){ const id = uid("pic"); try{ await idbPutRaw(K_FILE(id), f); pictures().push({ id, name:f.name.replace(/\.[^.]+$/,"") }); n++; }catch(err){ flash(`Couldn't keep ${f.name}.`); } }
-      if(n){ saveParty(); flash(`Added ${n} picture${n===1?"":"s"}.`); }
+      let n = 0; const sd = picView==="session" ? picSess() : null;      // added while a session's pictures are showing: it's for that session
+      for(const f of [...t.files]){ const id = uid("pic"); try{ await idbPutRaw(K_FILE(id), f); pictures().push({ id, name:f.name.replace(/\.[^.]+$/,""), ...(sd ? { sess:[sd.id] } : {}) }); n++; }catch(err){ flash(`Couldn't keep ${f.name}.`); } }
+      if(n){ saveParty(); flash(`Added ${n} picture${n===1?"":"s"}${sd ? ` to ${sessShort(sd)}` : ""}.`); }
       renderPScreen();
     }
   });
@@ -13671,7 +13691,7 @@ function wireDocPane(paneId){
   });
   el.addEventListener("change", e=>{
     const t = e.target;
-    if(t.id==="ss-pick"){ sessOpen = t.value; sessEditing = false; renderSession(); render(); return; }
+    if(t.id==="ss-pick"){ sessOpen = t.value; sessEditing = false; renderSession(); render(); renderPScreen(); return; }
     if(t.id==="dc-file"){ const files = [...t.files]; (async ()=>{ let n = 0, last = null;
         for(const f of files){ try{ last = await importDocx(f); n++; } catch(err){ flash(`${f.name}: ${err.message}`); } }
         if(n){ flash(`Brought in ${n} document${n===1?"":"s"}.`); if(last && last.kind==="session"){ sessOpen = last.id; } else if(last) docOpen = last.id; renderPane(true); } })(); return; }
