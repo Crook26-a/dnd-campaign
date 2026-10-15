@@ -11074,7 +11074,7 @@ function adderResults(n){
    class, alignment, species) in place of the Roll tab's, just for the roll */
 function adderGen(n, fn, over){
   const a = adder, keep = genOpts;
-  genOpts = { ...genOpts, level:adderLevel(n), disp:a.disp, type:a.type, role:a.role, species:a.species, align:a.align, diff:a.diff || "mod", xp:a.xp || 0, kind:"", ...(over||{}) };
+  genOpts = { ...genOpts, level:adderLevel(n), disp:a.disp, type:a.type, role:a.role, species:a.species, align:a.align, diff:a.diff || "mod", xp:a.xp || 0, kind:a.pkind || "", ...(over||{}) };
   try{ return fn(); } finally{ genOpts = keep; }
 }
 function adderRoll(n){
@@ -11103,7 +11103,8 @@ function adderRoll(n){
       <div class="field" style="flex:1.3"><label>Attitude</label><select data-adf="disp">${[["","Any"],["enemy","Enemy"],["neutral","Neutral"],["ally","Potential ally"]].map(([v,l])=>`<option value="${v}" ${v===a.disp?"selected":""}>${l}</option>`).join("")}</select></div></div>
     <div class="pcrow">
       ${a.kind==="foes" ? `<div class="field" style="flex:1"><label>Type</label><select data-adf="type"><option value="">Any</option>${CREATURE_TYPES.map(t=>`<option ${t===a.type?"selected":""}>${t}</option>`).join("")}</select></div>` : ""}
-      ${humanoid ? `<div class="field" style="flex:1.2"><label>Class</label><select data-adf="role">${roleOptions(a.role)}</select></div>` : ""}</div>
+      ${humanoid && !a.pkind ? `<div class="field" style="flex:1.2"><label>Class</label><select data-adf="role">${roleOptions(a.role)}</select></div>` : ""}</div>
+    ${humanoid ? `<div class="field"><label>Kind of person</label><select data-adf="pkind">${kindOptions(a.pkind||"")}</select></div>` : ""}
     ${humanoid ? `<div class="field"><label>Alignment</label><select data-adf="align"><option value="">Any — one that fits the attitude</option>${ALIGNMENTS.map(x=>`<option ${x===a.align?"selected":""}>${x}</option>`).join("")}</select></div>
       <div class="field"><label>Species</label><select data-adf="species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===a.species?"selected":""}>${s}</option>`).join("")}</select></div>` : ""}`;
   if(a.kind==="npcs"){
@@ -11192,7 +11193,7 @@ function adderRoll(n){
     else if(f==="table"){ adder.table = t.value; adder.pick = null; }
     else if(f==="pick") adder.pick = t.value;
     else if(f==="type"){ adder.type = t.value; if(t.value && t.value!=="Humanoid"){ adder.role = ""; adder.species = ""; } }
-    else if(["disp","role","align","species"].includes(f)) adder[f] = t.value;
+    else if(["disp","role","align","species","pkind"].includes(f)) adder[f] = t.value;
     redraw();
   });
 })();
@@ -11718,10 +11719,10 @@ function shopOpen(n, tid){
 }
 /* a new keeper of the shop's kind in place of the old one. One the shop rolled itself, met nowhere else, leaves the
    library; anyone else just stops keeping it. A shop named after its keeper ("Whitlock's Smithy") takes the new name. */
-function shopRerollKeeper(n){
-  const S = n.shop, T = shopTpl(S && S.tpl); if(!T) return;
+function shopRerollKeeper(n, o){
+  const S = n.shop, T = shopTpl(S && S.tpl); if(!T) return; o = o || {};
   const old = libNpcById(S.keeper), surname = p => String((p||{}).name||"").replace(/"[^"]*"/g, "").trim().split(/\s+/).slice(-1)[0] || "";
-  const p = personToLibrary(genPerson({ kind:T.keeper, level:Math.max(1, partyAvgLevel()), disp:"neutral", type:"Humanoid" }));
+  const p = personToLibrary(genPerson({ kind:o.kind || T.keeper, level:o.level || Math.max(1, partyAvgLevel()), disp:o.disp || "neutral", type:"Humanoid", species:o.species || "", align:o.align || "", role:"" }));
   p.where = placeLabel(n); p.shopRolled = true;
   n.npcs = (n.npcs||[]).filter(id=>id!==S.keeper); n.npcs.unshift(p.id);
   if(old && old.shopRolled && surname(old) && n.name === `${surname(old)}'s ${T.label}`) n.name = `${surname(p)}'s ${T.label}`;     // only a name the shop gave itself
@@ -11752,6 +11753,22 @@ document.addEventListener("click", e=>{
   renderPane(true);
 });
 document.addEventListener("keydown", e=>{ const t = e.target; if(e.key!=="Enter" || !t.dataset || t.dataset.carryin==null) return; e.preventDefault(); carryAdd(t.dataset.carryin, t.value); renderPane(true); });
+/* the people at a place, in Build: who's here (each a library person), who keeps it, and the Add panel to bring someone
+   in from the library or roll them with the Roll tab's choices */
+function peopleHere(n){
+  const ppl = (n.npcs||[]).map(libNpcById).filter(Boolean), keep = n.shop ? n.shop.keeper : n.premises && n.premises.keeper && n.premises.keeper.id;
+  return `<p class="eyebrow spaced">People here</p>
+    ${ppl.length ? ppl.map(p=>`<div class="shoprow"><span class="sr-n"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span> <small>${esc(p.role||"")}</small>${p.id===keep ? ` <b title="Keeps the place">★ keeper</b>` : ""}</span>
+        <span class="sr-a">${p.id===keep ? "" : `<button class="btn small" data-phkeep="${p.id}" title="They keep the place">Keeper</button>`}<button class="btn small" data-bigsheet="npc:${p.id}">Sheet</button><button class="fdel" data-phdel="${p.id}" title="Not here any more (they stay in the library)">×</button></span></div>`).join("")
+      : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Nobody yet. Bring someone in below, from the library or rolled.</p>`}
+    ${adderBlock(n)}`;
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-phkeep],[data-phdel]"); if(!b) return; const n = sel && sel.kind==="node" ? nodeById(sel.id) : null; if(!n) return;
+  if(b.dataset.phkeep){ const p = libNpcById(b.dataset.phkeep); if(n.shop) n.shop.keeper = p.id; n.premises = n.premises || blankPremises(n); n.premises.keeper = { id:p.id, name:p.name, note:p.look||"" }; flash(`${p.name} keeps ${placeLabel(n)}.`); }
+  else { n.npcs = (n.npcs||[]).filter(id=>id!==b.dataset.phdel); if(n.shop && n.shop.keeper===b.dataset.phdel) delete n.shop.keeper; if(n.premises && n.premises.keeper && n.premises.keeper.id===b.dataset.phdel) n.premises.keeper = { name:"", note:"" }; }
+  touch(); renderPane(true);
+});
 /* paying: the price out of a purse, making change in gold, silver and copper; false if it can't be met */
 function payFrom(purse, cp){
   const have = Math.round(purseGp(purse)*100); if(have < cp) return false;
@@ -11803,7 +11820,7 @@ function shopBuy(n, pid, k, qty){
   gameLog("loot", `${p.name||"Someone"} sold ${what} to ${placeLabel(n)} for ${cpStr(cp)}`);
   flash(`${p.name||"They"} sold ${what} for ${cpStr(cp)}.`);
 }
-let shopFrom = "";                                         // whose pack the shop is looking through, to buy from
+let shopFrom = "", shopRoll = { open:null, level:null, disp:"neutral", kind:"", species:"", align:"" };                                         // whose pack the shop is looking through, to buy from
 /* the shop's parts, for a place's card (DM mode), its Build panel and the battle panel when the map is open */
 function shopSaleRows(n){
   const S = n.shop, ids = [...new Set((S.items||[]).filter(t=>((n.site||{}).items||[]).includes(t)).map(baseId))];
@@ -11829,7 +11846,14 @@ function shopBlock(n){
     ? `<div class="pcrow" style="margin:6px 0 8px"><select data-shop="tpl" style="flex:1;min-width:0"><option value="">Make it a shop…</option>${shopOptions("")}</select><button class="btn" data-shopb="open">Open it</button></div>` : "";
   const S = n.shop, T = shopTpl(S.tpl) || { label:"Shop" }, st = n.site || {}, keep = libNpcById(S.keeper);
   return `<p class="eyebrow spaced">The ${esc(T.label.toLowerCase())}</p>
-    <div class="pcrow" style="align-items:center;margin:2px 0"><div class="sbl" style="flex:1;margin:0"><b>Kept by</b> ${keep ? `<span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span>` : "nobody"}</div><button class="btn small" data-shopb="rekeep" title="Roll a new keeper of this kind">Reroll</button></div>
+    <div class="pcrow" style="align-items:center;margin:2px 0"><div class="sbl" style="flex:1;margin:0"><b>Kept by</b> ${keep ? `<span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span>` : "nobody"}</div><button class="btn small ${shopRoll.open===n.id?"on":""}" data-shopb="rekeep" title="Roll a new keeper: choose what kind of person first">Reroll</button></div>
+    ${shopRoll.open===n.id ? (()=>{ const r = shopRoll, kk = r.kind || T.keeper;
+      return `<div class="rollres" style="margin:4px 0 8px"><div class="pcrow"><div class="field" style="flex:.7"><label>Level</label><input data-shoproll="level" class="mono" type="number" min="1" max="20" value="${r.level || Math.max(1, partyAvgLevel())}"></div>
+          <div class="field" style="flex:1.3"><label>Attitude</label><select data-shoproll="disp">${[["neutral","Neutral"],["ally","Potential ally"],["enemy","Enemy"],["","Any"]].map(([v, l])=>`<option value="${v}" ${(r.disp ?? "neutral")===v?"selected":""}>${l}</option>`).join("")}</select></div></div>
+        <div class="field"><label>Kind of person</label><select data-shoproll="kind">${kindOptions(kk).replace('<option value="">Anyone (by class)</option>', "")}</select></div>
+        <div class="pcrow"><div class="field" style="flex:1"><label>Species</label><select data-shoproll="species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===r.species?"selected":""}>${s}</option>`).join("")}</select></div>
+          <div class="field" style="flex:1.2"><label>Alignment</label><select data-shoproll="align"><option value="">Any that fits</option>${ALIGNMENTS.map(x=>`<option ${x===r.align?"selected":""}>${x}</option>`).join("")}</select></div></div>
+        <button class="btn wide" data-shopb="rekeepgo">Roll a new keeper</button></div>`; })() : ""}
     ${keep ? (()=>{ const k = `shopkeep:${keep.id}`, row = (l, v) => v ? `<div class="sbl"><b>${l}</b> ${esc(v)}</div>` : "";
       const sheet = [keep.ac ? `AC ${keep.ac}` : "", keep.hpMax ? `HP ${keep.hpMax}` : "", keep.pp ? `PP ${keep.pp}` : "", ...(keep.attacks||[]).filter(a=>a && a.name).map(a=>`${a.name} ${a.hit||""} ${a.dmg||""}`.trim())].filter(Boolean).join(" · ");
       const purse = COINS.filter(([c])=>(keep.purse||{})[c]).map(([c])=>`${keep.purse[c]} ${c}`).join(", ");
@@ -11853,6 +11877,7 @@ const shopRedraw = () => { renderPane(true); if(typeof battleOf!=="undefined" &&
 document.addEventListener("change", e=>{
   const t = e.target; const n = shopNode(); if(!n) return;
   if(t.dataset.shop==="from"){ shopFrom = t.value; shopRedraw(); return; }
+  if(t.dataset.shoproll){ shopRoll[t.dataset.shoproll] = t.dataset.shoproll==="level" ? clampLv(t.value) : t.value; return; }
   if(t.dataset.shop==="price" && n.shop){ n.shop.price = +t.value || 1; touch(); renderPane(true); }
   else if(t.dataset.shop==="deal" && n.shop){ if(+t.value) n.shop.deal = +t.value; else delete n.shop.deal; touch(); renderPane(true); }
   else if(t.dataset.shopsell!=null && t.value){ const q = t.closest(".shoprow") && t.closest(".shoprow").querySelector("[data-shopqty]"); shopSell(n, t.dataset.shopsell, t.value, q ? +q.value : 1); shopRedraw(); }
@@ -11866,7 +11891,8 @@ document.addEventListener("click", e=>{
   if(a==="open"){ const s = b.parentElement.querySelector('[data-shop="tpl"]'), tid = s && s.value; if(!tid){ flash("Pick a kind of shop first."); return; }
     shopOpen(n, tid); saveParty(); touch(); render(); flash(`${placeLabel(n)} is open: ${(n.shop.items||[]).length} things for sale.`); }
   else if(a==="restock" && n.shop){ shopRestock(n); saveParty(); touch(); flash("New stock in."); }
-  else if(a==="rekeep" && n.shop){ shopRerollKeeper(n); saveParty(); touch(); render(); flash(`${(libNpcById(n.shop.keeper)||{}).name||"Someone new"} keeps ${placeLabel(n)} now.`); }
+  else if(a==="rekeep" && n.shop){ if(shopRoll.open!==n.id) shopRoll.kind = ""; shopRoll.open = shopRoll.open===n.id ? null : n.id; }
+  else if(a==="rekeepgo" && n.shop){ shopRerollKeeper(n, shopRoll); shopRoll.open = null; saveParty(); touch(); render(); flash(`${(libNpcById(n.shop.keeper)||{}).name||"Someone new"} keeps ${placeLabel(n)} now.`); }
   else if(a==="close" && n.shop){ if(!confirm(`Close ${placeLabel(n)}? Its stock goes; its keeper stays in the library.`)) return;
     const st = siteOf(n); st.items = (st.items||[]).filter(t=>!(n.shop.items||[]).includes(t)); (n.shop.items||[]).forEach(t=>forgetItem(st, t)); delete n.shop; touch(); }
   shopRedraw();
@@ -12999,30 +13025,26 @@ function wireFootprint(n){
 function premisesPanel(n){
   const kd = KINDS[n.kind] || {};
   const use = kd.svc || "";
-  if(!n.premises) return `${shopBlock(n)}
+  if(!n.premises) return `${shopBlock(n)}${peopleHere(n)}
     <p class="eyebrow spaced">Inside</p>
     <p class="empty-note" style="margin:0 0 9px">${use
-      ? `A ${kd.label.toLowerCase()} with nobody in it is a shape on a drawing.`
-      : "Nothing behind this door yet."}</p>
-    <button class="btn wide" id="pr-add">Put somebody in it</button>`;
+      ? `Rumours, asking around, and notes for this ${kd.label.toLowerCase()}.`
+      : "Rumours, asking around, and notes for this place."}</p>
+    <button class="btn wide" id="pr-add">Fill in more about it</button>`;
 
   const p = n.premises;
-  return `${shopBlock(n)}
+  return `${shopBlock(n)}${peopleHere(n)}
     <p class="eyebrow spaced">Inside</p>
     ${use?`<p class="empty-note" style="margin:-2px 0 10px">This sites the <b>${esc(use)}</b> service for ${esc(planParentName())}.</p>`:""}
-
-    <p class="grouplab">Who keeps it</p>
-    <div class="field"><label>Name</label><input id="pr-kname" type="text" value="${esc(p.keeper&&p.keeper.name||"")}" placeholder="Halder Vey"></div>
-    <div class="field"><label>What they're like</label><textarea id="pr-knote" placeholder="Doesn't like the party. Serves them anyway.">${esc(p.keeper&&p.keeper.note||"")}</textarea></div>
-
-    <p class="grouplab">Who else is about</p>
+    ${(p.keeper && p.keeper.name && !(n.npcs||[]).length) || (p.folk||[]).length ? `<p class="grouplab">Written in by name <small>(older notes: put them in properly under People here)</small></p>
+    ${p.keeper && p.keeper.name && !(n.npcs||[]).length ? `<div class="field"><label>Keeper</label><input id="pr-kname" type="text" value="${esc(p.keeper.name)}"></div><div class="field"><label>What they're like</label><textarea id="pr-knote">${esc(p.keeper.note||"")}</textarea></div>` : ""}` : ""}
     ${(p.folk||[]).map((f,i)=>`<div class="folkrow">
       <input data-fkn="${i}" type="text" value="${esc(f.name||"")}" placeholder="Name">
       <input data-fkr="${i}" type="text" value="${esc(f.role||"")}" placeholder="What they do">
       <button class="fdel" data-fkdel="${i}">×</button>
     </div>${f.note?`<div class="foenote">${esc(f.note)}</div>`:""}
     <div class="field" style="margin:-2px 0 10px"><input data-fknote="${i}" type="text" value="${esc(f.note||"")}" placeholder="A line about them" style="font-family:var(--serif);font-size:12.5px"></div>`).join("")}
-    <button class="btn wide" id="pr-addfolk">Add somebody</button>
+
 
     <p class="grouplab">Asking around</p>
     <div class="row2">
@@ -13077,8 +13099,8 @@ function wirePremises(n){
   const p = n.premises;
   const re = ()=>{ touch(); renderInspect(); };
 
-  $("#pr-kname").oninput = e=>{ (p.keeper=p.keeper||{}).name = e.target.value; touch(); };
-  $("#pr-knote").oninput = e=>{ (p.keeper=p.keeper||{}).note = e.target.value; touch(); };
+  if($("#pr-kname")) $("#pr-kname").oninput = e=>{ (p.keeper=p.keeper||{}).name = e.target.value; touch(); };
+  if($("#pr-knote")) $("#pr-knote").oninput = e=>{ (p.keeper=p.keeper||{}).note = e.target.value; touch(); };
   $("#pr-notes").oninput = e=>{ p.notes = e.target.value; touch(); };
   const asksk = $("#pr-asksk");
   if(asksk) asksk.onchange = e=>{ (p.ask=p.ask||{}).skill = e.target.value; touch(); };
@@ -13093,7 +13115,7 @@ function wirePremises(n){
   pane.querySelectorAll("[data-fkr]").forEach(i=>i.oninput = e=>{ p.folk[+e.target.dataset.fkr].role = e.target.value; touch(); });
   pane.querySelectorAll("[data-fknote]").forEach(i=>i.oninput = e=>{ p.folk[+e.target.dataset.fknote].note = e.target.value; touch(); });
   pane.querySelectorAll("[data-fkdel]").forEach(b=>b.onclick = e=>{ p.folk.splice(+e.currentTarget.dataset.fkdel,1); re(); });
-  $("#pr-addfolk").onclick = ()=>{ (p.folk=p.folk||[]).push({name:"",role:"",note:""}); re(); };
+
 
   pane.querySelectorAll("[data-say]").forEach(i=>i.oninput = e=>{ p.says[+e.target.dataset.say] = e.target.value; touch(); });
   pane.querySelectorAll("[data-saydel]").forEach(b=>b.onclick = e=>{ p.says.splice(+e.currentTarget.dataset.saydel,1); re(); });

@@ -1,0 +1,6 @@
+Build panel: people here true, add panel true, kind select true
+rolled: Fabien Silvanus (Fence)
+people here now ["Fabien Silvanus"] | listed true
+keeper set Fabien Silvanus
+from the library: Captain Callomay here true | listed true
+rerolled with choices: Vale "the Quiet" Varga | Neutral · Elf priest · keeps Silvanus's Apothecary | Lawful Good
