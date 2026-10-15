@@ -10832,7 +10832,7 @@ function renderPlayNow(){
       ${p.fightsAs==="self" || p.ac || p.hpMax || (p.attacks||[]).length ? `<div class="sbl"><b>Sheet</b> ${[p.ac?`AC ${esc(p.ac)}`:"", p.hpMax?`HP ${esc(p.hpMax)}`:"", p.pp?`PP ${esc(p.pp)}`:"",
           ...(p.attacks||[]).filter(a=>a&&a.name).map(a=>`${esc(a.name)} ${esc(a.hit||"")} ${esc(a.dmg||"")}${a.dtype?` ${esc(a.dtype)}`:""}`)].filter(Boolean).join(" · ")}${isCompanion(p.id)?` <span class="npctag">in the party</span>`:""}</div>` : ""}
       ${p.purse&&purseGp(p.purse)?`<div class="sbl"><b>Purse</b> ${COINS.filter(([k])=>p.purse[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", ")}</div>`:""}
-      ${p.carries&&p.carries.trim()?`<div class="sbl"><b>Carries</b> ${esc(p.carries.trim().split(/\n+/).join("; "))}</div>`:""}
+      ${carryBlock(p)}
       ${filesBlock(p, "npc:"+p.id, true)}
     </div>`).join("") : `<p class="empty-note" style="margin:0 0 8px">Nobody in particular.</p>`);
 
@@ -11730,6 +11730,27 @@ function shopRerollKeeper(n){
   if(n.premises) n.premises.keeper = { name:p.name, note:p.look };
   gameLog("note", `${placeLabel(n)} has a new keeper: ${p.name}${old ? ` (was ${old.name})` : ""}`);
 }
+/* what a person carries, one line each: listed with a × to take it off, and a box to add anything at all, in the library
+   or not (a name the library knows becomes that item when they're searched) */
+function carryBlock(p){
+  const lines = String(p.carries||"").split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  return `<div class="sbl"><b>Carries</b>${lines.length ? "" : ` <small>nothing noted</small>`}</div>
+    ${lines.map((l, i)=>{ const x = lootByName(l.replace(/\s*\(?\bDC\s*\d+\)?$/i, "").replace(/^\d+\s*[x×]?\s+/, ""));
+      return `<div class="pcrow" style="align-items:center;margin:0 0 2px 10px"><span style="flex:1;font-size:12px">${x ? `<span class="libref" data-libopen="loot:${x.id}">${esc(l)}</span>` : esc(l)}</span><button class="fdel" data-carrydel="${p.id}" data-k="${i}" title="Take it off them">×</button></div>`; }).join("")}
+    <div class="pcrow" style="margin:2px 0 6px 10px"><input type="text" data-carryin="${p.id}" placeholder="Add something they carry: a rusty key, 2 daggers, a letter DC 15…" style="flex:1;min-width:0"><button class="btn small" data-carryadd="${p.id}">Add</button></div>`;
+}
+function carryAdd(pid, text){
+  const p = libNpcById(pid), v = String(text||"").trim(); if(!p || !v) return;
+  p.carries = (String(p.carries||"").replace(/\s+$/, "") ? String(p.carries).replace(/\s+$/, "") + "\n" : "") + v; saveParty(); touch();
+  flash(`${p.name||"They"} carries ${v}.`);
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-carryadd],[data-carrydel]"); if(!b) return;
+  if(b.dataset.carryadd){ const i = b.parentElement.querySelector("[data-carryin]"); carryAdd(b.dataset.carryadd, i && i.value); }
+  else { const p = libNpcById(b.dataset.carrydel); if(!p) return; const lines = String(p.carries||"").split(/\n+/).map(s=>s.trim()).filter(Boolean); lines.splice(+b.dataset.k, 1); p.carries = lines.join("\n"); saveParty(); touch(); }
+  renderPane(true);
+});
+document.addEventListener("keydown", e=>{ const t = e.target; if(e.key!=="Enter" || !t.dataset || t.dataset.carryin==null) return; e.preventDefault(); carryAdd(t.dataset.carryin, t.value); renderPane(true); });
 /* paying: the price out of a purse, making change in gold, silver and copper; false if it can't be met */
 function payFrom(purse, cp){
   const have = Math.round(purseGp(purse)*100); if(have < cp) return false;
@@ -11763,7 +11784,7 @@ function shopBlock(n){
       const purse = COINS.filter(([c])=>(keep.purse||{})[c]).map(([c])=>`${keep.purse[c]} ${c}`).join(", ");
       return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)?"open":""}><summary>Their card <small>${esc(keep.role||"")}</small></summary>
         ${row("Alignment", keep.align)}${row("Look", keep.look)}${row("Voice", keep.voice)}${row("Wants", keep.wants)}${row("Knows", keep.knows)}${row("Backstory", keep.backstory)}
-        ${row("Sheet", sheet)}${row("Purse", purse)}${row("Carries", String(keep.carries||"").trim().split(/\n+/).filter(Boolean).join("; "))}
+        ${row("Sheet", sheet)}${row("Purse", purse)}${carryBlock(keep)}
         <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-bigsheet="npc:${keep.id}" title="Their whole character sheet, big, over the map">Full sheet</button><button class="btn" style="flex:1" data-libopen="npcs:${keep.id}">Their Library page</button></div></details>`; })() : ""}
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Prices</label><select data-shop="price">${[[.75,"Cheap (×¾)"],[1,"The going rate"],[1.25,"Dear (×1¼)"],[1.5,"Very dear (×1½)"],[2,"Robbery (×2)"]].map(([v, l])=>`<option value="${v}" ${(+S.price||1)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Haggled</label><select data-shop="deal">${HAGGLE_DEALS.map(([v, l])=>`<option value="${v}" ${(+S.deal||0)===v?"selected":""}>${l}</option>`).join("")}</select></div>
