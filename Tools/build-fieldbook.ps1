@@ -22,7 +22,7 @@ $appStart = [Array]::FindIndex($lines, [Predicate[string]]{ param($l) $l -eq '"u
 $appEnd = [Array]::FindLastIndex($lines, [Predicate[string]]{ param($l) $l -eq '</script>' })
 
 # the roll's own entry points: what Field Book calls
-$roots = @("genPerson","buildPerson","roleOptions","pickClass","CLASS_BLOCKS","CREATURE_TYPES","GEN_SPECIES","ALIGNMENTS","ALIGN_ABBR",
+$roots = @("genPerson","lootByName","kindOptions","PEOPLE_KINDS","PEOPLE_KIND_GROUPS","SHOP_TEMPLATES","buildPerson","roleOptions","pickClass","CLASS_BLOCKS","CREATURE_TYPES","GEN_SPECIES","ALIGNMENTS","ALIGN_ABBR",
   "completeSheet","fillSheetFromBlock","foeKit","foeById","npcAsFoe","abMod","clampLv","spellOf","SRD_FOES","SRD_SPELLS","SRD_LOOT","crLabel","signed","slotSummary","CASTING","groupOfClass",
   "GEN_FIRST","GEN_FAMILY","GEN_NICK","GEN_LOOK","GEN_VOICE","GEN_WANTS","GEN_SECRET","genBackstory","rollAlignment","attacksFromStatBlock","weaponAttack","attackWeapons","sheetClasses","creatureOptions","genCreature","spellByName","allSpells","spellLine","spellHeals","spellTidy","SPELL_SCHOOLS","SPELL_TIMES","spellTime","compParts","compText","srdSpellBlock","blankLib","copyFromSrd")
 # supplied by Field Book (see the shim below) or about the survey's own screen and storage: never brought along
