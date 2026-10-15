@@ -4028,7 +4028,7 @@ function blockHouses(sh){
     if(!inRing(ring, p.x, p.y) || ringDist(ring, p.x, p.y) < r*1.5 || !clear(p) || placed.some(q=>hit(q, p) || Math.hypot(q.c.x-p.x, q.c.y-p.y) < r + 4*ppm)) continue;
     got++; yard += `<circle cx="${k1(p.x+r*.3)}" cy="${k1(p.y+r*.4)}" r="${k1(r)}" fill="#3a2e1e" opacity=".15"/><circle cx="${k1(p.x)}" cy="${k1(p.y)}" r="${k1(r)}" fill="#7d9b63" stroke="#4a6238" stroke-width="${k1(.12*ppm)}"/>`;
   }
-  const out = `<g pointer-events="none"><path d="${pathOf(sh.pts, true, sh.straight)}" fill="#b9b58a" opacity=".35"/>${yard}${s}</g>`;
+  const out = `<g pointer-events="none">${yard}${s}</g>`;
   blockCache.set(ck, out); return out;
 }
 /* the shore inside a plan's water: a pale shallow band and three ripple lines, kept inside the water */
@@ -4255,7 +4255,10 @@ function render(){
     }
     else if(sh.closed && !kd.barrier){
       s += coastRipples(sh, d, inv);
-      s += `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
+      /* a block of houses on a plan has no outline of its own outside Build: its houses are the block */
+      const blend = planOf && sh.kind==="block" && dmMode && !on;
+      s += blend ? `<path class="shape" d="${d}" fill="transparent" stroke="none"/>`
+        : `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${planOf && sh.kind==="block" ? "transparent" : kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${planOf && sh.kind==="block" && !on ? `stroke-opacity=".35" stroke-dasharray="${k1(4*inv)} ${k1(3*inv)}"` : kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
       s += terrainGlyphs(sh);
       if(sh.id===seaId) s += roseArt(inv);
       if(planOf){
