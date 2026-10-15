@@ -3959,12 +3959,87 @@ function mapFurniture(){
   const c = el.querySelector(".cartouche"); c.hidden = !!planOf;
   if(!planOf) c.innerHTML = `<div class="ct-t">${esc(root.title||"A Chart")}</div><div class="ct-s">${esc(root.subtitle || "surveyed by its explorers")}</div>`;
 }
+/* ══ A TOWN PLAN, DRAWN PROPERLY (Joseph, 2026-10-15) ══ on a plan only: each building as its roof (slate, tile,
+   thatch, lead or timber by what it is, lit from the north-west, with a shadow), a block of houses filled with
+   little roofs round its edge and yards in the middle, the shallows and ripples along the shore, cobbled streets,
+   flagstone squares, awnings in a market, and planks on the piers. Seeded, so a town looks the same every time. */
+const ROOF = { slate:["#8d9294","#a7acad","#73787a"], tile:["#a8624a","#bf7a5d","#8e523d"], thatch:["#c2a466","#d4ba7e","#a68a50"], lead:["#7c8582","#949b98","#666e6b"], timber:["#9a7b55","#b09170","#826548"] };
+const ROOF_OF = { hall:"slate", reeve:"slate", temple:"lead", tower:"slate", gate:"slate", archive:"slate", office:"slate", smith:"slate", light:"slate",
+  apothecary:"tile", healer:"tile", inn:"tile", store:"tile", provision:"tile", house:"tile", warehouse:"tile", fence:"tile", trainer:"tile",
+  market:"timber", shipwright:"timber", stable:"thatch" };
+const NO_ROOF = new Set(["ship","boat","wreck","well","statue","stall","tent","cave","ruinlet"]);
+const k1 = n => Math.round(n*10)/10;
+/* a roof w across and h deep, centred on 0,0: hipped along its longer side, or a cone for a round tower */
+function roofSvg(w, h, mat, inv, round){
+  const [base, lit, dark] = ROOF[mat] || ROOF.tile, off = Math.min(w, h)*.12;
+  let s = `<rect x="${k1(-w/2+off*.7)}" y="${k1(-h/2+off)}" width="${k1(w)}" height="${k1(h)}" rx="${k1(round ? Math.min(w,h)/2 : Math.min(w,h)*.04)}" fill="#3a2e1e" opacity=".22"/>`;
+  if(round){ const r = Math.min(w, h)/2;
+    s += `<circle r="${k1(r)}" fill="${base}"/><path d="M${k1(-r)} 0 A${k1(r)} ${k1(r)} 0 0 1 ${k1(r)} 0 Z" fill="${lit}" opacity=".55"/>`;
+    for(let i=0; i<8; i++){ const a = i*Math.PI/4; s += `<path d="M0 0 L${k1(Math.cos(a)*r)} ${k1(Math.sin(a)*r)}" stroke="${dark}" stroke-width="${k1(.6*inv)}"/>`; }
+    return s + `<circle r="${k1(r)}" fill="none" stroke="#3a2e1e" stroke-width="${k1(.9*inv)}"/>`; }
+  const long = w >= h, L = long ? w : h, half = (long ? h : w)/2, rl = Math.max(0, L/2 - half*.9);
+  const P = (x, y) => long ? `${k1(x)} ${k1(y)}` : `${k1(y)} ${k1(x)}`;
+  return s + `<path d="M${P(-L/2,-half)} L${P(L/2,-half)} L${P(rl,0)} L${P(-rl,0)}Z" fill="${lit}"/><path d="M${P(-L/2,half)} L${P(L/2,half)} L${P(rl,0)} L${P(-rl,0)}Z" fill="${dark}"/>`
+    + `<path d="M${P(-L/2,-half)} L${P(-rl,0)} L${P(-L/2,half)}Z M${P(L/2,-half)} L${P(rl,0)} L${P(L/2,half)}Z" fill="${base}"/>`
+    + `<path d="M${P(-L/2,-half)} L${P(-rl,0)} L${P(rl,0)} L${P(L/2,-half)} M${P(-L/2,half)} L${P(-rl,0)} M${P(rl,0)} L${P(L/2,half)}" fill="none" stroke="#3a2e1e" stroke-opacity=".45" stroke-width="${k1(.6*inv)}"/>`
+    + `<rect x="${k1(-w/2)}" y="${k1(-h/2)}" width="${k1(w)}" height="${k1(h)}" fill="none" stroke="#3a2e1e" stroke-width="${k1(.9*inv)}"/>`;
+}
+/* a block of houses: lots along its longest side, row behind row; the ones near its edge get a roof, the middle is yards */
+function blockHouses(sh, inv){
+  const pts = sh.pts, n = pts.length; if(n < 3) return "";
+  const ring = shapeRing(sh), ppm = doc.ppm || 5, rnd = seeded("blk" + sh.id + ptsKey(pts));
+  let bi = 0, bl = 0; for(let i=0; i<n; i++){ const a = pts[i], b = pts[(i+1)%n], L = Math.hypot(b.x-a.x, b.y-a.y); if(L > bl){ bl = L; bi = i; } }
+  const a = pts[bi], b = pts[(bi+1)%n], ux = (b.x-a.x)/bl, uy = (b.y-a.y)/bl, vx = -uy, vy = ux, ang = Math.atan2(uy, ux)*180/Math.PI;
+  let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
+  for(const p of ring){ const u = (p.x-a.x)*ux + (p.y-a.y)*uy, v = (p.x-a.x)*vx + (p.y-a.y)*vy; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+  const depth = 9*ppm, at = (u, v) => ({ x:a.x + ux*u + vx*v, y:a.y + uy*u + vy*v }), mats = ["tile","tile","tile","slate","slate","thatch","timber"];
+  /* streets and lanes running through the block, and the buildings standing in it, keep their ground */
+  const ways = (doc.shapes||[]).filter(q=>(SHAPE_KINDS[q.kind]||{}).road && q.kind!=="pier" && (q.pts||[]).length > 1).map(q=>({ sm:samplePath(q.pts, false, 8, q.straight), half:(q.w==null ? SHAPE_KINDS[q.kind].w : q.w)/2 + 1.5*ppm }));
+  const blds = (doc.nodes||[]).filter(q=>hasFootprint(q) && !NO_ROOF.has(q.kind)).map(q=>footprintPts(q));
+  const clear = p => !ways.some(w=>ringDist(w.sm, p.x, p.y) < w.half) && !blds.some(r=>inRing([...r, r[0]], p.x, p.y));
+  let s = "";
+  for(let v = v0 + 1; v + depth <= v1 + depth*.35; v += depth){
+    for(let u = u0 + 1; u < u1; ){
+      const wl = (4.5 + rnd()*5)*ppm, gap = rnd() < .08 ? (2 + rnd()*2)*ppm : 0;       // now and then a gap: an alley, a yard
+      const cs = [[u+.6, v+.6], [u+wl-.6, v+.6], [u+wl-.6, v+depth-.6], [u+.6, v+depth-.6]].map(([p, q])=>at(p, q)), c = at(u + wl/2, v + depth/2);
+      if(cs.every(p=>inRing(ring, p.x, p.y)) && ringDist(ring, c.x, c.y) < depth*2.3 && [...cs, c].every(clear)){
+        const m = mats[Math.floor(rnd()*mats.length)];
+        s += `<g transform="translate(${k1(c.x)} ${k1(c.y)}) rotate(${k1(ang)})">${roofSvg(wl - 1.2, depth - 1.2, m, inv*.8, false)}</g>`; }
+      u += wl + gap;
+    }
+  }
+  return `<g pointer-events="none">${s}</g>`;
+}
+/* the shore inside a plan's water: a pale shallow band and three ripple lines, kept inside the water */
+function planShore(sh, d, inv){
+  const ppm = doc.ppm || 5, id = "wc-" + sh.id, band = "#b3c9cb", line = "#5f8a92", j = `stroke-linejoin="round" fill="none"`;
+  let g = `<path d="${d}" ${j} stroke="${band}" stroke-opacity=".8" stroke-width="${2*14*ppm}"/>`;
+  for(const yd of [10, 6, 3]){ const w = 2*yd*ppm; g += `<path d="${d}" ${j} stroke="${line}" stroke-opacity=".45" stroke-width="${w}"/><path d="${d}" ${j} stroke="${band}" stroke-width="${Math.max(0, w - 1.6*inv)}"/>`; }
+  return `<clipPath id="${id}"><path d="${d}"/></clipPath><g clip-path="url(#${id})" pointer-events="none">${g}</g>`;
+}
+/* awnings over a market: striped canvas, scattered through it */
+function marketAwnings(sh, inv){
+  const ring = shapeRing(sh), ppm = doc.ppm || 5, rnd = seeded("mkt" + sh.id + ptsKey(sh.pts));
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of ring){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const want = Math.max(3, Math.min(14, Math.round((x1-x0)*(y1-y0) / (ppm*ppm*90)))); let s = "", got = 0;
+  for(let t=0; t<want*12 && got<want; t++){ const x = x0 + rnd()*(x1-x0), y = y0 + rnd()*(y1-y0); if(!inRing(ring, x, y) || ringDist(ring, x, y) < 2*ppm) continue;
+    const w = (2.5 + rnd()*2)*ppm, h = (2 + rnd()*1.5)*ppm;
+    s += `<g transform="translate(${k1(x)} ${k1(y)}) rotate(${k1(rnd()*30-15)})"><rect x="${k1(-w/2+1.2)}" y="${k1(-h/2+1.6)}" width="${k1(w)}" height="${k1(h)}" fill="#3a2e1e" opacity=".2"/><rect x="${k1(-w/2)}" y="${k1(-h/2)}" width="${k1(w)}" height="${k1(h)}" fill="url(#pawn${got%2})" stroke="#3a2e1e" stroke-width="${k1(.7*inv)}"/></g>`; got++; }
+  return `<g pointer-events="none">${s}</g>`;
+}
+/* the patterns those use, put into the map's defs once */
+function planPatterns(){
+  const defs = svg.querySelector("defs"); if(!defs || defs.querySelector("#pflag")) return;
+  defs.insertAdjacentHTML("beforeend", `<pattern id="pflag" patternUnits="userSpaceOnUse" width="20" height="14"><path d="M0 0 H20 M0 7 H20 M0 0 V7 M10 7 V14" fill="none" stroke="#7d6a48" stroke-width=".7" opacity=".5"/></pattern>`
+    + `<pattern id="pawn0" patternUnits="userSpaceOnUse" width="6" height="6"><rect width="6" height="6" fill="#efe4c6"/><rect width="3" height="6" fill="#b5503a"/></pattern>`
+    + `<pattern id="pawn1" patternUnits="userSpaceOnUse" width="6" height="6"><rect width="6" height="6" fill="#efe4c6"/><rect width="3" height="6" fill="#4f6f76"/></pattern>`);
+}
 function render(){
   if(!viewIsConsistent()){
     surfaceToSurvey();
     flash("The view had come apart — put back on the survey.");
   }
-  const inv = 1/view.k;
+  const inv = 1/view.k; if(planOf) planPatterns();
   $("#empty").style.display = (doc.nodes.length||(doc.shapes||[]).length) ? "none" : "grid";
   if(planOf){
     $("#emptyBig").textContent = "Open ground.";
@@ -3998,8 +4073,13 @@ function render(){
 
     if(kd.road){
       const wS = sh.w==null?kd.w:sh.w;
-      s += `<path class="street" d="${d}" fill="none" stroke="${kd.stroke}" stroke-width="${wS+1.8}"/>`;
+      s += `<path class="street" d="${d}" fill="none" stroke="${kd.stroke}" stroke-width="${wS+(planOf?3:1.8)}"/>`;
       s += `<path class="street" d="${d}" fill="none" stroke="${on?"var(--lead)":kd.fill}" stroke-width="${wS}"/>`;
+      /* on a plan: cobbles in a street or lane (two staggered courses), planks across a pier */
+      if(planOf && !on && (sh.kind==="street" || sh.kind==="lane"))
+        s += `<path d="${d}" fill="none" stroke="#a08c66" stroke-opacity=".5" stroke-width="${k1(wS*.8)}" stroke-dasharray="5 2.2" pointer-events="none"/><path d="${d}" fill="none" stroke="${kd.fill}" stroke-width="${k1(wS*.36)}" stroke-dasharray="5 2.2" stroke-dashoffset="3.6" pointer-events="none"/>`;
+      else if(planOf && !on && sh.kind==="pier")
+        s += `<path d="${d}" fill="none" stroke="#5f4a2c" stroke-opacity=".6" stroke-width="${k1(wS*.94)}" stroke-dasharray="1.2 4" pointer-events="none"/>`;
     }
     else if(kd.river){
       const w0 = sh.w0==null?1.6:sh.w0, w1 = sh.w1==null?5.5:sh.w1;
@@ -4018,8 +4098,14 @@ function render(){
       s += `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
       s += terrainGlyphs(sh);
       if(sh.id===seaId) s += roseArt(inv);
-      /* a built block gets ruled across, the way a plan hatches roofed ground */
-      if(kd.hatch){
+      if(planOf){
+        if(sh.kind==="water") s += planShore(sh, d, inv);
+        if(kd.paved) s += `<path d="${d}" fill="url(#pflag)" pointer-events="none"/>`;
+        if(sh.kind==="market") s += marketAwnings(sh, inv);
+      }
+      /* a built block: on a plan, filled with houses; elsewhere ruled across, the way a plan hatches roofed ground */
+      if(kd.hatch && planOf && sh.kind==="block") s += blockHouses(sh, inv);
+      else if(kd.hatch){
         let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
         for(const q of sh.pts){ x0=Math.min(x0,q.x); y0=Math.min(y0,q.y); x1=Math.max(x1,q.x); y1=Math.max(y1,q.y); }
         const gap = 7; let hp = "";
@@ -4125,10 +4211,18 @@ function render(){
          building it stands in */
       const gs = Math.min(inv, wpx/26, dpx/26);
       s += `<g data-pn="${n.id}" transform="${g}"${n.hidden?` opacity=".45"`:""}>`;
-      s += `<rect class="fp" data-node="${n.id}" x="${-wpx/2}" y="${-dpx/2}" width="${wpx}" height="${dpx}"
+      if(!NO_ROOF.has(n.kind)){
+        /* its roof, a hit area over it, and what it is on a small disc in its district's colour */
+        s += roofSvg(wpx, dpx, ROOF_OF[n.kind] || "tile", inv, n.kind==="tower");
+        s += `<rect class="fp" data-node="${n.id}" x="${-wpx/2}" y="${-dpx/2}" width="${wpx}" height="${dpx}" style="fill:transparent" stroke="${on?"var(--lead)":"none"}" stroke-width="${2.2*inv}"/>`;
+        const bs = Math.min(inv*.8, Math.min(wpx, dpx)/30);
+        if(bs > 0.0001) s += `<g transform="rotate(${-(f.rot||0)}) scale(${bs})" style="pointer-events:none"><circle r="12.5" fill="${hex}" fill-opacity=".9" stroke="#3a2e1e" stroke-width="1"/><g transform="scale(.82)">${kd.draw("#efe4c6")}</g></g>`;
+      } else {
+        s += `<rect class="fp" data-node="${n.id}" x="${-wpx/2}" y="${-dpx/2}" width="${wpx}" height="${dpx}"
               rx="${Math.min(wpx,dpx)*0.06}" fill="${hex}" fill-opacity="${on?.42:.3}"
               stroke="${on?"var(--lead)":"var(--ink)"}" stroke-width="${(on?2:1.3)*inv}"/>`;
-      if(gs > 0.0001) s += `<g transform="scale(${gs})" style="pointer-events:none">${kd.draw(hex)}</g>`;
+        if(gs > 0.0001) s += `<g transform="scale(${gs})" style="pointer-events:none">${kd.draw(hex)}</g>`;
+      }
       if(on && !dmMode){
         /* a corner to pull, and a stalk to turn it by */
         s += `<rect class="fph" data-fp="${n.id}" x="${wpx/2-5*inv}" y="${dpx/2-5*inv}"

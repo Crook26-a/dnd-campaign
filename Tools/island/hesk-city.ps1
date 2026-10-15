@@ -86,7 +86,7 @@ $nodes = @(
   (Bld "hkwt1" "" "tower" 1100 880 7 7 0 "h4" "A tower on the town wall.")
   (Bld "hkwt2" "" "tower" 1700 600 7 7 0 "h4" "A tower on the town wall.")
   (Bld "hkwt3" "" "tower" 2700 460 7 7 0 "h4" "A tower on the town wall.")
-  (Bld "hkwell" "Clock Square Well" "well" 1980 1300 2 2 0 "h1" "")
+  (Bld "hkwell" "Clock Square Well" "well" 1880 1320 2 2 0 "h1" "")
 )
 $plan = [pscustomobject][ordered]@{ format = "ordinate-plan-v1"; of = "thesk"; title = "Port Hesk"; ppm = 5; unit = "yd"; compass = 8; regions = $regions; nodes = $nodes; roads = @(); shapes = $shapes
   sited = [pscustomobject][ordered]@{ inn = 1; store = 1; provision = 1; smith = 1; apothecary = 1; market = 1; temple = 1; healer = 1; reeve = 1; stable = 1; fence = 1 } }
