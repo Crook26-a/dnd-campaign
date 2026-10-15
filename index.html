@@ -4439,7 +4439,7 @@ function render(){
       s += `<g data-pn="${n.id}" transform="${g}"${n.hidden?` opacity=".45"`:""}>`;
       if(!NO_ROOF.has(n.kind)){
         /* its roof, a hit area over it, and what it is on a small disc in its district's colour */
-        s += roofSvg(wpx, dpx, ROOF_OF[n.kind] || "tile", inv, n.kind==="tower");
+        s += roofSvg(wpx, dpx, n.roof || ROOF_OF[n.kind] || "tile", inv, n.kind==="tower" || n.kind==="light" || !!n.dome);      // round: a tower, a lighthouse, a dome (n.dome); n.roof picks its material
         s += `<rect class="fp" data-node="${n.id}" x="${-wpx/2}" y="${-dpx/2}" width="${wpx}" height="${dpx}" style="fill:transparent" stroke="${on?"var(--lead)":"none"}" stroke-width="${2.2*inv}"/>`;
         const bs = Math.min(inv*.8, Math.min(wpx, dpx)/30);
         if(bs > 0.0001) s += `<g transform="rotate(${-(f.rot||0)}) scale(${bs})" style="pointer-events:none"><circle r="12.5" fill="${hex}" fill-opacity=".9" stroke="#3a2e1e" stroke-width="1"/><g transform="scale(.82)">${kd.draw("#efe4c6")}</g></g>`;
