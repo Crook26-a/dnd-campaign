@@ -1343,7 +1343,7 @@ const BESTIARY = [
 function lib(){
   if(!root) return { foes:[], npcs:[], loot:[] };
   const L = (root.library = root.library || {});
-  for(const k of ["foes","npcs","loot","spells","encounters"]) if(!Array.isArray(L[k])) L[k] = [];
+  for(const k of ["foes","npcs","loot","spells","encounters","shops"]) if(!Array.isArray(L[k])) L[k] = [];
   return L;
 }
 const libFoeById  = id => lib().foes.find(m => m.id === id) || null;
@@ -6657,7 +6657,7 @@ let libTab = "foes", libOpen = null, libQuery = "";
 /* "+ New" fills in a draft first: it joins the library only when Add is pressed (Cancel throws it away) */
 let libDraft = null;
 const libFind = (cat, id) => (libDraft && libDraft.cat===cat && libDraft.x.id===id) ? libDraft.x : (lib()[cat]||[]).find(o=>o.id===id);
-const LIB_CATS = [["foes","Foes"],["npcs","People"],["loot","Loot"],["spells","Spells"],["encounters","Encounters"]];
+const LIB_CATS = [["foes","Foes"],["npcs","People"],["loot","Loot"],["spells","Spells"],["encounters","Encounters"],["shops","Shop kinds"]];
 /* a spell, laid out for reading at the table */
 function srdSpellBlock(s){
   const line = (k,v) => v ? `<div class="sbl"><b>${k}</b> ${esc(String(v))}</div>` : "";
@@ -6814,6 +6814,7 @@ function purgeLib(cat, id){
   saveParty();
 }
 function blankLib(cat){
+  if(cat==="shops") return { id:uid("lsh"), name:"New shop kind", keeper:"merchant", staff:"", nmin:"4", nmax:"6", srd:"", goods:"", notes:"" };
   if(cat==="encounters") return { id:uid("le"), name:"New encounter", foes:[], terrains:[], weight:5, map:"", text:"", notes:"" };
   if(cat==="foes") return { id:uid("lf"), name:"New foe", cr:1, xp:CR_XP[1], ac:"", hp:"", speed:"30 ft.",
     str:"", dex:"", con:"", int:"", wis:"", cha:"", sav:"", sen:"", init:"", attacks:"", traits:"", boss:false, talk:false, notes:"" };
@@ -6836,6 +6837,7 @@ const spellHeals = s => !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||""
 function spellTidy(s){ s.heal = spellHeals(s); if(s.heal && !s.dmg){ const m = /regains?\b[^.]*?(\d+d\d+)/i.exec(s.desc||""); if(m) s.dmg = m[1]; } return s; }
 function libSummary(cat, x){
   if(cat==="spells") return esc(spellLine(x));
+  if(cat==="shops"){ const T = shopTpl(x.id); return esc(T ? `kept by a ${(PEOPLE_KINDS[T.keeper]||{label:"someone"}).label.toLowerCase()} · ${T.n[0]}–${T.n[1]} things for sale · ${T.srd.length + T.goods.length} it can stock` : ""); }
   if(cat==="foes") return `CR ${crLabel(+x.cr||0)} · ${(+x.xp||0).toLocaleString()} xp${x.boss?" · boss":""}`;
   if(cat==="npcs") return esc([x.role, x.align ? (ALIGN_ABBR[x.align]||x.align) : ""].filter(Boolean).join(" · "));
   return esc([x.kind, x.rarity&&x.rarity!=="Mundane"?x.rarity:"", x.value, itemStatLine(x)].filter(Boolean).join(" · "));
@@ -6947,6 +6949,16 @@ function libForm(cat, x){
       ${ta("hi","With a higher-level slot","The damage increases by 1d8 for each spell slot level above 1.",2)}
       <p class="empty-note" style="font-size:11px;margin:-4px 0 8px">Write the damage, healing and higher-slot lines the way the SRD does ("…regains 1d8 Hit Points", "increases by 1d6 for each spell slot level above 2") and casting it rolls and scales them, as with any spell.</p>
       ${x.name && (x.desc || x.dmg) ? `<details class="pcset"><summary>How it reads</summary>${srdSpellBlock(x)}</details>` : ""}`;
+  } else if(cat==="shops"){
+    const ko = (f, cur, any) => `<select ${a} data-f="${f}">${any ? `<option value="">${any}</option>` : ""}${PEOPLE_KIND_GROUPS.map(g=>`<optgroup label="${g}">${Object.entries(PEOPLE_KINDS).filter(([, k])=>k.group===g).map(([id, k])=>`<option value="${id}" ${cur===id?"selected":""}>${k.label}</option>`).join("")}</optgroup>`).join("")}</select>`;
+    const T = shopTpl(x.id), badSrd = String(x.srd||"").split(/\n+/).map(s=>s.trim()).filter(s=>s && !lootByName(s));
+    h += `<div class="pcrow"><div class="field" style="flex:1"><label>Kept by a</label>${ko("keeper", x.keeper||"merchant")}</div><div class="field" style="flex:1"><label>Sometimes a hand</label>${ko("staff", x.staff||"", "Nobody")}</div></div>
+      <div class="pcrow">${t("nmin","Things for sale, at least",1,"4")}${t("nmax","at most",1,"6")}</div>
+      <div class="field"><label>Start from one of the app's kinds <small>fills in the lists below</small></label><select data-shopfrom="${x.id}"><option value="">—</option>${Object.entries(SHOP_TEMPLATES).map(([id, s])=>`<option value="${id}">${s.label}</option>`).join("")}</select></div>
+      ${ta("srd","SRD gear it sells <small>one name a line, as the SRD writes it: Rope, Lantern, Hooded</small>","Rope\nLantern, Hooded\nCandle",4)}
+      ${badSrd.length ? `<p class="warn" style="font-size:11px">Not found in the SRD: ${esc(badSrd.join(", "))}. Check the spelling, or list it under its own goods instead.</p>` : ""}
+      ${ta("goods","Its own goods <small>one a line: name | price | what it is</small>","Loaf of bread | 2 cp | A round loaf, still warm.\nHoney cake | 1 sp | Dense and sticky.",5)}
+      <p class="empty-note" style="font-size:11px;margin:-4px 0 8px">Its own goods are priced by you (your table rule) and go into the Loot library the first time they're stocked. Library items with this shop ticked under <b>Sold at</b> can turn up too.${T ? ` It can stock ${T.srd.length + T.goods.length + lib().loot.filter(q=>!q.shopGood && (q.soldAt||[]).includes(x.id)).length} things.` : ""}</p>`;
   } else if(cat==="encounters"){
     h += encForm(x, a, ta, draft);
   } else {
@@ -6955,9 +6967,9 @@ function libForm(cat, x){
         <div class="field" style="flex:1"><label>Rarity</label><select ${a} data-f="rarity"><option value="">—</option>${RARITIES.map(r=>`<option ${r===x.rarity?"selected":""}>${r}</option>`).join("")}</select></div></div>
       <div class="pcrow">${t("value","Value",1, rarityGuess(x.rarity, x.kind==="potion") || "50 gp")}${t("wt","Weight",.6,"lb")}</div>
       ${(()=>{ const k = `lootsold:${x.id}`, on = x.soldAt || [];
-        return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)?"open":""}><summary>Sold at${on.length ? ` <small>${esc(on.map(s=>(SHOP_TEMPLATES[s]||{}).label||s).join(", "))}</small>` : " <small>not sold in shops</small>"}</summary>
+        return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)?"open":""}><summary>Sold at${on.length ? ` <small>${esc(on.map(s=>(shopTpl(s)||{}).label||s).join(", "))}</small>` : " <small>not sold in shops</small>"}</summary>
           <p class="empty-note" style="font-size:11px;margin:2px 0 6px">Tick the kinds of shop that sell it: it can turn up in their stock.</p>
-          <div class="checks" style="display:flex;flex-wrap:wrap;gap:2px 10px">${Object.entries(SHOP_TEMPLATES).map(([id, s])=>`<label class="check" style="margin:0"><input type="checkbox" data-lib="loot" data-id="${x.id}" data-soldat="${id}" ${on.includes(id)?"checked":""}> ${s.label}</label>`).join("")}</div></details>`; })()}
+          <div class="checks" style="display:flex;flex-wrap:wrap;gap:2px 10px">${shopKinds().map(id=>[id, shopTpl(id)]).map(([id, s])=>`<label class="check" style="margin:0"><input type="checkbox" data-lib="loot" data-id="${x.id}" data-soldat="${id}" ${on.includes(id)?"checked":""}> ${s.label}</label>`).join("")}</div></details>`; })()}
       ${ta("desc","What it is","A lantern that burns without oil…",3)}
       ${(()=>{ const k = `lootsec:${x.id}`, has = itemStatLine(x);
         return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)||has?"open":""}><summary>Item stats${has?` <small>${esc(has)}</small>`:""}</summary>
@@ -7122,7 +7134,7 @@ function renderLibList(){
       ${x.id===libOpen?libForm(libTab,x):""}</div>`).join("")
     : `<p class="empty-note">${q?"None of yours match.":"Nothing of your own here yet. Add one, or copy a standard one below."}</p>`;
   if(libDraft && libDraft.cat===libTab){
-    const x = libDraft.x, what = { loot:"New item", npcs:"New person", foes:"New foe", encounters:"New encounter" }[libTab];
+    const x = libDraft.x, what = { loot:"New item", npcs:"New person", foes:"New foe", encounters:"New encounter", shops:"New shop kind" }[libTab];
     h = `<div class="libitem open draft"><div class="libhead"><span class="nm">${esc(x.name||what)}</span><span class="sub">${x.name?what.toLowerCase()+", not added yet":"not added yet"}</span></div>${libForm(libTab, x)}</div>` + h;
   }
 
@@ -7175,7 +7187,7 @@ $("#pane-library").addEventListener("input", e=>{
   x[k] = k==="xp" ? (t.value===""?0:+t.value) : t.value;
   if(cat==="spells"){ spellTidy(x); if(k==="name" && !(libDraft && libDraft.x===x)) refreshSpellList(); }
   if(k==="name"){ const it = t.closest(".libitem"), nm = it && it.querySelector(".libhead .nm"), dr = libDraft && libDraft.x===x;
-    if(nm) nm.textContent = t.value || (dr ? { loot:"New item", npcs:"New person", foes:"New foe", encounters:"New encounter" }[cat] : "Unnamed");
+    if(nm) nm.textContent = t.value || (dr ? { loot:"New item", npcs:"New person", foes:"New foe", encounters:"New encounter", shops:"New shop kind" }[cat] : "Unnamed");
     const go = dr && it.querySelector('[data-libact="draftadd"]'); if(go) go.textContent = `Add${t.value.trim()?" "+t.value.trim():""} to the library`;
     if(dr){ x.name = t.value; return; } }
   saveParty();
@@ -7189,6 +7201,10 @@ $("#pane-library").addEventListener("input", e=>{ const t = e.target; if(t.datas
   const x = libFind(t.dataset.lib, t.dataset.id); if(x){ compFromForm(t, x); if(!(libDraft && libDraft.x===x)) saveParty(); } });
 $("#pane-library").addEventListener("change", e=>{
   const t = e.target, cat = t.dataset.lib, k = t.dataset.f;
+  if(t.dataset.shopfrom){ const x = libFind("shops", t.dataset.shopfrom), T = SHOP_TEMPLATES[t.value]; if(!x || !T) return;
+    Object.assign(x, { keeper:T.keeper, staff:(T.staff||[])[0]||"", nmin:String(T.n[0]), nmax:String(T.n[1]), srd:T.srd.join("\n"), goods:T.goods.map(g=>g.join(" | ")).join("\n") });
+    if(!x.name || /^New shop kind$/.test(x.name)) x.name = `${T.label} (yours)`;
+    if(!(libDraft && libDraft.x===x)) saveParty(); renderLibList(); return; }
   if(cat==="loot" && t.dataset.soldat){ const x = libFind(cat, t.dataset.id); if(!x) return; const s = new Set(x.soldAt||[]); if(t.checked) s.add(t.dataset.soldat); else s.delete(t.dataset.soldat);
     if(s.size) x.soldAt = [...s]; else delete x.soldAt; saveParty(); renderLibList(); return; }
   if(cat && t.dataset.comp!=null){ const x = libFind(cat, t.dataset.id); if(!x) return; compFromForm(t, x); if(!(libDraft && libDraft.x===x)) saveParty(); renderLibList(); return; }
@@ -11634,7 +11650,18 @@ const SHOP_TEMPLATES = {
     srd:[],
     goods:[["Fresh fish","1 cp","Caught this morning."],["Salt cod, a side","3 sp","Keeps for months."],["Basket of crabs","4 cp","Still moving."],["Smoked eel","1 sp","A delicacy, they say."],["Barrel of salted herring","3 gp","A ship's worth."]] }
 };
-const shopOptions = cur => Object.entries(SHOP_TEMPLATES).map(([id, t])=>`<option value="${id}" ${cur===id?"selected":""}>${t.label}</option>`).join("");
+/* a shop kind: the app's own, or one made in the Library (Shop kinds) */
+function shopTpl(id){
+  if(SHOP_TEMPLATES[id]) return SHOP_TEMPLATES[id];
+  const x = (lib().shops||[]).find(s=>s.id===id); if(!x) return null;
+  const lo = Math.max(1, Math.round(+x.nmin||4)), hi = Math.max(lo, Math.round(+x.nmax||lo));
+  return { label:x.name || "Shop", keeper:PEOPLE_KINDS[x.keeper] ? x.keeper : "merchant", staff:PEOPLE_KINDS[x.staff] ? [x.staff] : [], n:[lo, hi], own:true,
+    srd:String(x.srd||"").split(/\n+/).map(s=>s.trim()).filter(Boolean),
+    goods:String(x.goods||"").split(/\n+/).map(s=>s.split("|").map(q=>q.trim())).filter(r=>r[0]).map(r=>[r[0], r[1]||"", r[2]||""]) };
+}
+const shopKinds = () => [...Object.keys(SHOP_TEMPLATES), ...(lib().shops||[]).map(s=>s.id)];
+const shopOptions = cur => Object.entries(SHOP_TEMPLATES).map(([id, t])=>`<option value="${id}" ${cur===id?"selected":""}>${t.label}</option>`).join("")
+  + ((lib().shops||[]).length ? `<optgroup label="Yours">${lib().shops.map(s=>`<option value="${s.id}" ${cur===s.id?"selected":""}>${esc(s.name||"Shop")}</option>`).join("")}</optgroup>` : "");
 /* a shop's own goods go into the library the first time they're stocked, priced by this app (Joseph's table rule) */
 function shopGood(tid, [name, value, desc]){
   const L = lib().loot; let x = L.find(q=>q.shopGood && q.name===name);
@@ -11643,17 +11670,27 @@ function shopGood(tid, [name, value, desc]){
 }
 /* what a kind of shop can stock: its SRD gear, its own goods (named, made on demand), and library items sold there */
 function shopPool(tid){
-  const T = SHOP_TEMPLATES[tid]; if(!T) return [];
+  const T = shopTpl(tid); if(!T) return [];
   return [...T.srd.map(nm=>{ const x = lootByName(nm); return x ? { id:x.id } : null; }).filter(Boolean),
     ...T.goods.map(gd=>({ good:gd })),
     ...lib().loot.filter(x=>!x.shopGood && (x.soldAt||[]).includes(tid)).map(x=>({ id:x.id }))];
 }
 const shopItemId = (tid, e) => e.id || shopGood(tid, e.good).id;
 /* its price at this shop, in copper: the item's value (or its rarity's) times the shop's prices */
-const shopPrice = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*100*((n.shop && +n.shop.price) || 1)));
+const shopPrice = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*100*((n.shop && +n.shop.price) || 1)*(1 + ((n.shop && +n.shop.deal) || 0))));
+/* haggling is the DM's call; these are loose guidelines for what it can do (Joseph's table rule, not the rules) */
+const HAGGLE_DEALS = [[0,"No deal struck"],[-.1,"Talked down 10%"],[-.2,"Talked down 20%"],[-.25,"Talked down 25% (as low as they'll go)"],[.1,"Offended: 10% more"],[.25,"Offended: 25% more"]];
+const HAGGLE_HELP = `<p class="empty-note" style="font-size:11px;margin:2px 0 4px"><b>Your call.</b> Loose guidelines:</p>
+  <ul class="dul" style="font-size:11px;margin:0 0 6px">
+    <li>The roll: Charisma (Persuasion), or Deception or Intimidation if that's how they're doing it, against the keeper's Insight, or a DC by mood: <b>10</b> friendly, <b>15</b> neutral, <b>20</b> unfriendly.</li>
+    <li>Make it: <b>10% off</b>. Beat it by 5: <b>20% off</b>. By 10 or more: <b>25% off</b>, about as low as anyone sells; nobody sells at a loss.</li>
+    <li>Miss it: the price stands. Miss by 5 or more: they're offended, <b>10% more</b>, or they won't deal with that one today. Intimidation that fails may cost more than coin.</li>
+    <li>Buying five or more of a thing: 10% off without a roll. A natural 20: throw in something small.</li>
+    <li>Rare or magic goods, or a seller who knows they're wanted: half as much give either way.</li>
+    <li>One try per thing per day; a second try after a failure is at disadvantage.</li></ul>`;
 /* roll the stock afresh: what was for sale goes, a new handful comes in, one to three of each */
 function shopRestock(n){
-  const S = n.shop, T = SHOP_TEMPLATES[S && S.tpl]; if(!T) return;
+  const S = n.shop, T = shopTpl(S && S.tpl); if(!T) return;
   const st = siteOf(n); st.items = (st.items||[]).filter(t=>!(S.items||[]).includes(t)); (S.items||[]).forEach(t=>forgetItem(st, t));
   const pool = shopPool(S.tpl).sort(()=>Math.random()-.5), want = Math.min(pool.length, T.n[0] + Math.floor(Math.random()*(T.n[1]-T.n[0]+1)));
   S.items = [];
@@ -11661,7 +11698,7 @@ function shopRestock(n){
 }
 /* open a shop: its keeper (and sometimes a hand) rolled as the right kind of person, saved and met here */
 function shopOpen(n, tid){
-  const T = SHOP_TEMPLATES[tid]; if(!T) return;
+  const T = shopTpl(tid); if(!T) return;
   n.shop = { tpl:tid, price:1, items:[] };
   const lv = Math.max(1, partyAvgLevel()), met = n.npcs = n.npcs || [], here = met.map(libNpcById).filter(Boolean);
   /* someone already works here: they keep it. Otherwise a keeper of the right kind is rolled */
@@ -11699,14 +11736,16 @@ function shopSell(n, tok, pid){
 function shopBlock(n){
   if(!n.shop) return hasFootprint(n) || ["store","provision","market","smith","apothecary","inn","stable","stall","tent","shipwright","warehouse","fence"].includes(n.kind)
     ? `<div class="pcrow" style="margin:6px 0 8px"><select data-shop="tpl" style="flex:1;min-width:0"><option value="">Make it a shop…</option>${shopOptions("")}</select><button class="btn" data-shopb="open">Open it</button></div>` : "";
-  const S = n.shop, T = SHOP_TEMPLATES[S.tpl] || { label:"Shop" }, st = n.site || {}, keep = libNpcById(S.keeper);
+  const S = n.shop, T = shopTpl(S.tpl) || { label:"Shop" }, st = n.site || {}, keep = libNpcById(S.keeper);
   const counts = {}; for(const t of (S.items||[])) if((st.items||[]).includes(t)){ const id = baseId(t); counts[id] = (counts[id]||0) + 1; }
   const firstTok = id => (S.items||[]).find(t=>baseId(t)===id && (st.items||[]).includes(t));
   const who = partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")} (${cpStr(Math.round(purseGp(purseOf(p))*100))})</option>`).join("");
   return `<p class="eyebrow spaced">The ${esc(T.label.toLowerCase())}</p>
     ${keep ? `<div class="sbl"><b>Kept by</b> <span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span></div>` : ""}
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Prices</label><select data-shop="price">${[[.75,"Cheap (×¾)"],[1,"The going rate"],[1.25,"Dear (×1¼)"],[1.5,"Very dear (×1½)"],[2,"Robbery (×2)"]].map(([v, l])=>`<option value="${v}" ${(+S.price||1)===v?"selected":""}>${l}</option>`).join("")}</select></div>
-    <p class="grouplab" style="margin:6px 0 3px">For sale</p>
+    <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Haggled</label><select data-shop="deal">${HAGGLE_DEALS.map(([v, l])=>`<option value="${v}" ${(+S.deal||0)===v?"selected":""}>${l}</option>`).join("")}</select></div>
+    <details class="pcset pcsec" data-invfor="shop:haggle" ${openInv.has("shop:haggle")?"open":""}><summary>Haggling <small>guidelines</small></summary>${HAGGLE_HELP}</details>
+    <p class="grouplab" style="margin:6px 0 3px">For sale${+S.deal ? ` <small>${+S.deal < 0 ? "after the haggling" : "with the offence added"}</small>` : ""}</p>
     ${Object.keys(counts).length ? Object.entries(counts).map(([id, q])=>{ const x = libLootById(id);
         return `<div class="librow give"><span><span class="libref" data-libopen="loot:${id}">${esc(x ? x.name : id)}</span>${q > 1 ? ` <small>×${q}</small>` : ""} <small class="mono">${cpStr(shopPrice(n, id))}</small>${x && x.shopGood ? ` <small title="Priced by your table rule">✦</small>` : ""}</span>
           ${partySize() ? `<select data-shopsell="${esc(firstTok(id))}" title="Sell one to…"><option value="">Sell to…</option>${who}</select>` : ""}</div>`; }).join("")
@@ -11717,6 +11756,7 @@ function shopBlock(n){
 document.addEventListener("change", e=>{
   const t = e.target; const n = sel && sel.kind==="node" ? nodeById(sel.id) : null; if(!n) return;
   if(t.dataset.shop==="price" && n.shop){ n.shop.price = +t.value || 1; touch(); renderPane(true); }
+  else if(t.dataset.shop==="deal" && n.shop){ if(+t.value) n.shop.deal = +t.value; else delete n.shop.deal; touch(); renderPane(true); }
   else if(t.dataset.shopsell!=null && t.value){ shopSell(n, t.dataset.shopsell, t.value); renderPane(true); }
 });
 document.addEventListener("click", e=>{

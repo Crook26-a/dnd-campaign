@@ -1,0 +1,24 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ') : 'none';
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await wait(300); setDmMode(true);
+  pane = 'library'; syncTabs(); libTab = 'shops'; renderPane(true); await wait(30);
+  const P = () => document.getElementById('pane-library');
+  out.push('tab ' + !!P().querySelector('[data-libtab="shops"]') + ' ' + txt(P().querySelector('[data-libtab="shops"]')));
+  const x = blankLib('shops'); x.name = 'Candle-maker'; x.keeper = 'chandler'; x.srd = 'Candle\nLamp\nOil\nNot A Real Thing'; x.goods = 'Beeswax candle | 2 cp | Burns clean and smells of honey.\nScented candle | 1 sp | Rose, or tar, or the sea.'; lib().shops.push(x);
+  libOpen = x.id; renderPane(true); await wait(30);
+  out.push('form: ' + txt(P().querySelector('.libform')).slice(0, 400));
+  const T = shopTpl(x.id); out.push('template: ' + JSON.stringify(T).slice(0, 300));
+  /* fill one from the bakery */
+  const y = blankLib('shops'); lib().shops.push(y); libOpen = y.id; renderPane(true); await wait(20);
+  const f = P().querySelector('[data-shopfrom="' + y.id + '"]'); f.value = 'bakery'; f.dispatchEvent(new Event('change', { bubbles:true })); await wait(20);
+  out.push('filled from the bakery: ' + y.name + ', keeper ' + y.keeper + ', goods ' + y.goods.split('\n').length + ' lines');
+  /* open a shop with it, and Sold at */
+  enterPlan('kcity'); await wait(60); const n = doc.nodes.find(q=>q.id==='pware2'); shopOpen(n, x.id);
+  out.push('opened ' + n.name + ': ' + [...new Set(n.shop.items.map(t=>(libLootById(baseId(t))||{}).name))].join(', ') + ' | keeper ' + (libNpcById(n.shop.keeper)||{}).role);
+  select('node', n.id); renderPane(true); await wait(20); out.push('shop options include yours ' + /Candle-maker/.test(document.querySelector('#pane-inspect').innerHTML) + ', haggle ' + !!document.querySelector('#pane-inspect [data-shop="deal"]'));
+  const d = document.querySelector('#pane-inspect [data-shop="deal"]'); const id = baseId(n.shop.items[0]), p0 = shopPrice(n, id); d.value = '-0.2'; d.dispatchEvent(new Event('change', { bubbles:true })); await wait(20);
+  out.push('haggled 20%: ' + p0 + ' cp -> ' + shopPrice(n, id) + ' cp');
+ }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');
+},1500);</script>
+</body>

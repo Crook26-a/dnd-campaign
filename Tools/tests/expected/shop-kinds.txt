@@ -1,0 +1,7 @@
+tab true SHOP KINDS 0
+form: NAME KEPT BY A Baker Butcher Smith Tailor Chandler Innkeeper Apothecary Jeweller Carpenter Mason Rope-maker Shipwright Sailor Dockhand Fisher Smuggler Councillor Magistrate Lawyer Clerk Tax collector Guard Ruffian Fence Beggar Pickpocket Priest Healer Scholar Noble Servant Farmer Merchant SOMETIMES A HAND Nobody Baker Butcher Smith Tailor Chandler Innkeeper Apothecary Jeweller Carpenter Mason Rope
+template: {"label":"Candle-maker","keeper":"chandler","staff":[],"n":[4,6],"own":true,"srd":["Candle","Lamp","Oil","Not A Real Thing"],"goods":[["Beeswax candle","2 cp","Burns clean and smells of honey."],["Scented candle","1 sp","Rose, or tar, or the sea."]]}
+filled from the bakery: Bakery (yours), keeper baker, goods 8 lines
+opened Wavecrest's Candle-maker: Linen, Salt, Wheat, Chest, Beeswax candle, Candle, Oil, Scented candle, Lamp | keeper Neutral · Orc chandler · keeps the candle-maker
+shop options include yours true, haggle true
+haggled 20%: 500 cp -> 400 cp
