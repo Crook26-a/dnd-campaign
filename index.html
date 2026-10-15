@@ -11048,7 +11048,7 @@ function adderResults(n){
    class, alignment, species) in place of the Roll tab's, just for the roll */
 function adderGen(n, fn, over){
   const a = adder, keep = genOpts;
-  genOpts = { ...genOpts, level:adderLevel(n), disp:a.disp, type:a.type, role:a.role, species:a.species, align:a.align, ...(over||{}) };
+  genOpts = { ...genOpts, level:adderLevel(n), disp:a.disp, type:a.type, role:a.role, species:a.species, align:a.align, diff:a.diff || "mod", xp:a.xp || 0, kind:"", ...(over||{}) };
   try{ return fn(); } finally{ genOpts = keep; }
 }
 function adderRoll(n){
@@ -11104,7 +11104,7 @@ function adderRoll(n){
     } else res = `<div class="rollres"><div class="rr-h">${g.foes.map(f=>{ const m = foeById(f.id); return `${f.n} × <span class="libref" data-libopen="foes:${f.id}">${esc(m?m.name:f.id)}</span> <small>CR ${m?crLabel(m.cr):"?"}</small>`; }).join("<br>")}</div>
         <div class="sbl">${esc(DISP_LINE[g.disp]||"")}</div>${verdict}<button class="btn wide" data-adact="putfoes">Add them here</button></div>`;
   }
-  return fields + `<button class="btn wide" data-adact="rollfoes">${g?"Reroll everyone":"An encounter"}</button>${res}`;
+  return fields + encXpFields(a.diff, a.xp, lv, "data-adx") + `<button class="btn wide" data-adact="rollfoes">${g?"Reroll everyone":"An encounter"}</button>${res}`;
 }
 /* one set of handlers on the side panel, whichever mode drew the panel */
 (()=>{
@@ -11155,6 +11155,8 @@ function adderRoll(n){
   });
   el.addEventListener("change", e=>{
     const t = e.target;
+    if(t.dataset.adx==="diff"){ adder.diff = t.value; adder.xp = 0; redraw(); return; }
+    if(t.dataset.adx==="xp"){ adder.xp = Math.max(0, Math.round(+t.value||0)); return; }
     /* a crowd member rolled again as the class picked for them */
     if(t.dataset.adcrowd!=null){ const n = selNode(), g = adder.res; if(n && g && g.kind==="crowd"){ const k = +t.dataset.adcrowd;
       g.people[k] = adderGen(n, ()=>genPerson({ level:g.level, disp:g.disp, maxXp:crowdRoom(g, k), role:t.value })); redraw(); } return; }
@@ -11569,7 +11571,17 @@ const kindOptions = cur => `<option value="">Anyone (by class)</option>${PEOPLE_
 const pickWeighted = w => { const e = Object.entries(w||{}), sum = e.reduce((a, [, v])=>a + v, 0); let r = Math.random()*sum; for(const [k, v] of e){ r -= v; if(r < 0) return k; } return e.length ? e[e.length-1][0] : ""; };
 /* from the kind's own list mostly, now and then the general one */
 const kindPick = (own, general, p = .8) => own && own.length && (!general || Math.random() < p) ? pickOne(own) : pickOne(general);
-let genOpts = { level:null, disp:"", type:"Humanoid", role:"", kind:"", species:"", align:"" }, genResult = null;
+let genOpts = { level:null, disp:"", type:"Humanoid", role:"", kind:"", species:"", align:"", diff:"mod", xp:0 }, genResult = null;
+/* an encounter's XP: the party's 2024 budget at the difficulty picked (Low, Moderate, High), or exactly the XP asked for */
+const DIFF_KEYS = [["lo","Low"],["mod","Moderate"],["hi","High"]];
+function encBudget(lv, diff, xp){
+  if(+xp > 0) return Math.round(+xp);
+  const party = Math.max(1, partySize()), d = DIFF_KEYS.some(([k])=>k===diff) ? diff : "mod";
+  return budgetFor(Array(party).fill(lv))[d];
+}
+const encXpFields = (diff, xp, lv, attr) => `<div class="pcrow" style="align-items:flex-end">
+    <div class="field" style="flex:1.3"><label>Encounter difficulty</label><select ${attr}="diff">${DIFF_KEYS.map(([k, l])=>`<option value="${k}" ${(diff||"mod")===k?"selected":""}>${l} (${encBudget(lv, k, 0).toLocaleString()} XP)</option>`).join("")}</select></div>
+    <div class="field" style="flex:1"><label>Or exactly <small>XP</small></label><input ${attr}="xp" class="mono" type="number" min="0" step="25" value="${+xp > 0 ? +xp : ""}" placeholder="—"></div></div>`;
 const partyAvgLevel = () => { const l = partyLevels(); return l.length ? Math.round(l.reduce((a,b)=>a+b,0)/l.length) : 1; };
 
 /* someone to meet. `over` changes a setting for this one roll (an encounter rolls its people with a share
@@ -11594,7 +11606,7 @@ function genPerson(over){
     name:`${pickOne(GEN_FIRST)}${nick} ${pickOne(GEN_FAMILY)}`, species:o.species || pickOne(GEN_SPECIES), role:cls, group:groupOfClass(cls),
     foe:sb.id, hp:rollDiceExpr(sb.hd) || foeMaxHp(sb), hd:sb.hd || "", statBlock:arms.sb, spells:cast ? cast.spells : [], spellClass:cast ? cast.cls : "",
     cast:cast && cast.slots ? cast : null, swaps:arms.swaps, look:kindPick(K && K.look, GEN_LOOK), voice:kindPick(K && K.voice, GEN_VOICE), wants:kindPick(K && K.wants, GEN_WANTS[disp], disp==="enemy" ? .75 : .9), secret:kindPick(K && K.secret, GEN_SECRET, .85), backstory:genBackstory(),
-    ...(K ? { kind:o.kind, occupation:K.label, knows:pickOne(K.knows||[""]), carries:(K.carries||[]).slice(), wealth:K.wealth } : {}) };
+    ...(K ? { pkind:o.kind, occupation:K.label, knows:pickOne(K.knows||[""]), carries:(K.carries||[]).slice(), wealth:K.wealth } : {}) };
   g.person = buildPerson(g);
   return g;
 }
@@ -11605,8 +11617,7 @@ const crowdRoom = (g, k) => Math.max(25, g.budget - g.people.reduce((a,x,j)=>a +
 function genEncounter(){
   const lv = clampLv(genOpts.level || partyAvgLevel());
   const disp = genOpts.disp || "enemy";
-  const party = Math.max(1, partySize());
-  const budget = party>1 ? budgetFor(Array(party).fill(lv)).mod : PARTY_BUDGET[lv][1];
+  const budget = encBudget(lv, genOpts.diff, genOpts.xp);
   if(genOpts.type==="Humanoid"){
     /* like a real band: a leader who can take up to 60% of the budget, then others until it's mostly spent */
     const people = []; let left = budget;
@@ -11630,7 +11641,7 @@ function buildPerson(g){
   const sb = foeById(g.foe);
   const p = Object.assign(sb ? personFromCreature(g.foe) : blankLib("npcs"), {
     name:g.name, role:`${{enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]} · ${g.species} ${String(g.occupation||g.role||"").toLowerCase()}`.trim(),
-    species:g.species, cls:g.role||"", where:"", align:g.align||"", look:g.look, voice:g.voice, wants:g.wants, knows:g.knows||"", ...(g.kind ? { kind:g.kind } : {}), backstory:g.backstory||"", fightsAs:g.foe||"" });
+    species:g.species, cls:g.role||"", where:"", align:g.align||"", look:g.look, voice:g.voice, wants:g.wants, knows:g.knows||"", ...(g.pkind ? { pkind:g.pkind } : {}), backstory:g.backstory||"", fightsAs:g.foe||"" });
   if(sb){
     p.cr = sb.cr; p.skills = sb.sk || "";
     if(g.hp){ p.hpMax = String(g.hp); p.hp = String(g.hp); }
@@ -11798,6 +11809,7 @@ function renderRoll(){
     ${genOpts.type && genOpts.type!=="Humanoid" ? `<div class="field"><label>Which ${esc(genOpts.type.toLowerCase())}</label><select id="gn-foe">${creatureOptions(genOpts.type, genOpts.foe)}</select></div>` : ""}
     <div class="field"><label>Alignment</label><select id="gn-align"><option value="">Any — one that fits the attitude</option>${ALIGNMENTS.map(a=>`<option ${a===genOpts.align?"selected":""}>${a}</option>`).join("")}</select></div>
     ${genOpts.type==="Humanoid"?`<div class="field"><label>Species</label><select id="gn-species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===genOpts.species?"selected":""}>${s}</option>`).join("")}</select></div>`:""}
+    ${encXpFields(genOpts.diff, genOpts.xp, lvl, "data-gnx")}
     <div class="pcrow">
       <button class="btn" style="flex:1" data-ract="person" title="Someone to meet: a person (Humanoid or Any), or a named creature of the Type picked">Someone to meet</button>
       <button class="btn" style="flex:1" data-ract="encounter">An encounter</button></div>`;
@@ -12167,6 +12179,8 @@ $("#pane-roll").addEventListener("change", e=>{
   if(t.id==="gn-foe"){ genOpts.foe = t.value; return; }
   if(t.id==="gn-role"){ genOpts.role = t.value; return; }
   if(t.id==="gn-kind"){ genOpts.kind = t.value; renderRoll(); return; }
+  if(t.dataset.gnx==="diff"){ genOpts.diff = t.value; genOpts.xp = 0; renderRoll(); return; }
+  if(t.dataset.gnx==="xp"){ genOpts.xp = Math.max(0, Math.round(+t.value||0)); return; }
   if(t.dataset.crowdk!=null && genResult && genResult.kind==="crowd"){ const g = genResult, k = +t.dataset.crowdk;
     g.people[k] = genPerson({ level:g.level, disp:g.disp, maxXp:crowdRoom(g, k), role:t.value }); renderRoll(); return; }
   if(t.id==="gn-species"){ genOpts.species = t.value; return; }

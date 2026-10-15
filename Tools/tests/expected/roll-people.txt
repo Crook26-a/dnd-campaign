@@ -1,0 +1,7 @@
+encounter of bakers: crowd, 8 people, budget 900
+then a person: person Ines "Gull" Montoya (Baker), shown true
+reroll: Ines "Gull" Montoya -> Fabien "Quick" Fairwind
+High: budget 1600
+exactly 1000: budget 1000, rolled 0 XP in 8
+panel difficulty true
+panel Low: budget 600
