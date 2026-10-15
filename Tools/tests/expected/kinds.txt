@@ -1,0 +1,9 @@
+kinds 33, lawyer true, advocate false
+stat blocks not in the SRD: none
+carried items not found as loot: none
+baker: Ulla Greywater | Neutral · Goliath baker | Commoner | purse {"sp":15} | wants to trade gossip for gossip | knows who's been buying more than a family could eat | carries Rations (1 day), Ink Pen
+lawyer: Ulla Keel | Neutral · Tiefling lawyer | Spy | purse {"gp":12} | wants a client who pays | knows who's suing whom | carries Ink, Paper
+ruffian: Bianca Zamora | Potential ally · Human ruffian | Bandit | purse {"sp":6} | wants protection money from the shops | knows where the gangs meet | carries Club, Dagger
+councillor: Soren Hartwell | Enemy · Aasimar councillor | Noble | purse {"gp":45} | wants to prove they're tougher than the newcomers | knows the city's real finances | carries Signet Ring, Clothes, fine
+priest: Lorca Albarran | Enemy · Dwarf priest | Priest | purse {"gp":7} | wants the temple roof repaired | knows who's dying and who's grieving | carries Holy Symbol, Amulet), Book
+roll tab kind select true, options 34

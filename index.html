@@ -11325,7 +11325,251 @@ const roleOptions = cur => `<option value="">Anyone</option>${Object.keys(CLASS_
 const CREATURE_TYPES = [...new Set(SRD_FOES.map(f=>f.type).filter(Boolean))].sort();
 
 let rollTable = "magic:Uncommon", rollPct = "", rollPick = null;     // rollPick: { tableId, roll, variant }
-let genOpts = { level:null, disp:"", type:"Humanoid", role:"", species:"", align:"" }, genResult = null;
+/* ══ KINDS OF PEOPLE (Joseph, 2026-10-15) ══ who someone is for a living: a baker reads like a baker. Each kind picks
+   its SRD 5.2 stat block (blocks), the class the app builds it as (cls), how it tends to meet the crew (disp weights:
+   ally/neutral/enemy), its purse (wealth: the person-purse tier 1-5), and its own looks, voices, wants, secrets, what it
+   knows and what it carries; the general tables still fill in now and then. Content is this app's own, kept here as
+   data so it can move to its own file or be extended. */
+const PEOPLE_KIND_GROUPS = ["Shopkeepers","Trades","Sea and docks","Power and law","The street","Faith and learning","Everyone else"];
+const PEOPLE_KINDS = {
+  baker:{ label:"Baker", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:1,
+    look:["flour to the elbows and in their eyebrows","a burn-spotted apron and rolled sleeves","round, rosy, and smelling of yeast","a wooden peel tucked under one arm"],
+    voice:["talks about the oven as if it's a moody relative","offers a taste before you can say no","up since before dawn, and sounds it"],
+    wants:["a new oven before the old one cracks","a steady order from a ship's cook","flour that isn't full of weevils","someone to take the night bake"],
+    secret:["waters the flour sacks to sell them heavier","bakes forbidden sweets for a rich customer's secret party","owes the miller more than the shop is worth"],
+    knows:["every early riser in the street and their business","which ships buy bread for long voyages","who's been buying more than a family could eat"],
+    carries:["Rations (1 day)","Ink Pen"] },
+  butcher:{ label:"Butcher", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner","Tough"], disp:{ ally:2, neutral:6, enemy:2 }, wealth:1,
+    look:["forearms like hams and a cleaver at the belt","a blood-dark leather apron","a shaved head and a cheerful grin","missing the tip of one finger"],
+    voice:["names every cut of meat lovingly","jokes grimly about what else the cleaver's good for","shouts prices over the street noise"],
+    wants:["salt, lots of it, at a fair price","a contract to supply a ship","the slaughterhouse tax lifted","a good dog to guard the yard"],
+    secret:["sells goat as mutton and worse as goat","has buried something in the yard that wasn't an animal","pays the watch to ignore the smell"],
+    knows:["who's been buying meat for many mouths","which farms are struggling","where the rats come from"],
+    carries:["Dagger","Sickle"] },
+  smith:{ label:"Smith", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner","Tough","Warrior Infantry"], disp:{ ally:3, neutral:5, enemy:2 }, wealth:2,
+    look:["burn scars freckling both forearms","a leather apron scorched black","one eyebrow singed off","arms thick as anchor chain"],
+    voice:["speaks over the hammer and never quite stops shouting","judges people by their boots and blades","grunts, then says something surprisingly wise"],
+    wants:["good iron, not the bog stuff","an apprentice who listens","a commission worth their skill","coal before the winter prices"],
+    secret:["forged the lock that someone important now relies on, and kept a key","makes weapons for people they shouldn't","once made a blade that killed a lord"],
+    knows:["who's been buying weapons lately","which blades in town are badly made","the guard's weak points in their armour"],
+    carries:["Light Hammer","Smith's Tools"] },
+  tailor:{ label:"Tailor", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:2,
+    look:["pins in their sleeve and a tape round the neck","dressed better than their customers","spectacles on a chain","fingers quick and scarred by needles"],
+    voice:["sizes you up, literally, while talking","comments on everyone's clothes","speaks softly, as if fabric might hear"],
+    wants:["dyed cloth from the far islands","a noble's patronage","payment for a gown nobody collected","a bigger shop on a better street"],
+    secret:["sews hidden pockets for smugglers","knows a noble's real waist size and other secrets","copies the fashions of a rival and swears they're original"],
+    knows:["who's been fitted for mourning","which nobles are buying on credit","the latest fashions from abroad"],
+    carries:["Weaver's Tools","Clothes, fine"] },
+  chandler:{ label:"Chandler", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:2,
+    look:["smells of tallow and tar","a tape measure round the neck","a ledger never far from hand","sleeves stained with pitch"],
+    voice:["knows every ship by name and asks after them","haggles like it's a sport","talks prices before greetings"],
+    wants:["customers who don't haggle","a ship that pays its bills","good hemp rope from the inland farms","to outlast the shop across the street"],
+    secret:["sells rope that's been spliced and passed off as new","keeps a list of every ship that owes them","buys salvage without asking where it came from"],
+    knows:["which ships are fitting out for a long voyage","who has never come in for repairs","what every ship in port is short of"],
+    carries:["Rope","Lantern, Hooded"] },
+  innkeeper:{ label:"Innkeeper", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner","Tough"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:2,
+    look:["a stained apron and a ring of keys","a booming laugh and a broken nose","a rag over one shoulder, always","tired eyes and a quick smile"],
+    voice:["calls everyone by a nickname","remembers every regular's drink","tells the same three stories to every newcomer"],
+    wants:["guests who pay and don't brawl","a cook who'll stay","the watch to stop drinking for free","a famous visitor to boast about"],
+    secret:["rents the back room to people who meet at midnight","waters the good wine","listens at doors and sells what they hear"],
+    knows:["all the gossip in town","who's staying, and under what name","which strangers came in this week"],
+    carries:["Jug","Lamp"] },
+  apothecary:{ label:"Apothecary", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner","Priest Acolyte"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:2,
+    look:["stained fingertips in three colours","a pouch of dried herbs at the belt","a magnifying lens on a cord","smells faintly of something sweet and wrong"],
+    voice:["names every plant in an old language","asks about your symptoms before your name","speaks quickly, distractedly, measuring as they go"],
+    wants:["a rare root from a far island","a patient who follows instructions","a licence from the city","to cure something no one else can"],
+    secret:["sells poisons to the right buyer","sampled their own wares and can't stop","made a remedy that killed someone, and hid it"],
+    knows:["who's ill and with what","which plants on the island are deadly","who has bought poison this month"],
+    carries:["Herbalism Kit","Antitoxin"] },
+  jeweller:{ label:"Jeweller", group:"Shopkeepers", cls:"Commoner", blocks:["Commoner","Noble"], disp:{ ally:2, neutral:6, enemy:2 }, wealth:3,
+    look:["a loupe screwed into one eye","rings on every finger, none of them real","a fine coat and nervous hands","impeccably groomed and unsmiling"],
+    voice:["judges the worth of everything you wear","speaks in a hushed, expensive voice","pretends not to be impressed, badly"],
+    wants:["stones nobody else has","a commission from the council","a guard they can trust","to know where that pearl came from"],
+    secret:["swaps real stones for paste when repairing","fences stolen jewellery through the back","is deep in debt to a moneylender"],
+    knows:["who's selling family heirlooms","what the nobles are worth, really","where the pearl divers find the best beds"],
+    carries:["Jeweler's Tools","Magnifying Glass"] },
+  carpenter:{ label:"Carpenter", group:"Trades", cls:"Commoner", blocks:["Commoner"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:1,
+    look:["sawdust in the hair","a pencil behind each ear","a callused grip and splinter-scarred hands","a tool belt heavy with chisels"],
+    voice:["measures twice before answering","talks about wood like wine","hums while they work, and while they talk"],
+    wants:["seasoned timber","to finish the job before the rains","payment from a merchant who's dodging them","a big commission"],
+    secret:["built a hidden room into a rich house","uses green wood and charges for seasoned","knows a way into the Guild's hall nobody else does"],
+    knows:["which houses have secret rooms","who's building and why","which roofs leak"],
+    carries:["Carpenter's Tools","Handaxe"] },
+  mason:{ label:"Mason", group:"Trades", cls:"Commoner", blocks:["Commoner","Tough"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:1,
+    look:["stone dust in every crease","broad shoulders and a bent back","a hammer and chisel in the belt","hands like rough-cut granite"],
+    voice:["slow and careful, like setting a stone","proud of the old buildings they've repaired","mistrusts anything made of wood"],
+    wants:["a cathedral to build before they die","good quarry stone","their guild's rights respected","an apprentice with a steady hand"],
+    secret:["knows a tunnel under the old wall","carved their own face into a saint's statue","skimped on a foundation that's about to fail"],
+    knows:["every crack in the city wall","the old tunnels and cellars","which buildings are older than they look"],
+    carries:["Mason's Tools","Crowbar"] },
+  ropemaker:{ label:"Rope-maker", group:"Trades", cls:"Commoner", blocks:["Commoner"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:1,
+    look:["rope-burned palms","walks backwards out of habit","hemp fibres caught in their clothes","lean and wiry from the ropewalk"],
+    voice:["ties knots in everything while talking","sailors' slang, though they've never sailed","counts strands under their breath"],
+    wants:["good hemp","a ship that'll test their rope in a storm","the ropewalk's lease renewed","respect from the sailors"],
+    secret:["made a rope that failed and someone fell","sells rope to the wreckers","once hanged a man, for the city"],
+    knows:["which ships bought new rigging","who's buying rope in odd lengths","every knot there is"],
+    carries:["Rope","Dagger"] },
+  shipwright:{ label:"Shipwright", group:"Trades", cls:"Commoner", blocks:["Commoner","Tough"], disp:{ ally:3, neutral:5, enemy:2 }, wealth:2,
+    look:["tar to the elbows","an adze over one shoulder","eyes that size up every hull","weathered, salt-scarred hands"],
+    voice:["talks about ships as 'she' and people as 'it'","critical of every ship in the harbour","speaks in measurements"],
+    wants:["timber from the inland forests","to build a ship faster than any afloat","a patron with deep pockets","to repair the ship nobody else can"],
+    secret:["built a ship with a hidden hold for smugglers","knows which ships in port won't survive a storm","sabotaged a rival's launch"],
+    knows:["the history of every ship in port","which ships are seaworthy","who's ordered a new ship and why"],
+    carries:["Carpenter's Tools","Hammer"] },
+  sailor:{ label:"Sailor", group:"Sea and docks", cls:"Rogue", blocks:["Commoner","Pirate","Tough"], disp:{ ally:3, neutral:5, enemy:2 }, wealth:1,
+    look:["a sunburned neck and a sea-rolling walk","tattoos of every port they've visited","a knife in the boot and an earring","hair stiff with salt"],
+    voice:["swears like the sea itself","full of tall tales from far islands","sings shanties without noticing"],
+    wants:["a berth on a ship that pays","shore leave and a drink","to get home to the islands","a captain who isn't mad"],
+    secret:["deserted a navy ship","has seen something at sea nobody believes","owes a debt to a pirate captain"],
+    knows:["the currents and the reefs","which captains are honest","rumours from every port"],
+    carries:["Dagger","Rope"] },
+  dockhand:{ label:"Dockhand", group:"Sea and docks", cls:"Commoner", blocks:["Commoner","Tough"], disp:{ ally:3, neutral:5, enemy:2 }, wealth:1,
+    look:["a back like a barrel","a hook for hauling cargo","sweat-stained and cheerful","a bandaged hand from a crushed finger"],
+    voice:["talks in grunts and nods","complains about the foreman","knows a joke about every cargo"],
+    wants:["a full day's pay","a ship that unloads before dark","to join a crew and leave the docks","the foreman to fall off a pier"],
+    secret:["skims a little from every cargo","took coin to look the other way","knows where the bodies went"],
+    knows:["what every ship is carrying","which crates are too heavy for what they say","who unloads at night"],
+    carries:["Grappling Hook","Club"] },
+  fisher:{ label:"Fisher", group:"Sea and docks", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:1,
+    look:["nets slung over one shoulder","smells of fish, cheerfully","a wide straw hat","hands scarred by hooks and line"],
+    voice:["predicts the weather, often wrongly","talks about the one that got away","speaks slowly, like the tide"],
+    wants:["a good catch before the storm","a new boat","to keep the big ships off their grounds","their son to come home from the sea"],
+    secret:["fishes waters they're forbidden to","found something in a net they're afraid to tell","carries messages for smugglers"],
+    knows:["the reefs, the currents and the weather","what's been washing up on the beaches","strange lights at sea"],
+    carries:["Fishing Tackle","Net"] },
+  smuggler:{ label:"Smuggler", group:"Sea and docks", cls:"Rogue", blocks:["Bandit","Pirate","Spy"], disp:{ ally:2, neutral:4, enemy:4 }, wealth:2,
+    look:["a forgettable face, on purpose","a coat with too many pockets","always near a door","dressed like a merchant, walks like a sailor"],
+    voice:["says nothing that could be repeated in court","uses code words for everything","charming, and lying"],
+    wants:["a ship that's fast and quiet","the customs officer bribed or gone","a buyer for a cargo they shouldn't have","a hidden cove nobody knows"],
+    secret:["works for someone in the city's government","informs on rival smugglers","has a cargo they're too frightened to move"],
+    knows:["hidden coves and landings","who in customs can be bought","the night routes past the patrols"],
+    carries:["Dagger","Lantern, Hooded"] },
+  councillor:{ label:"Councillor", group:"Power and law", cls:"Noble", blocks:["Noble"], disp:{ ally:3, neutral:4, enemy:3 }, wealth:4,
+    look:["a chain of office and a fur-trimmed robe","a politician's smile that never reaches the eyes","rings of the guilds they owe","silver hair, carefully arranged"],
+    voice:["never answers a question directly","speaks as if to a crowd","drops names constantly"],
+    wants:["votes, and the coin to buy them","a scandal to sink a rival","the crew's discoveries credited to the council","a trade deal that makes them rich"],
+    secret:["takes bribes from a rival city","has a family nobody knows about","arranged an accident for an opponent"],
+    knows:["the city's real finances","who owes whom","what the council plans next"],
+    carries:["Signet Ring","Clothes, fine"] },
+  magistrate:{ label:"Magistrate", group:"Power and law", cls:"Noble", blocks:["Noble"], disp:{ ally:2, neutral:6, enemy:2 }, wealth:4,
+    look:["black robes and a heavy seal","stern, sleepless eyes","a powdered wig slightly askew","ink on their cuffs from signing warrants"],
+    voice:["speaks in the language of the law","pauses before every judgement","weary, but sharp"],
+    wants:["order in the city","a case that makes their name","the guilty punished, and the right ones","to retire with their reputation intact"],
+    secret:["took a bribe once and is still paying for it","hanged an innocent and knows it","is blackmailed by a crime lord"],
+    knows:["the city's laws and how to bend them","every criminal case of the last ten years","which guards are honest"],
+    carries:["Ink Pen","Book"] },
+  lawyer:{ label:"Lawyer", group:"Power and law", cls:"Rogue", blocks:["Noble","Spy"], disp:{ ally:2, neutral:6, enemy:2 }, wealth:3,
+    look:["a satchel stuffed with contracts","ink-stained fingers and a sharp coat","spectacles pushed up their forehead","a quill behind one ear"],
+    voice:["argues every point, even agreeing","speaks in clauses and exceptions","charges for the conversation"],
+    wants:["a client who pays","a case they can win","a loophole in the harbour laws","a seat on the council"],
+    secret:["forged a will that made a family rich","represents both sides of a dispute","knows the council's darkest contract"],
+    knows:["the law, its loopholes and its prices","who's suing whom","every contract the Guild has signed"],
+    carries:["Ink","Paper"] },
+  clerk:{ label:"Clerk", group:"Power and law", cls:"Commoner", blocks:["Commoner"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:1,
+    look:["ink-stained fingers and a hunched back","spectacles thick as portholes","a coat shiny at the elbows","a stack of ledgers always under one arm"],
+    voice:["precise to the point of tedium","quotes forms by number","nervous of anyone important"],
+    wants:["a promotion they'll never get","a quiet day","someone to notice their work","to fix a mistake before anyone finds it"],
+    secret:["altered a record for a bribe","reads everything they copy","knows where the bodies are buried, in the ledgers"],
+    knows:["the records: births, deaths, ships, debts","who's been asking about whom","what the officials are hiding in plain sight"],
+    carries:["Ink Pen","Paper"] },
+  taxman:{ label:"Tax collector", group:"Power and law", cls:"Commoner", blocks:["Commoner","Spy"], disp:{ ally:1, neutral:5, enemy:4 }, wealth:3,
+    look:["a ledger and two guards","a sour expression and a fine coat","counts coins without looking","a seal of office on a chain"],
+    voice:["recites what you owe before hello","polite, relentless, and cold","sighs at every excuse"],
+    wants:["the full amount, today","a promotion to the harbour customs","to catch a big smuggler","to be liked, secretly"],
+    secret:["keeps a little of every collection","lets friends pay less","is terrified of a debt of their own"],
+    knows:["who has money and who's hiding it","every business in the district","which ships under-declare their cargo"],
+    carries:["Ink Pen","Paper"] },
+  ruffian:{ label:"Ruffian", group:"The street", cls:"Fighter", blocks:["Tough","Bandit","Tough Boss"], disp:{ ally:1, neutral:3, enemy:6 }, wealth:1,
+    look:["knuckles scarred and swollen","a cudgel and a sneer","a broken nose healed crooked","a fresh black eye and a grin"],
+    voice:["talks with their fists ready","calls everyone 'mate', menacingly","laughs too loudly at their own threats"],
+    wants:["a job that pays, no questions","to prove they're the toughest on the street","protection money from the shops","a drink and a fight"],
+    secret:["works for someone they're terrified of","has a family they send coin to","is an informer for the watch"],
+    knows:["who runs the streets","which shops pay protection","where the gangs meet"],
+    carries:["Club","Dagger"] },
+  fence:{ label:"Fence", group:"The street", cls:"Rogue", blocks:["Spy","Bandit"], disp:{ ally:2, neutral:5, enemy:3 }, wealth:3,
+    look:["an ordinary shop and extraordinary eyes","rings that change every visit","a smile that measures your pockets","always polishing something"],
+    voice:["never asks where things came from","prices everything at half what it's worth","speaks in a low, friendly murmur"],
+    wants:["rare goods, no questions asked","a buyer across the sea","the watch kept sweet","a way out of the business"],
+    secret:["sells to the watch captain's wife","keeps a record of every thief who's sold to them","is fencing something cursed"],
+    knows:["what's been stolen and by whom","who's buying what","the city's black market prices"],
+    carries:["Thieves' Tools","Magnifying Glass"] },
+  beggar:{ label:"Beggar", group:"The street", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:1,
+    look:["rags and a tin cup","a crutch they don't always need","a kind face under the dirt","bare feet black with street grime"],
+    voice:["blesses everyone who gives","notices everything and says so","sings for coins"],
+    wants:["a meal and a dry place to sleep","to be seen as a person","a coin, or a kind word","their old life back"],
+    secret:["was once a wealthy merchant","is a spy for the thieves' guild","knows who killed someone important"],
+    knows:["everything that happens on the street","who comes and goes at night","the city's hidden corners"],
+    carries:["Mess Kit","Blanket"] },
+  pickpocket:{ label:"Pickpocket", group:"The street", cls:"Rogue", blocks:["Commoner","Spy","Bandit"], disp:{ ally:2, neutral:4, enemy:4 }, wealth:1,
+    look:["small, quick and forgettable","fingers that never stop moving","a smile that's too innocent","dressed to blend into any crowd"],
+    voice:["chatters to distract","apologises a lot, while lifting your purse","speaks quickly and is gone"],
+    wants:["a fat purse and a clean escape","to join the thieves' guild","a meal for their little brother","to never get caught"],
+    secret:["stole something they don't understand","works for a gang boss they fear","once picked the pocket of a royal"],
+    knows:["the crowds and their rhythms","which guards look the other way","the escape routes over the rooftops"],
+    carries:["Thieves' Tools","Dagger"] },
+  priest:{ label:"Priest", group:"Faith and learning", cls:"Cleric", blocks:["Priest Acolyte","Priest"], disp:{ ally:5, neutral:4, enemy:1 }, wealth:2,
+    look:["vestments and a holy symbol","a calm face and tired eyes","prayer beads always moving","a shaved head and bare feet"],
+    voice:["speaks in parables","blesses everyone who passes","patient, gentle, unshakeable"],
+    wants:["the temple roof repaired","souls saved, or at least fed","a relic returned","peace between the factions"],
+    secret:["has lost their faith","hears confessions that could topple the council","took temple funds to feed the poor"],
+    knows:["the city's sins, from confession","the old prophecies","who's dying and who's grieving"],
+    carries:["Holy Symbol, Amulet)","Book"] },
+  healer:{ label:"Healer", group:"Faith and learning", cls:"Cleric", blocks:["Priest Acolyte","Commoner"], disp:{ ally:5, neutral:4, enemy:1 }, wealth:1,
+    look:["sleeves rolled and bloodstained","a satchel of bandages and herbs","exhausted, but steady-handed","smells of vinegar and lavender"],
+    voice:["matter-of-fact about terrible wounds","scolds patients like children","calm in any crisis"],
+    wants:["clean water and fresh bandages","patients who listen","a cure for the fever in the docks","a night's sleep"],
+    secret:["sometimes helps the dying go","treats criminals without asking questions","stole medicines from the temple"],
+    knows:["who's sick, injured or pregnant","which wounds came from fights","the fevers going round the docks"],
+    carries:["Healer's Kit","Antitoxin"] },
+  scholar:{ label:"Scholar", group:"Faith and learning", cls:"Wizard", blocks:["Commoner","Mage"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:2,
+    look:["ink-stained, bespectacled, distracted","a satchel of books and scrolls","robes faded from too much reading","talks to themself while thinking"],
+    voice:["lectures when asked a simple question","corrects everyone's pronunciation","excited about the strangest things"],
+    wants:["an ancient text","a patron to fund their research","proof of a theory everyone laughs at","the crew's maps and journals"],
+    secret:["stole a book from the library","is close to discovering something dangerous","forged an ancient manuscript"],
+    knows:["the history of the islands","ancient languages and legends","the location of old ruins"],
+    carries:["Book","Ink Pen"] },
+  noble:{ label:"Noble", group:"Everyone else", cls:"Noble", blocks:["Noble"], disp:{ ally:2, neutral:5, enemy:3 }, wealth:5,
+    look:["silks, lace and a sneer","a family crest on everything","a bodyguard two steps behind","perfumed and powdered"],
+    voice:["speaks as if everyone else is a servant","bored by everything","charming, when it suits them"],
+    wants:["rare and wondrous things","a marriage that brings power","the family fortune restored","to outshine a rival family"],
+    secret:["the family is secretly broke","has a scandalous love affair","the family's title was bought, not inherited"],
+    knows:["high society gossip","the council's secret dealings","which families are falling"],
+    carries:["Signet Ring","Clothes, fine"] },
+  servant:{ label:"Servant", group:"Everyone else", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:1,
+    look:["a neat uniform and downcast eyes","quiet footsteps","hands red from scrubbing","a household's livery, a little worn"],
+    voice:["speaks only when spoken to","polite and careful","gossips freely once away from the house"],
+    wants:["a day off","a better household","to be treated as a person","their wages, paid on time"],
+    secret:["steals small things from the household","knows the master's darkest secret","is a spy for another family"],
+    knows:["everything that happens in their household","the comings and goings of guests","where the valuables are kept"],
+    carries:["Clothes, Common"] },
+  farmer:{ label:"Farmer", group:"Everyone else", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:1,
+    look:["sunburned and weathered","mud to the knees","a straw hat and a pitchfork","strong hands and a slow smile"],
+    voice:["talks about the weather and the soil","suspicious of city folk","speaks slowly, plainly"],
+    wants:["rain, but not too much","a fair price for the harvest","the tax collector to leave them alone","a strong back to help with the harvest"],
+    secret:["grows something illegal in the back field","found something buried while ploughing","is hiding a fugitive in the barn"],
+    knows:["the land and the seasons","the roads and the villages inland","strange things seen in the fields at night"],
+    carries:["Sickle","Sack"] },
+  guard:{ label:"Guard", group:"Power and law", cls:"Fighter", blocks:["Guard","Guard Captain"], disp:{ ally:2, neutral:6, enemy:2 }, wealth:1,
+    look:["the city's colours and a dented helm","a spear and a bored expression","a scar from a riot","boots worn through from patrols"],
+    voice:["asks for papers out of habit","speaks in orders","friendly off duty, stiff on it"],
+    wants:["a quiet shift","their pay on time","a promotion","to catch a thief and be a hero"],
+    secret:["takes bribes to look the other way","is in love with a smuggler","was there when something terrible happened"],
+    knows:["the patrol routes","who's been arrested lately","the city's troublemakers"],
+    carries:["Spear","Signal Whistle"] },
+  merchant:{ label:"Merchant", group:"Everyone else", cls:"Commoner", blocks:["Commoner","Noble"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:3,
+    look:["a fine coat and a ledger","rings on fat fingers","a sharp eye for price","travel-worn but well dressed"],
+    voice:["sells, even in conversation","talks about profit and loss","friendly, until the deal"],
+    wants:["a cargo that'll make their fortune","a ship they can trust","new markets on unknown islands","to cut out the middlemen"],
+    secret:["trades with the city's enemies","has a cargo that isn't what it seems","is deep in debt"],
+    knows:["prices in every port","which ships are trustworthy","what sells, and where"],
+    carries:["Scale, Merchant's","Ink Pen"] }
+};
+const kindOptions = cur => `<option value="">Anyone (by class)</option>${PEOPLE_KIND_GROUPS.map(g=>`<optgroup label="${g}">${Object.entries(PEOPLE_KINDS).filter(([, k])=>k.group===g).map(([id, k])=>`<option value="${id}" ${cur===id?"selected":""}>${k.label}</option>`).join("")}</optgroup>`).join("")}`;
+/* a weighted pick: { ally:3, neutral:6, enemy:1 } */
+const pickWeighted = w => { const e = Object.entries(w||{}), sum = e.reduce((a, [, v])=>a + v, 0); let r = Math.random()*sum; for(const [k, v] of e){ r -= v; if(r < 0) return k; } return e.length ? e[e.length-1][0] : ""; };
+/* from the kind's own list mostly, now and then the general one */
+const kindPick = (own, general, p = .8) => own && own.length && (!general || Math.random() < p) ? pickOne(own) : pickOne(general);
+let genOpts = { level:null, disp:"", type:"Humanoid", role:"", kind:"", species:"", align:"" }, genResult = null;
 const partyAvgLevel = () => { const l = partyLevels(); return l.length ? Math.round(l.reduce((a,b)=>a+b,0)/l.length) : 1; };
 
 /* someone to meet. `over` changes a setting for this one roll (an encounter rolls its people with a share
@@ -11333,9 +11577,9 @@ const partyAvgLevel = () => { const l = partyLevels(); return l.length ? Math.ro
 function genPerson(over){
   const o = Object.assign({}, genOpts, over||{});
   if(o.type && o.type!=="Humanoid") return genCreature(o);          // a beast, a dragon, a fiend… met as someone
-  const lv = clampLv(o.level || partyAvgLevel());
-  const disp = o.disp || pickOne(["enemy","neutral","ally"]);
-  const cls = pickClass(o.role, disp), names = CLASS_BLOCKS[cls] || CLASS_BLOCKS.Commoner;
+  const lv = clampLv(o.level || partyAvgLevel()), K = o.kind && PEOPLE_KINDS[o.kind];
+  const disp = o.disp || (K ? pickWeighted(K.disp) : pickOne(["enemy","neutral","ally"]));
+  const cls = K ? K.cls : pickClass(o.role, disp), names = K ? K.blocks : CLASS_BLOCKS[cls] || CLASS_BLOCKS.Commoner;
   const all = SRD_FOES.filter(f=>names.includes(f.name));
   const pool = all.filter(f=>f.cr <= lv && (!o.maxXp || f.xp <= o.maxXp));
   const near = pool.filter(f=>f.cr >= lv/4);                      // something that can matter at this level
@@ -11349,7 +11593,8 @@ function genPerson(over){
   const g = { kind:"person", disp, level:lv, roleChoice:o.role||"", align:o.align || rollAlignment(disp),
     name:`${pickOne(GEN_FIRST)}${nick} ${pickOne(GEN_FAMILY)}`, species:o.species || pickOne(GEN_SPECIES), role:cls, group:groupOfClass(cls),
     foe:sb.id, hp:rollDiceExpr(sb.hd) || foeMaxHp(sb), hd:sb.hd || "", statBlock:arms.sb, spells:cast ? cast.spells : [], spellClass:cast ? cast.cls : "",
-    cast:cast && cast.slots ? cast : null, swaps:arms.swaps, look:pickOne(GEN_LOOK), voice:pickOne(GEN_VOICE), wants:pickOne(GEN_WANTS[disp]), secret:pickOne(GEN_SECRET), backstory:genBackstory() };
+    cast:cast && cast.slots ? cast : null, swaps:arms.swaps, look:kindPick(K && K.look, GEN_LOOK), voice:kindPick(K && K.voice, GEN_VOICE), wants:kindPick(K && K.wants, GEN_WANTS[disp], disp==="enemy" ? .75 : .9), secret:kindPick(K && K.secret, GEN_SECRET, .85), backstory:genBackstory(),
+    ...(K ? { kind:o.kind, occupation:K.label, knows:pickOne(K.knows||[""]), carries:(K.carries||[]).slice(), wealth:K.wealth } : {}) };
   g.person = buildPerson(g);
   return g;
 }
@@ -11384,8 +11629,8 @@ function genEncounter(){
 function buildPerson(g){
   const sb = foeById(g.foe);
   const p = Object.assign(sb ? personFromCreature(g.foe) : blankLib("npcs"), {
-    name:g.name, role:`${{enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]} · ${g.species} ${String(g.role||"").toLowerCase()}`.trim(),
-    species:g.species, cls:g.role||"", where:"", align:g.align||"", look:g.look, voice:g.voice, wants:g.wants, knows:"", backstory:g.backstory||"", fightsAs:g.foe||"" });
+    name:g.name, role:`${{enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]} · ${g.species} ${String(g.occupation||g.role||"").toLowerCase()}`.trim(),
+    species:g.species, cls:g.role||"", where:"", align:g.align||"", look:g.look, voice:g.voice, wants:g.wants, knows:g.knows||"", ...(g.kind ? { kind:g.kind } : {}), backstory:g.backstory||"", fightsAs:g.foe||"" });
   if(sb){
     p.cr = sb.cr; p.skills = sb.sk || "";
     if(g.hp){ p.hpMax = String(g.hp); p.hp = String(g.hp); }
@@ -11404,6 +11649,7 @@ function buildPerson(g){
       : g.spells && g.spells.length ? `Spells re-rolled from the ${g.spellClass} list at the stat block's own levels.` : "",
     (g.swaps||[]).length ? `Chose ${g.swaps.map(([a, b])=>`${b} over the ${a}`).join(", ")}.` : ""].filter(Boolean).join("\n");
   p.purse = personPurse(g);
+  if((g.carries||[]).length) p.carries = g.carries.join("\n");       // what someone of their kind has on them
   completeSheet(p);
   return p;
 }
@@ -11442,6 +11688,7 @@ function personPurse(g){
   const lv = clampLv(g.level || 1), cls = String(g.role||"");
   let cat = cls==="Commoner" ? 1 : lv <= 6 ? 2 : lv <= 10 ? 3 : lv <= 14 ? 4 : 5;
   if(cls==="Noble") cat = Math.min(5, cat + 1);
+  if(g.wealth) cat = g.wealth;                                        // a kind of person's own purse
   const P = PURSES.find(q=>q.cat===cat), m = P && /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|ep|gp|pp)/.exec(P.dice || ""); if(!m) return {};
   let n = 0; for(let i=0; i<+m[1]; i++) n += 1 + Math.floor(Math.random()*+m[2]);
   return { [m[4]]: n * +(m[3]||1) };
@@ -11546,7 +11793,8 @@ function renderRoll(){
       <div class="field" style="flex:1.3"><label>Attitude</label><select id="gn-disp">${[["","Any"],["enemy","Enemy"],["neutral","Neutral"],["ally","Potential ally"]].map(([v,l])=>`<option value="${v}" ${v===genOpts.disp?"selected":""}>${l}</option>`).join("")}</select></div></div>
     <div class="pcrow">
       <div class="field" style="flex:1"><label>Type</label><select id="gn-type"><option value="">Any</option>${CREATURE_TYPES.map(t=>`<option ${t===genOpts.type?"selected":""}>${t}</option>`).join("")}</select></div>
-      ${genOpts.type==="Humanoid"?`<div class="field" style="flex:1.2"><label>Class</label><select id="gn-role">${roleOptions(genOpts.role)}</select></div>`:""}</div>
+      ${genOpts.type==="Humanoid" && !genOpts.kind?`<div class="field" style="flex:1.2"><label>Class</label><select id="gn-role">${roleOptions(genOpts.role)}</select></div>`:""}</div>
+    ${genOpts.type==="Humanoid"?`<div class="field"><label>Kind of person <small>what they do for a living</small></label><select id="gn-kind">${kindOptions(genOpts.kind)}</select></div>`:""}
     ${genOpts.type && genOpts.type!=="Humanoid" ? `<div class="field"><label>Which ${esc(genOpts.type.toLowerCase())}</label><select id="gn-foe">${creatureOptions(genOpts.type, genOpts.foe)}</select></div>` : ""}
     <div class="field"><label>Alignment</label><select id="gn-align"><option value="">Any — one that fits the attitude</option>${ALIGNMENTS.map(a=>`<option ${a===genOpts.align?"selected":""}>${a}</option>`).join("")}</select></div>
     ${genOpts.type==="Humanoid"?`<div class="field"><label>Species</label><select id="gn-species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===genOpts.species?"selected":""}>${s}</option>`).join("")}</select></div>`:""}
@@ -11918,6 +12166,7 @@ $("#pane-roll").addEventListener("change", e=>{
   if(t.id==="gn-type"){ genOpts.type = t.value; genOpts.foe = ""; if(t.value!=="Humanoid"){ genOpts.role = ""; genOpts.species = ""; } renderRoll(); return; }
   if(t.id==="gn-foe"){ genOpts.foe = t.value; return; }
   if(t.id==="gn-role"){ genOpts.role = t.value; return; }
+  if(t.id==="gn-kind"){ genOpts.kind = t.value; renderRoll(); return; }
   if(t.dataset.crowdk!=null && genResult && genResult.kind==="crowd"){ const g = genResult, k = +t.dataset.crowdk;
     g.people[k] = genPerson({ level:g.level, disp:g.disp, maxXp:crowdRoom(g, k), role:t.value }); renderRoll(); return; }
   if(t.id==="gn-species"){ genOpts.species = t.value; return; }
