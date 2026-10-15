@@ -1,0 +1,10 @@
+follow set true, course before the crew has one: false | She'll take up The Sallowmay's course as soon as they set one.
+after the crew sets a course: rival bound for Lantern Rock, same course true
+own sailing: crew day 4, night (about 12:45 am) / rival day 4, night (about 1 am)
+timed default: {"mode":"timed","h":6,"after":true,"dice":"1d12","way":""} -> rival day 4, dusk or dawn (about 6:45 am) (crew + 6.0 h)
+3 h before: rival - crew = -3.0 h
+crew in at day 4, night (about 12:45 am), rival due day 3, night (about 9:45 pm)
+halfway: rival 48.6 mi to go
+just before her time: rival course 1.1 mi left
+after her time: arrived day 3, night (about 9:45 pm) = start + 47.9 h (crew trip 50.9)
+rolled: 1d12: 7 hours before (a coin toss picked which) | panel: timed to get in 7 hours before The Sallowmay: arrives day 3, night (about 10:15 pm).

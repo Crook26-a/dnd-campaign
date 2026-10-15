@@ -3001,6 +3001,7 @@ function voyageBarHtml(){
     <button data-vb="shape" ${courseEdit===s.id?`class="on"`:""}>${courseEdit===s.id?"Done shaping":"Shape"}</button><button data-vb="clear" title="Drop the course">×</button>`;
 }
 function renderVoyageBar(){
+  syncFollowers();                                        // a rival following the crew takes up their course as it's set
   let el = document.getElementById("voyagebar");
   if(!el){ document.getElementById("field").insertAdjacentHTML("beforeend", `<div id="voyagebar" hidden></div>`); el = document.getElementById("voyagebar"); wireVoyageBar(el); }
   const h = voyageBarHtml(); el.hidden = !h;
@@ -3041,30 +3042,56 @@ const partyShip = () => root.nodes.find(n=>sailsAbout(n) && !n.rival) || null;
 const worldHours = () => (campaignDay()-1)*24 + clockHour();
 const whenWord = h => { const d = Math.floor(h/24), r = h - d*24; return `day ${d+1}, ${TIME_WORD[phaseAt(r)]} (about ${hourWord(r)})`; };
 function courseRate(s){                                    // world hours per mile, the navigator's check included
-  const c = s.course; if(!c) return 0; if(c.rate) return c.rate;
+  const c = s.course; if(!c) return 0;
+  if(isRival(s)){ const T = timedArrival(s); if(T!=null){ const m = courseMiles(s); return m ? Math.max(.005, (T - Math.max(worldHours(), c.leaves||0)) / m) : 0; } }
+  if(c.rate) return c.rate;
   const m = courseMiles(s); return m ? navAdjust(m / sailMph(s) * dayFactor(s), c.nav) / m : 0;
 }
 function rivalInView(r){ const p = partyShip(); return !!p && Math.hypot(p.x-r.x, p.y-r.y) <= spotMiles()*(root.ppm||10); }
 /* when each ship gets in: [world hour she arrives, or null] */
 function rivalEta(s){ const c = s.course; if(!c || !c.pts.length) return null; return Math.max(worldHours(), c.leaves||0) + courseMiles(s)*courseRate(s); }
 function partyEta(s){ const c = s && s.course; if(!c || !c.pts.length) return null; return worldHours() + courseMiles(s)*courseRate(s); }
+/* she can follow the crew (n.follow): wherever their ship is bound, she's bound too, on the same course. Until she's
+   moved she keeps taking up their course as it changes; once under way she only turns if their destination changes. */
+function syncFollowers(){
+  if(typeof root==="undefined" || !root || !root.nodes) return;
+  const p = partyShip(), pc = p && p.course; if(!pc || !pc.to || !pc.pts.length) return;
+  const key = pc.to + "|" + ptsKey(pc.pts);
+  for(const r of root.nodes){
+    if(!isRival(r) || !r.follow || r===p) continue;
+    const c = r.course; if(c && (c.follow===key || (c.moved && c.to===pc.to))) continue;
+    r.course = { pts:pc.pts.map(q=>({ x:q.x, y:q.y })), mps:(c && c.mps) || r.pace || 2, to:pc.to, follow:key, leaves:c && c.leaves!=null ? c.leaves : worldHours(), ...(c && c.nav ? { nav:c.nav } : {}) };
+  }
+}
+/* her arrival timed against the crew's (n.arrive = { mode:"timed", h, after }): so many hours before or after their
+   ship gets in. While the crew is bound for the same place their arrival is worked out afresh (c.partyAt); once they're
+   in, it's the hour they got there. Bound for different places, she goes back to her own sailing. */
+function timedArrival(s){
+  const A = s.arrive, c = s.course; if(!A || A.mode!=="timed" || !c) return null;
+  const p = partyShip(), pc = p && p.course;
+  if(pc && pc.to && pc.to===c.to && pc.pts.length) c.partyAt = partyEta(p);
+  return c.partyAt!=null ? c.partyAt + (A.after ? 1 : -1) * (+A.h||0) : null;
+}
 /* the world's time moved on: every rival under way moves as far as that time takes her */
 function rivalTick(){
   if(typeof root==="undefined" || !root || !root.nodes) return false;
   const now = worldHours(), last = root.rivalClock; let moved = false;
   if(last==null){ root.rivalClock = now; return false; }
   if(now <= last) return false;                         // time put back by hand: she waits until it passes where she was
-  root.rivalClock = now;
+  root.rivalClock = now; syncFollowers();
   for(const s of root.nodes){
     if(!isRival(s) || !s.course || !s.course.pts.length) continue;
     const c = s.course, start = Math.max(last, c.leaves||last); if(now <= start) continue;
-    if(!c.rate){ c.rate = courseRate(s); c.miles0 = courseMiles(s); }
-    let go = (now - start) / (c.rate || 1) * (root.ppm||10);
+    if(c.miles0==null) c.miles0 = courseMiles(s);
+    /* timed against the crew: whatever pace gets her in at that hour; otherwise her own, fixed when she sets off */
+    const T = timedArrival(s), rate = T!=null ? Math.max(.005, (T - start) / Math.max(.01, courseMiles(s))) : (c.rate = c.rate || courseRate(s));
+    c.moved = true;
+    let go = (now - start) / (rate || 1) * (root.ppm||10);
     while(go > 0 && c.pts.length){ const p = c.pts[0], d = Math.hypot(p.x-s.x, p.y-s.y);
       if(d <= go){ s.x = p.x; s.y = p.y; go -= d; c.pts.shift(); } else { s.x += (p.x-s.x)*go/d; s.y += (p.y-s.y)*go/d; go = 0; } }
     s.x = Math.round(s.x*10)/10; s.y = Math.round(s.y*10)/10; moved = true;
     if(!c.pts.length){
-      const to = c.to && nodeById(c.to), at = now - go/(root.ppm||10)*(c.rate||1);
+      const to = c.to && nodeById(c.to), at = now - go/(root.ppm||10)*(rate||1);
       s.lastVoyage = { miles:Math.round((c.miles0||0)*10)/10, hours:Math.round((at - (c.leaves||start))*10)/10, day:Math.floor(at/24)+1, time:phaseAt(at%24), to:to?to.name:"", at };
       delete s.course;
       flash(`${s.name||"The rival"} reaches ${to?to.name||"her destination":"the end of her course"}: ${whenWord(at)}.`);
@@ -3078,14 +3105,27 @@ function rivalBlock(n){
   const nav = (c && c.nav) || {}, left = c && c.leaves > now, under = c && !left;
   const p = partyShip(), pe = p && p.course && to && p.course.to===to.id ? partyEta(p) : null;
   const race = eta!=null && pe!=null ? (pe < eta ? `The crew gets there first, by ${hoursWord(eta - pe)}.` : pe > eta ? `She gets there first, by ${hoursWord(pe - eta)}.` : "They'd arrive together.") : "";
-  const lv = n.lastVoyage;
+  const lv = n.lastVoyage, pn = esc((p||{}).name||"the crew's ship"), A = n.arrive && n.arrive.mode==="timed" ? n.arrive : null, T = c ? timedArrival(n) : null;
+  const portOpts = n.follow ? ports.replace(/ selected/g, "") : ports;
+  /* when she gets there: by her own sailing, or timed so many hours before or after the crew (set, or rolled) */
+  const arrive = (c || n.follow) ? `<div class="field" style="margin:4px 0"><label>When she gets there</label><select data-rival="amode"><option value="">By her own sailing</option><option value="timed" ${A?"selected":""}>Timed against ${pn}</option></select></div>
+    ${A ? `<div class="pcrow" style="align-items:center;gap:4px"><input data-rival="ah" class="mono" type="number" min="0" step="0.5" style="width:52px" value="${A.h||0}"><span class="mini">hours</span>
+        <select data-rival="adir"><option value="after" ${A.after?"selected":""}>after</option><option value="before" ${A.after?"":"selected"}>before</option></select><span class="mini">${pn}</span></div>
+      <div class="pcrow" style="align-items:center;gap:4px;margin-top:4px"><span class="mini" style="flex:1">Or roll it</span>
+        <select data-rival="adice">${["1d4","1d6","1d8","1d12","2d6","1d20","2d12"].map(x=>`<option ${(A.dice||"1d12")===x?"selected":""}>${x}</option>`).join("")}</select><span class="mini">hours</span>
+        <select data-rival="away"><option value="">either way</option><option value="after" ${A.way==="after"?"selected":""}>after</option><option value="before" ${A.way==="before"?"selected":""}>before</option></select>
+        <button class="btn" data-rivalb="roll">Roll</button></div>
+      ${A.rolled ? `<p class="empty-note" style="font-size:11px;margin:3px 0 0">Rolled ${esc(A.rolled)}.</p>` : ""}
+      ${c && T==null ? `<p class="empty-note" style="font-size:11px;margin:3px 0 0">${pn} isn't bound for ${esc(to ? to.name||"her destination" : "the same place")}, so for now she sails at her own pace.</p>` : ""}` : ""}` : "";
   return `<p class="grouplab" style="margin:8px 0 3px">The rival's voyage</p>
-    <div class="field" style="margin-bottom:4px"><label>She sails to</label><select data-rival="to"><option value="">${c?"(a point at sea)":"Nowhere yet: in port"}</option>${ports}</select></div>
+    <div class="field" style="margin-bottom:4px"><label>She sails to</label><select data-rival="to"><option value="">${c && !n.follow?"(a point at sea)":"Nowhere yet: in port"}</option><option value="follow" ${n.follow?"selected":""}>Wherever ${pn} is going</option>${portOpts}</select></div>
+    ${n.follow && !c ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">She'll take up ${pn}'s course as soon as they set one.</p>` : ""}
+    ${arrive}
     ${c ? `<div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="Your table rule, for her navigator too">Her navigator's check</label>
         <input data-rival="navtotal" class="mono" type="number" style="width:52px" value="${nav.total??""}" placeholder="total" ${under?"disabled":""}>
         <label class="check" style="margin:0"><input type="checkbox" data-rival="nat20" ${nav.nat20?"checked":""} ${under?"disabled":""}> nat 20</label></div>
       ${!under ? `<div class="field" style="margin:4px 0"><label>She sets off</label><select data-rival="leaves">${[[0,"Now"],[12,"In half a day"],[24,"In a day"],[48,"In 2 days"],[72,"In 3 days"]].map(([h,l])=>`<option value="${h}" ${Math.round(((c.leaves||now)-now))===h?"selected":""}>${l}</option>`).join("")}</select></div>` : ""}
-      <p class="empty-note" style="font-size:11px;margin:4px 0">${left ? `Sets off ${whenWord(c.leaves)}. ` : "Under way. "}${courseMiles(n).toFixed(1)} mi to go at ${sailMph(n)} mph${navWord(nav)?` (her navigator rolled ${esc(navWord(nav))})`:""}: arrives <b>${whenWord(eta)}</b>.${pe!=null ? ` The crew arrives ${whenWord(pe)}. <b>${race}</b>` : ""}</p>
+      <p class="empty-note" style="font-size:11px;margin:4px 0">${left ? `Sets off ${whenWord(c.leaves)}. ` : "Under way. "}${courseMiles(n).toFixed(1)} mi to go${T!=null ? `, timed to get in ${hoursWord(+A.h||0)} ${A.after?"after":"before"} ${pn}` : ` at ${sailMph(n)} mph${navWord(nav)?` (her navigator rolled ${esc(navWord(nav))})`:""}`}: arrives <b>${whenWord(eta)}</b>.${pe!=null ? ` The crew arrives ${whenWord(pe)}. <b>${race}</b>` : ""}</p>
       <div class="pcrow"><button class="btn" style="flex:1" data-rivalb="shape">${courseEdit===n.id?"Done shaping":"Shape her course"}</button><button class="fdel" data-rivalb="clear" title="Drop her course">×</button></div>`
     : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Pick where she's going: she sails by herself as the world's time passes.</p>`}
     ${lv && lv.to ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">She last reached ${esc(lv.to)} on ${whenWord(lv.at)}.</p>` : ""}
@@ -3094,7 +3134,13 @@ function rivalBlock(n){
 document.getElementById("pane-inspect").addEventListener("change", e=>{
   const t = e.target.closest("[data-rival]"); if(!t) return;
   const s = selNode(); if(!isRival(s)) return; const k = t.dataset.rival;
-  if(k==="to"){ const d = nodeById(t.value); if(d){ const keep = s.course && s.course.leaves; setCourseTo(s, d); courseEdit = null; s.course.leaves = keep!=null ? keep : worldHours(); } }
+  if(k==="to" && t.value==="follow"){ s.follow = true; const keep = s.course && s.course.leaves; delete s.course; courseEdit = null; syncFollowers(); if(s.course && keep!=null) s.course.leaves = keep; }
+  else if(k==="to"){ delete s.follow; const d = nodeById(t.value); if(d){ const keep = s.course && s.course.leaves; if(s.course) delete s.course.follow; setCourseTo(s, d); courseEdit = null; s.course.leaves = keep!=null ? keep : worldHours(); } else delete s.course; }
+  else if(k==="amode"){ if(t.value) s.arrive = { mode:"timed", h:(s.arrive && s.arrive.h) ?? 6, after:s.arrive ? s.arrive.after!==false : true, dice:(s.arrive && s.arrive.dice) || "1d12", way:(s.arrive && s.arrive.way) || "" }; else delete s.arrive; }
+  else if(k==="ah" && s.arrive){ s.arrive.h = Math.max(0, +t.value||0); delete s.arrive.rolled; }
+  else if(k==="adir" && s.arrive){ s.arrive.after = t.value==="after"; delete s.arrive.rolled; }
+  else if(k==="adice" && s.arrive) s.arrive.dice = t.value;
+  else if(k==="away" && s.arrive) s.arrive.way = t.value;
   else if(!s.course) return;
   else if(k==="leaves") s.course.leaves = worldHours() + (+t.value||0);
   else { const nav = s.course.nav = s.course.nav || { total:"", nat20:false }; if(k==="navtotal") nav.total = t.value==="" ? "" : Math.round(+t.value); else nav.nat20 = t.checked; delete s.course.rate; }
@@ -3104,7 +3150,11 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
   const b = e.target.closest("button[data-rivalb]"); if(!b) return;
   const s = selNode(); if(!isRival(s)) return;
   if(b.dataset.rivalb==="shape"){ courseEdit = courseEdit===s.id ? null : s.id; render(); renderPane(true); }
-  else { delete s.course; if(courseEdit===s.id) courseEdit = null; touch(); renderPane(true); }
+  else if(b.dataset.rivalb==="roll"){ const A = s.arrive; if(!A) return;
+    const h = rollDiceExpr(A.dice || "1d12") || 0, way = A.way || (Math.random() < .5 ? "after" : "before");
+    A.h = h; A.after = way==="after"; A.rolled = `${A.dice || "1d12"}: ${h} hours ${way}${A.way ? "" : " (a coin toss picked which)"}`;
+    touch(); renderPane(true); flash(`${s.name||"The rival"} gets in ${h} hours ${way} ${(partyShip()||{}).name||"the crew"}.`); }
+  else { delete s.course; delete s.follow; if(courseEdit===s.id) courseEdit = null; touch(); renderPane(true); }
 });
 /* ══════════════════════════════════════════════════════════════
    WHEREABOUTS — where the party and the people are. A person is where a
