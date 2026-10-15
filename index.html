@@ -8778,7 +8778,7 @@ const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["W
 /* inside a town, a building with no layout of its own gets its kind's default */
 const KIND_INTERIOR = { house:"hut", ruinlet:"hut", store:"shop", provision:"shop", apothecary:"shop", smith:"shop", healer:"shop",
   fence:"shop", office:"shop", trainer:"shop", archive:"shop", stall:"stall", tent:"tent", warehouse:"warehouse", tower:"tower", light:"tower", ship:"ship" };
-const defaultInterior = n => n && sailsAbout(n) ? "ship" : planOf && n && KIND_INTERIOR[n.kind] ? KIND_INTERIOR[n.kind] : "";     // a ship anywhere: a ship's deck to start with
+const defaultInterior = n => n && sailsAbout(n) ? "ship" : planOf && n && n.shop ? (typeof BMAPS!=="undefined" && BMAPS["shop_" + n.shop.tpl] ? "shop_" + n.shop.tpl : "shop") : planOf && n && KIND_INTERIOR[n.kind] ? KIND_INTERIOR[n.kind] : "";     // a shop opens its own kind's map     // a ship anywhere: a ship's deck to start with
 /* ── camps: a clearing with the fire in the middle and a tent for each explorer, in country of six kinds.
    Each place's camp is laid out the same way every time (seeded by the place), and the tents follow the party. ── */
 const CAMP_KINDS = [["camp-forest","Camp: forest"],["camp-plains","Camp: plains"],["camp-desert","Camp: desert"],["camp-beach","Camp: beach"],["camp-hills","Camp: hills"],["camp-swamp","Camp: swamp"]];
@@ -8874,6 +8874,216 @@ function wildMap(kind, seed, road){
   wildCache.set(key, m); return m;
 }
 const seedTurn = s => { let h = 0; for(const ch of String(s||"")) h = (h*31 + ch.charCodeAt(0)) | 0; return (h % 628) / 100; };
+/* ── a battle map for each kind of shop (Joseph, 2026-10-15): what's inside a bakery, a smithy, a tavern… The way in is
+   the door on the street side; where everyone starts is worked out from the map (the party in the street by the door,
+   anyone else on the shop floor). A shop of a kind made in the Library uses "A small shop". ── */
+const SHOP_BMAPS = {
+  bakery:{ name:"A bakery", rows:[
+      "##ww######ww##",
+      "#GG==uuu==SSS#",
+      "#GG=======SSS#",
+      "#=====TT=====#",
+      "#=====TT==c==#",
+      "#kkkkk==kkkkk#",
+      "#============#",
+      "#=o========o=#",
+      "######DD######",
+      ".............."],
+    labels:[[2,0.25,"ovens"],[6.5,0.25,"flour"],[11,0.25,"loaves"],[6.5,3.6,"kneading table"],[3,5.6,"counter"]],
+    notes:"The ovens at the back, flour sacks and racks of loaves, the kneading table, and the counter between the bakers and the customers. Hot near the ovens." },
+  butcher:{ name:"A butcher's shop", rows:[
+      "##w########w##",
+      "#ooo=XX==JJJJ#",
+      "#============#",
+      "#==TT====TT==#",
+      "#==TT====TT==#",
+      "#============#",
+      "#kkkkkk==kkkk#",
+      "#============#",
+      "######DD######",
+      ".............."],
+    labels:[[2,0.25,"meat hooks"],[11,0.25,"cold store"],[3.5,2.6,"chopping blocks"],[3.5,5.6,"counter"]],
+    notes:"Meat hanging on hooks, a cold store, two chopping blocks with cleavers in them, and the counter. Sawdust on the floor." },
+  smithy:{ name:"A smithy", rows:[
+      "################",
+      "#FF::SSSS:::xx:#",
+      "#FF::::::::::::#",
+      "#::O:::::O:::::#",
+      "#::::::::::::::#",
+      "#:c:::TT::::c::#",
+      "#:::::TT:::::::#",
+      "#kkkk::::::::::#",
+      "#::::::::::::::#",
+      "#######DD#######",
+      "vvvvvvvvvvvvvvvv"],
+    labels:[[1.5,0.25,"the forge"],[6.5,0.25,"tools"],[3,2.6,"anvil"],[9,2.6,"anvil"],[6.5,4.6,"workbench"],[2.5,6.6,"counter"]],
+    notes:"The forge burning at the back (bright light 20 ft), two anvils, quench barrels and a workbench, tools on the walls. Flagstones underfoot." },
+  armourer:{ name:"An armourer's", rows:[
+      "##w#######w###",
+      "#SSS==JJJ==SS#",
+      "#============#",
+      "#=Z====Z===Z=#",
+      "#============#",
+      "#=TT======TT=#",
+      "#============#",
+      "#kkkk====kkkk#",
+      "######DD######",
+      ".............."],
+    labels:[[2,0.25,"racks"],[7,0.25,"armour"],[7,2.6,"armour on stands"],[2.5,4.6,"fitting bench"]],
+    notes:"Armour on stands down the middle, racks of shields and helms, fitting benches, and the counter." },
+  bowyer:{ name:"A bowyer and fletcher's", rows:[
+      "##w#######w###",
+      "#SSSSSS=uuu==#",
+      "#============#",
+      "#=TT==TT==TT=#",
+      "#============#",
+      "#=c=========c#",
+      "#============#",
+      "#kkkkk==kkkkk#",
+      "######DD######",
+      ".............."],
+    labels:[[3.5,0.25,"bows and arrows"],[9.5,0.25,"feathers and staves"],[6.5,2.6,"workbenches"]],
+    notes:"Bows and quivers on the racks, bundles of staves and feathers, three workbenches, and the counter." },
+  tailor:{ name:"A tailor's", rows:[
+      "##ww######ww##",
+      "#JJ==SSSS==JJ#",
+      "#============#",
+      "#==TTTT==Z===#",
+      "#============#",
+      "#=n==n=======#",
+      "#============#",
+      "#kkkk====kkkk#",
+      "######DD######",
+      ".............."],
+    labels:[[6.5,0.25,"bolts of cloth"],[4.5,2.6,"cutting table"],[9,2.6,"a fine coat"]],
+    notes:"Bolts of cloth on the shelves, wardrobes of finished clothes, the long cutting table, and a fine coat on show." },
+  general:{ name:"A general store", rows:[
+      "###ww######ww###",
+      "#SSSSSSSSSSSSSS#",
+      "#==============#",
+      "#=SS=SS=SS=SS==#",
+      "#==============#",
+      "#=SS=SS=SS=SS==#",
+      "#==============#",
+      "#=uu=cc==xx====#",
+      "#kkkkkk========#",
+      "#######DD#######",
+      "vvvvvvvvvvvvvvvv"],
+    labels:[[7.5,0.25,"shelves"],[7.5,2.6,"aisles"],[3,7.6,"counter"]],
+    notes:"Aisles of shelves packed with everything, sacks, barrels and crates by the counter." },
+  chandlery:{ name:"A chandlery", rows:[
+      "###ww######ww###",
+      "#SSSS==CC==SSSS#",
+      "#==============#",
+      "#=cc==uu==xx===#",
+      "#==============#",
+      "#=SSSS====SSSS=#",
+      "#==============#",
+      "#kkkkkk==kkkkkk#",
+      "#==============#",
+      "#######DD#######",
+      "vvvvvvvvvvvvvvvv"],
+    labels:[[2.5,0.25,"lanterns"],[7.5,0.25,"coils of rope"],[12.5,0.25,"tar and pitch"],[7.5,2.6,"barrels and sacks"]],
+    notes:"Coils of rope and hanging lanterns, barrels of tar and pitch, sailcloth and sacks of oakum. Smells of tallow." },
+  apothecary:{ name:"An apothecary's", rows:[
+      "###ww##ww###",
+      "#SSSSSSSSSS#",
+      "#==========#",
+      "#=oo==T=oo=#",
+      "#==========#",
+      "#kkkkk==kkk#",
+      "#==========#",
+      "#####DD#####",
+      "............"],
+    labels:[[5.5,0.25,"jars and bottles"],[6,2.6,"mixing table"]],
+    notes:"Shelves of jars and bottles, big urns of herbs, a mixing table, and the counter." },
+  jeweller:{ name:"A jeweller's", rows:[
+      "###w####w###",
+      "#X==SSSS==X#",
+      "#==========#",
+      "#=Z==Z==Z==#",
+      "#==========#",
+      "#kkkk==kkkk#",
+      "#====d=====#",
+      "#####DD#####",
+      "............"],
+    labels:[[1,0.25,"strongbox"],[5.5,2.6,"display cases"],[5,6.6,"the jeweller's desk"]],
+    notes:"Locked display cases, two strongboxes, and the jeweller's desk behind the counter. Very little a thief could carry easily." },
+  books:{ name:"A bookseller's", rows:[
+      "##ww######ww##",
+      "#SSSSSSSSSSSS#",
+      "#============#",
+      "#=SSSS==SSSS=#",
+      "#============#",
+      "#=SSSS==SSSS=#",
+      "#============#",
+      "#=TT=nn===kkk#",
+      "######DD######",
+      ".............."],
+    labels:[[6.5,0.25,"books"],[2,6.6,"reading table"]],
+    notes:"Stacks of shelves, a reading table with chairs, and a little counter." },
+  maps:{ name:"A map-maker's", rows:[
+      "##ww######ww##",
+      "#SSSS==JJJJJJ#",
+      "#============#",
+      "#==TTTT===Q==#",
+      "#==TTTT======#",
+      "#============#",
+      "#=d=n===d=n==#",
+      "#kkkkk==kkkkk#",
+      "######DD######",
+      ".............."],
+    labels:[[2.5,0.25,"scrolls"],[9.5,0.25,"chart cabinets"],[4.5,2.6,"the chart table"],[10,2.6,"globe"],[2,5.6,"drawing desks"]],
+    notes:"A big chart table, cabinets of charts, a globe, and drawing desks under the windows." },
+  tavern:{ name:"A tavern", rows:[
+      "####ww######ww####",
+      "#F==============G#",
+      "#==TT==TT==TT==cc#",
+      "#==nn==nn==nn====#",
+      "#===============c#",
+      "#==TT==TT==kkkkkk#",
+      "#==nn==nn========#",
+      "#================#",
+      "#==TT==TT=====U==#",
+      "#================#",
+      "########DD########",
+      "vvvvvvvvvvvvvvvvvv"],
+    labels:[[1,0.25,"hearth"],[16,0.25,"kitchen"],[13.5,4.6,"the bar"],[14,7.6,"stairs to the rooms"]],
+    notes:"Tables and benches, the hearth, the bar with the kegs behind it, the kitchen stove, and stairs up to the rooms. Plenty to throw." },
+  stables:{ name:"Stables", rows:[
+      "##################",
+      "#eel=eel=eel=uuu=#",
+      "#eel=eel=eel=====#",
+      "#lll=lll=lll=====#",
+      "#================#",
+      "#================#",
+      "#=X==c======J====#",
+      "#================#",
+      "#######DDDD#######",
+      "jjjjjjjjjjjjjjjjjj"],
+    labels:[[5.5,0.25,"stalls"],[14,0.25,"feed"],[13,5.6,"tack"]],
+    notes:"Three stalls behind low walls, feed sacks, the tack cupboard, and the big doors onto the yard." },
+  fishmonger:{ name:"A fishmonger's", rows:[
+      "###ww##ww###",
+      "#ccc==ooo==#",
+      "#==========#",
+      "#=ff====ff=#",
+      "#==========#",
+      "#kkkkk==kkk#",
+      "#==========#",
+      "#####DD#####",
+      "vvvvvvvvvvvv"],
+    labels:[[2,0.25,"barrels"],[7,0.25,"brine"],[5.5,2.6,"carts of fish"]],
+    notes:"Barrels of salted fish, jars of brine, carts of the morning's catch, and the counter. Wet floor." }
+};
+/* where everyone starts: the party in the street by the door, anyone else spread over the shop floor */
+for(const [id, m] of Object.entries(SHOP_BMAPS)){
+  const rows = m.rows, H = rows.length, W = rows[0].length, floor = "=:.e", door = rows[H-2].indexOf("D");
+  const street = Array.from({ length:W }, (_, x)=>x).filter(x=>rows[H-1][x]!=="#").sort((a, b)=>Math.abs(a-door)-Math.abs(b-door));
+  const inside = []; for(let y = H-3; y >= 1; y--) for(let x = 1; x < W-1; x++) if(floor.includes(rows[y][x])) inside.push([x, y]);
+  const spread = inside.filter((_, i)=>i % Math.max(1, Math.floor(inside.length/8)) === 0).slice(0, 8);
+  BMAPS["shop_" + id] = { name:m.name, w:W, h:H, rows, labels:m.labels, notes:m.notes, start:{ party:street.slice(0, 6).map(x=>[x, H-1]), enemy:spread } };
+}
 function bmapOf(n){
   const b = n && n.bmap;
   if(b && Array.isArray(b.rows) && b.rows.length) return { ...b, w:b.rows[0].length, h:b.rows.length };
@@ -10619,6 +10829,7 @@ function calmTop(n, st, c, all){
     ${xpDueBlock(st)}
     <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
     <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p>
+    ${n.shop ? `<div class="shopbattle">${shopBlock(n)}</div>` : ""}
     ${lightRow(n)}${spotPanel(n)}${placeSearchBox(st)}
     <p class="grouplab">Who's here <small>click one, or their token</small></p>
     ${all.map(t=>row(t.id, t.label, t.side==="party" ? "party" : t.side==="enemy" ? "hostile" : t.side==="neutral" ? "neutral" : "")).join("")}
@@ -11820,6 +12031,26 @@ function shopBuy(n, pid, k, qty){
   gameLog("loot", `${p.name||"Someone"} sold ${what} to ${placeLabel(n)} for ${cpStr(cp)}`);
   flash(`${p.name||"They"} sold ${what} for ${cpStr(cp)}.`);
 }
+/* a haggle at the table: who, how, the DC, their total; the result by the guidelines (the DM can still change Haggled) */
+let haggle = { who:"", how:"Persuasion", dc:15, total:"" };
+function haggleBox(n){
+  const R = partyRoster(); if(!R.length) return "";
+  return `<div class="rollres" style="margin:4px 0 8px"><p class="grouplab" style="margin:0 0 4px">Haggle</p>
+    <div class="pcrow"><div class="field" style="flex:1.2"><label>Who</label><select data-haggle="who"><option value="">—</option>${R.map(p=>`<option value="${p.id}" ${haggle.who===p.id?"selected":""}>${esc(p.name||"Character")}</option>`).join("")}</select></div>
+      <div class="field" style="flex:1"><label>How</label><select data-haggle="how">${["Persuasion","Deception","Intimidation"].map(s=>`<option ${haggle.how===s?"selected":""}>${s}</option>`).join("")}</select></div></div>
+    <div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1.3"><label>DC <small>the keeper's mood</small></label><select data-haggle="dc">${[[10,"10, friendly"],[15,"15, neutral"],[20,"20, unfriendly"]].map(([v, l])=>`<option value="${v}" ${+haggle.dc===v?"selected":""}>${l}</option>`).join("")}</select></div>
+      <div class="field" style="flex:.8"><label>Their total</label><input data-haggle="total" class="mono" type="number" value="${esc(haggle.total)}" placeholder="d20 + skill"></div>
+      <button class="btn" data-shopb="haggle" style="margin-bottom:11px">Settle it</button></div></div>`;
+}
+function settleHaggle(n){
+  const p = partyRoster().find(q=>q.id===haggle.who), tot = Math.round(+haggle.total); if(!p || !isFinite(tot) || haggle.total===""){ flash("Pick who's haggling and type their total."); return; }
+  const d = tot - (+haggle.dc||15), rude = haggle.how==="Intimidation";
+  const deal = d >= 10 ? -.25 : d >= 5 ? -.2 : d >= 0 ? -.1 : d > -5 ? 0 : rude ? .25 : .1;
+  if(deal) n.shop.deal = deal; else delete n.shop.deal;
+  const word = deal < 0 ? `talked down ${Math.round(-deal*100)}%` : deal > 0 ? `offended them: ${Math.round(deal*100)}% more` : "the price stands";
+  gameLog("note", `${p.name||"Someone"} haggled at ${placeLabel(n)}: ${haggle.how} ${tot} against DC ${haggle.dc}, ${word}`);
+  flash(`${p.name||"They"} ${deal < 0 ? "haggled them down" : deal > 0 ? "put them out" : "got nowhere"}: ${word}.`); haggle.total = "";
+}
 let shopFrom = "", shopRoll = { open:null, level:null, disp:"neutral", kind:"", species:"", align:"" };                                         // whose pack the shop is looking through, to buy from
 /* the shop's parts, for a place's card (DM mode), its Build panel and the battle panel when the map is open */
 function shopSaleRows(n){
@@ -11863,6 +12094,7 @@ function shopBlock(n){
         <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-bigsheet="npc:${keep.id}" title="Their whole character sheet, big, over the map">Full sheet</button><button class="btn" style="flex:1" data-libopen="npcs:${keep.id}">Their Library page</button></div></details>`; })() : ""}
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Prices</label><select data-shop="price">${[[.75,"Cheap (×¾)"],[1,"The going rate"],[1.25,"Dear (×1¼)"],[1.5,"Very dear (×1½)"],[2,"Robbery (×2)"]].map(([v, l])=>`<option value="${v}" ${(+S.price||1)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Haggled</label><select data-shop="deal">${HAGGLE_DEALS.map(([v, l])=>`<option value="${v}" ${(+S.deal||0)===v?"selected":""}>${l}</option>`).join("")}</select></div>
+    ${haggleBox(n)}
     <details class="pcset pcsec" data-invfor="shop:haggle" ${openInv.has("shop:haggle")?"open":""}><summary>Haggling <small>guidelines</small></summary>${HAGGLE_HELP}</details>
     <p class="grouplab" style="margin:6px 0 3px">For sale${+S.deal ? ` <small>${+S.deal < 0 ? "after the haggling" : "with the offence added"}</small>` : ""}</p>
     ${shopSaleRows(n)}
@@ -11877,6 +12109,7 @@ const shopRedraw = () => { renderPane(true); if(typeof battleOf!=="undefined" &&
 document.addEventListener("change", e=>{
   const t = e.target; const n = shopNode(); if(!n) return;
   if(t.dataset.shop==="from"){ shopFrom = t.value; shopRedraw(); return; }
+  if(t.dataset.haggle){ haggle[t.dataset.haggle] = t.value; return; }
   if(t.dataset.shoproll){ shopRoll[t.dataset.shoproll] = t.dataset.shoproll==="level" ? clampLv(t.value) : t.value; return; }
   if(t.dataset.shop==="price" && n.shop){ n.shop.price = +t.value || 1; touch(); renderPane(true); }
   else if(t.dataset.shop==="deal" && n.shop){ if(+t.value) n.shop.deal = +t.value; else delete n.shop.deal; touch(); renderPane(true); }
@@ -11888,6 +12121,7 @@ document.addEventListener("click", e=>{
   const b = e.target.closest("[data-shopb]"); if(!b) return; const n = shopNode(); if(!n) return;
   const a = b.dataset.shopb;
   if(a==="till" && n.shop){ n.shop.till = rollTill(n.shop.tpl); touch(); shopRedraw(); return; }
+  if(a==="haggle" && n.shop){ const i = document.querySelector('[data-haggle="total"]'); if(i) haggle.total = i.value; settleHaggle(n); touch(); shopRedraw(); return; }
   if(a==="open"){ const s = b.parentElement.querySelector('[data-shop="tpl"]'), tid = s && s.value; if(!tid){ flash("Pick a kind of shop first."); return; }
     shopOpen(n, tid); saveParty(); touch(); render(); flash(`${placeLabel(n)} is open: ${(n.shop.items||[]).length} things for sale.`); }
   else if(a==="restock" && n.shop){ shopRestock(n); saveParty(); touch(); flash("New stock in."); }

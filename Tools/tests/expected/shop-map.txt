@@ -1,0 +1,5 @@
+15 shop maps; problems: none
+its map: shop_bakery = A bakery
+battle open true, shop in the panel true, haggle true, sell true
+haggled 21 vs 15: deal -0.2 | log Xuna Kor'larym haggled at Silvanus's Bakery: Persuasion 21 against DC 15, talked down 20%
+bought on the map at 4 sp: in pack true

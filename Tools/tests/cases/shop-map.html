@@ -1,0 +1,17 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const P = () => document.getElementById('pane-inspect');
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await wait(300); setDmMode(true); enterPlan('kcity'); await wait(60);
+  const bad = []; for(const [k, m] of Object.entries(BMAPS)) if(k.startsWith('shop_')){ const w = m.rows[0].length; if(m.rows.some(r=>r.length!==w)) bad.push(k + ' ragged'); for(const [x, y] of [...m.start.party, ...m.start.enemy]) if('#'.includes(m.rows[y][x])) bad.push(k + ' start in a wall'); if(!m.rows.some(r=>r.includes('D'))) bad.push(k + ' no door'); if(m.start.enemy.length < 4) bad.push(k + ' few spots'); }
+  out.push(Object.keys(BMAPS).filter(k=>k.startsWith('shop_')).length + ' shop maps; problems: ' + (bad.join(', ') || 'none'));
+  const n = doc.nodes.find(q=>q.id==='pware1'); shopOpen(n, 'bakery'); select('node', n.id); out.push('its map: ' + bmapKey(n) + ' = ' + bmapOf(n).name);
+  openBattle(n); await wait(80); renderBattlePanel(); await wait(30);
+  out.push('battle open ' + !!battleOf + ', shop in the panel ' + !!P().querySelector('.shopbattle') + ', haggle ' + !!P().querySelector('[data-haggle="who"]') + ', sell ' + !!P().querySelector('[data-shopsell]'));
+  const p = partyRoster()[0], set = (k, v) => { const e = P().querySelector('[data-haggle="' + k + '"]'); e.value = v; e.dispatchEvent(new Event('change', { bubbles:true })); };
+  set('who', p.id); set('dc', '15'); P().querySelector('[data-haggle="total"]').value = '21'; P().querySelector('[data-shopb="haggle"]').click(); await wait(30);
+  out.push('haggled 21 vs 15: deal ' + n.shop.deal + ' | log ' + root.gameLog.slice(-1)[0].text);
+  const s = P().querySelector('[data-shopsell]'), id = s.dataset.shopsell, price = shopPrice(n, id); s.value = p.id; s.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  out.push('bought on the map at ' + cpStr(price) + ': in pack ' + p.inv.some(e=>e.id===id));
+ }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');
+},1500);</script>
+</body>
