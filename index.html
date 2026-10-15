@@ -380,6 +380,8 @@
   #mapfurn .scalebar{position:absolute;left:14px;bottom:34px;font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
   #mapfurn .sb-bar{height:6px;border:1px solid var(--ink);display:flex;background:var(--paper-lit)} #mapfurn .sb-bar span{flex:1} #mapfurn .sb-bar span:first-child{background:var(--ink)}
   #mapfurn .sb-lab{margin-top:2px}
+  #mapfurn .rosebox{position:absolute;right:62px;bottom:14px;opacity:.92} #mapfurn .rosebox[hidden]{display:none}
+  .pv-rose{position:fixed;right:2vw;bottom:2vh;pointer-events:none;z-index:3} .pv-rose svg{width:min(15vh,150px);height:auto}
   #mapfurn .cartouche{position:absolute;left:14px;top:12px;padding:7px 16px 8px;background:var(--paper-lit);border:1px solid var(--ink);box-shadow:0 0 0 3px var(--paper-lit),0 0 0 4px var(--ink-soft);text-align:center;max-width:260px}
   #mapfurn .cartouche[hidden]{display:none}
   #mapfurn .ct-t{font-family:var(--serif);font-size:16px;letter-spacing:.06em;font-variant:small-caps;color:var(--ink)}
@@ -1927,7 +1929,7 @@ function playerMapScene(){
   const edge = !planOf ? seaBounds() : null;
   if(edge){ const fit = (p, s, lo, hi) => s >= hi-lo ? (lo+hi)/2 - s/2 : Math.max(lo, Math.min(hi - s, p));
     vx = fit(vx, vw, edge.x0, edge.x1); vy = fit(vy, vh, edge.y0, edge.y1); }
-  return { kind:"svg", viewBox:`${vx} ${vy} ${vw} ${vh}`, svg:copy.innerHTML, bg:"#e5d7b4", bounds:edge };
+  return { kind:"svg", viewBox:`${vx} ${vy} ${vw} ${vh}`, svg:copy.innerHTML, bg:"#e5d7b4", bounds:edge, rose:edge ? roseCorner() : "" };
 }
 /* the edge of the world on the sea chart: the largest stretch of water drawn on it (its bounding box) */
 function seaBounds(){
@@ -1972,6 +1974,7 @@ function playerMode(){
       const fit = (p, s, lo, hi) => s >= hi-lo ? (lo+hi)/2 - s/2 : Math.max(lo, Math.min(hi - s, p));
       x = fit(x, w, B.x0, B.x1); y = fit(y, h, B.y0, B.y1); vbox = `${x} ${y} ${w} ${h}`; }
     if(d.kind==="svg") v.innerHTML = `<svg class="pv-svg" viewBox="${vbox}" preserveAspectRatio="xMidYMid meet" style="background:${d.bg}">${d.svg}</svg>`
+      + (d.rose ? `<div class="pv-rose">${d.rose}</div>` : "")
       + (d.order ? `<div id="pv-order"><span class="rd">Round ${d.order.round}</span>${d.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${esc(o.label)}</span>`).join("")}</div>` : "");
     else if(d.kind==="picture" && d.blob){ url = URL.createObjectURL(d.blob); v.innerHTML = `<img class="pv-img" src="${url}" alt="">`; }
     else if(d.kind==="board") v.innerHTML = `<div class="pv-board">${d.html}</div>`;
@@ -3783,12 +3786,18 @@ function roseSpot(){
   at = at || { x:(sb.x0+sb.x1)/2, y:(sb.y0+sb.y1)/2 };
   roseCache = { key, at }; return at;
 }
+/* its rhumb lines stay out at sea where the rose would stand; the rose itself is pinned to the corner of the screen (roseCorner) */
 function roseArt(inv){
   const at = roseSpot(), sb = seaBounds(); if(!at || !sb) return "";
-  const ppm = root.ppm||10, R = 19*ppm, L = Math.hypot(sb.x1-sb.x0, sb.y1-sb.y0), f = n => Math.round(n*10)/10;
+  const L = Math.hypot(sb.x1-sb.x0, sb.y1-sb.y0), f = n => Math.round(n*10)/10;
   let lines = "";
   for(let i=0; i<32; i++){ const a = i*Math.PI/16, main = i%4===0;
     lines += `<path d="M${f(at.x)} ${f(at.y)} L${f(at.x + Math.sin(a)*L)} ${f(at.y - Math.cos(a)*L)}" stroke="${main ? "#4f6f76" : "#6d8a8f"}" stroke-opacity="${main ? .32 : .2}" stroke-width="${f((main ? 1 : .7)*inv)}"/>`; }
+  return `<g class="rose" pointer-events="none">${lines}</g>`;
+}
+/* the rose: its star, rings and N about at, R from the middle to a main point */
+function roseStar(at, R, inv){
+  const f = n => Math.round(n*10)/10;
   let star = "";
   for(let i=0; i<16; i++){ const a = i*Math.PI/8, len = i%4===0 ? R : i%2===0 ? R*.7 : R*.46, wd = R*(i%4===0 ? .13 : .1);
     const tip = [at.x + Math.sin(a)*len, at.y - Math.cos(a)*len], l = [at.x + Math.sin(a - Math.PI/2)*wd, at.y - Math.cos(a - Math.PI/2)*wd], r = [at.x + Math.sin(a + Math.PI/2)*wd, at.y - Math.cos(a + Math.PI/2)*wd];
@@ -3798,8 +3807,10 @@ function roseArt(inv){
   const rings = `<circle cx="${f(at.x)}" cy="${f(at.y)}" r="${f(R*.86)}" fill="#efe4c6" fill-opacity=".55" stroke="#3a2e1e" stroke-width="${f(.8*inv)}"/><circle cx="${f(at.x)}" cy="${f(at.y)}" r="${f(R*.8)}" fill="none" stroke="#3a2e1e" stroke-width="${f(.5*inv)}"/>`
     + Array.from({ length:32 }, (_, i)=>{ const a = i*Math.PI/16; return `<path d="M${f(at.x + Math.sin(a)*R*.8)} ${f(at.y - Math.cos(a)*R*.8)} L${f(at.x + Math.sin(a)*R*.86)} ${f(at.y - Math.cos(a)*R*.86)}" stroke="#3a2e1e" stroke-width="${f(.6*inv)}"/>`; }).join("");
   const nTxt = `<text x="${f(at.x)}" y="${f(at.y - R*1.08)}" font-size="${f(R*.2)}" text-anchor="middle" font-family="var(--serif)" fill="#a8331f">N</text>`;
-  return `<g class="rose" pointer-events="none">${lines}${rings}${star}<circle cx="${f(at.x)}" cy="${f(at.y)}" r="${f(R*.05)}" fill="#3a2e1e"/>${nTxt}</g>`;
+  return `${rings}${star}<circle cx="${f(at.x)}" cy="${f(at.y)}" r="${f(R*.05)}" fill="#3a2e1e"/>${nTxt}`;
 }
+/* the rose in the bottom right-hand corner of the sea chart, so it stays in sight wherever the map is moved */
+const roseCorner = () => `<svg class="rosefix" viewBox="-62 -70 124 132" width="112" height="119" aria-hidden="true">${roseStar({ x:0, y:0 }, 52, 1)}</svg>`;
 /* here be monsters: out in open water, far from any coast; on the players' chart only where they haven't been (some may be real — who can say) */
 let monsterCache = null;
 function monsterSpots(){
@@ -3865,7 +3876,9 @@ function placeLabels(reqs, obstacles, inv){
 }
 /* over the map: a scale bar, and on the sea chart the map's title in a cartouche */
 function mapFurniture(){
-  let el = $("#mapfurn"); if(!el){ $("#field").insertAdjacentHTML("beforeend", `<div id="mapfurn"><div class="cartouche"></div><div class="scalebar"></div></div>`); el = $("#mapfurn"); }
+  let el = $("#mapfurn"); if(!el){ $("#field").insertAdjacentHTML("beforeend", `<div id="mapfurn"><div class="cartouche"></div><div class="scalebar"></div><div class="rosebox" hidden></div></div>`); el = $("#mapfurn"); }
+  { const rb = el.querySelector(".rosebox"), on = !planOf && doc===root && !(typeof battleOf!=="undefined" && battleOf) && (root.shapes||[]).some(s=>s.kind==="water");
+    if(on && !rb.firstChild) rb.innerHTML = roseCorner(); rb.hidden = !on; }
   const per = (doc.ppm||10) * view.k, nice = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000].find(v=>v*per >= 70) || 1000, px = Math.round(nice*per);
   el.querySelector(".scalebar").innerHTML = `<div class="sb-bar" style="width:${px}px"><span></span><span></span></div><div class="sb-lab">${nice} ${UNIT()}</div>`;
   const c = el.querySelector(".cartouche"); c.hidden = !!planOf;
