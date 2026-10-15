@@ -380,6 +380,7 @@
   #mapfurn .scalebar{position:absolute;left:14px;bottom:34px;font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
   #mapfurn .sb-bar{height:6px;border:1px solid var(--ink);display:flex;background:var(--paper-lit)} #mapfurn .sb-bar span{flex:1} #mapfurn .sb-bar span:first-child{background:var(--ink)}
   #mapfurn .sb-lab{margin-top:2px}
+  .shoprow{display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px dotted var(--rule-soft);font-size:12px} .shoprow .sr-n{flex:1;min-width:0} .shoprow .sr-a{display:flex;gap:4px;flex:0 0 auto} .shoprow select{max-width:118px}
   #mapfurn .rosebox{position:absolute;right:62px;bottom:14px;opacity:.92} #mapfurn .rosebox[hidden]{display:none}
   .pv-rose{position:fixed;right:2vw;bottom:2vh;pointer-events:none;z-index:3} .pv-rose svg{width:min(15vh,150px);height:auto}
   #mapfurn .cartouche{position:absolute;left:14px;top:12px;padding:7px 16px 8px;background:var(--paper-lit);border:1px solid var(--ink);box-shadow:0 0 0 3px var(--paper-lit),0 0 0 4px var(--ink-soft);text-align:center;max-width:260px}
@@ -11700,7 +11701,7 @@ function shopRestock(n){
 /* open a shop: its keeper (and sometimes a hand) rolled as the right kind of person, saved and met here */
 function shopOpen(n, tid){
   const T = shopTpl(tid); if(!T) return;
-  n.shop = { tpl:tid, price:1, items:[] };
+  n.shop = { tpl:tid, price:1, items:[], till:rollTill(tid) };
   const lv = Math.max(1, partyAvgLevel()), met = n.npcs = n.npcs || [], here = met.map(libNpcById).filter(Boolean);
   /* someone already works here: they keep it. Otherwise a keeper of the right kind is rolled */
   let keeper = here[0];
@@ -11758,25 +11759,75 @@ function payFrom(purse, cp){
   purse.gp = Math.floor(left/100); left -= purse.gp*100; purse.sp = Math.floor(left/10); purse.cp = left - purse.sp*10;
   return true;
 }
-function shopSell(n, tok, pid){
+/* coins into a purse, as gold, silver and copper */
+function addCoins(purse, cp){ coinsOf(purse); cp = Math.max(0, Math.round(cp)); purse.gp += Math.floor(cp/100); cp %= 100; purse.sp += Math.floor(cp/10); purse.cp += cp % 10; }
+/* the shop's till: what it has to buy with (Joseph's table rule: the dice by kind of shop, "4d6×5 gp" unless the kind says) */
+const TILL_DICE = { bakery:"2d6×2 gp", butcher:"2d6×3 gp", fishmonger:"2d6×2 gp", tavern:"3d6×5 gp", general:"4d6×5 gp", chandlery:"4d6×10 gp", smithy:"4d6×10 gp",
+  armourer:"6d6×10 gp", bowyer:"4d6×5 gp", tailor:"3d6×5 gp", apothecary:"4d6×5 gp", jeweller:"6d6×20 gp", books:"3d6×5 gp", maps:"4d6×5 gp", stables:"3d6×5 gp" };
+function rollTill(tid){
+  const m = /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|gp)/.exec(TILL_DICE[tid] || "4d6×5 gp"); let t = 0;
+  for(let i=0; i<+m[1]; i++) t += 1 + Math.floor(Math.random()*+m[2]);
+  return { cp:0, sp:0, ep:0, gp:0, pp:0, [m[4]]: t * +(m[3]||1) };
+}
+const shopTill = n => coinsOf(n.shop.till = n.shop.till || rollTill(n.shop.tpl));
+/* what the shop pays for something brought in: half its going rate (Joseph's table rule), haggling aside */
+const shopOffer = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*50));
+/* the shop's stock of one item that's still on its shelves */
+const shopToks = (n, id) => (n.shop.items||[]).filter(t=>baseId(t)===id && ((n.site||{}).items||[]).includes(t));
+/* selling some of one item to a character: the price (each) out of their purse into the till, the items into their pack */
+function shopSell(n, id, pid, qty){
   const p = partyRoster().find(q=>q.id===pid), S = n.shop, st = n.site; if(!p || !S || !st) return;
-  const i = st.items.indexOf(tok); if(i < 0) return; const id = baseId(tok), x = libLootById(id), cp = shopPrice(n, id);
+  const toks = shopToks(n, id).slice(0, Math.max(1, qty||1)), x = libLootById(id), each = shopPrice(n, id), cp = each*toks.length; if(!toks.length) return;
   partyDoing(`Bought ${(x||{}).name||"something"}`, p);
   if(!payFrom(purseOf(p), cp)){ flash(`${p.name||"They"} can't afford it: ${cpStr(cp)}, with ${cpStr(Math.round(purseGp(purseOf(p))*100))} in their purse.`); return; }
-  st.items.splice(i, 1); S.items = (S.items||[]).filter((t, k)=>!(t===tok && k===S.items.indexOf(tok))); forgetItem(st, tok);
-  p.inv = Array.isArray(p.inv) ? p.inv : []; p.inv.push({ id, qty:1, from:placeLabel(n), at:today() });
+  addCoins(shopTill(n), cp);
+  for(const t of toks){ st.items.splice(st.items.indexOf(t), 1); S.items.splice(S.items.indexOf(t), 1); forgetItem(st, t); }
+  p.inv = Array.isArray(p.inv) ? p.inv : []; const had = p.inv.find(e=>e.id===id && !e.attuned);
+  if(had) had.qty = (had.qty||1) + toks.length; else p.inv.push({ id, qty:toks.length, from:placeLabel(n), at:today() });
   saveParty(); touch();
-  gameLog("loot", `${p.name||"Someone"} bought ${(x||{}).name||"something"} at ${placeLabel(n)} for ${cpStr(cp)}`);
-  flash(`${p.name||"They"} bought ${(x||{}).name||"it"} for ${cpStr(cp)}.`);
+  const what = `${toks.length > 1 ? toks.length + " × " : ""}${(x||{}).name||"something"}`;
+  gameLog("loot", `${p.name||"Someone"} bought ${what} at ${placeLabel(n)} for ${cpStr(cp)}`);
+  flash(`${p.name||"They"} bought ${what} for ${cpStr(cp)}.`);
+}
+/* buying from a character: the offer (each) out of the till into their purse, the items onto the shelves */
+function shopBuy(n, pid, k, qty){
+  const p = partyRoster().find(q=>q.id===pid), S = n.shop, e = p && (p.inv||[])[k]; if(!e || !e.id) return;
+  const x = libLootById(e.id), n0 = Math.min(e.qty||1, Math.max(1, qty||1)), cp = shopOffer(n, e.id)*n0;
+  if(!payFrom(shopTill(n), cp)){ flash(`The till can't cover it: ${cpStr(cp)}, with ${cpStr(Math.round(purseGp(shopTill(n))*100))} in it.`); return; }
+  partyDoing(`Sold ${(x||{}).name||"something"}`, p);
+  addCoins(purseOf(p), cp);
+  if((e.qty||1) > n0) e.qty = (e.qty||1) - n0; else p.inv.splice(k, 1);
+  const st = siteOf(n); for(let i=0; i<n0; i++) S.items.push(placeItem(st, e.id, null));
+  saveParty(); touch();
+  const what = `${n0 > 1 ? n0 + " × " : ""}${(x||{}).name||"something"}`;
+  gameLog("loot", `${p.name||"Someone"} sold ${what} to ${placeLabel(n)} for ${cpStr(cp)}`);
+  flash(`${p.name||"They"} sold ${what} for ${cpStr(cp)}.`);
+}
+let shopFrom = "";                                         // whose pack the shop is looking through, to buy from
+/* the shop's parts, for a place's card (DM mode), its Build panel and the battle panel when the map is open */
+function shopSaleRows(n){
+  const S = n.shop, ids = [...new Set((S.items||[]).filter(t=>((n.site||{}).items||[]).includes(t)).map(baseId))];
+  const who = partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")} (${cpStr(Math.round(purseGp(purseOf(p))*100))})</option>`).join("");
+  return ids.length ? ids.map(id=>{ const x = libLootById(id), q = shopToks(n, id).length;
+    return `<div class="shoprow"><span class="sr-n"><span class="libref" data-libopen="loot:${id}">${esc(x ? x.name : id)}</span>${q > 1 ? ` <small>×${q}</small>` : ""} <small class="mono">${cpStr(shopPrice(n, id))}${q > 1 ? " each" : ""}</small>${x && x.shopGood ? ` <small title="Priced by your table rule">✦</small>` : ""}</span>
+      ${partySize() ? `<span class="sr-a">${q > 1 ? `<select data-shopqty="${id}" title="How many">${Array.from({ length:q }, (_, i)=>`<option>${i+1}</option>`).join("")}</select>` : ""}<select data-shopsell="${id}" title="Sell to…"><option value="">Sell to…</option>${who}</select></span>` : ""}</div>`; }).join("")
+    : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Sold out.</p>`;
+}
+function shopBuyRows(n){
+  const R = partyRoster(); if(!R.length) return "";
+  const p = R.find(q=>q.id===shopFrom), till = shopTill(n);
+  return `<div class="pcrow" style="align-items:center;margin:2px 0"><label class="mini" style="flex:1">The till <b class="mono">${cpStr(Math.round(purseGp(till)*100))}</b></label><button class="btn small" data-shopb="till" title="Roll what's in the till again">Roll again</button></div>
+    <div class="field" style="margin:4px 0"><label>Buy from <small>they offer half the going rate (your table rule)</small></label><select data-shop="from"><option value="">Who's selling?</option>${R.map(q=>`<option value="${q.id}" ${q.id===shopFrom?"selected":""}>${esc(q.name||"Character")}</option>`).join("")}</select></div>
+    ${p ? ((p.inv||[]).map((e, k)=>({ e, k, x:e.id ? libLootById(e.id) : null })).filter(r=>r.x && itemGp(r.x) > 0).map(({ e, k, x })=>{ const q = e.qty||1;
+        return `<div class="shoprow"><span class="sr-n">${esc(x.name)}${q > 1 ? ` <small>×${q}</small>` : ""} <small class="mono">${cpStr(shopOffer(n, e.id))}${q > 1 ? " each" : ""}</small></span>
+          <span class="sr-a">${q > 1 ? `<select data-shopbqty="${k}">${Array.from({ length:q }, (_, i)=>`<option>${i+1}</option>`).join("")}</select>` : ""}<button class="btn small" data-shopbuy="${k}">Buy</button></span></div>`; }).join("")
+      || `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Nothing in their pack the shop would pay for.</p>`) : ""}`;
 }
 /* the shop on a place's card (DM mode) and in its Build panel */
 function shopBlock(n){
   if(!n.shop) return hasFootprint(n) || ["store","provision","market","smith","apothecary","inn","stable","stall","tent","shipwright","warehouse","fence"].includes(n.kind)
     ? `<div class="pcrow" style="margin:6px 0 8px"><select data-shop="tpl" style="flex:1;min-width:0"><option value="">Make it a shop…</option>${shopOptions("")}</select><button class="btn" data-shopb="open">Open it</button></div>` : "";
   const S = n.shop, T = shopTpl(S.tpl) || { label:"Shop" }, st = n.site || {}, keep = libNpcById(S.keeper);
-  const counts = {}; for(const t of (S.items||[])) if((st.items||[]).includes(t)){ const id = baseId(t); counts[id] = (counts[id]||0) + 1; }
-  const firstTok = id => (S.items||[]).find(t=>baseId(t)===id && (st.items||[]).includes(t));
-  const who = partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")} (${cpStr(Math.round(purseGp(purseOf(p))*100))})</option>`).join("");
   return `<p class="eyebrow spaced">The ${esc(T.label.toLowerCase())}</p>
     <div class="pcrow" style="align-items:center;margin:2px 0"><div class="sbl" style="flex:1;margin:0"><b>Kept by</b> ${keep ? `<span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span>` : "nobody"}</div><button class="btn small" data-shopb="rekeep" title="Roll a new keeper of this kind">Reroll</button></div>
     ${keep ? (()=>{ const k = `shopkeep:${keep.id}`, row = (l, v) => v ? `<div class="sbl"><b>${l}</b> ${esc(v)}</div>` : "";
@@ -11790,29 +11841,35 @@ function shopBlock(n){
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Haggled</label><select data-shop="deal">${HAGGLE_DEALS.map(([v, l])=>`<option value="${v}" ${(+S.deal||0)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <details class="pcset pcsec" data-invfor="shop:haggle" ${openInv.has("shop:haggle")?"open":""}><summary>Haggling <small>guidelines</small></summary>${HAGGLE_HELP}</details>
     <p class="grouplab" style="margin:6px 0 3px">For sale${+S.deal ? ` <small>${+S.deal < 0 ? "after the haggling" : "with the offence added"}</small>` : ""}</p>
-    ${Object.keys(counts).length ? Object.entries(counts).map(([id, q])=>{ const x = libLootById(id);
-        return `<div class="librow give"><span><span class="libref" data-libopen="loot:${id}">${esc(x ? x.name : id)}</span>${q > 1 ? ` <small>×${q}</small>` : ""} <small class="mono">${cpStr(shopPrice(n, id))}</small>${x && x.shopGood ? ` <small title="Priced by your table rule">✦</small>` : ""}</span>
-          ${partySize() ? `<select data-shopsell="${esc(firstTok(id))}" title="Sell one to…"><option value="">Sell to…</option>${who}</select>` : ""}</div>`; }).join("")
-      : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Sold out.</p>`}
+    ${shopSaleRows(n)}
     <p class="empty-note" style="font-size:10.5px;margin:2px 0 6px">✦ priced by your table rule; the rest at the SRD's prices.</p>
-    <div class="pcrow"><button class="btn" style="flex:1" data-shopb="restock">New stock</button><button class="btn" style="flex:1" data-shopb="close">Close the shop</button></div>`;
+    <p class="grouplab" style="margin:8px 0 3px">Buying from the party</p>
+    ${shopBuyRows(n)}
+    <div class="pcrow" style="margin-top:6px"><button class="btn" style="flex:1" data-shopb="restock">New stock</button><button class="btn" style="flex:1" data-shopb="close">Close the shop</button></div>`;
 }
+/* the shop being worked: the open battle map's place, else the place picked */
+const shopNode = () => (typeof battleOf!=="undefined" && battleOf && typeof bnode==="function" && bnode() && bnode().shop) ? bnode() : (sel && sel.kind==="node" ? nodeById(sel.id) : null);
+const shopRedraw = () => { renderPane(true); if(typeof battleOf!=="undefined" && battleOf){ renderBattlePanel(); } };
 document.addEventListener("change", e=>{
-  const t = e.target; const n = sel && sel.kind==="node" ? nodeById(sel.id) : null; if(!n) return;
+  const t = e.target; const n = shopNode(); if(!n) return;
+  if(t.dataset.shop==="from"){ shopFrom = t.value; shopRedraw(); return; }
   if(t.dataset.shop==="price" && n.shop){ n.shop.price = +t.value || 1; touch(); renderPane(true); }
   else if(t.dataset.shop==="deal" && n.shop){ if(+t.value) n.shop.deal = +t.value; else delete n.shop.deal; touch(); renderPane(true); }
-  else if(t.dataset.shopsell!=null && t.value){ shopSell(n, t.dataset.shopsell, t.value); renderPane(true); }
+  else if(t.dataset.shopsell!=null && t.value){ const q = t.closest(".shoprow") && t.closest(".shoprow").querySelector("[data-shopqty]"); shopSell(n, t.dataset.shopsell, t.value, q ? +q.value : 1); shopRedraw(); }
 });
 document.addEventListener("click", e=>{
-  const b = e.target.closest("[data-shopb]"); if(!b) return; const n = sel && sel.kind==="node" ? nodeById(sel.id) : null; if(!n) return;
+  const bb = e.target.closest("[data-shopbuy]");
+  if(bb){ const n = shopNode(); if(!n || !n.shop) return; const q = bb.closest(".shoprow") && bb.closest(".shoprow").querySelector("[data-shopbqty]"); shopBuy(n, shopFrom, +bb.dataset.shopbuy, q ? +q.value : 1); shopRedraw(); return; }
+  const b = e.target.closest("[data-shopb]"); if(!b) return; const n = shopNode(); if(!n) return;
   const a = b.dataset.shopb;
+  if(a==="till" && n.shop){ n.shop.till = rollTill(n.shop.tpl); touch(); shopRedraw(); return; }
   if(a==="open"){ const s = b.parentElement.querySelector('[data-shop="tpl"]'), tid = s && s.value; if(!tid){ flash("Pick a kind of shop first."); return; }
     shopOpen(n, tid); saveParty(); touch(); render(); flash(`${placeLabel(n)} is open: ${(n.shop.items||[]).length} things for sale.`); }
   else if(a==="restock" && n.shop){ shopRestock(n); saveParty(); touch(); flash("New stock in."); }
   else if(a==="rekeep" && n.shop){ shopRerollKeeper(n); saveParty(); touch(); render(); flash(`${(libNpcById(n.shop.keeper)||{}).name||"Someone new"} keeps ${placeLabel(n)} now.`); }
   else if(a==="close" && n.shop){ if(!confirm(`Close ${placeLabel(n)}? Its stock goes; its keeper stays in the library.`)) return;
     const st = siteOf(n); st.items = (st.items||[]).filter(t=>!(n.shop.items||[]).includes(t)); (n.shop.items||[]).forEach(t=>forgetItem(st, t)); delete n.shop; touch(); }
-  renderPane(true);
+  shopRedraw();
 });
 let genOpts = { level:null, disp:"", type:"Humanoid", role:"", kind:"", species:"", align:"", diff:"mod", xp:0 }, genResult = null;
 /* an encounter's XP: the party's 2024 budget at the difficulty picked (Low, Moderate, High), or exactly the XP asked for */
