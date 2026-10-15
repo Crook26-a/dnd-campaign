@@ -1,0 +1,5 @@
+start: in view true, on TV true | The players see her only within spotting distance of the Sallowmay.
+2 mi: spotMi 2, in view false, on TV false
+3 mi: in view true, on TV true
+never: in view false, on TV false | The players never see her, however close she comes.
+back: tvHide false, in view true

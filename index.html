@@ -3047,7 +3047,9 @@ function courseRate(s){                                    // world hours per mi
   if(c.rate) return c.rate;
   const m = courseMiles(s); return m ? navAdjust(m / sailMph(s) * dayFactor(s), c.nav) / m : 0;
 }
-function rivalInView(r){ const p = partyShip(); return !!p && Math.hypot(p.x-r.x, p.y-r.y) <= spotMiles()*(root.ppm||10); }
+/* the players see her within her own spotting distance (n.spotMi, else the chart's), or never (n.tvHide) */
+const rivalSpotMi = r => +r.spotMi > 0 ? +r.spotMi : spotMiles();
+function rivalInView(r){ if(r.tvHide) return false; const p = partyShip(); return !!p && Math.hypot(p.x-r.x, p.y-r.y) <= rivalSpotMi(r)*(root.ppm||10); }
 /* when each ship gets in: [world hour she arrives, or null] */
 function rivalEta(s){ const c = s.course; if(!c || !c.pts.length) return null; return Math.max(worldHours(), c.leaves||0) + courseMiles(s)*courseRate(s); }
 function partyEta(s){ const c = s && s.course; if(!c || !c.pts.length) return null; return worldHours() + courseMiles(s)*courseRate(s); }
@@ -3129,7 +3131,8 @@ function rivalBlock(n){
       <div class="pcrow"><button class="btn" style="flex:1" data-rivalb="shape">${courseEdit===n.id?"Done shaping":"Shape her course"}</button><button class="fdel" data-rivalb="clear" title="Drop her course">×</button></div>`
     : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Pick where she's going: she sails by herself as the world's time passes.</p>`}
     ${lv && lv.to ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">She last reached ${esc(lv.to)} on ${whenWord(lv.at)}.</p>` : ""}
-    <p class="empty-note" style="font-size:10.5px;margin:0 0 8px">The players see her only while she's within ${spotMiles()} miles of ${esc((partyShip()||{}).name||"their ship")}.</p>`;
+    <div class="pcrow" style="align-items:center;gap:4px;margin:8px 0 2px"><label class="mini" style="flex:1">On the players' screen</label><select data-rival="tv"><option value="">When she's within</option><option value="never" ${n.tvHide?"selected":""}>Never</option></select>${n.tvHide ? "" : `<input data-rival="spotmi" class="mono" type="number" min="0.5" step="0.5" style="width:52px" value="${rivalSpotMi(n)}"><span class="mini">mi</span>`}</div>
+    <p class="empty-note" style="font-size:10.5px;margin:0 0 8px">${n.tvHide ? "The players never see her, however close she comes." : `The players see her only while she's within ${rivalSpotMi(n)} miles of ${pn}.${rivalInView(n) ? " <b>They can see her now.</b>" : ""}`}</p>`;
 }
 document.getElementById("pane-inspect").addEventListener("change", e=>{
   const t = e.target.closest("[data-rival]"); if(!t) return;
@@ -3141,6 +3144,8 @@ document.getElementById("pane-inspect").addEventListener("change", e=>{
   else if(k==="adir" && s.arrive){ s.arrive.after = t.value==="after"; delete s.arrive.rolled; }
   else if(k==="adice" && s.arrive) s.arrive.dice = t.value;
   else if(k==="away" && s.arrive) s.arrive.way = t.value;
+  else if(k==="tv" || k==="spotmi"){ if(k==="tv"){ if(t.value==="never") s.tvHide = true; else delete s.tvHide; } else { const v = Math.round((+t.value||0)*2)/2; if(v > 0 && v!==spotMiles()) s.spotMi = v; else delete s.spotMi; }
+    touch(); renderPane(true); sendPlayers(true); return; }
   else if(!s.course) return;
   else if(k==="leaves") s.course.leaves = worldHours() + (+t.value||0);
   else { const nav = s.course.nav = s.course.nav || { total:"", nat20:false }; if(k==="navtotal") nav.total = t.value==="" ? "" : Math.round(+t.value); else nav.nat20 = t.checked; delete s.course.rate; }
