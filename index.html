@@ -11705,7 +11705,7 @@ function shopOpen(n, tid){
   /* someone already works here: they keep it. Otherwise a keeper of the right kind is rolled */
   let keeper = here[0];
   if(!keeper){ keeper = personToLibrary(genPerson({ kind:T.keeper, level:lv, disp:"neutral", type:"Humanoid" }));
-    keeper.where = placeLabel(n); keeper.role = `${keeper.role} · keeps ${n.name || "the " + T.label.toLowerCase()}`; met.push(keeper.id); }
+    keeper.where = placeLabel(n); keeper.role = `${keeper.role} · keeps ${n.name || "the " + T.label.toLowerCase()}`; keeper.shopRolled = true; met.push(keeper.id); }
   n.shop.keeper = keeper.id;
   if(!here.length && T.staff && T.staff.length && Math.random() < .5){ const h = personToLibrary(genPerson({ kind:pickOne(T.staff), level:lv, disp:"neutral", type:"Humanoid" })); h.where = placeLabel(n); met.push(h.id); n.shop.staff = [h.id]; }
   if(!n.name) n.name = `${String(keeper.name||"").split(" ").slice(-1)[0]}'s ${T.label}`;
@@ -11714,6 +11714,21 @@ function shopOpen(n, tid){
   const st0 = siteOf(n), had = (st0.items||[]).filter(t=>itemShown(st0, t) && !itemDc(st0, t));
   shopRestock(n); n.shop.items = [...had, ...n.shop.items];
   gameLog("note", `${placeLabel(n)} is now a ${T.label.toLowerCase()}, kept by ${keeper.name}`);
+}
+/* a new keeper of the shop's kind in place of the old one. One the shop rolled itself, met nowhere else, leaves the
+   library; anyone else just stops keeping it. A shop named after its keeper ("Whitlock's Smithy") takes the new name. */
+function shopRerollKeeper(n){
+  const S = n.shop, T = shopTpl(S && S.tpl); if(!T) return;
+  const old = libNpcById(S.keeper), surname = p => String((p||{}).name||"").replace(/"[^"]*"/g, "").trim().split(/\s+/).slice(-1)[0] || "";
+  const p = personToLibrary(genPerson({ kind:T.keeper, level:Math.max(1, partyAvgLevel()), disp:"neutral", type:"Humanoid" }));
+  p.where = placeLabel(n); p.shopRolled = true;
+  n.npcs = (n.npcs||[]).filter(id=>id!==S.keeper); n.npcs.unshift(p.id);
+  if(old && old.shopRolled && surname(old) && n.name === `${surname(old)}'s ${T.label}`) n.name = `${surname(p)}'s ${T.label}`;     // only a name the shop gave itself
+  p.role = `${p.role} · keeps ${n.name || "the " + T.label.toLowerCase()}`;
+  if(old && old.shopRolled && !allMapNodes().some(([, ns])=>ns.some(q=>q!==n && (q.npcs||[]).includes(old.id)))) lib().npcs = lib().npcs.filter(q=>q.id!==old.id);
+  S.keeper = p.id;
+  if(n.premises) n.premises.keeper = { name:p.name, note:p.look };
+  gameLog("note", `${placeLabel(n)} has a new keeper: ${p.name}${old ? ` (was ${old.name})` : ""}`);
 }
 /* paying: the price out of a purse, making change in gold, silver and copper; false if it can't be met */
 function payFrom(purse, cp){
@@ -11742,7 +11757,14 @@ function shopBlock(n){
   const firstTok = id => (S.items||[]).find(t=>baseId(t)===id && (st.items||[]).includes(t));
   const who = partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")} (${cpStr(Math.round(purseGp(purseOf(p))*100))})</option>`).join("");
   return `<p class="eyebrow spaced">The ${esc(T.label.toLowerCase())}</p>
-    ${keep ? `<div class="sbl"><b>Kept by</b> <span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span></div>` : ""}
+    <div class="pcrow" style="align-items:center;margin:2px 0"><div class="sbl" style="flex:1;margin:0"><b>Kept by</b> ${keep ? `<span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span>` : "nobody"}</div><button class="btn small" data-shopb="rekeep" title="Roll a new keeper of this kind">Reroll</button></div>
+    ${keep ? (()=>{ const k = `shopkeep:${keep.id}`, row = (l, v) => v ? `<div class="sbl"><b>${l}</b> ${esc(v)}</div>` : "";
+      const sheet = [keep.ac ? `AC ${keep.ac}` : "", keep.hpMax ? `HP ${keep.hpMax}` : "", keep.pp ? `PP ${keep.pp}` : "", ...(keep.attacks||[]).filter(a=>a && a.name).map(a=>`${a.name} ${a.hit||""} ${a.dmg||""}`.trim())].filter(Boolean).join(" · ");
+      const purse = COINS.filter(([c])=>(keep.purse||{})[c]).map(([c])=>`${keep.purse[c]} ${c}`).join(", ");
+      return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)?"open":""}><summary>Their card <small>${esc(keep.role||"")}</small></summary>
+        ${row("Alignment", keep.align)}${row("Look", keep.look)}${row("Voice", keep.voice)}${row("Wants", keep.wants)}${row("Knows", keep.knows)}${row("Backstory", keep.backstory)}
+        ${row("Sheet", sheet)}${row("Purse", purse)}${row("Carries", String(keep.carries||"").trim().split(/\n+/).filter(Boolean).join("; "))}
+        <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-bigsheet="npc:${keep.id}" title="Their whole character sheet, big, over the map">Full sheet</button><button class="btn" style="flex:1" data-libopen="npcs:${keep.id}">Their Library page</button></div></details>`; })() : ""}
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Prices</label><select data-shop="price">${[[.75,"Cheap (×¾)"],[1,"The going rate"],[1.25,"Dear (×1¼)"],[1.5,"Very dear (×1½)"],[2,"Robbery (×2)"]].map(([v, l])=>`<option value="${v}" ${(+S.price||1)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Haggled</label><select data-shop="deal">${HAGGLE_DEALS.map(([v, l])=>`<option value="${v}" ${(+S.deal||0)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <details class="pcset pcsec" data-invfor="shop:haggle" ${openInv.has("shop:haggle")?"open":""}><summary>Haggling <small>guidelines</small></summary>${HAGGLE_HELP}</details>
@@ -11766,6 +11788,7 @@ document.addEventListener("click", e=>{
   if(a==="open"){ const s = b.parentElement.querySelector('[data-shop="tpl"]'), tid = s && s.value; if(!tid){ flash("Pick a kind of shop first."); return; }
     shopOpen(n, tid); saveParty(); touch(); render(); flash(`${placeLabel(n)} is open: ${(n.shop.items||[]).length} things for sale.`); }
   else if(a==="restock" && n.shop){ shopRestock(n); saveParty(); touch(); flash("New stock in."); }
+  else if(a==="rekeep" && n.shop){ shopRerollKeeper(n); saveParty(); touch(); render(); flash(`${(libNpcById(n.shop.keeper)||{}).name||"Someone new"} keeps ${placeLabel(n)} now.`); }
   else if(a==="close" && n.shop){ if(!confirm(`Close ${placeLabel(n)}? Its stock goes; its keeper stays in the library.`)) return;
     const st = siteOf(n); st.items = (st.items||[]).filter(t=>!(n.shop.items||[]).includes(t)); (n.shop.items||[]).forEach(t=>forgetItem(st, t)); delete n.shop; touch(); }
   renderPane(true);
