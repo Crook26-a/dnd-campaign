@@ -3986,13 +3986,16 @@ function roofSvg(w, h, mat, inv, round){
 }
 /* a roof colour a shade lighter or darker (f above 1 lightens) */
 const shadeHex = (h, f) => "#" + [1, 3, 5].map(i=>Math.max(0, Math.min(255, Math.round(parseInt(h.slice(i, i+2), 16)*f))).toString(16).padStart(2, "0")).join("");
+/* a town's own mix of roofs (doc.roofs, e.g. { tile:1 } for a terracotta town); the ordinary mix otherwise */
+const roofPick = rnd => { const m = doc.roofs || { tile:.72, slate:.22, thatch:.06 }, sum = Object.values(m).reduce((a, b)=>a + (+b||0), 0) || 1; let r = rnd()*sum;
+  for(const [k, v] of Object.entries(m)){ r -= +v||0; if(r < 0) return k; } return "tile"; };
 const shadeRoof = (mat, f) => (ROOF[mat] || ROOF.tile).map(c=>shadeHex(c, f));
 /* a block of houses, the way a street is built: along each side of the block a row of houses fronting its street,
    gable ends to the street, one roof material to a row with each house a shade different; back gardens in the middle */
 const blockCache = new Map();
 function blockHouses(sh){
   const pts = sh.pts, n = pts.length; if(n < 3) return "";
-  const ck = sh.id + "|" + ptsKey(pts) + "|" + (doc.shapes||[]).map(q=>q.id + ptsKey(q.pts||[]) + (q.w||"")).join(",") + "|" + (doc.nodes||[]).map(q=>Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join(",");
+  const ck = sh.id + "|" + JSON.stringify(doc.roofs||"") + ptsKey(pts) + "|" + (doc.shapes||[]).map(q=>q.id + ptsKey(q.pts||[]) + (q.w||"")).join(",") + "|" + (doc.nodes||[]).map(q=>Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join(",");
   if(blockCache.has(ck)) return blockCache.get(ck);
   if(blockCache.size > 400) blockCache.clear();
   const inv = 1;
@@ -4010,7 +4013,7 @@ function blockHouses(sh){
     const a = side[i], b = side[(i+1)%m], L = Math.hypot(b.x-a.x, b.y-a.y); if(L < 4*ppm) continue;
     const ux = (b.x-a.x)/L, uy = (b.y-a.y)/L, mid = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
     let vx = -uy, vy = ux; if(!inRing(ring, mid.x + vx*2*ppm, mid.y + vy*2*ppm)){ vx = -vx; vy = -vy; }      // the inward side
-    const ang = Math.atan2(uy, ux)*180/Math.PI, depth = (8 + rnd()*3)*ppm, mat = rnd() < .72 ? "tile" : rnd() < .8 ? "slate" : "thatch";
+    const ang = Math.atan2(uy, ux)*180/Math.PI, depth = (8 + rnd()*3)*ppm, mat = roofPick(rnd);
     const at = (u, v) => ({ x:a.x + ux*u + vx*v, y:a.y + uy*u + vy*v });
     for(let t = .4*ppm; t < L - 2.5*ppm; ){
       let fw = (4 + rnd()*3.5)*ppm; if(t + fw > L - .4*ppm) fw = L - .4*ppm - t; if(fw < 2.8*ppm) break;
@@ -4055,18 +4058,30 @@ function marketAwnings(sh, inv){
    2-yard cells: everything already on the plan (streets, water, squares, greens, walls, buildings, blocks) is taken
    first, so the houses fill only what's left. Kept until the plan changes. */
 let townFillCache = { key:"", svg:"" };
+/* how built up a town is (doc.density), or one of its districts (region.density): how far the houses spread from its
+   buildings, whether every frontage gets a house, and how much of the ground behind is houses, gardens or open */
+const BUILT_DENSITY = { none:{ label:"None (no houses)", reach:0, front:0, house:0, garden:0 },
+  village:{ label:"Village (scattered)", reach:30, front:.55, house:.3, garden:.5 },
+  town:{ label:"Town", reach:55, front:1, house:.74, garden:.23 },
+  city:{ label:"City (packed)", reach:70, front:1, house:.9, garden:.08 } };
 function townFill(){
   const ppm = doc.ppm || 5, g = 2*ppm, shapes = doc.shapes || [], nodes = doc.nodes || [];
-  const key = shapes.map(q=>q.id + q.kind + ptsKey(q.pts||[]) + (q.w||"")).join("|") + "#" + nodes.map(q=>q.id + q.kind + Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join("|");
+  const key = JSON.stringify(doc.roofs||"") + (doc.density||"") + (doc.regions||[]).map(r=>r.id + (r.density||"")).join(",") + shapes.map(q=>q.id + q.kind + ptsKey(q.pts||[]) + (q.w||"")).join("|") + "#" + nodes.map(q=>q.id + q.kind + Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join("|");
   if(townFillCache.key===key) return townFillCache.svg;
   const done = svg => { townFillCache = { key, svg }; return svg; };
   const blocks = shapes.filter(q=>q.kind==="block" && q.closed && (q.pts||[]).length > 2), blds = nodes.filter(q=>hasFootprint(q) && !NO_ROOF.has(q.kind));
   if(!blds.length && !blocks.length) return done("");
-  const seeds = [...blds.map(q=>({ x:q.x, y:q.y })), ...blocks.flatMap(q=>shapeRing(q))], reach = 55*ppm;
+  /* the town is its buildings (not those in a district outside it), its blocks, and its streets wherever they run near them */
+  const regs = doc.regions || [], ri = id => regs.findIndex(r=>r.id===id);
+  const D = i => BUILT_DENSITY[(i >= 0 && regs[i] && regs[i].density) || doc.density || "town"] || BUILT_DENSITY.town;
+  const reach = Math.max(1, ...[-1, ...regs.map((_, i)=>i)].map(i=>D(i).reach))*ppm, inTown = q => !/outside/i.test(((regs).find(r=>r.id===q.region)||{}).name||"");
+  const anchors = blds.filter(inTown), seeds = [...anchors.map(q=>({ x:q.x, y:q.y, r:ri(q.region) })), ...blocks.flatMap(q=>shapeRing(q).map(p=>({ x:p.x, y:p.y, r:-1 })))];
+  for(const q of shapes) if((q.kind==="street" || q.kind==="lane") && !q.closed && (q.pts||[]).length > 1)
+    for(const p of samplePath(q.pts, false, 6, q.straight)){ let best = null, bd = reach*2.2; for(const a of anchors){ const dd = Math.hypot(a.x-p.x, a.y-p.y); if(dd < bd){ bd = dd; best = a; } } if(best) seeds.push({ x:p.x, y:p.y, r:ri(best.region) }); }
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for(const p of seeds){ x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   x0 -= reach; y0 -= reach; x1 += reach; y1 += reach;
   const W = Math.ceil((x1-x0)/g) + 1, H = Math.ceil((y1-y0)/g) + 1, N = W*H; if(N > 2.5e6) return done("");
-  const taken = new Uint8Array(N), bar = new Uint8Array(N), dist = new Float32Array(N).fill(1e9), segOf = new Int32Array(N).fill(-1);
+  const taken = new Uint8Array(N), bar = new Uint8Array(N), dist = new Float32Array(N).fill(1e9), segOf = new Int32Array(N).fill(-1), regOf = new Int16Array(N).fill(-1);
   const cell = (x, y) => { const i = Math.floor((x-x0)/g), j = Math.floor((y-y0)/g); return i<0||j<0||i>=W||j>=H ? -1 : j*W + i; };
   const stamp = (arr, x, y, r, v = 1) => { const r2 = r*r, i0 = Math.max(0, Math.floor((x-r-x0)/g)), i1 = Math.min(W-1, Math.floor((x+r-x0)/g)), j0 = Math.max(0, Math.floor((y-r-y0)/g)), j1 = Math.min(H-1, Math.floor((y+r-y0)/g));
     for(let j=j0; j<=j1; j++) for(let i=i0; i<=i1; i++){ const cx = x0 + (i+.5)*g - x, cy = y0 + (j+.5)*g - y; if(cx*cx + cy*cy <= r2) arr[j*W+i] = v; } };
@@ -4085,18 +4100,19 @@ function townFill(){
     else if(q.closed && q.pts.length > 2){ const r = shapeRing(q); fillRing(taken, r); if(q.kind==="water") fillRing(bar, r); } }
   for(const q of nodes) if(hasFootprint(q)){ const r = footprintPts(q); fillRing(taken, [...r, r[0]]); const f = footprintOf(q); stamp(taken, q.x, q.y, Math.min(f.w, f.d)*ppm*.5 + ppm); }
   /* the built-up part: out from the buildings and blocks, not across a wall or water */
-  const flood = (start, val, limit) => { let q = start, h = 0;
+  const flood = (start, carry, limit) => { let q = start, h = 0;
     while(h < q.length){ const c = q[h++], i = c % W, j = (c - i) / W, d = dist[c] + g; if(d > limit) continue;
-      for(const n of [i>0 ? c-1 : -1, i<W-1 ? c+1 : -1, j>0 ? c-W : -1, j<H-1 ? c+W : -1]) if(n >= 0 && !bar[n] && d < dist[n]){ dist[n] = d; if(val) segOf[n] = segOf[c]; q.push(n); } } };
-  { const st = []; for(const p of seeds){ const c = cell(p.x, p.y); if(c >= 0 && !bar[c] && dist[c] > 0){ dist[c] = 0; st.push(c); } } flood(st, false, reach); }
+      for(const n of [i>0 ? c-1 : -1, i<W-1 ? c+1 : -1, j>0 ? c-W : -1, j<H-1 ? c+W : -1]) if(n >= 0 && !bar[n] && d < dist[n]){ dist[n] = d; carry[n] = carry[c]; q.push(n); } } };
+  { const st = []; for(const p of seeds){ const c = cell(p.x, p.y); if(c >= 0 && !bar[c] && dist[c] > 0){ dist[c] = 0; regOf[c] = p.r; st.push(c); } } flood(st, regOf, reach); }
   /* each cell's nearest street (a second spread, from the streets themselves) */
   const built = new Float32Array(dist); dist.fill(1e9);
-  { const st = []; for(let c=0; c<N; c++) if(segOf[c] >= 0){ dist[c] = 0; st.push(c); } flood(st, true, 1e9); }
+  { const st = []; for(let c=0; c<N; c++) if(segOf[c] >= 0){ dist[c] = 0; st.push(c); } flood(st, segOf, 1e9); }
   const rnd = seeded("town" + key.length + (doc.title||""));
-  const edgeOK = c => built[c] < reach && (built[c] < reach*.6 || rnd() > Math.pow((built[c] - reach*.6)/(reach*.4), 1.5));     // solid in town, thinning out over its last stretch
+  const reachAt = c => D(regOf[c]).reach*ppm, inBuilt = c => built[c] < reachAt(c);
+  const edgeOK = c => { const R = reachAt(c); return built[c] < R && (built[c] < R*.6 || rnd() > Math.pow((built[c] - R*.6)/(R*.4), 1.5)); };     // solid in town, thinning out over its last stretch
   const lotFree = poly => { let ry0 = 1e9, ry1 = -1e9, rx0 = 1e9, rx1 = -1e9; for(const p of poly){ ry0 = Math.min(ry0, p.y); ry1 = Math.max(ry1, p.y); rx0 = Math.min(rx0, p.x); rx1 = Math.max(rx1, p.x); }
     const ring = [...poly, poly[0]];
-    for(let y = ry0 + g*.4; y < ry1; y += g*.55) for(let x = rx0 + g*.4; x < rx1; x += g*.55){ if(!inRing(ring, x, y)) continue; const c = cell(x, y); if(c < 0 || taken[c] || built[c] >= reach) return false; }
+    for(let y = ry0 + g*.4; y < ry1; y += g*.55) for(let x = rx0 + g*.4; x < rx1; x += g*.55){ if(!inRing(ring, x, y)) continue; const c = cell(x, y); if(c < 0 || taken[c] || !inBuilt(c)) return false; }
     return true; };
   const take = poly => fillRing(taken, [...poly, poly[0]]);
   let roofs = "", gardens = "", trees = "";
@@ -4109,12 +4125,12 @@ function townFill(){
     const at = d => { let k = 1; while(k < run.length-1 && run[k] < d) k++; const a = sm[k-1], b = sm[k], L = (run[k]-run[k-1]) || 1, t = (d - run[k-1]) / L; return { x:a.x + (b.x-a.x)*t, y:a.y + (b.y-a.y)*t, ux:(b.x-a.x)/L, uy:(b.y-a.y)/L }; };
     const total = run[run.length-1];
     for(const sd of [1, -1]){
-      const mat = rnd() < .75 ? "tile" : "slate";
+      const mat = roofPick(rnd);
       for(let d = 2*ppm; d < total - 2*ppm; ){
         const fw = (4 + rnd()*3)*ppm, dp = (7.5 + rnd()*2)*ppm, p = at(d + fw/2), nx = -p.uy*sd, ny = p.ux*sd, off = half + .7*ppm;
         const corner = (u, v) => ({ x:p.x + p.ux*u + nx*v, y:p.y + p.uy*u + ny*v });
         const lot = [corner(-fw/2, off), corner(fw/2, off), corner(fw/2, off + dp), corner(-fw/2, off + dp)], c = corner(0, off + dp/2), cc = cell(c.x, c.y);
-        if(cc >= 0 && lotFree(lot) && edgeOK(cc)){ take(lot); roof(c, Math.atan2(p.uy, p.ux)*180/Math.PI, fw - .5, dp, mat); d += fw; }
+        if(cc >= 0 && lotFree(lot) && edgeOK(cc) && rnd() < D(regOf[cc]).front){ take(lot); roof(c, Math.atan2(p.uy, p.ux)*180/Math.PI, fw - .5, dp, mat); d += fw; }
         else d += 1.5*ppm;
       }
     }
@@ -4122,16 +4138,16 @@ function townFill(){
   /* 2. the ground behind, row on row, each row parallel to its nearest street */
   const row = 8.5*ppm, slot = 6*ppm;
   if(segs.length) for(let j=0; j<H; j+=2) for(let i=0; i<W; i+=2){
-    const c0 = j*W + i; if(taken[c0] || built[c0] >= reach || segOf[c0] < 0) continue;
+    const c0 = j*W + i; if(taken[c0] || !inBuilt(c0) || segOf[c0] < 0) continue;
     const s = segs[segOf[c0]], L = Math.hypot(s.b.x-s.a.x, s.b.y-s.a.y) || 1, ux = (s.b.x-s.a.x)/L, uy = (s.b.y-s.a.y)/L;
     const px = x0 + (i+.5)*g, py = y0 + (j+.5)*g, u = (px-s.a.x)*ux + (py-s.a.y)*uy, v = (px-s.a.x)*(-uy) + (py-s.a.y)*ux, sv = v < 0 ? -1 : 1;
     const off = s.half + .7*ppm, k = Math.max(0, Math.floor((Math.abs(v) - off)/row));
     const cu = Math.round(u/slot)*slot, cv = sv*(off + (k + .5)*row), c = { x:s.a.x + ux*cu - uy*cv, y:s.a.y + uy*cu + ux*cv };
     const cc = cell(c.x, c.y); if(cc < 0 || taken[cc]) continue;
     const box = (w, h) => [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([a, b])=>({ x:c.x + ux*a - uy*b, y:c.y + uy*a + ux*b }));
-    const roll = rnd(), ang = Math.atan2(uy, ux)*180/Math.PI;
-    if(roll < .74){ const poly = box(slot - .15*ppm, row - .4*ppm); if(lotFree(poly) && edgeOK(cc)){ take(poly); roof(c, ang, slot - .15*ppm, row - .4*ppm, rnd() < .74 ? "tile" : rnd() < .7 ? "slate" : "thatch"); continue; } }
-    if(roll < .97){ const poly = box(slot - .1*ppm, row - .1*ppm); if(lotFree(poly)){ take(poly); garden(poly); if(rnd() < .35) tree(c, (1.1 + rnd()*.9)*ppm); continue; } }
+    const roll = rnd(), ang = Math.atan2(uy, ux)*180/Math.PI, dz = D(regOf[cc]);
+    if(roll < dz.house){ const poly = box(slot - .15*ppm, row - .4*ppm); if(lotFree(poly) && edgeOK(cc)){ take(poly); roof(c, ang, slot - .15*ppm, row - .4*ppm, roofPick(rnd)); continue; } }
+    if(roll < dz.house + dz.garden){ const poly = box(slot - .1*ppm, row - .1*ppm); if(lotFree(poly)){ take(poly); garden(poly); if(rnd() < .35) tree(c, (1.1 + rnd()*.9)*ppm); continue; } }
     taken[cc] = 1;                                          // a courtyard: left open
   }
   return done(`<g pointer-events="none">${gardens}${trees}${roofs}</g>`);
@@ -13164,6 +13180,8 @@ function renderInspectInner(){
       Everything works as it does on the survey — streets bend, water runs, walls block.</p>
       <div class="field" style="margin-top:14px"><label>Name of this place</label>
         <input id="p-title" type="text" value="${esc(doc.title||"")}"></div>
+      <div class="field"><label>Built up as <small>the houses along its streets and behind them</small></label><select id="p-density">${Object.entries(BUILT_DENSITY).map(([k, v])=>`<option value="${k}" ${(doc.density||"town")===k?"selected":""}>${v.label}</option>`).join("")}</select></div>
+      <p class="empty-note" style="font-size:11px;margin:-4px 0 8px">A district can be built up differently: Build drawer, Regions.</p>
       <p class="eyebrow spaced">Trades claimed on the survey</p>
       ${missing.length
         ? `<p class="empty-note" style="margin-bottom:8px">${missing.length} not yet sited — put a building down and it ticks itself off.</p>
@@ -13174,6 +13192,7 @@ function renderInspectInner(){
       <button class="btn wide" id="p-back">Back out to the survey</button>`;
     const pt = $("#p-title");
     pt.oninput = e=>{ doc.title = e.target.value; renderCrumb(); markDirty(currentKey()); };
+    $("#p-density").onchange = e=>{ if(e.target.value==="town") delete doc.density; else doc.density = e.target.value; touch(); render(); };
     $("#p-back").onclick = ()=>{ planFrom = null; leavePlan(); };
     return;
   }
@@ -13558,6 +13577,7 @@ function renderRegions(){
     ${doc.regions.map((r,i)=>`<div class="regrow">
       <span class="swatch" style="background:${r.hex}"></span>
       <input class="nm" data-ri="${i}" data-f="name" type="text" value="${esc(r.name)}">
+      ${planOf ? `<select data-ri="${i}" data-f="density" title="How built up this district is"><option value="">As the town</option>${Object.entries(BUILT_DENSITY).map(([k, v])=>`<option value="${k}" ${r.density===k?"selected":""}>${v.label}</option>`).join("")}</select>` : ""}
     </div>`).join("")}
     <p class="empty-note" style="margin-top:12px">Names for parts of the map; each place and road belongs to one. How often encounters come is set on the roads (quality and danger) and in the Library's Encounters.</p>
     <button class="btn wide" id="addRegion" style="margin-top:14px">Add a region</button>
@@ -13572,6 +13592,7 @@ function renderRegions(){
     inp.oninput = e=>{
       const r = doc.regions[+e.target.dataset.ri];
       if(e.target.dataset.f==="threat") r.threat = Math.max(1,Math.min(9,+e.target.value||1));
+      else if(e.target.dataset.f==="density"){ if(e.target.value) r.density = e.target.value; else delete r.density; touch(); render(); return; }
       else r.name = e.target.value;
       touch();
     };

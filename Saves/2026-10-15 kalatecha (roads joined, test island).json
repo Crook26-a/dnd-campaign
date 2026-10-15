@@ -12777,7 +12777,8 @@
                                                     "name":  "Harbor District",
                                                     "threat":  2,
                                                     "hex":  "#3f6f78",
-                                                    "notes":  "Piers, the warehouses, the fish market, the Drowned Bell, and the chandlery. Rowdy after dark."
+                                                    "notes":  "Piers, the warehouses, the fish market, the Drowned Bell, and the chandlery. Rowdy after dark.",
+                                                    "density":  "city"
                                                 },
                                                 {
                                                     "id":  "d2",
@@ -12791,7 +12792,8 @@
                                                     "name":  "Upper Town",
                                                     "threat":  1,
                                                     "hex":  "#6b5a86",
-                                                    "notes":  "Villas on the terraced hills. Rich sponsors, and Hargrove-Vance."
+                                                    "notes":  "Villas on the terraced hills. Rich sponsors, and Hargrove-Vance.",
+                                                    "density":  "village"
                                                 },
                                                 {
                                                     "id":  "d4",
@@ -15361,42 +15363,6 @@
                                                            ]
                                                },
                                                {
-                                                   "id":  "pterr",
-                                                   "kind":  "garden",
-                                                   "closed":  true,
-                                                   "straight":  false,
-                                                   "name":  "The Terraces",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "Terraced hills with palms and villas, climbing behind the red-tiled rooftops. The Upper Town sits here.",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  3200,
-                                                                   "y":  350
-                                                               },
-                                                               {
-                                                                   "x":  4000,
-                                                                   "y":  550
-                                                               },
-                                                               {
-                                                                   "x":  4300,
-                                                                   "y":  1300
-                                                               },
-                                                               {
-                                                                   "x":  4150,
-                                                                   "y":  1900
-                                                               },
-                                                               {
-                                                                   "x":  3500,
-                                                                   "y":  1825
-                                                               },
-                                                               {
-                                                                   "x":  3250,
-                                                                   "y":  1100
-                                                               }
-                                                           ]
-                                               },
-                                               {
                                                    "id":  "plookhill",
                                                    "kind":  "green",
                                                    "closed":  true,
@@ -15541,202 +15507,6 @@
                                                                {
                                                                    "x":  2370,
                                                                    "y":  1760
-                                                               }
-                                                           ]
-                                               },
-                                               {
-                                                   "id":  "pb4",
-                                                   "kind":  "block",
-                                                   "closed":  true,
-                                                   "straight":  true,
-                                                   "name":  "",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  2900,
-                                                                   "y":  1240
-                                                               },
-                                                               {
-                                                                   "x":  3200,
-                                                                   "y":  1220
-                                                               },
-                                                               {
-                                                                   "x":  3260,
-                                                                   "y":  1500
-                                                               },
-                                                               {
-                                                                   "x":  2940,
-                                                                   "y":  1530
-                                                               }
-                                                           ]
-                                               },
-                                               {
-                                                   "id":  "pb5",
-                                                   "kind":  "block",
-                                                   "closed":  true,
-                                                   "straight":  true,
-                                                   "name":  "",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  2950,
-                                                                   "y":  1650
-                                                               },
-                                                               {
-                                                                   "x":  3300,
-                                                                   "y":  1610
-                                                               },
-                                                               {
-                                                                   "x":  3360,
-                                                                   "y":  1880
-                                                               },
-                                                               {
-                                                                   "x":  3000,
-                                                                   "y":  1920
-                                                               }
-                                                           ]
-                                               },
-                                               {
-                                                   "id":  "pb6",
-                                                   "kind":  "block",
-                                                   "closed":  true,
-                                                   "straight":  true,
-                                                   "name":  "",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  2400,
-                                                                   "y":  1850
-                                                               },
-                                                               {
-                                                                   "x":  2700,
-                                                                   "y":  1830
-                                                               },
-                                                               {
-                                                                   "x":  2730,
-                                                                   "y":  2060
-                                                               },
-                                                               {
-                                                                   "x":  2430,
-                                                                   "y":  2090
-                                                               }
-                                                           ]
-                                               },
-                                               {
-                                                   "id":  "pb7",
-                                                   "kind":  "block",
-                                                   "closed":  true,
-                                                   "straight":  true,
-                                                   "name":  "",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  3300,
-                                                                   "y":  1000
-                                                               },
-                                                               {
-                                                                   "x":  3500,
-                                                                   "y":  980
-                                                               },
-                                                               {
-                                                                   "x":  3540,
-                                                                   "y":  1310
-                                                               },
-                                                               {
-                                                                   "x":  3340,
-                                                                   "y":  1330
-                                                               }
-                                                           ]
-                                               },
-                                               {
-                                                   "id":  "pb8",
-                                                   "kind":  "block",
-                                                   "closed":  true,
-                                                   "straight":  true,
-                                                   "name":  "",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  2600,
-                                                                   "y":  310
-                                                               },
-                                                               {
-                                                                   "x":  3000,
-                                                                   "y":  290
-                                                               },
-                                                               {
-                                                                   "x":  3020,
-                                                                   "y":  430
-                                                               },
-                                                               {
-                                                                   "x":  2620,
-                                                                   "y":  450
-                                                               }
-                                                           ]
-                                               },
-                                               {
-                                                   "id":  "pb9",
-                                                   "kind":  "block",
-                                                   "closed":  true,
-                                                   "straight":  true,
-                                                   "name":  "",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  2100,
-                                                                   "y":  150
-                                                               },
-                                                               {
-                                                                   "x":  2500,
-                                                                   "y":  140
-                                                               },
-                                                               {
-                                                                   "x":  2520,
-                                                                   "y":  290
-                                                               },
-                                                               {
-                                                                   "x":  2120,
-                                                                   "y":  310
-                                                               }
-                                                           ]
-                                               },
-                                               {
-                                                   "id":  "pb10",
-                                                   "kind":  "block",
-                                                   "closed":  true,
-                                                   "straight":  true,
-                                                   "name":  "",
-                                                   "side":  1,
-                                                   "impassable":  false,
-                                                   "notes":  "",
-                                                   "pts":  [
-                                                               {
-                                                                   "x":  3450,
-                                                                   "y":  2000
-                                                               },
-                                                               {
-                                                                   "x":  3700,
-                                                                   "y":  1970
-                                                               },
-                                                               {
-                                                                   "x":  3740,
-                                                                   "y":  2200
-                                                               },
-                                                               {
-                                                                   "x":  3500,
-                                                                   "y":  2230
                                                                }
                                                            ]
                                                },
@@ -16203,6 +15973,398 @@
                                                                }
                                                            ],
                                                    "w":  40
+                                               },
+                                               {
+                                                   "id":  "pterr1",
+                                                   "kind":  "garden",
+                                                   "closed":  true,
+                                                   "straight":  false,
+                                                   "name":  "The Terraces",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "Terraced gardens and vineyards climbing the hill above the town, with palms along their edges.",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  3400,
+                                                                   "y":  420
+                                                               },
+                                                               {
+                                                                   "x":  3900,
+                                                                   "y":  520
+                                                               },
+                                                               {
+                                                                   "x":  4100,
+                                                                   "y":  640
+                                                               },
+                                                               {
+                                                                   "x":  4080,
+                                                                   "y":  705
+                                                               },
+                                                               {
+                                                                   "x":  3880,
+                                                                   "y":  595
+                                                               },
+                                                               {
+                                                                   "x":  3380,
+                                                                   "y":  490
+                                                               }
+                                                           ]
+                                               },
+                                               {
+                                                   "id":  "pterr2",
+                                                   "kind":  "garden",
+                                                   "closed":  true,
+                                                   "straight":  false,
+                                                   "name":  "",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  3350,
+                                                                   "y":  800
+                                                               },
+                                                               {
+                                                                   "x":  3800,
+                                                                   "y":  860
+                                                               },
+                                                               {
+                                                                   "x":  4200,
+                                                                   "y":  1000
+                                                               },
+                                                               {
+                                                                   "x":  4180,
+                                                                   "y":  1070
+                                                               },
+                                                               {
+                                                                   "x":  3780,
+                                                                   "y":  935
+                                                               },
+                                                               {
+                                                                   "x":  3330,
+                                                                   "y":  870
+                                                               }
+                                                           ]
+                                               },
+                                               {
+                                                   "id":  "pterr3",
+                                                   "kind":  "garden",
+                                                   "closed":  true,
+                                                   "straight":  false,
+                                                   "name":  "",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  3420,
+                                                                   "y":  1190
+                                                               },
+                                                               {
+                                                                   "x":  3850,
+                                                                   "y":  1255
+                                                               },
+                                                               {
+                                                                   "x":  4250,
+                                                                   "y":  1385
+                                                               },
+                                                               {
+                                                                   "x":  4230,
+                                                                   "y":  1455
+                                                               },
+                                                               {
+                                                                   "x":  3830,
+                                                                   "y":  1325
+                                                               },
+                                                               {
+                                                                   "x":  3400,
+                                                                   "y":  1260
+                                                               }
+                                                           ]
+                                               },
+                                               {
+                                                   "id":  "pterr4",
+                                                   "kind":  "garden",
+                                                   "closed":  true,
+                                                   "straight":  false,
+                                                   "name":  "",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  3650,
+                                                                   "y":  1485
+                                                               },
+                                                               {
+                                                                   "x":  4000,
+                                                                   "y":  1565
+                                                               },
+                                                               {
+                                                                   "x":  4220,
+                                                                   "y":  1685
+                                                               },
+                                                               {
+                                                                   "x":  4200,
+                                                                   "y":  1755
+                                                               },
+                                                               {
+                                                                   "x":  3980,
+                                                                   "y":  1635
+                                                               },
+                                                               {
+                                                                   "x":  3630,
+                                                                   "y":  1555
+                                                               }
+                                                           ]
+                                               },
+                                               {
+                                                   "id":  "pterr5",
+                                                   "kind":  "garden",
+                                                   "closed":  true,
+                                                   "straight":  false,
+                                                   "name":  "",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  3700,
+                                                                   "y":  1725
+                                                               },
+                                                               {
+                                                                   "x":  4100,
+                                                                   "y":  1805
+                                                               },
+                                                               {
+                                                                   "x":  4180,
+                                                                   "y":  1875
+                                                               },
+                                                               {
+                                                                   "x":  4150,
+                                                                   "y":  1925
+                                                               },
+                                                               {
+                                                                   "x":  4080,
+                                                                   "y":  1875
+                                                               },
+                                                               {
+                                                                   "x":  3680,
+                                                                   "y":  1795
+                                                               }
+                                                           ]
+                                               },
+                                               {
+                                                   "id":  "kl1",
+                                                   "kind":  "lane",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Upper Row",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "Behind the warehouses, under the fortress wall.",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  1000,
+                                                                   "y":  430
+                                                               },
+                                                               {
+                                                                   "x":  1400,
+                                                                   "y":  380
+                                                               },
+                                                               {
+                                                                   "x":  1800,
+                                                                   "y":  330
+                                                               },
+                                                               {
+                                                                   "x":  2200,
+                                                                   "y":  330
+                                                               },
+                                                               {
+                                                                   "x":  2400,
+                                                                   "y":  430
+                                                               }
+                                                           ],
+                                                   "w":  22
+                                               },
+                                               {
+                                                   "id":  "kl2",
+                                                   "kind":  "alley",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Rope Walk",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  1650,
+                                                                   "y":  640
+                                                               },
+                                                               {
+                                                                   "x":  1690,
+                                                                   "y":  400
+                                                               },
+                                                               {
+                                                                   "x":  1720,
+                                                                   "y":  190
+                                                               }
+                                                           ],
+                                                   "w":  15
+                                               },
+                                               {
+                                                   "id":  "kl3",
+                                                   "kind":  "alley",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Gull Lane",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  2000,
+                                                                   "y":  700
+                                                               },
+                                                               {
+                                                                   "x":  2050,
+                                                                   "y":  450
+                                                               },
+                                                               {
+                                                                   "x":  2120,
+                                                                   "y":  180
+                                                               }
+                                                           ],
+                                                   "w":  15
+                                               },
+                                               {
+                                                   "id":  "kl4",
+                                                   "kind":  "lane",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Lantern Lane",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "Past the Charter House to Cathedral Street.",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  2650,
+                                                                   "y":  575
+                                                               },
+                                                               {
+                                                                   "x":  2690,
+                                                                   "y":  780
+                                                               },
+                                                               {
+                                                                   "x":  2700,
+                                                                   "y":  965
+                                                               }
+                                                           ],
+                                                   "w":  22
+                                               },
+                                               {
+                                                   "id":  "kl5",
+                                                   "kind":  "lane",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Bell Lane",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "Round the back of the cathedral to the Switchback.",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  3000,
+                                                                   "y":  700
+                                                               },
+                                                               {
+                                                                   "x":  3260,
+                                                                   "y":  730
+                                                               },
+                                                               {
+                                                                   "x":  3290,
+                                                                   "y":  1000
+                                                               }
+                                                           ],
+                                                   "w":  22
+                                               },
+                                               {
+                                                   "id":  "kl6",
+                                                   "kind":  "lane",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Tanners\u0027 Lane",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "Down from the cathedral, across Hill Stair, to the Inland Road.",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  3010,
+                                                                   "y":  1170
+                                                               },
+                                                               {
+                                                                   "x":  3060,
+                                                                   "y":  1450
+                                                               },
+                                                               {
+                                                                   "x":  3080,
+                                                                   "y":  1700
+                                                               },
+                                                               {
+                                                                   "x":  3060,
+                                                                   "y":  1915
+                                                               }
+                                                           ],
+                                                   "w":  22
+                                               },
+                                               {
+                                                   "id":  "kl7",
+                                                   "kind":  "lane",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Net Lane",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "From the south end of the Quay to the Inland Road.",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  2280,
+                                                                   "y":  1770
+                                                               },
+                                                               {
+                                                                   "x":  2480,
+                                                                   "y":  1820
+                                                               },
+                                                               {
+                                                                   "x":  2690,
+                                                                   "y":  1760
+                                                               }
+                                                           ],
+                                                   "w":  20
+                                               },
+                                               {
+                                                   "id":  "kl8",
+                                                   "kind":  "alley",
+                                                   "closed":  false,
+                                                   "straight":  false,
+                                                   "name":  "Salt Steps",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  2860,
+                                                                   "y":  1240
+                                                               },
+                                                               {
+                                                                   "x":  2900,
+                                                                   "y":  1100
+                                                               },
+                                                               {
+                                                                   "x":  2960,
+                                                                   "y":  1000
+                                                               }
+                                                           ],
+                                                   "w":  15
                                                }
                                            ],
                                 "sited":  {
@@ -16215,6 +16377,9 @@
                                               "temple":  1,
                                               "healer":  1,
                                               "reeve":  1
+                                          },
+                                "roofs":  {
+                                              "tile":  1
                                           }
                             },
                   "klantern":  {
@@ -20166,6 +20331,11 @@
                                               "reeve":  1,
                                               "stable":  1,
                                               "fence":  1
+                                          },
+                                "roofs":  {
+                                              "slate":  0.65,
+                                              "tile":  0.3,
+                                              "thatch":  0.05
                                           }
                             }
               },
