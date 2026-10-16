@@ -15632,7 +15632,9 @@ async function pump(){
   const keys = [..._dirty]; _dirty.clear();
   let bad = false;
   for(const k of keys){
-    const val = k===K_SURVEY ? doc : plans[k.slice(5)];
+    /* the survey is always root: doc is whatever's on screen, a town plan when you're standing in one (writing doc
+       here put the plan over the whole campaign whenever the party or library changed inside a town; fixed 2026-10-16) */
+    const val = k===K_SURVEY ? root : plans[k.slice(5)];
     if(val===undefined){ try{ await idbDel(k); }catch(err){ bad=true; } continue; }
     try{
       if(USE_IDB) await idbSet(k, val);
@@ -16121,6 +16123,9 @@ async function boot(){
     if(loaded.plans){ Object.assign(plans, loaded.plans); delete loaded.plans; }
     setRoot(loaded);
   }
+  /* a town plan saved over the campaign (the bug above): say so, before anything is changed and saved on top of it */
+  if(loaded && !loaded.library && (loaded.nodes||[]).length && Object.values(plans).some(p=>(p.nodes||[]).some(n=>loaded.nodes.some(m=>m.id===n.id))))      // the same places as a plan
+    setTimeout(()=>alert("The campaign didn't load properly: what's in this browser is a town plan that was saved over the campaign (a bug, fixed on 16 October 2026).\n\nDon't change anything. Load your latest save: Data → Load a survey.json, then bring the Field Book file in again if you've made Library entries since."), 300);
   centreView(); renderCrumb(); resetHist();
   $("#saveState").textContent = doc.nodes.length ? "saved" : "new survey";
   /* the campaign folder picked before, if any, and its autosave */
