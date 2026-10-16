@@ -382,6 +382,9 @@
   #mapfurn .sb-lab{margin-top:2px}
   .facmeter{position:relative;flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#9b3a2a,#d8c9a8 50%,#4f7a4a);margin:0 6px}
   .facmeter .fm-mid{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--ink-faint)} .facmeter .fm-dot{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--ink);border:2px solid var(--paper-lit)}
+  .ftv{display:flex;flex-direction:column;gap:2.2vh;margin-top:3vh} .ftv-row{display:flex;align-items:center;gap:2vw;font-family:var(--serif);font-size:min(3.4vh,30px);color:#3a2e1e}
+  .ftv-n{flex:0 0 34%} .ftv-row .facmeter{height:1.6vh;border-radius:1vh} .ftv-row .fm-dot{width:2.6vh;height:2.6vh;margin:-1.3vh 0 0 -1.3vh} .ftv-t{flex:0 0 20%;text-align:right;font-variant:small-caps}
+  .ftv-t.t-hostile,.ftv-t.t-sworn,.ftv-t.t-unfriendly{color:#9b3a2a} .ftv-t.t-friendly,.ftv-t.t-trusted,.ftv-t.t-allies{color:#4f7a4a}
   .facfx{font-size:11.5px;margin:4px 0 6px;color:var(--ink-soft)} .facwarn{color:var(--lead)} .facrow{border-bottom:1px dotted var(--rule-soft);padding:3px 0}
   .facchip{font:10px var(--mono);border:1px solid var(--rule-soft);border-radius:8px;padding:0 5px;white-space:nowrap} .facchip.warn{border-color:var(--lead);color:var(--lead)}
   .facchip.t-allies,.facchip.t-trusted,.facchip.t-friendly{border-color:#4f7a4a;color:#4f7a4a}
@@ -1882,6 +1885,7 @@ function sendPlayers(now){
       }
       else if(playerShow.kind==="board"){ const bn = boardByKey(playerShow.id); msg = bn && bn.board ? { kind:"board", html:boardHtml(bn) } : { kind:"blank" }; }
       else if(playerShow.kind==="leaders") msg = { kind:"board", html:leaderHtml(playerShow.scope || leaderScope, true) };
+      else if(playerShow.kind==="factions") msg = { kind:"board", html:factionsTvHtml() };
       else if(playerShow.kind==="awards") msg = { kind:"board", html:awardsTvHtml(playerShow.sess || sessKey()) };
       else if(playerShow.kind==="standing") msg = { kind:"board", html:`<div class="lb lb-tv"><div class="lb-h">Who is where</div>${xpStanding(partyRoster(), true)}</div>` };
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
@@ -2019,7 +2023,7 @@ function renderPScreen(){
     ${up ? `<p class="ps-st on">Open. Drag that window to the TV and double-click it for full screen.</p><button class="btn wide" data-ps="close">Close the players' screen</button>`
          : `<p class="ps-st">Not open.</p><button class="btn wide" data-ps="open">Open the players' screen</button>`}
     <p class="grouplab">They see</p>
-    <div class="adtabs">${showBtn("map", "The map")}${showBtn("blank", "Nothing")}</div>
+    <div class="adtabs">${showBtn("map", "The map")}${showBtn("blank", "Nothing")}${(lib().factions||[]).length ? showBtn("factions", "Factions") : ""}</div>
     <label class="check" style="margin:2px 0 6px"><input type="checkbox" data-ps="freeze" ${playerFrozen?"checked":""}> Freeze it here while I look around</label>
     ${playerFrozen ? `<button class="btn wide" data-ps="send">Show them what I see now</button>` : ""}
     <p class="empty-note" style="font-size:11px;margin:0 0 6px">It follows your map: the town, the sea chart, or the battle map when a fight is open. Places and features you mark <i>Hidden from the players' screen</i> (in DM mode, in their panel) don't show${hidHere?` — ${hidHere} hidden on this map`:""}.</p>
@@ -6855,7 +6859,7 @@ const spellHeals = s => !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||""
 function spellTidy(s){ s.heal = spellHeals(s); if(s.heal && !s.dmg){ const m = /regains?\b[^.]*?(\d+d\d+)/i.exec(s.desc||""); if(m) s.dmg = m[1]; } return s; }
 function libSummary(cat, x){
   if(cat==="spells") return esc(spellLine(x));
-  if(cat==="factions"){ const E = factionEffects(x); return `${x.align ? esc(ALIGN_ABBR[x.align]||x.align) + " · " : ""}standing ${sgn(E.s)} · ${esc(E.tier.label.toLowerCase())}${E.violent ? " · may turn violent" : ""}`; }
+  if(cat==="factions"){ const E = factionEffects(x); if(playerShow.kind==="factions") setTimeout(()=>sendPlayers(true), 0); return `${x.align ? esc(ALIGN_ABBR[x.align]||x.align) + " · " : ""}standing ${sgn(E.s)} · ${esc(E.tier.label.toLowerCase())}${E.violent ? " · may turn violent" : ""}`; }
   if(cat==="shops"){ const T = shopTpl(x.id); return esc(T ? `kept by a ${(PEOPLE_KINDS[T.keeper]||{label:"someone"}).label.toLowerCase()} · ${T.n[0]}–${T.n[1]} things for sale · ${T.srd.length + T.goods.length} it can stock` : ""); }
   if(cat==="foes") return `CR ${crLabel(+x.cr||0)} · ${(+x.xp||0).toLocaleString()} xp${x.boss?" · boss":""}`;
   if(cat==="npcs") return esc([x.role, x.align ? (ALIGN_ABBR[x.align]||x.align) : ""].filter(Boolean).join(" · "));
@@ -7165,7 +7169,8 @@ function renderLibList(){
     if(items.length) h = `<button class="btn wide" data-libact="fillall" style="margin:0 0 8px" title="Blanks only — nothing you've typed changes. Personality and tactics are added only for people rolled on the Roll tab.">Fill in what's missing on everyone's sheet</button>` + h;
     h += `<p class="empty-note" style="margin-top:10px">Standard people — guards, priests, nobles, pirates, mages — are under Foes. Pick one as a person's "Fights as".</p>`;
   } else if(libTab==="factions"){
-    h += `<p class="empty-note" style="margin-top:10px">Put people in a faction from their page (People), and a place from its Build panel (Belongs to). How they treat the party follows its standing and their alignment: your table rule.</p>`;
+    h += `<p class="empty-note" style="margin-top:10px">Put people in a faction from their page (People), and a place from its Build panel (The place → Belongs to). How they treat the party follows its standing and their alignment: your table rule.</p>
+      ${items.length ? `<button class="btn wide" data-libact="factv" style="margin-top:4px">${playerShow.kind==="factions" ? "Take the standing off the players' screen" : "Show the standing on the players' screen"}</button><p class="empty-note" style="font-size:11px">They see each faction's name and how it stands with them (not the number), except ones marked Hidden from the players.</p>` : ""}`;
   } else if(libTab==="shops"){
     const app = Object.entries(SHOP_TEMPLATES).filter(([id, T])=>!q || (T.label + " " + JSON.stringify(T)).toLowerCase().includes(q));
     h += `<p class="eyebrow spaced">The app's kinds <small>${app.length}</small></p>
@@ -7271,6 +7276,7 @@ $("#pane-library").addEventListener("click", e=>{
   if(b.dataset.libact==="fbin"){ const f = document.createElement("input"); f.type = "file"; f.accept = ".json,.txt,application/json,text/plain";
     f.onchange = ()=>{ const file = f.files && f.files[0]; if(!file) return; const r = new FileReader(); r.onload = ()=>fieldBookIn(String(r.result||"")); r.readAsText(file); }; f.click(); return; }
   if(b.dataset.libact==="fbout") return fieldBookOut();
+  if(b.dataset.libact==="factv"){ playerShow = playerShow.kind==="factions" ? { kind:"map" } : { kind:"factions" }; sendPlayers(true); renderPScreen(); renderLibList(); return; }
   if(b.dataset.libact==="fstand"){ const f = factionById(b.dataset.id); if(!f) return; const w = $(`#lib-list [data-fwhy="${f.id}"]`);
     setStanding(f, standingOf(f) + (+b.dataset.d), w ? w.value.trim() : ""); renderLibList(); return; }
   if(b.dataset.libact==="fbpick") return void pickFbInbox();
@@ -13158,19 +13164,21 @@ function setStanding(f, v, why){
   f.standing = to; (f.slog = Array.isArray(f.slog) ? f.slog : []).push({ day:campaignDay(), from, to, why:why||"" });
   const T0 = standingTier(from), T1 = standingTier(to);
   gameLog("note", `Standing with ${f.name||"a faction"}: ${sgn(from)} → ${sgn(to)}${T0!==T1 ? ` (now ${T1.label.toLowerCase()})` : ""}${why ? `: ${why}` : ""}`);
+  if(playerShow.kind==="factions") sendPlayers(true);
   saveParty(); flash(`${f.name||"Faction"}: ${sgn(to)}${T0!==T1 ? `, now ${T1.label}` : ""}.`);
 }
 const factionOptions = (cur, none) => `<option value="">${none||"— none —"}</option>${(lib().factions||[]).map(f=>`<option value="${f.id}" ${f.id===cur?"selected":""}>${esc(f.name||"Faction")}</option>`).join("")}`;
 const factionMembers = f => lib().npcs.filter(p=>p.faction===f.id);
 /* the meter: −10 … +10 with the standing marked */
-function standingMeter(s){
+function standingMeter(s, tv){
   const pct = (s + 10) / 20 * 100;
-  return `<div class="facmeter" title="Standing ${sgn(s)}"><div class="fm-mid"></div><div class="fm-dot" style="left:${pct}%"></div></div>`;
+  return `<div class="facmeter"${tv ? "" : ` title="Standing ${sgn(s)}"`}><div class="fm-mid"></div><div class="fm-dot" style="left:${pct}%"></div></div>`;
 }
 /* the Library page for a faction */
 function factionForm(x, a, t, ta, draft){
   const E = factionEffects(x), mem = factionMembers(x), log = (x.slog||[]).slice(-8).reverse();
   return `<div class="field"><label>Alignment <small>how they treat people they dislike</small></label><select ${a} data-f="align">${alignOptions(x.align)}</select></div>
+    <label class="check" style="margin:-4px 0 8px" title="Kept off the Factions board on the players' screen (they don't know of it yet)"><input ${a} data-f="hidden" type="checkbox" ${x.hidden?"checked":""}> Hidden from the players</label>
     ${ta("wants","What they want","Control of the harbour trade; the old charter back…")}
     ${ta("how","How they work","Ledgers and lawyers; a few hard men on the docks…")}
     <p class="grouplab" style="margin:8px 0 3px">The party's standing <small>your table rule, −10 to +10</small></p>
@@ -13204,7 +13212,14 @@ function shopFactionLine(n){
   return `<p class="empty-note" style="font-size:11px;margin:2px 0 6px;${F.E.refuse ? "color:var(--lead)" : ""}">${esc(F.f.name)} ${sgn(F.E.s)} (${esc(F.E.tier.label.toLowerCase())}): ${F.E.refuse ? "they won't serve the party." : `prices ${F.E.price > 0 ? "+" : "−"}${Math.round(Math.abs(F.E.price)*100)}% (in the prices below).`}</p>`;
 }
 /* the place's own faction, for its Build panel */
-const placeFactionPick = n => (lib().factions||[]).length ? `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><select data-fac="place" data-node="${n.id}">${factionOptions(n.faction, "No faction")}</select></div>` : "";
+const placeFactionPick = n => (lib().factions||[]).length ? `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><select data-fac="place" data-node="${n.id}">${factionOptions(n.faction, "No faction")}</select></div>`
+  : `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><p class="empty-note" style="font-size:11px;margin:0">No factions yet: make one in the Library (Factions), then pick it here.</p></div>`;
+/* the players' screen: each faction they know of, and how it stands with them (the tier, not the number) */
+function factionsTvHtml(){
+  const F = (lib().factions||[]).filter(f=>!f.hidden);
+  return `<div class="lb lb-tv"><div class="lb-h">Where you stand</div><div class="ftv">${F.map(f=>{ const E = factionEffects(f);
+    return `<div class="ftv-row"><span class="ftv-n">${esc(f.name||"Faction")}</span>${standingMeter(E.s, true)}<span class="ftv-t t-${E.tier.key}">${E.tier.label}</span></div>`; }).join("") || `<p class="lb-none">Nobody has made up their mind about you yet.</p>`}</div></div>`;
+}
 document.addEventListener("click", e=>{
   const b = e.target.closest && e.target.closest("button[data-fac]"); if(!b) return;
   const f = factionById(b.dataset.id); if(!f) return; setStanding(f, standingOf(f) + (+b.dataset.fac)); renderPane(true); renderLibList();
@@ -13528,7 +13543,7 @@ function wireFootprint(n){
 function premisesPanel(n){
   const kd = KINDS[n.kind] || {};
   const use = kd.svc || "";
-  if(!n.premises) return `${placeFactionPick(n)}${shopBlock(n)}${peopleHere(n)}
+  if(!n.premises) return `${shopBlock(n)}${peopleHere(n)}
     <p class="eyebrow spaced">Inside</p>
     <p class="empty-note" style="margin:0 0 9px">${use
       ? `Rumours, asking around, and notes for this ${kd.label.toLowerCase()}.`
@@ -13536,7 +13551,7 @@ function premisesPanel(n){
     <button class="btn wide" id="pr-add">Fill in more about it</button>`;
 
   const p = n.premises;
-  return `${placeFactionPick(n)}${shopBlock(n)}${peopleHere(n)}
+  return `${shopBlock(n)}${peopleHere(n)}
     <p class="eyebrow spaced">Inside</p>
     ${use?`<p class="empty-note" style="margin:-2px 0 10px">This sites the <b>${esc(use)}</b> service for ${esc(planParentName())}.</p>`:""}
     ${(p.keeper && p.keeper.name && !(n.npcs||[]).length) || (p.folk||[]).length ? `<p class="grouplab">Written in by name <small>(older notes: put them in properly under People here)</small></p>
@@ -14450,6 +14465,7 @@ function renderInspectInner(){
           <div class="field"><label>Region</label><select id="f-region">${regionOptions(n.region)}</select></div>
           <div class="field"><label>Level</label><input id="f-level" class="mono" type="number" min="1" max="5" value="${n.level||1}"></div>
         </div>
+        ${placeFactionPick(n)}
         ${planOf?"":`
         <label class="check"><input id="f-origin" type="checkbox" ${n.origin?"checked":""}> Home port: the crew's chart starts here, and road miles are counted from here</label>
         <label class="check" style="margin-top:6px"><input id="f-seat" type="checkbox" ${n.seat?"checked":""}> Capital: the seat of government</label>`}
