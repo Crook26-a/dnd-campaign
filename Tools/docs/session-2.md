@@ -6,9 +6,9 @@ Tick each part as you finish it. The 📍 beside a part shows its place on the m
 
 ## Before the players arrive
 
-- [ ] Data tab: load the save "2026-10-13 kalatecha (session 1 XP, new rules)" (Load a survey.json). It has Session 1's XP by the new rules and the party aboard the Sallowmay at Kalatecha, night of day 1.
-- [ ] Build mode, nothing picked on the sea chart: **This map → Road tools → Put places onto the roads beside them**.
-- [ ] Notes tab (or the log on the left): click **Start session 2**. Missed checks can only cost XP earned after this, and "This session" on the leaderboards counts from here.
+- [ ] Check the app has the campaign as it should be: Session 1's XP, and the party aboard the Sallowmay at Kalatecha, night of day 1. If it doesn't, ☰ More → Data → **Load a survey.json** and pick the newest save in the Saves folder.
+- [ ] ☰ More → Party & XP → **Players of the session**: declare Session 1's player of the session, if you haven't yet (do it before the next step).
+- [ ] The game log on the left: click **Start session 2**. Missed checks can only cost XP earned after this, and "This session" on the leaderboards counts from here.
 - [ ] Sea chart, the Sallowmay's voyage bar: **Sail to** Lantern Rock, **Nav** 25 (Xuna's roll as they cast off at the end of Session 1: the plain sailing time, about 2 days and 3 hours, so they reach the reef in the small hours of day 4), **Stop every** ½ day (she'll stop at 10 in the morning and 10 at night). Press **▶ Sail** when the Opening is done.
 - [ ] Sea chart, click the Undaunted: in her panel, **Sail to** Lantern Rock and **sets off in** ½ day (she leaves at dawn, as Hargrove-Vance boasted). Give her navigator a total of 12.
 - [ ] Lantern Rock: check that the Sentry's Perch and Wreckers' Cove are still hidden, and that the octopus is in the Silver Tern.
@@ -60,7 +60,7 @@ The captain doesn't move from the wheel. Read:
 
 He doesn't fight: boarders aren't guests, but he leaves the fighting to his crew. Thimble shouts advice from the rigging, most of it rude, some of it useful.
 
-**In the app.** First bring everyone up on deck: Where tab → **All together**, then put the party on the Main deck (anyone below decks climbs up the ladder on their first turn). Enter the Sallowmay and open the [[place:kship/sdeck|Main deck]] (Enter this place); it opens calm. In the battle panel, **Bring someone in**: two [[foe:lf_redcap|red-capped merrow]] (in the Library under Foes), against the party. Put them at the port rail, one amidships and one by the stern. Then **Start the battle**. Light: dusk, so everything on deck is in Dim Light. Two merrow are 900 XP, a Moderate fight for four level-3 characters under the 2024 rules: harder than the docks, and they have a long rest that night to recover, so let them spend everything.
+**In the app.** First bring everyone up on deck: ☰ More → Where → **All together**, then put the party on the Main deck (anyone below decks climbs up the ladder on their first turn). Enter the Sallowmay and open the [[place:kship/sdeck|Main deck]] (Enter this place); it opens calm. In the battle panel, **Bring someone in**: two [[foe:lf_redcap|red-capped merrow]] (in the Library under Foes), against the party. Put them at the port rail, one amidships and one by the stern. Then **Start the battle**. Light: dusk, so everything on deck is in Dim Light. Two merrow are 900 XP, a Moderate fight for four level-3 characters under the 2024 rules: harder than the docks, and they have a long rest that night to recover, so let them spend everything.
 
 **What the merrow do (SRD 5.2, plus the red caps).**
 
@@ -83,7 +83,7 @@ He doesn't fight: boarders aren't guests, but he leaves the fighting to his crew
 
 ## Night 2 and day 3 {10 min} {place: kship}
 
-**The long rest.** The crew sleeps; everyone gets the benefits of a Long Rest (Party tab: **Long rest · everyone**). The ship sails on through the night by herself.
+**The long rest.** The crew sleeps; everyone gets the benefits of a Long Rest (☰ More → Party & XP: **Long rest · everyone**). The ship sails on through the night by herself.
 
 **Supper with the captain (a chance at favor).** Before they sleep, the captain has the crew to supper in his quarters, the first time he's done it. The pork is very good. If anyone asks, Thimble says the butcher swore that pig was "mean as a snake: bit his boy twice." Thanking him for the meal or the ship, or asking politely about his story, earns favor at the end of the night. Rin (−4) and Ethal (−9) both have room to win some back here; keep it generous. If they ask about Lantern Rock, he says, "I've seen that light from a long way off, for a long time. I've never been closer than I mean to be tomorrow night." He won't say more, and he looks south as he says it.
 
@@ -179,8 +179,8 @@ End the session there.
 - [ ] Note whether the cove was warned (the sentry's bell), and what the crew learned from the stowaway.
 - [ ] Note the reef chart: did they find the safe channel, or limp in?
 - [ ] Hannah wanted to see the cathedral in Kalatecha: save it for the homecoming.
-- [ ] Data tab: **Save to the Saves folder now**.
-- [ ] Notes tab → Game log → **Download session 2**, and give the file to Claude for a summary.
+- [ ] ☰ More → Data: **Save to the Saves folder now**.
+- [ ] The game log on the left (or ☰ More → Notes) → **Download session 2**, and give the file to Claude for a summary.
 - [ ] Party & XP: show **Who is where** and the **Leaderboards** on the players' screen at the end of the night, if they'd enjoy it.
 
 **Session 3** opens on Lantern Rock at dawn with the Undaunted coming in: Wreckers' Cove and the captured sailors, the spiral stair, the Lantern Room, Raven Heartgrove and Hargrove-Vance, the firebird, and the choice.

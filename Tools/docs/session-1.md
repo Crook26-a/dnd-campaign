@@ -10,16 +10,16 @@ If you're running long at the break, play Scene 5 as a quick chase (about 10 min
 
 **Already settled:** the captain is [[npc:ln_callomay|Captain Callomay]] (true name Calandrous Callomaydare, DM only), with [[npc:ln_thimble|Thimble]] on his shoulder; his ship is the Sallowmay; the rival is [[npc:ln_hargrove|Rupert Hargrove-Vance]] of the Undaunted; the lantern seller is [[npc:ln_tobias|Old Tobias Pell]] and his gull Admiral. The crew: Xuna Kor'larym (Rebekah), navigator; Rin Amakiir (Elisabeth), medic; Ander (Benjamin), master-at-arms; Ethal Vaelor (Hannah), quartermaster.
 
-- [x] Everyone has a character, with their sheet attached on the Party tab
-- [ ] Each character is on the Party tab, with full hit points
+- [x] Everyone has a character, with their sheet attached (☰ More → Party & XP)
+- [ ] Each character is in the party (☰ More → Party & XP), with full hit points
 - [ ] An index card behind the screen with each player's name and a favor score of 0
 - [ ] Graph or hex paper with only Kalatecha drawn in, ready for Rebekah as navigator
 - [ ] A lantern prop: a battery tea light in a jar works
 - [ ] A sealed letter from the Charter House holding the commission (Scene 4)
 - [ ] A blank notebook for the ship's log
 - [ ] The Dock Ambush is ready in the app for Scene 5: six of Hargrove-Vance's deckhands
-- [ ] The Captain Callomay document on the Docs tab, in case anyone starts investigating him
-- [ ] Notes tab: click **Start session 1** in the Game log, so tonight's log stays together
+- [ ] The Captain Callomay document in ☰ More → Docs, in case anyone starts investigating him
+- [ ] The game log on the left: click **Start session 1**, so tonight's log stays together
 - [ ] Snacks within reach, so the break is quick
 
 ## Opening {10 min} {place: kcity}
@@ -67,7 +67,7 @@ Whatever they answer, he nods as if it's the answer he expected. Nobody fails th
 
 If anyone asks for his full name, he smiles and says, "Captain Callomay will do." If anyone asks why he never leaves the ship, he says, "Someone has to keep her safe." Don't explain further. His true name is Calandrous Callomaydare. Never say it at the table. If they ask about Thimble, he answers truthfully: "People call her my familiar. She calls herself my conscience."
 
-**Crew roles.** All four roles are settled: Xuna (Rebekah) is the navigator, Rin (Elisabeth) the medic, Ander (Benjamin) the master-at-arms, and Ethal (Hannah) the quartermaster. They're already on the Party tab.
+**Crew roles.** All four roles are settled: Xuna (Rebekah) is the navigator, Rin (Elisabeth) the medic, Ander (Benjamin) the master-at-arms, and Ethal (Hannah) the quartermaster. They're already in the party (☰ More → Party & XP).
 
 | Role | What they do | Good fit for |
 | Medic | Keeps the crew alive and tends the sick and injured (Rin) | Clerics, druids, anyone good at Medicine |
@@ -244,17 +244,17 @@ Then read:
 
 End the session there.
 
-**The ship's log.** Ask who wants to keep the ship's log. That player writes a few lines tonight or before next session, and you'll read it aloud to open Session 2. In the app it goes in the Notes tab's Ship's log; "Draft from this session" gives them a start from tonight's game log.
+**The ship's log.** Ask who wants to keep the ship's log. That player writes a few lines tonight or before next session, and you'll read it aloud to open Session 2. In the app it goes in the Ship's log (☰ More → Notes); "Draft from this session" gives them a start from tonight's game log.
 
 ## After the session
 
 - [ ] Update each player's favor score on the index card. Note what raised or lowered it.
 - [ ] Write down the spot each player pointed at on the city picture.
-- [ ] Write down any names, promises, or details the players made up (the Notes tab works).
+- [ ] Write down any names, promises, or details the players made up (the quick note on the left works).
 - [ ] Note who has the lantern and how much gold they spent.
 - [ ] Ask the players what they liked best, and do more of it.
-- [ ] Data tab: Download survey.json, and put it in the campaign folder's Saves folder.
-- [ ] Notes tab → Game log → **Download session 1**, and give the file to Claude for a summary of the night.
+- [ ] ☰ More → Data: **Save to the Saves folder now** (or Download survey.json and put it in the Saves folder).
+- [ ] The game log on the left (or ☰ More → Notes) → **Download session 1**, and give the file to Claude for a summary of the night.
 
 **Session 2** opens with the ship's log, then the voyage south and the first scene on Lantern Rock: the false light.
 

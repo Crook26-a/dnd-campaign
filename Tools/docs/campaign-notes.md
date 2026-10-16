@@ -86,7 +86,7 @@ Keep a hidden score for each player from −15 to +15, starting at 0 (Joseph's t
 | −6 to −10 | −2 |
 | −11 to −15 | −3 |
 
-The Party tab shows each player's score with its bonus beside it, for example "favor +7 (+2)".
+Party & XP (☰ More) shows each player's score with its bonus beside it, for example "favor +7 (+2)".
 
 ### Clues to drop
 

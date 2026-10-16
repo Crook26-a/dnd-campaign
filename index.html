@@ -1199,11 +1199,11 @@
    ══════════════════════════════════════════════════════════════ */
 const INK = "var(--ink)";
 
-/* what a place can hold — grouped as the Errantry's own rate-card lists them */
+/* what a place can hold — grouped by what they are for */
 const SERVICES = [
   { group:"Road & lodging", items:[
     ["inn","Inn"],["stable","Stables"],["coach","Coach stop"],
-    ["board","Contract board"],["office","Errantry office"] ]},
+    ["board","Contract board"],["office","Guild office"] ]},
   { group:"Trade", items:[
     ["store","General store"],["provision","Provisioner"],["smith","Smith"],
     ["apothecary","Apothecary"],["market","Open market"],["fence","Fence"] ]},
@@ -1289,7 +1289,7 @@ const PLAN_KINDS = {
             draw:c=>`<rect x="-8" y="-7" width="16" height="14" fill="${c}" stroke="${INK}" stroke-width="1.3"/><path d="M-4 -7 L-4 7 M0 -7 L0 7 M4 -7 L4 7" stroke="${INK}" stroke-width="1"/>` },
   reeve:  { label:"Reeve & gaol",key:"", svc:"reeve",    services:svc("reeve"),
             draw:c=>`<rect x="-8" y="-8" width="16" height="16" fill="${c}" stroke="${INK}" stroke-width="1.5"/><path d="M-4 -8 L-4 8 M0 -8 L0 8 M4 -8 L4 8" stroke="${INK}" stroke-width="1.4"/>` },
-  office: { label:"Errantry office", key:"", svc:"office", services:svc("office","board"),
+  office: { label:"Guild office", key:"", svc:"office", services:svc("office","board"),
             draw:c=>`<path d="M-8 8 L-8 -6 L8 -6 L8 8 Z" fill="${c}" stroke="${INK}" stroke-width="1.4"/><path d="M-8 -6 L0 -11 L8 -6" fill="none" stroke="${INK}" stroke-width="1.4"/><path d="M-3 8 L-3 1 L3 1 L3 8" fill="${INK}"/>` },
   trainer:{ label:"Trainer",    key:"",  svc:"trainer",  services:svc("trainer"),
             draw:c=>`<circle r="7.5" fill="${c}" stroke="${INK}" stroke-width="1.3"/><path d="M-4 4 L4 -4 M-4 -4 L4 4" stroke="${INK}" stroke-width="1.6"/>` },
@@ -3538,7 +3538,7 @@ let pane = "inspect";
 let saveTimer = null, flashTimer = null, storageOK = true, seq = 1;
 
 function blankDoc(){
-  return { format:"ordinate-survey-v1", title:"The Errantry Map", ppm:10, compass:8, unit:"mi",
+  return { format:"ordinate-survey-v1", title:"Untitled survey", ppm:10, compass:8, unit:"mi",
            regions:DEFAULT_REGIONS.map(r=>({...r})), nodes:[], roads:[], shapes:[] };
 }
 function uid(p){ return p + Date.now().toString(36).slice(-5) + (seq++).toString(36); }
@@ -6712,7 +6712,7 @@ function foeOptions(selected, noFolk){
   return (mine.length ? `<optgroup label="Your library">${mine.map(opt).join("")}</optgroup>` : "")
        + (folk.length ? `<optgroup label="People (their own sheet)">${folk.map(p=>opt(npcAsFoe(p))).join("")}</optgroup>` : "")
        + (SRD_FOES.length ? `<optgroup label="Standard — SRD 5.2">${SRD_FOES.map(opt).join("")}</optgroup>` : "")
-       + `<optgroup label="Errantry">${BESTIARY.map(opt).join("")}</optgroup>`;
+       + `<optgroup label="The app's own">${BESTIARY.map(opt).join("")}</optgroup>`;
 }
 /* which rarity the "Add loot" picker is showing — kept while you move between places */
 let lootRarity = "";
@@ -13789,7 +13789,7 @@ function planProvides(nodeId){
   const out = {};
   for(const m of pl.nodes||[]){
     const kd = PLAN_KINDS[m.kind] || {};
-    /* a building can site more than one thing — an Errantry office is
+    /* a building can site more than one thing — a guild office is
        also the contract board, stables are also the coach stop. The
        `services` map is the truth; `svc` is a label for one of them. */
     const list = kd.services ? Object.keys(kd.services) : (kd.svc ? [kd.svc] : []);
