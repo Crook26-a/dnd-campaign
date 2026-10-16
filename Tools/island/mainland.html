@@ -2,8 +2,8 @@
 ;setTimeout(async ()=>{ const out = {}; const log = [];
  try{ loadJSONNow(JSON.stringify(__SAVE)); await new Promise(r=>setTimeout(r, 300));
   /* The sea, ringed by a mainland like the Mediterranean (Joseph, 2026-10-16): a long sea running east-west with one outlet,
-     a strait in the far west out to the Western Ocean (Haldeport, on Elsmoor, looks towards it); a boot of a peninsula
-     between Kalatecha and Hesk with a long gulf behind it; a ragged peninsula of fingers further east, a bay leading by a
+     a strait in the far west out to the Western Ocean (Haldeport, on Elsmoor, looks towards it); an open north shore between
+     Kalatecha and Hesk (Joseph took the peninsula out, 2026-10-16); a ragged peninsula of fingers further east, a bay leading by a
      narrow strait to an inner sea in the north-east; a long eastern shore, a delta, a great southern bight and a cape.
      The land is charted ten miles in from the coast all round; port city sites are set along it. 10 px to the mile */
   const ppm = 10, P = s => s.trim().split(/\s+/).map(t=>{ const [x, y] = t.split(',').map(Number); return { x, y }; });
@@ -22,7 +22,7 @@
   const base = P(`-5200,-2900 -4300,-2750 -3850,-2450 -3600,-2050 -3520,-1860 -3450,-1760
     -3300,-1690 -3150,-1730 -2900,-1760
     -2650,-1980 -2350,-2120 -2050,-2050 -1800,-2250 -1600,-2650 -1350,-2750 -1100,-2500 -900,-2280 -600,-2300 -300,-2450 0,-2350 300,-2200 550,-2250 800,-2450 1000,-2500
-    1150,-2300 1250,-1900 1300,-1500 1450,-1100 1550,-700 1650,-350 1700,-50 1650,150 1720,330 1900,300 2000,100 1950,-150 2150,-250 2250,-450 2150,-700 2200,-1050 2350,-1400 2550,-1750 2700,-2050
+    1300,-2330 1650,-2440 2050,-2280 2450,-2470
     2800,-2700 3050,-2850 3300,-2700 3400,-2400 3600,-2050 3800,-1700 4000,-1350 4150,-1000
     4300,-700 4400,-300 4350,100 4500,450 4650,250 4750,550 4900,350 5000,600 5100,200 5200,-200 5450,-500
     5600,-900 5550,-1300 5700,-1700 5900,-2000 5980,-2280 5950,-2500
@@ -87,8 +87,8 @@
   /* port city sites: each moved to the coast nearest where it's marked, then a mile and a half inland */
   const PORTS = [
     ["Cael", -2400, -2100, "On the north shore of the western basin."], ["Vessmouth", -1350, -2720, "At the head of a deep northern gulf."], ["Orrin", -300, -2430, "On the north shore, facing Elsmoor across the sea."],
-    ["Tamsfort", 900, -2470, "Where the north shore meets the root of the great peninsula."], ["Lucenza", 1300, -1500, "On the great peninsula's western shore, facing Kalatecha."], ["Pelleron", 1660, -350, "Near the peninsula's toe."],
-    ["Vasso", 2230, -450, "On the peninsula's heel, facing Hesk."], ["Ardena", 2950, -2820, "At the head of the long gulf behind the peninsula."], ["Corvenna", 3800, -1700, "On the gulf's eastern shore."],
+    ["Tamsfort", 900, -2470, "On the north shore."], ["Lucenza", 1300, -2340, "On the north shore, facing Kalatecha across the sea."], ["Pelleron", 1850, -2380, "On the north shore."],
+    ["Vasso", 2450, -2470, "On the north shore, facing Hesk across the sea."], ["Ardena", 2950, -2820, "At the head of a gulf on the north shore."], ["Corvenna", 3800, -1700, "On the shore running south-east towards the ragged peninsula."],
     ["Thessar", 4400, -300, "On the ragged eastern peninsula."], ["Mykar", 4950, 450, "At the tip of one of the eastern peninsula's fingers."], ["Hallgate", 6100, -2300, "On the narrow strait into the inner sea: whoever holds it holds the way through."],
     ["Kesh", 6800, -4000, "On the inner sea's northern shore."], ["Varnis", 8000, -2580, "On the inner sea's southern shore."], ["Tarsel", 8000, -440, "On the long north-eastern shore."],
     ["Sidonne", 11080, 1000, "On the far eastern shore."], ["Akhet", 9800, 2300, "On the great delta."], ["Sarn", 6600, 3040, "At the head of the great southern bight."],
