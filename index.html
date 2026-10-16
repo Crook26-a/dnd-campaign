@@ -2932,8 +2932,8 @@ function seaGrid(a, b, river){
     for(let i=0, j=R.length-1; i<R.length; j=i++){ const p = R[i], q = R[j]; if((p.y > yc) !== (q.y > yc)) xs.push(p.x + (yc-p.y)*(q.x-p.x)/(q.y-p.y)); }
     xs.sort((u, w)=>u-w);
     for(let k=0; k+1<xs.length; k+=2){ const c0 = Math.max(0, Math.ceil((xs[k]-x0)/cs - .5)), c1 = Math.min(W-1, Math.floor((xs[k+1]-x0)/cs - .5)); for(let c=c0; c<=c1; c++) into[r*W+c] = v; } } };
-  for(const R of usedM) fill(R, 1, land);
-  if(usedM.length && sea) fill(shapeRing(sea), 0, land);                                 // the sea within it is water again
+  if(usedM.length && sea){ land.fill(1); fill(shapeRing(sea), 0, land); }               // ringed by a mainland: only the sea is water (the unmapped interior is land too)
+  else for(const R of usedM) fill(R, 1, land);
   for(const R of used) fill(R, 1, land);
   used.push(...usedM);
   const block = new Uint8Array(W*H);                                                    // a mile off the shore
@@ -2954,13 +2954,36 @@ function seaGrid(a, b, river){
     return best; };
   return { x0, y0, cs, W, H, block, open, any:used.length > 0 };
 }
+/* the sea a mile to the square (the water inside the sea's coast, the islands taken out), made once and kept until the
+   coast or an island changes: with a mainland round the sea, every leg of a long voyage is checked against it, so a
+   course worked out on a coarse grid can't cut across a narrow headland */
+let seaMaskCache = null;
+function seaMask(){
+  const sea = seaShape(); if(!sea || !(root.shapes||[]).some(s=>s.mainland)) return null;
+  const isles = (root.shapes||[]).filter(s=>s.kind==="island" && !s.mainland && s.closed!==false && (s.pts||[]).length > 2);
+  const key = ptsKey(sea.pts) + "|" + isles.map(s=>ptsKey(s.pts)).join("|");
+  if(seaMaskCache && seaMaskCache.key===key) return seaMaskCache;
+  const ppm = root.ppm||10, cs = ppm, R = shapeRing(sea), xs = R.map(p=>p.x), ys = R.map(p=>p.y);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), W = Math.ceil((Math.max(...xs)-x0)/cs)+1, H = Math.ceil((Math.max(...ys)-y0)/cs)+1, mask = new Uint8Array(W*H);
+  const fill = (Rg, v) => { for(let r=0; r<H; r++){ const yc = y0 + (r+.5)*cs, xc = [];
+    for(let i=0, j=Rg.length-1; i<Rg.length; j=i++){ const p = Rg[i], q = Rg[j]; if((p.y > yc) !== (q.y > yc)) xc.push(p.x + (yc-p.y)*(q.x-p.x)/(q.y-p.y)); }
+    xc.sort((u, w)=>u-w); for(let k=0; k+1<xc.length; k+=2){ const c0 = Math.max(0, Math.ceil((xc[k]-x0)/cs - .5)), c1 = Math.min(W-1, Math.floor((xc[k+1]-x0)/cs - .5)); for(let c=c0; c<=c1; c++) mask[r*W+c] = v; } } };
+  fill(R, 1); for(const s of isles) fill(shapeRing(s), 0);
+  seaMaskCache = { key, x0, y0, cs, W, H, mask }; return seaMaskCache;
+}
 /* the way by water from a to b: waypoints between them (not b itself); [] when the straight line is clear, null if there's no way */
 function seaWay(a, b, river){
   const G = seaGrid(a, b, river); if(!G.any) return [];
   const { W, H, block, cs, x0, y0 } = G, at = i => ({ x:x0 + (i%W+.5)*cs, y:y0 + (((i/W)|0)+.5)*cs });
   const clear = (p, q) => { const n = Math.max(1, Math.ceil(Math.hypot(q.x-p.x, q.y-p.y) / (cs*.4))); for(let i=0; i<=n; i++){ const x = p.x + (q.x-p.x)*i/n, y = p.y + (q.y-p.y)*i/n, c = Math.floor((x-x0)/cs), r = Math.floor((y-y0)/cs); if(c>=0 && c<W && r>=0 && r<H && block[r*W+c]) return false; } return true; };
-  if(clear(a, b)) return [];
-  const S = G.open(a), T = G.open(b); if(S < 0 || T < 0) return null;
+  const S = G.open(a), T = G.open(b);
+  /* the sea itself, a mile to the square, checked along every leg (not where a port steps out to open water) */
+  const M = river ? null : seaMask(), sa = S >= 0 ? at(S) : a, sb = T >= 0 ? at(T) : b, ra = Math.hypot(sa.x-a.x, sa.y-a.y) + cs, rb = Math.hypot(sb.x-b.x, sb.y-b.y) + cs;
+  const fine = (p, q) => { if(!M) return true; const n = Math.max(1, Math.ceil(Math.hypot(q.x-p.x, q.y-p.y) / (M.cs*.5)));
+    for(let i=0; i<=n; i++){ const x = p.x + (q.x-p.x)*i/n, y = p.y + (q.y-p.y)*i/n; if(Math.hypot(x-a.x, y-a.y) < ra || Math.hypot(x-b.x, y-b.y) < rb) continue;
+      const c = Math.floor((x-M.x0)/M.cs), r = Math.floor((y-M.y0)/M.cs); if(c<0 || r<0 || c>=M.W || r>=M.H || !M.mask[r*M.W+c]) return false; } return true; };
+  if(clear(a, b) && fine(a, b)) return [];
+  if(S < 0 || T < 0) return null;
   const tc = T%W, tr = (T/W)|0;
   const g = new Float32Array(W*H).fill(Infinity), from = new Int32Array(W*H).fill(-1), shut = new Uint8Array(W*H);
   const hx = i => { const dc = Math.abs(i%W - tc), dr = Math.abs(((i/W)|0) - tr); return Math.max(dc, dr) + .414*Math.min(dc, dr); };
@@ -2978,7 +3001,7 @@ function seaWay(a, b, river){
   if(T!==S && from[T] < 0) return null;
   const cells = []; for(let i=T; ; i = from[i]){ cells.unshift(at(i)); if(i===S || from[i] < 0) break; }
   const path = [a, ...cells, b], out = []; let k = 0;                                    // pulled tight: as far as it can see each time
-  while(k < path.length-1){ let j = path.length-1; while(j > k+1 && !clear(path[k], path[j])) j--; if(j < path.length-1) out.push({ x:Math.round(path[j].x), y:Math.round(path[j].y) }); k = j; }
+  while(k < path.length-1){ let j = path.length-1; while(j > k+1 && !(clear(path[k], path[j]) && fine(path[k], path[j]))) j--; if(j < path.length-1) out.push({ x:Math.round(path[j].x), y:Math.round(path[j].y) }); k = j; }
   return out;
 }
 function setCourseTo(s, dest){
