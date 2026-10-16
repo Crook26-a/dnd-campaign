@@ -6788,6 +6788,7 @@ function usedAt(cat, id){
     const hit = cat==="foes" ? !!(n.site&&(n.site.foes||[]).some(f=>f.id===id))
               : cat==="encounters" ? n.encounter===id
               : cat==="loot" ? !!(n.site&&(n.site.items||[]).some(x=>baseId(x)===id))
+              : cat==="shops" ? !!(n.shop && n.shop.tpl===id)
               : (n.npcs||[]).includes(id);
     if(hit) out.push({ name:label(n), host, plan:planId, node:n.id });
   } };
@@ -6953,9 +6954,9 @@ function libForm(cat, x){
   } else if(cat==="shops"){
     const ko = (f, cur, any) => `<select ${a} data-f="${f}">${any ? `<option value="">${any}</option>` : ""}${PEOPLE_KIND_GROUPS.map(g=>`<optgroup label="${g}">${Object.entries(PEOPLE_KINDS).filter(([, k])=>k.group===g).map(([id, k])=>`<option value="${id}" ${cur===id?"selected":""}>${k.label}</option>`).join("")}</optgroup>`).join("")}</select>`;
     const T = shopTpl(x.id), badSrd = String(x.srd||"").split(/\n+/).map(s=>s.trim()).filter(s=>s && !lootByName(s));
-    h += `<div class="pcrow"><div class="field" style="flex:1"><label>Kept by a</label>${ko("keeper", x.keeper||"merchant")}</div><div class="field" style="flex:1"><label>Sometimes a hand</label>${ko("staff", x.staff||"", "Nobody")}</div></div>
+    h += `<div class="pcrow"><div class="field" style="flex:1"><label>Kept by a</label>${ko("keeper", x.keeper||"merchant")}</div><div class="field" style="flex:1"><label>Sometimes a hand</label>${ko("staff", x.staff||"", "Nobody")}</div><div class="field" style="flex:1"><label>or a hand</label>${ko("staff2", x.staff2||"", "Nobody")}</div></div>
       <div class="pcrow">${t("nmin","Things for sale, at least",1,"4")}${t("nmax","at most",1,"6")}</div>
-      <div class="field"><label>Start from one of the app's kinds <small>fills in the lists below</small></label><select data-shopfrom="${x.id}"><option value="">—</option>${Object.entries(SHOP_TEMPLATES).map(([id, s])=>`<option value="${id}">${s.label}</option>`).join("")}</select></div>
+      ${SHOP_TEMPLATES[x.id] ? `<p class="empty-note" style="font-size:11px;margin:0 0 8px">Your version of the app's <b>${esc(SHOP_TEMPLATES[x.id].label)}</b>: every ${esc(SHOP_TEMPLATES[x.id].label.toLowerCase())} uses it, including ones already placed (their stock stays until it's restocked). <b>Back to the app's version</b> below undoes it.</p>` : `<div class="field"><label>Start from one of the app's kinds <small>fills in the lists below</small></label><select data-shopfrom="${x.id}"><option value="">—</option>${Object.entries(SHOP_TEMPLATES).map(([id, s])=>`<option value="${id}">${s.label}</option>`).join("")}</select></div>`}
       ${ta("srd","SRD gear it sells <small>one name a line, as the SRD writes it: Rope, Lantern, Hooded</small>","Rope\nLantern, Hooded\nCandle",4)}
       ${badSrd.length ? `<p class="warn" style="font-size:11px">Not found in the SRD: ${esc(badSrd.join(", "))}. Check the spelling, or list it under its own goods instead.</p>` : ""}
       ${ta("goods","Its own goods <small>one a line: name | price | what it is</small>","Loaf of bread | 2 cp | A round loaf, still warm.\nHoney cake | 1 sp | Dense and sticky.",5)}
@@ -6999,7 +7000,7 @@ function libForm(cat, x){
   h += `<p class="grouplab">Used at</p>${used.length
       ? used.map(u=>`<button class="libgo" data-libgo="${u.plan||""}|${u.node}">${esc(u.name)}${u.host?` <small>in ${esc(u.host)}</small>`:""}</button>`).join("")
       : `<p class="empty-note" style="margin:0 0 8px">Not placed anywhere yet.</p>`}
-    <button class="btn wide danger" data-libact="del" data-id="${x.id}" style="margin-top:8px">Delete from the library</button></div>`;
+    <button class="btn wide danger" data-libact="del" data-id="${x.id}" style="margin-top:8px">${cat==="shops" && SHOP_TEMPLATES[x.id] ? `Back to the app's ${esc(SHOP_TEMPLATES[x.id].label)}` : "Delete from the library"}</button></div>`;
   return h;
 }
 /* "cr 2", "cr 1/4" searches the standard foes by challenge rating */
@@ -7025,7 +7026,7 @@ function stdMatches(q){
    "Fights as" can come as a stat block's name, matched here to your foes or the SRD's. ── */
 const FB_FIELDS = {
   loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes","soldAt"],
-  shops:["name","keeper","staff","nmin","nmax","srd","goods","notes"],
+  shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","cls","level","ac","hpMax","speed","init",
     "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells","pkind"],
   spells:["name","lv","school","time","range","comp","dur","conc","rit","cls","save","atk","dmg","dtype","desc","hi","notes"] };
@@ -7143,6 +7144,12 @@ function renderLibList(){
   if(libTab==="npcs"){
     if(items.length) h = `<button class="btn wide" data-libact="fillall" style="margin:0 0 8px" title="Blanks only — nothing you've typed changes. Personality and tactics are added only for people rolled on the Roll tab.">Fill in what's missing on everyone's sheet</button>` + h;
     h += `<p class="empty-note" style="margin-top:10px">Standard people — guards, priests, nobles, pirates, mages — are under Foes. Pick one as a person's "Fights as".</p>`;
+  } else if(libTab==="shops"){
+    const app = Object.entries(SHOP_TEMPLATES).filter(([id, T])=>!q || (T.label + " " + JSON.stringify(T)).toLowerCase().includes(q));
+    h += `<p class="eyebrow spaced">The app's kinds <small>${app.length}</small></p>
+      <p class="empty-note" style="margin:0 0 6px">Edit one to change it everywhere it's used; your version shows above, marked "edited".</p>`
+      + app.map(([id, T])=>{ const E = shopEdited(id), U = shopTpl(id);
+          return `<div class="libitem std"><div class="libhead" style="display:flex;align-items:center;gap:6px"><span class="nm" style="flex:1">${esc(T.label)}${E ? ` <small>edited</small>` : ""}</span><span class="sub" style="flex:2">kept by a ${esc((PEOPLE_KINDS[U.keeper]||{label:"someone"}).label.toLowerCase())} · ${U.n[0]}–${U.n[1]} things for sale</span><button class="btn small" data-libact="shopedit" data-id="${id}">${E ? "Open" : "Edit"}</button></div></div>`; }).join("");
   } else {
     const match = stdMatches(q), cap = q ? 150 : 40, page = match.slice(0, cap);
     h += `<p class="eyebrow spaced">Standard — SRD 5.2 <small>${match.length.toLocaleString()}</small></p>`
@@ -7204,7 +7211,7 @@ $("#pane-library").addEventListener("input", e=>{ const t = e.target; if(t.datas
 $("#pane-library").addEventListener("change", e=>{
   const t = e.target, cat = t.dataset.lib, k = t.dataset.f;
   if(t.dataset.shopfrom){ const x = libFind("shops", t.dataset.shopfrom), T = SHOP_TEMPLATES[t.value]; if(!x || !T) return;
-    Object.assign(x, { keeper:T.keeper, staff:(T.staff||[])[0]||"", nmin:String(T.n[0]), nmax:String(T.n[1]), srd:T.srd.join("\n"), goods:T.goods.map(g=>g.join(" | ")).join("\n") });
+    Object.assign(x, { keeper:T.keeper, staff:(T.staff||[])[0]||"", staff2:(T.staff||[])[1]||"", nmin:String(T.n[0]), nmax:String(T.n[1]), srd:T.srd.join("\n"), goods:T.goods.map(g=>g.join(" | ")).join("\n") });
     if(!x.name || /^New shop kind$/.test(x.name)) x.name = `${T.label} (yours)`;
     if(!(libDraft && libDraft.x===x)) saveParty(); renderLibList(); return; }
   if(cat==="loot" && t.dataset.soldat){ const x = libFind(cat, t.dataset.id); if(!x) return; const s = new Set(x.soldAt||[]); if(t.checked) s.add(t.dataset.soldat); else s.delete(t.dataset.soldat);
@@ -7303,8 +7310,18 @@ $("#pane-library").addEventListener("click", e=>{
     const row = $(`#lib-list [data-libtoggle="${x.id}"]`); if(row) row.scrollIntoView({ block:"nearest" });
     return;
   }
+  if(b.dataset.libact==="shopedit"){
+    const id = b.dataset.id, T = SHOP_TEMPLATES[id]; if(!T) return;
+    if(!shopEdited(id)) lib().shops.unshift({ id, name:T.label, keeper:T.keeper, staff:(T.staff||[])[0]||"", staff2:(T.staff||[])[1]||"", nmin:String(T.n[0]), nmax:String(T.n[1]),
+      srd:T.srd.join("\n"), goods:T.goods.map(g=>g.join(" | ")).join("\n"), notes:"" });
+    libOpen = id; saveParty(); renderLibrary(); const row = $(`#lib-list [data-libtoggle="${id}"]`); if(row) row.scrollIntoView({ block:"nearest" });
+    flash(`Editing the ${T.label}: your changes go to every ${T.label.toLowerCase()}.`); return;
+  }
   if(b.dataset.libact==="del"){
     const x = lib()[libTab].find(o=>o.id===b.dataset.id); if(!x) return;
+    if(libTab==="shops" && SHOP_TEMPLATES[x.id]){ const T = SHOP_TEMPLATES[x.id];
+      if(!confirm(`Put the ${T.label} back to the app's version? Your changes to it go.`)) return;
+      lib().shops = lib().shops.filter(o=>o!==x); libOpen = null; saveParty(); renderLibrary(); flash(`The ${T.label} is the app's again.`); return; }
     const n = usedAt(libTab, x.id).length;
     if(!confirm(`Delete "${x.name||"this entry"}" from the library?${n?` It will also be taken out of ${n} place${n===1?"":"s"}.`:""}`)) return;
     purgeLib(libTab, x.id); libOpen = null; renderLibrary();
@@ -11866,18 +11883,20 @@ const SHOP_TEMPLATES = {
     srd:[],
     goods:[["Fresh fish","1 cp","Caught this morning."],["Salt cod, a side","3 sp","Keeps for months."],["Basket of crabs","4 cp","Still moving."],["Smoked eel","1 sp","A delicacy, they say."],["Barrel of salted herring","3 gp","A ship's worth."]] }
 };
-/* a shop kind: the app's own, or one made in the Library (Shop kinds) */
+/* a shop kind: the app's own, or one made in the Library (Shop kinds). An app kind you've edited (Library → Shop kinds →
+   Edit) is kept in the Library under the app kind's own id, so every shop of that kind uses your version */
+const shopEdited = id => !!SHOP_TEMPLATES[id] && (lib().shops||[]).some(s=>s.id===id);
 function shopTpl(id){
-  if(SHOP_TEMPLATES[id]) return SHOP_TEMPLATES[id];
-  const x = (lib().shops||[]).find(s=>s.id===id); if(!x) return null;
+  const x = (lib().shops||[]).find(s=>s.id===id); if(!x) return SHOP_TEMPLATES[id] || null;
   const lo = Math.max(1, Math.round(+x.nmin||4)), hi = Math.max(lo, Math.round(+x.nmax||lo));
-  return { label:x.name || "Shop", keeper:PEOPLE_KINDS[x.keeper] ? x.keeper : "merchant", staff:PEOPLE_KINDS[x.staff] ? [x.staff] : [], n:[lo, hi], own:true,
+  return { label:x.name || "Shop", keeper:PEOPLE_KINDS[x.keeper] ? x.keeper : "merchant", staff:[x.staff, x.staff2].filter(k=>k && PEOPLE_KINDS[k]), n:[lo, hi], own:!SHOP_TEMPLATES[id], edited:!!SHOP_TEMPLATES[id],
     srd:String(x.srd||"").split(/\n+/).map(s=>s.trim()).filter(Boolean),
     goods:String(x.goods||"").split(/\n+/).map(s=>s.split("|").map(q=>q.trim())).filter(r=>r[0]).map(r=>[r[0], r[1]||"", r[2]||""]) };
 }
-const shopKinds = () => [...Object.keys(SHOP_TEMPLATES), ...(lib().shops||[]).map(s=>s.id)];
-const shopOptions = cur => Object.entries(SHOP_TEMPLATES).map(([id, t])=>`<option value="${id}" ${cur===id?"selected":""}>${t.label}</option>`).join("")
-  + ((lib().shops||[]).length ? `<optgroup label="Yours">${lib().shops.map(s=>`<option value="${s.id}" ${cur===s.id?"selected":""}>${esc(s.name||"Shop")}</option>`).join("")}</optgroup>` : "");
+const shopKinds = () => [...new Set([...Object.keys(SHOP_TEMPLATES), ...(lib().shops||[]).map(s=>s.id)])];
+const shopOwn = () => (lib().shops||[]).filter(s=>!SHOP_TEMPLATES[s.id]);       // kinds you made, not the app's ones you edited
+const shopOptions = cur => Object.keys(SHOP_TEMPLATES).map(id=>`<option value="${id}" ${cur===id?"selected":""}>${esc(shopTpl(id).label)}</option>`).join("")
+  + (shopOwn().length ? `<optgroup label="Yours">${shopOwn().map(s=>`<option value="${s.id}" ${cur===s.id?"selected":""}>${esc(s.name||"Shop")}</option>`).join("")}</optgroup>` : "");
 /* a shop's own goods go into the library the first time they're stocked, priced by this app (Joseph's table rule) */
 function shopGood(tid, [name, value, desc]){
   const L = lib().loot; let x = L.find(q=>q.shopGood && q.name===name);
