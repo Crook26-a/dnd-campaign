@@ -7051,17 +7051,20 @@ function stdMatches(q){
 const FB_FIELDS = {
   loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes","soldAt"],
   shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes"],
+  factions:["name","align","wants","how","hidden","notes"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","cls","level","ac","hpMax","speed","init",
     "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells","pkind"],
   spells:["name","lv","school","time","range","comp","dur","conc","rit","cls","save","atk","dmg","dtype","desc","hi","notes"] };
 function fieldBookIn(text, quiet){                  // quiet: the inbox — no message, just the counts back
   let o; try{ o = JSON.parse(text); }catch(err){ flash("That isn't a Field Book file."); return; }
-  if(!o || (!Array.isArray(o.loot) && !Array.isArray(o.npcs) && !Array.isArray(o.spells) && !Array.isArray(o.shops))){ flash("No items or people in that file."); return; }
+  if(!o || (!Array.isArray(o.loot) && !Array.isArray(o.npcs) && !Array.isArray(o.spells) && !Array.isArray(o.shops) && !Array.isArray(o.factions))){ flash("No items or people in that file."); return; }
   const L = lib(), unmatched = [];
   let added = 0, updated = 0;
-  for(const cat of ["loot","npcs","spells","shops"]) for(const raw of (o[cat]||[])){
+  for(const cat of ["loot","npcs","spells","shops","factions"]) for(const raw of (o[cat]||[])){
     if(!raw || typeof raw!=="object" || !String(raw.name||"").trim()) continue;
-    const x = JSON.parse(JSON.stringify(raw)); if(!x.id) x.id = uid(cat==="loot" ? "ll" : cat==="spells" ? "lsp" : cat==="shops" ? "lsh" : "ln"); if(cat==="spells"){ x.lv = +x.lv || 0; spellTidy(x); }
+    const x = JSON.parse(JSON.stringify(raw)); if(!x.id) x.id = uid(cat==="loot" ? "ll" : cat==="spells" ? "lsp" : cat==="shops" ? "lsh" : cat==="factions" ? "lfa" : "ln");
+    /* a faction's standing is the table's: the phone can start one off, never overwrite it */
+    if(cat==="factions"){ if(L.factions.some(y=>y.id===x.id)){ delete x.standing; delete x.slog; } else { x.standing = Math.max(-10, Math.min(10, Math.round(+x.standing || 0))); delete x.slog; } } if(cat==="spells"){ x.lv = +x.lv || 0; spellTidy(x); }
     if(cat==="npcs" && x.fightsAs==="block") delete x.fightsAs;
     if(cat==="npcs" && x.fightsAs && x.fightsAs!=="self" && !foeById(x.fightsAs)){
       const nm = String(x.fightsAs).trim().toLowerCase(), m = [...L.foes, ...SRD_FOES].find(f=>String(f.name||"").toLowerCase()===nm);
@@ -7126,12 +7129,12 @@ document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState=
 function fieldBookOut(){
   const L = lib(), d = new Date(), p = n => String(n).padStart(2,"0");
   const pack = { format:"ordinate-fieldbook", version:1, app:"Ordinate Survey", exported:d.toISOString(),
-    loot:JSON.parse(JSON.stringify(L.loot.filter(x=>!x.shopGood))), npcs:JSON.parse(JSON.stringify(L.npcs)), spells:JSON.parse(JSON.stringify(L.spells||[])), shops:JSON.parse(JSON.stringify(L.shops||[])) };
+    loot:JSON.parse(JSON.stringify(L.loot.filter(x=>!x.shopGood))), npcs:JSON.parse(JSON.stringify(L.npcs)), spells:JSON.parse(JSON.stringify(L.spells||[])), shops:JSON.parse(JSON.stringify(L.shops||[])), factions:JSON.parse(JSON.stringify(L.factions||[])) };
   if(!pack.loot.length && !pack.npcs.length && !pack.spells.length){ flash("No items or people of your own to send yet."); return; }
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(pack)], { type:"application/json" }));
   a.download = `field-book-from-the-survey-${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}.json`;
   document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
-  flash(`${pack.loot.length} items, ${pack.npcs.length} people, ${pack.spells.length} spells and ${pack.shops.length} shop kinds saved for the Field Book: open it there with Send → Bring a file in.`);
+  flash(`${pack.loot.length} items, ${pack.npcs.length} people, ${pack.spells.length} spells, ${pack.shops.length} shop kinds and ${pack.factions.length} factions saved for the Field Book: open it there with Send → Bring a file in.`);
 }
 function renderLibList(){
   const box = $("#lib-list"); if(!box) return;
