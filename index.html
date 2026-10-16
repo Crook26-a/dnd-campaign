@@ -1262,6 +1262,8 @@ const PLAN_KINDS = {
             draw:c=>`<rect x="-8" y="-5" width="16" height="12" fill="${c}" stroke="${INK}" stroke-width="1.3"/><path d="M-8 -5 L0 -10 L8 -5" fill="none" stroke="${INK}" stroke-width="1.3"/>` },
   stable: { label:"Stables",    key:"8", svc:"stable",   services:svc("stable","coach"),
             draw:c=>`<path d="M-9 7 L-9 -4 L9 -4 L9 7 Z" fill="${c}" stroke="${INK}" stroke-width="1.3"/><path d="M-9 -4 L0 -9 L9 -4" fill="none" stroke="${INK}" stroke-width="1.3"/><path d="M0 -4 L0 7" stroke="${INK}" stroke-width="1.1"/>` },
+  coachhouse: { label:"Coach house", key:"", svc:"coach", services:svc("coach","stable"),
+            draw:c=>`<path d="M-9 4 L-9 -5 Q0 -9 9 -5 L9 4 Z" fill="${c}" stroke="${INK}" stroke-width="1.3"/><circle cx="-5" cy="6" r="2.6" fill="${c}" stroke="${INK}" stroke-width="1.2"/><circle cx="5" cy="6" r="2.6" fill="${c}" stroke="${INK}" stroke-width="1.2"/>` },
   gate:   { label:"Gate",       key:"9", services:{},
             draw:c=>`<path d="M-8 8 L-8 -4 A8 8 0 0 1 8 -4 L8 8" fill="${c}" stroke="${INK}" stroke-width="1.5"/>` },
   tower:  { label:"Tower",      key:"0", services:{},
@@ -2219,13 +2221,14 @@ function overlandFrom(){
   const id = at.map==="survey" ? at.node : at.map, n = id && root.nodes.find(x=>x.id===id);
   return n && !sailsAbout(n) ? n : null;
 }
-/* the shortest way by road between two survey places: { miles, legs:[{ r, back }] }, or null if no roads join them */
-function roadRoute(a, b){
+/* the shortest way by road between two survey places: { miles, legs:[{ r, back }] }, or null if no roads join them;
+   ok(r), if given, picks which roads count (the coach: only those it runs on) */
+function roadRoute(a, b, ok){
   const dist = { [a.id]:0 }, prev = {}, todo = new Set([a.id]), done = new Set();
   while(todo.size){
     let id = null; for(const x of todo) if(id===null || dist[x] < dist[id]) id = x;
     todo.delete(id); done.add(id); if(id===b.id) break;
-    for(const r of root.roads||[]){
+    for(const r of root.roads||[]){ if(ok && !ok(r)) continue;
       const o = r.from===id ? r.to : r.to===id ? r.from : null; if(!o || done.has(o) || !root.nodes.some(x=>x.id===o)) continue;
       const d = dist[id] + (+r.miles || 0); if(dist[o]===undefined || d < dist[o]){ dist[o] = d; prev[o] = { id, r }; todo.add(o); }
     }
@@ -2439,8 +2442,10 @@ function endJourney(arrived){
   const to = root.nodes.find(x=>x.id===J.to), fromName = J.fromName || ((root.nodes.find(x=>x.id===J.from)||{}).name) || "where they were";
   let g = groupsOf().find(x=>x.id===J.gid) || activeGroup();
   if(arrived && to){
-    root.trail = { pts:J.path }; g.at = hasPlan(to.id) ? { map:to.id, node:null } : { map:"survey", node:to.id }; g = joinUp(g); to.visited = true;
-    partyMoved(`${groupName(g)} reached ${to.name||"the place"} from ${fromName}: ${J.miles} mi, ${hoursWord(J.passed)} on the way.${J.push>0 && J.passed>8 ? ` They pushed on ${J.push} hour${J.push===1?"":"s"} past 8 a day (Constitution saves, DC 11${J.push>1?` to ${10+J.push}`:""}).` : ""} Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
+    root.trail = { pts:J.path };
+    const stop = J.coach && hasPlan(to.id) && (plans[to.id].nodes||[]).find(isCoachHouse);       // off the coach at the coach house
+    g.at = hasPlan(to.id) ? { map:to.id, node:stop ? stop.id : null } : { map:"survey", node:to.id }; g = joinUp(g); to.visited = true;
+    partyMoved(`${groupName(g)} reached ${to.name||"the place"} from ${fromName}${J.coach ? " by coach" : ""}: ${J.miles} mi, ${hoursWord(J.passed)} on the way.${J.push>0 && J.passed>8 ? ` They pushed on ${J.push} hour${J.push===1?"":"s"} past 8 a day (Constitution saves, DC 11${J.push>1?` to ${10+J.push}`:""}).` : ""} Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
   } else partyMoved(`${groupName(g)} stopped on the road to ${(to&&to.name)||"somewhere"}: ${Math.round(J.done)} mi along, ${Math.round(J.miles - J.done)} mi short, ${hoursWord(J.passed)} on the way. Now day ${campaignDay()}, ${TIME_WORD[timeOfDay()]} (about ${hourWord(root.hour)}).`);
   touch(); render(); renderPane(true);
 }
@@ -2456,7 +2461,7 @@ function journeyBlock(){
       : `<p class="empty-note" style="margin:0 0 6px">None of the Library's encounters can happen in ${esc(TERRAINS[P.ter].label)} land. Pull one in anyway, or let it pass.</p>
       ${encPullRow()}<button class="btn wide" data-encgo="skip" style="margin-top:4px">Not this time</button>`}</div>`;
   return `<div class="travelbox"><p class="eyebrow spaced">On the road to ${esc((to&&to.name)||"somewhere")}</p>
-    <p class="empty-note" style="font-size:11px;margin:0 0 6px"><span id="jr-prog">${journeyProgress(J)}</span> · ${PACES[J.pace].label} pace · Navigation DC ${J.dc}${J.word ? `, ${esc(J.word)}` : ""}</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px"><span id="jr-prog">${journeyProgress(J)}</span>${J.coach ? ` · by coach${J.coach.fare ? `, ${cpStr(J.coach.fare)} paid` : ""}` : ` · ${PACES[J.pace].label} pace · Navigation DC ${J.dc}${J.word ? `, ${esc(J.word)}` : ""}`}</p>
     <div class="pcrow">${journeyPlay ? `<button class="btn" style="flex:1" data-journey="pause">⏸ Pause</button>` : `<button class="btn" style="flex:1" data-journey="go">▶ ${met ? "Back on the road" : "Go on"}</button>`}
       <select data-travel="mps" title="How fast it plays on the map" style="flex:0 0 120px">${JOURNEY_MPS.map(([v, l])=>`<option value="${v}" ${v===(+t.mps||10)?"selected":""}>${l}</option>`).join("")}</select></div>
     ${journeyPlay ? "" : `<button class="btn wide" data-journey="stop">Stop here, on the road</button><p class="grouplab" style="margin-top:6px">Pull in an encounter</p>${encPullRow()}`}</div>`;
@@ -3986,7 +3991,7 @@ function mapFurniture(){
 const ROOF = { slate:["#8d9294","#a7acad","#73787a"], tile:["#a8624a","#bf7a5d","#8e523d"], thatch:["#c2a466","#d4ba7e","#a68a50"], lead:["#7c8582","#949b98","#666e6b"], timber:["#9a7b55","#b09170","#826548"] };
 const ROOF_OF = { hall:"slate", reeve:"slate", temple:"lead", tower:"slate", gate:"slate", archive:"slate", office:"slate", smith:"slate", light:"slate",
   apothecary:"tile", healer:"tile", inn:"tile", store:"tile", provision:"tile", house:"tile", warehouse:"tile", fence:"tile", trainer:"tile",
-  market:"timber", shipwright:"timber", stable:"thatch" };
+  market:"timber", shipwright:"timber", stable:"thatch", coachhouse:"slate" };
 const NO_ROOF = new Set(["ship","boat","wreck","well","statue","stall","tent","cave","ruinlet"]);
 const k1 = n => Math.round(n*10)/10;
 /* a roof w across and h deep, centred on 0,0: hipped along its longer side, or a cone for a round tower */
@@ -4719,7 +4724,7 @@ const ICONS = {
 };
 /* Build view's palette: everything the rail offers, by name, in groups, with a box to find a kind */
 const PAL_PLACES = { survey:[["Settlements","city town village"],["Along the roads","post toll stone"],["In the wild","ruin cave wood camp"],["At sea","ship wreck light"]],
-  plan:[["Lodging and drink","inn stable house hall"],["Trade","market store provision smith apothecary fence stall"],["Civic","reeve archive office gate tower well statue"],
+  plan:[["Lodging and drink","inn stable coachhouse house hall"],["Trade","market store provision smith apothecary fence stall"],["Civic","reeve archive office gate tower well statue"],
     ["Faith and care","temple healer trainer"],["Docks and water","warehouse shipwright ship boat wreck light tent"],["Out of the way","ruinlet cave"]] };
 const PAL_AREAS = { survey:[["The land","wood grassland hills mountain marsh desert arctic"],["Water and coast","water river island reef"],["In the way","impasse"]],
   plan:[["Streets and squares","street lane alley square market court"],["Green and open","green garden orchard graveyard yard"],["Buildings and walls","zone block wall"],["Water and shore","water river pier dock quay beach rock"],["In the way","impasse"]] };
@@ -8827,7 +8832,7 @@ const BMAP_ORDER = ["blank","docks","ship","cabin","hold","hut","shop","stall","
 const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiBkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
 /* inside a town, a building with no layout of its own gets its kind's default */
 const KIND_INTERIOR = { house:"hut", ruinlet:"hut", store:"shop", provision:"shop", apothecary:"shop", smith:"shop", healer:"shop",
-  fence:"shop", office:"shop", trainer:"shop", archive:"shop", stall:"stall", tent:"tent", warehouse:"warehouse", tower:"tower", light:"tower", ship:"ship" };
+  fence:"shop", office:"shop", trainer:"shop", archive:"shop", stall:"stall", tent:"tent", warehouse:"warehouse", tower:"tower", light:"tower", ship:"ship", stable:"shop_stables", coachhouse:"shop_stables" };
 const defaultInterior = n => n && sailsAbout(n) ? "ship" : planOf && n && n.shop ? (typeof BMAPS!=="undefined" && BMAPS["shop_" + n.shop.tpl] ? "shop_" + n.shop.tpl : "shop") : planOf && n && KIND_INTERIOR[n.kind] ? KIND_INTERIOR[n.kind] : "";     // a shop opens its own kind's map     // a ship anywhere: a ship's deck to start with
 /* ── camps: a clearing with the fire in the middle and a tent for each explorer, in country of six kinds.
    Each place's camp is laid out the same way every time (seeded by the place), and the tents follow the party. ── */
@@ -11085,7 +11090,7 @@ function renderPlayNow(){
     ${hasInside(n)&&bmapKey(n)!=="blank"?`<button class="btn wide" id="pl-enter" title="Opens its map: ${esc(bmapOf(n).name||"")}">Enter this place${(n.site||{}).lock?` <small>(${esc(lockWord(n.site.lock))})</small>`:""}</button>`:""}
     ${hasInside(n) && !(n.bmap && Array.isArray(n.bmap.rows)) ? layoutPicker("pl-layout", n, bmapKey(n)==="blank" ? "Nothing inside yet: start from a layout" : `For now it uses the ready-made map “${esc(bmapOf(n).name)}”. Start from a layout`) : ""}
     ${enterAsk===n.id ? enterBox(n) : ""}
-    ${sailBlock(n)}${travelBlock(n)}${xpDueBlock(st)}`;
+    ${sailBlock(n)}${travelBlock(n)}${coachBlock(n)}${xpDueBlock(st)}`;
 
   h += boardBlock(n) + threadsHere(n) + factionsHere(n);
   h += `<p class="eyebrow spaced">Who you'll meet</p>` + (people.length ? people.map(p=>`<div class="playperson">
@@ -13232,6 +13237,89 @@ document.addEventListener("change", e=>{
   const n = nodeById(t.dataset.node); if(!n) return; if(t.value) n.faction = t.value; else delete n.faction; touch(); renderPane(true);
 });
 
+/* ══════════════════════════════════════════════════════════════
+   THE COACH (Joseph, 2026-10-10; built 2026-10-16) — from a coach house in a town (or a village's coach stop), a seat
+   on the coach to another place with a coach stop, along roads marked "Coaches run this road". The driver knows the way:
+   no navigation check. Speed, hours on the road, the fare and how often trouble finds a coach are your table rules (the
+   2024 rules don't time or price coaches); the fare starts at the 2014 rules' coach cab between towns, 3 cp a mile.
+   It plays out like any journey (the clock, road encounters, Pause), and they step down at the coach house there.
+   ══════════════════════════════════════════════════════════════ */
+const COACH_TROUBLE = [["same","As often as on foot"],["half","Half as often (guards, and it doesn't stop)"],["none","Never (a quiet road)"]];
+const coachSet = () => { const c = root.coach || (root.coach = {});
+  c.mph = Math.max(1, Math.min(12, +c.mph || 4)); c.hours = Math.max(1, Math.min(18, Math.round(+c.hours || 10))); c.cp = Math.max(0, c.cp==null || c.cp==="" ? 3 : +c.cp);
+  if(!COACH_TROUBLE.some(([k])=>k===c.trouble)) c.trouble = "half"; if(c.pay==null) c.pay = true; return c; };
+const isCoachHouse = n => !!n && (n.kind==="coachhouse" || !!(n.services && n.services.coach));
+/* a survey place the coach stops at: its own Coach stop ticked, or a coach house in its plan */
+const hasCoachStop = n => !!n && !sailsAbout(n) && (!!(n.services && n.services.coach) || (hasPlan(n.id) && (plans[n.id].nodes||[]).some(isCoachHouse)));
+const coachQ = q => q >= 8 ? 1 : q >= 4 ? .75 : .5;                    // a poor road slows the coach (your table rule)
+/* the trip by coach: the way, miles, hours on the road, the fare each, any tolls it passes */
+function coachTrip(from, to){
+  const keep = doc; doc = root;                    // roads find their ends on the sea chart, even from inside a town
+  try{ return coachTripNow(from, to); } finally{ doc = keep; }
+}
+function coachTripNow(from, to){
+  const rr = roadRoute(from, to, r=>r.coach); if(!rr) return null;
+  const C = coachSet(), ppm = root.ppm||10, pts = []; let hrs = 0, at = from.id; const tolls = [];
+  for(const { r, back } of rr.legs){
+    const P = roadPart(r, back), mi = +r.miles || polyLength(P.sm)/ppm; hrs += mi / (C.mph * coachQ(P.q));
+    for(const p of P.sm){ const q = [Math.round(p.x), Math.round(p.y)], l = pts[pts.length-1]; if(!l || l[0]!==q[0] || l[1]!==q[1]) pts.push(q); }
+    at = back ? r.from : r.to; const n = nodeById(at); if(n && n.kind==="toll" && n!==to) tolls.push(n);
+  }
+  return { rr, pts, miles:rr.miles, roadHours:hrs, clock:clockHours(hrs, C.hours), fare:Math.round(rr.miles * C.cp), tolls };
+}
+/* where the coach from here goes: places with a coach stop that coach roads reach, nearest first */
+function coachDestinations(from){
+  return root.nodes.filter(n=>n!==from && hasCoachStop(n)).map(n=>({ n, trip:coachTrip(from, n) })).filter(x=>x.trip).sort((a, b)=>a.trip.miles - b.trip.miles);
+}
+const coachRiders = () => { const g = activeGroup(), R = partyRoster(); return (g && g.members || []).map(id=>R.find(c=>c.id===id)).filter(Boolean); };
+/* the card: on a coach house in a town, or a village's own coach stop */
+function coachBlock(n){
+  const from = planOf ? root.nodes.find(x=>x.id===planOf) : (!hasPlan(n.id) && n.services && n.services.coach ? n : null);
+  if(!from || (planOf && !isCoachHouse(n)) || root.journey) return "";
+  const C = coachSet(), D = coachDestinations(from), riders = coachRiders(), been = D.filter(d=>d.n.visited), not = D.filter(d=>!d.n.visited);
+  const row = ({ n:to, trip }) => `<div class="shoprow"><span class="sr-n">${esc(to.name||"A place")} <small class="mono">${trip.miles} mi · ${hoursWord(trip.clock)}${C.pay && C.cp ? ` · ${cpStr(trip.fare)} each` : ""}</small>${trip.tolls.length ? ` <small title="Tolls on the way">· through ${esc(trip.tolls.map(t=>t.name||"a toll").join(", "))}</small>` : ""}</span>
+      <span class="sr-a"><button class="btn small" data-coach="go" data-to="${to.id}">Take it</button></span></div>`;
+  return `<div class="travelbox"><p class="eyebrow spaced">The coach</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">From ${esc(from.name||"here")}, along the roads coaches run, to anywhere with a coach stop. ${riders.length ? `Taking ${esc(groupName(activeGroup()))} (${riders.length} ${riders.length===1?"seat":"seats"}).` : "Nobody in the party to take."}</p>
+    ${been.map(row).join("") || (not.length ? "" : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">The coach doesn't go anywhere from here yet: tick "Coaches run this road" on the roads it takes (a road's Build card), and Coach stop on the places it stops at (or put a coach house in their plan).</p>`)}
+    ${not.length ? `<details class="pcset"${been.length ? "" : " open"}><summary>Places they haven't been <small>${not.length}</small></summary>${not.map(row).join("")}</details>` : ""}
+    <details class="pcset pcsec" data-invfor="coach:rules" ${openInv.has("coach:rules")?"open":""}><summary>The coach's rules <small>your table rule</small></summary>
+      <div class="pcrow"><label style="flex:1">Speed <input class="mono" type="number" data-coachset="mph" min="1" max="12" step=".5" value="${C.mph}" style="width:56px"> mph</label><label style="flex:1">On the road <input class="mono" type="number" data-coachset="hours" min="1" max="18" value="${C.hours}" style="width:52px"> h a day</label></div>
+      <p class="empty-note" style="font-size:10.5px;margin:2px 0 6px">On a good road (8–10); three quarters of it on a road (4–7), half on a poor path. The rest of each day at coaching inns.</p>
+      <div class="pcrow"><label style="flex:1">Fare <input class="mono" type="number" data-coachset="cp" min="0" step="1" value="${C.cp}" style="width:56px"> cp a mile each</label><label class="check" style="flex:1;margin:0"><input type="checkbox" data-coachset="pay" ${C.pay?"checked":""}> Take it from their purses</label></div>
+      <p class="empty-note" style="font-size:10.5px;margin:2px 0 6px">3 cp a mile is the 2014 rules' coach cab between towns; the 2024 rules don't price coaches.</p>
+      <label style="display:block;margin:0 0 4px">Trouble on the road <select data-coachset="trouble">${COACH_TROUBLE.map(([k, l])=>`<option value="${k}" ${C.trouble===k?"selected":""}>${l}</option>`).join("")}</select></label>
+      <p class="empty-note" style="font-size:10.5px;margin:0 0 4px">Encounters you've placed on a road still happen when the coach passes them.</p></details></div>`;
+}
+function takeCoach(fromId, toId){
+  const from = root.nodes.find(x=>x.id===fromId), to = root.nodes.find(x=>x.id===toId), trip = from && to && coachTrip(from, to); if(!trip) return;
+  const C = coachSet(), riders = coachRiders(); if(!riders.length){ flash("Nobody in the party to put on the coach."); return; }
+  if(C.pay && trip.fare){
+    const short = riders.filter(p=>Math.round(purseGp(purseOf(p))*100) < trip.fare);
+    if(short.length){ flash(`${short.map(p=>p.name||"Someone").join(" and ")} can't pay the fare (${cpStr(trip.fare)}).`); return; }
+    for(const p of riders) payFrom(purseOf(p), trip.fare);
+  }
+  if(planOf) leavePlan();
+  const path = trip.pts, cum = [0]; for(let i=1; i<path.length; i++) cum.push(cum[i-1] + Math.hypot(path[i][0]-path[i-1][0], path[i][1]-path[i-1][1]));
+  const g = activeGroup();
+  root.journey = { gid:g.id, from:from.id, fromName:from.name||"where they were", to:to.id, path, cum, miles:trip.miles, hours:trip.clock, done:0, passed:0,
+    pace:"normal", dc:0, nav:{}, word:"", parts:[], push:0, coach:{ fare:C.pay ? trip.fare*riders.length : 0, each:C.pay ? trip.fare : 0 } };
+  rollRoadEncounters(root.journey, trip.roadHours, C.hours);
+  if(C.trouble==="none") root.journey.events = []; else if(C.trouble==="half") root.journey.events = root.journey.events.filter(()=>Math.random() < .5);
+  placeRoadEncounters(root.journey, { pts:path }, {});
+  root.trail = { pts:[path[0]] }; select("node", to.id);             // its card shows the trip under way, with Pause
+  gameLog("move", `${groupName(g)} took the coach from ${from.name||"where they were"} for ${to.name||"somewhere"}: ${trip.miles} mi, about ${hoursWord(trip.clock)}${C.pay && trip.fare ? `, ${cpStr(trip.fare)} each (${cpStr(trip.fare*riders.length)} in all)` : ""}${trip.tolls.length ? `; through ${trip.tolls.map(t=>t.name||"a toll").join(", ")}` : ""}`);
+  saveParty(); playJourney();
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-coach]"); if(!b || b.dataset.coach!=="go") return;
+  const from = planOf ? planOf : (sel && sel.kind==="node" ? sel.id : null); if(from) takeCoach(from, b.dataset.to);
+});
+document.addEventListener("change", e=>{
+  const t = e.target; if(!t.dataset || !t.dataset.coachset) return;
+  const C = coachSet(), k = t.dataset.coachset; C[k] = t.type==="checkbox" ? t.checked : k==="trouble" ? t.value : +t.value; coachSet(); saveParty(); renderPane(true);
+});
+
 function gameLog(kind, text){
   if(!root || !text) return;
   const L = gameLogList(), s = String(text).trim().replace(/\.$/, ""), last = L[L.length-1], now = new Date();
@@ -13455,7 +13543,7 @@ $("#pane-notes").addEventListener("click", e=>{
 const FOOTPRINT = {
   hall:{w:24,d:16}, house:{w:10,d:8},  inn:{w:16,d:12},  smith:{w:12,d:9},
   provision:{w:13,d:10},
-  temple:{w:20,d:13}, market:{w:18,d:18}, store:{w:11,d:9}, stable:{w:18,d:10},
+  temple:{w:20,d:13}, market:{w:18,d:18}, store:{w:11,d:9}, stable:{w:18,d:10}, coachhouse:{w:20,d:12},
   gate:{w:8,d:5},   tower:{w:8,d:8},   well:{w:3,d:3},   statue:{w:4,d:4},
   ship:{w:26,d:8},  boat:{w:5,d:2},    wreck:{w:24,d:8}, light:{w:7,d:7},
   warehouse:{w:26,d:14}, shipwright:{w:30,d:16}, stall:{w:4,d:3}, tent:{w:5,d:5},
@@ -13507,7 +13595,8 @@ const STOCK_SETS = {
   archive:    ["Reading the old hand", "Survey rolls"],
   trainer:    ["Drill", "Instruction"],
   office:     ["Warrants", "Bonds", "Pay"],
-  stable:     ["A horse", "Stabling", "The coach"]
+  stable:     ["A horse", "Stabling", "The coach"],
+  coachhouse: ["A seat on the coach", "Parcels carried", "Fresh horses"]
 };
 
 function blankPremises(n){
