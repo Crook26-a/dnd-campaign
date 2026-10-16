@@ -3867,7 +3867,7 @@
                       "y":  -554,
                       "hidden":  true,
                       "name":  "Dunmarrow",
-                      "notes":  "The port of the inland country, which holds the island\u0027s interior: every town and road between the free cities. Its country still needs a name. No tolls of its own on these roads."
+                      "notes":  "The port of the inland country, which holds the island\u0027s interior: every town and road between the free cities. Its country still needs a name. No tolls of its own on these roads.\n\nLaid out 2026-10-16 (no picture): the old hill fort (the Dun) on its headland, the river Marrow as the harbour, the walled Old Town on the west bank, Eastbank\u0027s warehouses and navy yard across the bridge, and the coach house and the old barrow outside the South Gate. Grey stone, slate and thatch."
                   },
                   {
                       "id":  "ns5e864",
@@ -22022,6 +22022,1856 @@
                                                 "fence":  1,
                                                 "office":  1,
                                                 "archive":  1
+                                            }
+                              },
+                  "ns4g5g2":  {
+                                  "format":  "ordinate-plan-v1",
+                                  "of":  "ns4g5g2",
+                                  "title":  "Dunmarrow",
+                                  "ppm":  5,
+                                  "unit":  "yd",
+                                  "compass":  8,
+                                  "regions":  [
+                                                  {
+                                                      "id":  "d1",
+                                                      "name":  "The Dun",
+                                                      "threat":  2,
+                                                      "hex":  "#7a5a46",
+                                                      "notes":  "The old hill fort on the headland: the Warden\u0027s keep, the garrison, the guns over the harbour."
+                                                  },
+                                                  {
+                                                      "id":  "d2",
+                                                      "name":  "Old Town",
+                                                      "threat":  1,
+                                                      "hex":  "#8d7a52",
+                                                      "notes":  "The walled town on the west bank: grey stone and slate, the market, the Customs House, the chapel."
+                                                  },
+                                                  {
+                                                      "id":  "d3",
+                                                      "name":  "The Quays",
+                                                      "threat":  1,
+                                                      "hex":  "#3f6a78",
+                                                      "notes":  "Both banks of the Marrow where it meets the sea, the mole and the beacon."
+                                                  },
+                                                  {
+                                                      "id":  "d4",
+                                                      "name":  "Eastbank",
+                                                      "threat":  2,
+                                                      "hex":  "#6a6250",
+                                                      "notes":  "Outside the walls across the river: warehouses, the navy yard, the ropewalk, rougher taverns."
+                                                  },
+                                                  {
+                                                      "id":  "d5",
+                                                      "name":  "Outside the Walls",
+                                                      "threat":  2,
+                                                      "hex":  "#5e7a4e",
+                                                      "notes":  "The South Gate\u0027s coach house and drovers, the Barrow Green, the roads inland and along the coast."
+                                                  }
+                                              ],
+                                  "nodes":  [
+                                                {
+                                                    "id":  "dndun",
+                                                    "name":  "The Dun",
+                                                    "kind":  "hall",
+                                                    "region":  "d1",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "The old hill fort: a square keep inside dry-stone walls, guns on new platforms facing the sea. The Warden of Dunmarrow governs the port from here for the inland country, and the garrison lives in its yard.",
+                                                    "x":  900,
+                                                    "y":  340,
+                                                    "w":  46,
+                                                    "d":  34,
+                                                    "rot":  "-4"
+                                                },
+                                                {
+                                                    "id":  "dnt1",
+                                                    "name":  "",
+                                                    "kind":  "tower",
+                                                    "region":  "d1",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "A tower of the Dun.",
+                                                    "x":  720,
+                                                    "y":  280,
+                                                    "w":  9,
+                                                    "d":  9,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnt2",
+                                                    "name":  "",
+                                                    "kind":  "tower",
+                                                    "region":  "d1",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "A tower of the Dun, its gun platform over the harbour mouth.",
+                                                    "x":  1060,
+                                                    "y":  220,
+                                                    "w":  9,
+                                                    "d":  9,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnt3",
+                                                    "name":  "",
+                                                    "kind":  "tower",
+                                                    "region":  "d1",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "A tower of the Dun.",
+                                                    "x":  1110,
+                                                    "y":  450,
+                                                    "w":  9,
+                                                    "d":  9,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dndungate",
+                                                    "name":  "The Dun Gate",
+                                                    "kind":  "gate",
+                                                    "region":  "d1",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "The fort\u0027s one gate, onto the Muster Yard.",
+                                                    "x":  960,
+                                                    "y":  500,
+                                                    "w":  10,
+                                                    "d":  7,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnwestgate",
+                                                    "name":  "West Gate",
+                                                    "kind":  "gate",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "The gate onto the coast road for Thornwick. Shut at dusk.",
+                                                    "x":  405,
+                                                    "y":  1005,
+                                                    "w":  10,
+                                                    "d":  7,
+                                                    "rot":  80
+                                                },
+                                                {
+                                                    "id":  "dnsouthgate",
+                                                    "name":  "South Gate",
+                                                    "kind":  "gate",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "The main gate: the South Road for Tallow Cross and the Halfway Road leave from here. Shut at dusk; the coach goes before dawn.",
+                                                    "x":  1155,
+                                                    "y":  1785,
+                                                    "w":  10,
+                                                    "d":  7,
+                                                    "rot":  5
+                                                },
+                                                {
+                                                    "id":  "dncustoms",
+                                                    "name":  "The Customs House",
+                                                    "kind":  "reeve",
+                                                    "region":  "d3",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "reeve":  1
+                                                                 },
+                                                    "notes":  "A grim stone house on the West Quay. Every ship pays the inland country\u0027s duty here, and ships from the free cities (Kalatecha and Saltmere) pay it in full; the watch and the cells are behind.",
+                                                    "x":  1700,
+                                                    "y":  720,
+                                                    "w":  26,
+                                                    "d":  16,
+                                                    "rot":  3
+                                                },
+                                                {
+                                                    "id":  "dntally",
+                                                    "name":  "The Tally House",
+                                                    "kind":  "archive",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "archive":  1
+                                                                 },
+                                                    "notes":  "Where the duties are counted and the ledgers kept, with the country\u0027s charts of the north coast. Its clerks know which captains cheat.",
+                                                    "x":  1500,
+                                                    "y":  640,
+                                                    "w":  16,
+                                                    "d":  11,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnhire",
+                                                    "name":  "The Hiring Hall",
+                                                    "kind":  "office",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "office":  1
+                                                                 },
+                                                    "notes":  "Where the Warden\u0027s contracts are posted and paid: escorts inland, wreck-salvage, and the occasional bounty.",
+                                                    "x":  1320,
+                                                    "y":  940,
+                                                    "w":  20,
+                                                    "d":  13,
+                                                    "rot":  "-5"
+                                                },
+                                                {
+                                                    "id":  "dnchapel",
+                                                    "name":  "The Chapel of the Drowned",
+                                                    "kind":  "temple",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "temple":  1
+                                                                 },
+                                                    "notes":  "A low stone chapel with a slate spire, where sailors\u0027 widows light candles for the men the sea kept.",
+                                                    "x":  650,
+                                                    "y":  1270,
+                                                    "w":  28,
+                                                    "d":  18,
+                                                    "rot":  "-6",
+                                                    "roof":  "slate"
+                                                },
+                                                {
+                                                    "id":  "dnalms",
+                                                    "name":  "The Almshouse",
+                                                    "kind":  "healer",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "healer":  1
+                                                                 },
+                                                    "notes":  "The Warden\u0027s almshouse: beds for the sick, a herb garden, and two tired healers.",
+                                                    "x":  900,
+                                                    "y":  1450,
+                                                    "w":  22,
+                                                    "d":  12,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnherring",
+                                                    "name":  "The Tarred Herring",
+                                                    "kind":  "inn",
+                                                    "region":  "d3",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "inn":  1
+                                                                 },
+                                                    "notes":  "A low-beamed sailors\u0027 inn on the West Quay, smelling of tar, smoke and fish stew.",
+                                                    "x":  1640,
+                                                    "y":  1000,
+                                                    "w":  18,
+                                                    "d":  12,
+                                                    "rot":  2
+                                                },
+                                                {
+                                                    "id":  "dnsmith",
+                                                    "name":  "Iron Row Smithy",
+                                                    "kind":  "smith",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "smith":  1
+                                                                 },
+                                                    "notes":  "Anchors, chain and ship\u0027s ironwork, and the garrison\u0027s blades sharpened.",
+                                                    "x":  1000,
+                                                    "y":  1330,
+                                                    "w":  13,
+                                                    "d":  9,
+                                                    "rot":  4
+                                                },
+                                                {
+                                                    "id":  "dnapoth",
+                                                    "name":  "Mother Brack\u0027s",
+                                                    "kind":  "apothecary",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "apothecary":  1
+                                                                 },
+                                                    "notes":  "Remedies for chest, cough and cold, and less said about the rest.",
+                                                    "x":  1100,
+                                                    "y":  1560,
+                                                    "w":  8,
+                                                    "d":  7,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnprov",
+                                                    "name":  "The Salt Barrel",
+                                                    "kind":  "provision",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "provision":  1
+                                                                 },
+                                                    "notes":  "Salt beef, hard biscuit and barrels of herring for the voyage.",
+                                                    "x":  1450,
+                                                    "y":  1340,
+                                                    "w":  13,
+                                                    "d":  9,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dngarrison",
+                                                    "name":  "The Garrison Yard",
+                                                    "kind":  "trainer",
+                                                    "region":  "d1",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "trainer":  1
+                                                                 },
+                                                    "notes":  "The garrison\u0027s drill yard and armoury below the Dun; their sergeant will teach a blade for a fee.",
+                                                    "x":  760,
+                                                    "y":  640,
+                                                    "w":  18,
+                                                    "d":  12,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dncross",
+                                                    "name":  "The Market Cross",
+                                                    "kind":  "statue",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "An old stone cross worn smooth. The country\u0027s proclamations are nailed to it.",
+                                                    "x":  1280,
+                                                    "y":  1150,
+                                                    "w":  3,
+                                                    "d":  3,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnwell",
+                                                    "name":  "Market Well",
+                                                    "kind":  "well",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "",
+                                                    "x":  1370,
+                                                    "y":  1235,
+                                                    "w":  3,
+                                                    "d":  3,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnmarket",
+                                                    "name":  "The Wool Hall",
+                                                    "kind":  "market",
+                                                    "region":  "d2",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "market":  1
+                                                                 },
+                                                    "notes":  "A timber market hall on stone pillars at the top of the square: wool, fish and grain from inland, weighed and taxed.",
+                                                    "x":  1210,
+                                                    "y":  1080,
+                                                    "w":  16,
+                                                    "d":  10,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnchand",
+                                                    "name":  "Marrow Chandlery",
+                                                    "kind":  "store",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "store":  1
+                                                                 },
+                                                    "notes":  "Rope from the ropewalk, canvas, pitch and lanterns.",
+                                                    "x":  2200,
+                                                    "y":  900,
+                                                    "w":  15,
+                                                    "d":  10,
+                                                    "rot":  "-3"
+                                                },
+                                                {
+                                                    "id":  "dnnavy",
+                                                    "name":  "The Navy Yard",
+                                                    "kind":  "shipwright",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "Where the inland country builds and mends its few warships. Two are on the stocks; the Warden wants more.",
+                                                    "x":  2300,
+                                                    "y":  640,
+                                                    "w":  34,
+                                                    "d":  18,
+                                                    "rot":  "-30"
+                                                },
+                                                {
+                                                    "id":  "dnrope",
+                                                    "name":  "The Ropewalk",
+                                                    "kind":  "warehouse",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "A long low shed where the rope for half the north coast is twisted.",
+                                                    "x":  2600,
+                                                    "y":  820,
+                                                    "w":  60,
+                                                    "d":  6,
+                                                    "rot":  "-8"
+                                                },
+                                                {
+                                                    "id":  "dnware1",
+                                                    "name":  "Grain Store",
+                                                    "kind":  "warehouse",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "Grain from inland, waiting for ships.",
+                                                    "x":  2300,
+                                                    "y":  1050,
+                                                    "w":  22,
+                                                    "d":  12,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnware2",
+                                                    "name":  "",
+                                                    "kind":  "warehouse",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "",
+                                                    "x":  2450,
+                                                    "y":  1150,
+                                                    "w":  20,
+                                                    "d":  11,
+                                                    "rot":  "-10"
+                                                },
+                                                {
+                                                    "id":  "dnware3",
+                                                    "name":  "",
+                                                    "kind":  "warehouse",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "",
+                                                    "x":  2250,
+                                                    "y":  760,
+                                                    "w":  18,
+                                                    "d":  10,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnloft",
+                                                    "name":  "The Net Loft",
+                                                    "kind":  "fence",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "fence":  1
+                                                                 },
+                                                    "notes":  "Nets mended downstairs; upstairs, goods that came off ships without paying at the Customs House.",
+                                                    "x":  2650,
+                                                    "y":  1100,
+                                                    "w":  10,
+                                                    "d":  7,
+                                                    "rot":  "-12"
+                                                },
+                                                {
+                                                    "id":  "dnbeacon",
+                                                    "name":  "Mole Beacon",
+                                                    "kind":  "light",
+                                                    "region":  "d3",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "A fire tower at the end of the Mole, lit every night and in fog.",
+                                                    "x":  2530,
+                                                    "y":  195,
+                                                    "w":  11,
+                                                    "d":  11,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnwatch",
+                                                    "name":  "Shingle Watch",
+                                                    "kind":  "tower",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "A watchtower on the shingle, looking east along the coast.",
+                                                    "x":  3300,
+                                                    "y":  440,
+                                                    "w":  9,
+                                                    "d":  9,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnship1",
+                                                    "name":  "",
+                                                    "kind":  "ship",
+                                                    "region":  "d3",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "Moored in the river mouth.",
+                                                    "x":  2010,
+                                                    "y":  760,
+                                                    "w":  24,
+                                                    "d":  7,
+                                                    "rot":  85
+                                                },
+                                                {
+                                                    "id":  "dnship2",
+                                                    "name":  "",
+                                                    "kind":  "ship",
+                                                    "region":  "d3",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "",
+                                                    "x":  1990,
+                                                    "y":  1000,
+                                                    "w":  26,
+                                                    "d":  8,
+                                                    "rot":  95
+                                                },
+                                                {
+                                                    "id":  "dnship3",
+                                                    "name":  "",
+                                                    "kind":  "ship",
+                                                    "region":  "d3",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "In the Wet Dock.",
+                                                    "x":  1680,
+                                                    "y":  760,
+                                                    "w":  22,
+                                                    "d":  7,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnship4",
+                                                    "name":  "",
+                                                    "kind":  "ship",
+                                                    "region":  "",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "At anchor outside, waiting on the tide.",
+                                                    "x":  2700,
+                                                    "y":  "-150",
+                                                    "w":  28,
+                                                    "d":  8,
+                                                    "rot":  "-20"
+                                                },
+                                                {
+                                                    "id":  "dnboat1",
+                                                    "name":  "",
+                                                    "kind":  "boat",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "Drawn up on the shingle.",
+                                                    "x":  3000,
+                                                    "y":  430,
+                                                    "w":  5,
+                                                    "d":  2,
+                                                    "rot":  10
+                                                },
+                                                {
+                                                    "id":  "dnboat2",
+                                                    "name":  "",
+                                                    "kind":  "boat",
+                                                    "region":  "d4",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "",
+                                                    "x":  3150,
+                                                    "y":  420,
+                                                    "w":  5,
+                                                    "d":  2,
+                                                    "rot":  "-15"
+                                                },
+                                                {
+                                                    "id":  "dnboat3",
+                                                    "name":  "",
+                                                    "kind":  "boat",
+                                                    "region":  "d3",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "",
+                                                    "x":  1900,
+                                                    "y":  1120,
+                                                    "w":  5,
+                                                    "d":  2,
+                                                    "rot":  80
+                                                },
+                                                {
+                                                    "id":  "dncoach",
+                                                    "name":  "The Coach House",
+                                                    "kind":  "coachhouse",
+                                                    "region":  "d5",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "coach":  1,
+                                                                     "stable":  1
+                                                                 },
+                                                    "notes":  "The coach for Tallow Cross, Halfway House and Thornwick leaves from here before dawn. Fresh horses, and a clerk who takes the fares.",
+                                                    "x":  1360,
+                                                    "y":  1880,
+                                                    "w":  22,
+                                                    "d":  13,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dndrovers",
+                                                    "name":  "The Drovers\u0027 Rest",
+                                                    "kind":  "inn",
+                                                    "region":  "d5",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "inn":  1
+                                                                 },
+                                                    "notes":  "Cattle drovers and carters from inland, a long room and a yard full of wagons.",
+                                                    "x":  1000,
+                                                    "y":  2000,
+                                                    "w":  20,
+                                                    "d":  12,
+                                                    "rot":  4
+                                                },
+                                                {
+                                                    "id":  "dnstable",
+                                                    "name":  "South Gate Stables",
+                                                    "kind":  "stable",
+                                                    "region":  "d5",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+                                                                     "stable":  1
+                                                                 },
+                                                    "notes":  "Horses and mules for the inland roads.",
+                                                    "x":  1380,
+                                                    "y":  2100,
+                                                    "w":  16,
+                                                    "d":  9,
+                                                    "rot":  0
+                                                },
+                                                {
+                                                    "id":  "dnbarrow",
+                                                    "name":  "The Barrow",
+                                                    "kind":  "statue",
+                                                    "region":  "d5",
+                                                    "level":  1,
+                                                    "origin":  false,
+                                                    "seat":  false,
+                                                    "services":  {
+
+                                                                 },
+                                                    "notes":  "A grassy mound older than the town, ringed with standing stones. Some say a king is under it, some say worse.",
+                                                    "x":  450,
+                                                    "y":  2080,
+                                                    "w":  6,
+                                                    "d":  6,
+                                                    "rot":  0
+                                                }
+                                            ],
+                                  "roads":  [
+
+                                            ],
+                                  "shapes":  [
+                                                 {
+                                                     "id":  "dsea",
+                                                     "kind":  "water",
+                                                     "closed":  true,
+                                                     "straight":  false,
+                                                     "name":  "The Northern Sea",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Grey water and a cold wind off it. Ships come in on the tide and anchor in the river mouth.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  -900,
+                                                                     "y":  -900
+                                                                 },
+                                                                 {
+                                                                     "x":  4300,
+                                                                     "y":  -900
+                                                                 },
+                                                                 {
+                                                                     "x":  4300,
+                                                                     "y":  380
+                                                                 },
+                                                                 {
+                                                                     "x":  3600,
+                                                                     "y":  360
+                                                                 },
+                                                                 {
+                                                                     "x":  3100,
+                                                                     "y":  380
+                                                                 },
+                                                                 {
+                                                                     "x":  2700,
+                                                                     "y":  420
+                                                                 },
+                                                                 {
+                                                                     "x":  2350,
+                                                                     "y":  470
+                                                                 },
+                                                                 {
+                                                                     "x":  2060,
+                                                                     "y":  520
+                                                                 },
+                                                                 {
+                                                                     "x":  1950,
+                                                                     "y":  470
+                                                                 },
+                                                                 {
+                                                                     "x":  1830,
+                                                                     "y":  500
+                                                                 },
+                                                                 {
+                                                                     "x":  1650,
+                                                                     "y":  470
+                                                                 },
+                                                                 {
+                                                                     "x":  1350,
+                                                                     "y":  420
+                                                                 },
+                                                                 {
+                                                                     "x":  1220,
+                                                                     "y":  300
+                                                                 },
+                                                                 {
+                                                                     "x":  1060,
+                                                                     "y":  150
+                                                                 },
+                                                                 {
+                                                                     "x":  800,
+                                                                     "y":  130
+                                                                 },
+                                                                 {
+                                                                     "x":  620,
+                                                                     "y":  240
+                                                                 },
+                                                                 {
+                                                                     "x":  520,
+                                                                     "y":  380
+                                                                 },
+                                                                 {
+                                                                     "x":  300,
+                                                                     "y":  470
+                                                                 },
+                                                                 {
+                                                                     "x":  0,
+                                                                     "y":  520
+                                                                 },
+                                                                 {
+                                                                     "x":  -900,
+                                                                     "y":  560
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "drock",
+                                                     "kind":  "rock",
+                                                     "closed":  true,
+                                                     "straight":  false,
+                                                     "name":  "Dun Head",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "The rocky headland the Dun stands on.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  560,
+                                                                     "y":  400
+                                                                 },
+                                                                 {
+                                                                     "x":  620,
+                                                                     "y":  240
+                                                                 },
+                                                                 {
+                                                                     "x":  800,
+                                                                     "y":  130
+                                                                 },
+                                                                 {
+                                                                     "x":  1060,
+                                                                     "y":  150
+                                                                 },
+                                                                 {
+                                                                     "x":  1220,
+                                                                     "y":  300
+                                                                 },
+                                                                 {
+                                                                     "x":  1190,
+                                                                     "y":  470
+                                                                 },
+                                                                 {
+                                                                     "x":  900,
+                                                                     "y":  530
+                                                                 },
+                                                                 {
+                                                                     "x":  650,
+                                                                     "y":  510
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dshingle",
+                                                     "kind":  "beach",
+                                                     "closed":  true,
+                                                     "straight":  false,
+                                                     "name":  "The Shingle",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "A long grey shingle beach running east; boats are drawn up on it.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2700,
+                                                                     "y":  420
+                                                                 },
+                                                                 {
+                                                                     "x":  3100,
+                                                                     "y":  380
+                                                                 },
+                                                                 {
+                                                                     "x":  3600,
+                                                                     "y":  360
+                                                                 },
+                                                                 {
+                                                                     "x":  4300,
+                                                                     "y":  380
+                                                                 },
+                                                                 {
+                                                                     "x":  4300,
+                                                                     "y":  480
+                                                                 },
+                                                                 {
+                                                                     "x":  3600,
+                                                                     "y":  460
+                                                                 },
+                                                                 {
+                                                                     "x":  3100,
+                                                                     "y":  480
+                                                                 },
+                                                                 {
+                                                                     "x":  2700,
+                                                                     "y":  510
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dbasin",
+                                                     "kind":  "water",
+                                                     "closed":  true,
+                                                     "straight":  true,
+                                                     "name":  "The Wet Dock",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "A stone basin off the river, its gates kept shut at low tide so ships stay afloat.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1560,
+                                                                     "y":  620
+                                                                 },
+                                                                 {
+                                                                     "x":  1800,
+                                                                     "y":  620
+                                                                 },
+                                                                 {
+                                                                     "x":  1800,
+                                                                     "y":  900
+                                                                 },
+                                                                 {
+                                                                     "x":  1560,
+                                                                     "y":  900
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dmarrow",
+                                                     "kind":  "river",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "The Marrow",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "The river Marrow, slow and brown, comes down from the inland hills. Its mouth is the harbour.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2420,
+                                                                     "y":  2900
+                                                                 },
+                                                                 {
+                                                                     "x":  2270,
+                                                                     "y":  2400
+                                                                 },
+                                                                 {
+                                                                     "x":  2080,
+                                                                     "y":  1900
+                                                                 },
+                                                                 {
+                                                                     "x":  2010,
+                                                                     "y":  1400
+                                                                 },
+                                                                 {
+                                                                     "x":  1960,
+                                                                     "y":  950
+                                                                 },
+                                                                 {
+                                                                     "x":  1940,
+                                                                     "y":  620
+                                                                 },
+                                                                 {
+                                                                     "x":  1950,
+                                                                     "y":  470
+                                                                 }
+                                                             ],
+                                                     "w0":  70,
+                                                     "w1":  150
+                                                 },
+                                                 {
+                                                     "id":  "dmole",
+                                                     "kind":  "pier",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "The Mole",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "A stone breakwater from the east bank, the beacon at its end.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2080,
+                                                                     "y":  520
+                                                                 },
+                                                                 {
+                                                                     "x":  2300,
+                                                                     "y":  330
+                                                                 },
+                                                                 {
+                                                                     "x":  2520,
+                                                                     "y":  200
+                                                                 }
+                                                             ],
+                                                     "w":  40,
+                                                     "stone":  true
+                                                 },
+                                                 {
+                                                     "id":  "dwquay",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "West Quay",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "The stone quay along the west bank: the Customs House, the fishing boats, the herring barrels.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1830,
+                                                                     "y":  560
+                                                                 },
+                                                                 {
+                                                                     "x":  1840,
+                                                                     "y":  800
+                                                                 },
+                                                                 {
+                                                                     "x":  1860,
+                                                                     "y":  1080
+                                                                 },
+                                                                 {
+                                                                     "x":  1890,
+                                                                     "y":  1200
+                                                                 }
+                                                             ],
+                                                     "w":  50
+                                                 },
+                                                 {
+                                                     "id":  "dequay",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "East Quay",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "The east bank\u0027s quay: the warehouses and the navy yard.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2090,
+                                                                     "y":  580
+                                                                 },
+                                                                 {
+                                                                     "x":  2100,
+                                                                     "y":  800
+                                                                 },
+                                                                 {
+                                                                     "x":  2120,
+                                                                     "y":  1100
+                                                                 }
+                                                             ],
+                                                     "w":  50
+                                                 },
+                                                 {
+                                                     "id":  "dbridge",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  true,
+                                                     "name":  "Marrow Bridge",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "A stone bridge of five arches; the only way across, and the watch keeps a post at its west end.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1760,
+                                                                     "y":  1260
+                                                                 },
+                                                                 {
+                                                                     "x":  1990,
+                                                                     "y":  1250
+                                                                 },
+                                                                 {
+                                                                     "x":  2210,
+                                                                     "y":  1240
+                                                                 }
+                                                             ],
+                                                     "w":  34
+                                                 },
+                                                 {
+                                                     "id":  "dhigh",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "High Street",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "From the South Gate up past the market to the Dun.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1150,
+                                                                     "y":  1790
+                                                                 },
+                                                                 {
+                                                                     "x":  1200,
+                                                                     "y":  1500
+                                                                 },
+                                                                 {
+                                                                     "x":  1260,
+                                                                     "y":  1250
+                                                                 },
+                                                                 {
+                                                                     "x":  1180,
+                                                                     "y":  900
+                                                                 },
+                                                                 {
+                                                                     "x":  1000,
+                                                                     "y":  620
+                                                                 }
+                                                             ],
+                                                     "w":  40
+                                                 },
+                                                 {
+                                                     "id":  "dwest",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "West Street",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "From the West Gate in to the market.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  420,
+                                                                     "y":  1000
+                                                                 },
+                                                                 {
+                                                                     "x":  800,
+                                                                     "y":  1060
+                                                                 },
+                                                                 {
+                                                                     "x":  1150,
+                                                                     "y":  1130
+                                                                 }
+                                                             ],
+                                                     "w":  34
+                                                 },
+                                                 {
+                                                     "id":  "dbridgest",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Bridge Street",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Down from the market to the bridge.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1400,
+                                                                     "y":  1160
+                                                                 },
+                                                                 {
+                                                                     "x":  1600,
+                                                                     "y":  1220
+                                                                 },
+                                                                 {
+                                                                     "x":  1760,
+                                                                     "y":  1260
+                                                                 }
+                                                             ],
+                                                     "w":  34
+                                                 },
+                                                 {
+                                                     "id":  "dquayst",
+                                                     "kind":  "lane",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Quay Street",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Down to the quay.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1400,
+                                                                     "y":  1100
+                                                                 },
+                                                                 {
+                                                                     "x":  1600,
+                                                                     "y":  900
+                                                                 },
+                                                                 {
+                                                                     "x":  1830,
+                                                                     "y":  760
+                                                                 }
+                                                             ],
+                                                     "w":  22
+                                                 },
+                                                 {
+                                                     "id":  "dchapel",
+                                                     "kind":  "lane",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Chapel Lane",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  800,
+                                                                     "y":  1060
+                                                                 },
+                                                                 {
+                                                                     "x":  720,
+                                                                     "y":  1300
+                                                                 },
+                                                                 {
+                                                                     "x":  760,
+                                                                     "y":  1550
+                                                                 }
+                                                             ],
+                                                     "w":  20
+                                                 },
+                                                 {
+                                                     "id":  "dkeep",
+                                                     "kind":  "lane",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Wardens\u0027 Walk",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Along under the Dun\u0027s walls to the wet dock.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1000,
+                                                                     "y":  620
+                                                                 },
+                                                                 {
+                                                                     "x":  1300,
+                                                                     "y":  560
+                                                                 },
+                                                                 {
+                                                                     "x":  1600,
+                                                                     "y":  560
+                                                                 }
+                                                             ],
+                                                     "w":  20
+                                                 },
+                                                 {
+                                                     "id":  "dtan",
+                                                     "kind":  "lane",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Tanners\u0027 Row",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Out along the east bank: the tanneries, by the smell.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2210,
+                                                                     "y":  1240
+                                                                 },
+                                                                 {
+                                                                     "x":  2500,
+                                                                     "y":  1180
+                                                                 },
+                                                                 {
+                                                                     "x":  2800,
+                                                                     "y":  1050
+                                                                 }
+                                                             ],
+                                                     "w":  22
+                                                 },
+                                                 {
+                                                     "id":  "drope",
+                                                     "kind":  "lane",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Ropewalk Lane",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2120,
+                                                                     "y":  800
+                                                                 },
+                                                                 {
+                                                                     "x":  2450,
+                                                                     "y":  760
+                                                                 },
+                                                                 {
+                                                                     "x":  2800,
+                                                                     "y":  700
+                                                                 }
+                                                             ],
+                                                     "w":  22
+                                                 },
+                                                 {
+                                                     "id":  "deast",
+                                                     "kind":  "lane",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Eastbank Road",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2210,
+                                                                     "y":  1240
+                                                                 },
+                                                                 {
+                                                                     "x":  2250,
+                                                                     "y":  1600
+                                                                 },
+                                                                 {
+                                                                     "x":  2300,
+                                                                     "y":  2000
+                                                                 }
+                                                             ],
+                                                     "w":  22
+                                                 },
+                                                 {
+                                                     "id":  "dsouth",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "The South Road",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Inland to Tallow Cross, 87 miles, through the country\u0027s heart.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1150,
+                                                                     "y":  1790
+                                                                 },
+                                                                 {
+                                                                     "x":  1200,
+                                                                     "y":  2200
+                                                                 },
+                                                                 {
+                                                                     "x":  1260,
+                                                                     "y":  2600
+                                                                 },
+                                                                 {
+                                                                     "x":  1300,
+                                                                     "y":  3100
+                                                                 }
+                                                             ],
+                                                     "w":  36
+                                                 },
+                                                 {
+                                                     "id":  "dsw",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Halfway Road",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "South-west to Halfway House.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1180,
+                                                                     "y":  2050
+                                                                 },
+                                                                 {
+                                                                     "x":  800,
+                                                                     "y":  2350
+                                                                 },
+                                                                 {
+                                                                     "x":  300,
+                                                                     "y":  2750
+                                                                 },
+                                                                 {
+                                                                     "x":  -300,
+                                                                     "y":  3100
+                                                                 }
+                                                             ],
+                                                     "w":  30
+                                                 },
+                                                 {
+                                                     "id":  "dcoast",
+                                                     "kind":  "street",
+                                                     "closed":  false,
+                                                     "straight":  false,
+                                                     "name":  "Coast Road",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "West along the coast to Thornwick.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  420,
+                                                                     "y":  1000
+                                                                 },
+                                                                 {
+                                                                     "x":  0,
+                                                                     "y":  960
+                                                                 },
+                                                                 {
+                                                                     "x":  -500,
+                                                                     "y":  920
+                                                                 },
+                                                                 {
+                                                                     "x":  -900,
+                                                                     "y":  900
+                                                                 }
+                                                             ],
+                                                     "w":  30
+                                                 },
+                                                 {
+                                                     "id":  "dmkt",
+                                                     "kind":  "market",
+                                                     "closed":  true,
+                                                     "straight":  true,
+                                                     "name":  "Market Square",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Fish, wool, timber and grain from inland; the country\u0027s tax on every stall.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1150,
+                                                                     "y":  1040
+                                                                 },
+                                                                 {
+                                                                     "x":  1400,
+                                                                     "y":  1050
+                                                                 },
+                                                                 {
+                                                                     "x":  1410,
+                                                                     "y":  1260
+                                                                 },
+                                                                 {
+                                                                     "x":  1160,
+                                                                     "y":  1250
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dmuster",
+                                                     "kind":  "square",
+                                                     "closed":  true,
+                                                     "straight":  true,
+                                                     "name":  "Muster Yard",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "The paved yard before the Dun Gate, where the garrison drills.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  860,
+                                                                     "y":  560
+                                                                 },
+                                                                 {
+                                                                     "x":  1080,
+                                                                     "y":  560
+                                                                 },
+                                                                 {
+                                                                     "x":  1080,
+                                                                     "y":  680
+                                                                 },
+                                                                 {
+                                                                     "x":  860,
+                                                                     "y":  680
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "ddunwall",
+                                                     "kind":  "wall",
+                                                     "closed":  false,
+                                                     "straight":  true,
+                                                     "name":  "The Dun Walls",
+                                                     "side":  1,
+                                                     "impassable":  true,
+                                                     "notes":  "Old walls of dry stone and newer gun platforms.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  700,
+                                                                     "y":  250
+                                                                 },
+                                                                 {
+                                                                     "x":  1050,
+                                                                     "y":  200
+                                                                 },
+                                                                 {
+                                                                     "x":  1160,
+                                                                     "y":  330
+                                                                 },
+                                                                 {
+                                                                     "x":  1110,
+                                                                     "y":  470
+                                                                 },
+                                                                 {
+                                                                     "x":  780,
+                                                                     "y":  500
+                                                                 },
+                                                                 {
+                                                                     "x":  680,
+                                                                     "y":  380
+                                                                 },
+                                                                 {
+                                                                     "x":  700,
+                                                                     "y":  250
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dwall1",
+                                                     "kind":  "wall",
+                                                     "closed":  false,
+                                                     "straight":  true,
+                                                     "name":  "The Town Wall",
+                                                     "side":  1,
+                                                     "impassable":  true,
+                                                     "notes":  "Grey stone, twenty feet high.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  820,
+                                                                     "y":  520
+                                                                 },
+                                                                 {
+                                                                     "x":  470,
+                                                                     "y":  700
+                                                                 },
+                                                                 {
+                                                                     "x":  400,
+                                                                     "y":  960
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dwall2",
+                                                     "kind":  "wall",
+                                                     "closed":  false,
+                                                     "straight":  true,
+                                                     "name":  "",
+                                                     "side":  1,
+                                                     "impassable":  true,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  410,
+                                                                     "y":  1050
+                                                                 },
+                                                                 {
+                                                                     "x":  380,
+                                                                     "y":  1300
+                                                                 },
+                                                                 {
+                                                                     "x":  600,
+                                                                     "y":  1650
+                                                                 },
+                                                                 {
+                                                                     "x":  1100,
+                                                                     "y":  1780
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dwall3",
+                                                     "kind":  "wall",
+                                                     "closed":  false,
+                                                     "straight":  true,
+                                                     "name":  "",
+                                                     "side":  1,
+                                                     "impassable":  true,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  1210,
+                                                                     "y":  1780
+                                                                 },
+                                                                 {
+                                                                     "x":  1700,
+                                                                     "y":  1740
+                                                                 },
+                                                                 {
+                                                                     "x":  1980,
+                                                                     "y":  1700
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dgrave",
+                                                     "kind":  "graveyard",
+                                                     "closed":  true,
+                                                     "straight":  true,
+                                                     "name":  "The Chapel Yard",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Slate headstones leaning in the wind.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  560,
+                                                                     "y":  1350
+                                                                 },
+                                                                 {
+                                                                     "x":  700,
+                                                                     "y":  1350
+                                                                 },
+                                                                 {
+                                                                     "x":  700,
+                                                                     "y":  1500
+                                                                 },
+                                                                 {
+                                                                     "x":  560,
+                                                                     "y":  1500
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dgreen",
+                                                     "kind":  "green",
+                                                     "closed":  true,
+                                                     "straight":  false,
+                                                     "name":  "The Barrow Green",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "A common outside the walls, and on it the old barrow mound that gave the town its name. Nobody digs there.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  300,
+                                                                     "y":  1900
+                                                                 },
+                                                                 {
+                                                                     "x":  700,
+                                                                     "y":  1850
+                                                                 },
+                                                                 {
+                                                                     "x":  800,
+                                                                     "y":  2150
+                                                                 },
+                                                                 {
+                                                                     "x":  400,
+                                                                     "y":  2300
+                                                                 },
+                                                                 {
+                                                                     "x":  200,
+                                                                     "y":  2150
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "dyard",
+                                                     "kind":  "yard",
+                                                     "closed":  true,
+                                                     "straight":  true,
+                                                     "name":  "The Timber Yard",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "Logs floated down the Marrow from the inland forests, stacked to season.",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2500,
+                                                                     "y":  1300
+                                                                 },
+                                                                 {
+                                                                     "x":  2800,
+                                                                     "y":  1260
+                                                                 },
+                                                                 {
+                                                                     "x":  2830,
+                                                                     "y":  1500
+                                                                 },
+                                                                 {
+                                                                     "x":  2520,
+                                                                     "y":  1540
+                                                                 }
+                                                             ]
+                                                 },
+                                                 {
+                                                     "id":  "zold",
+                                                     "kind":  "zone",
+                                                     "closed":  true,
+                                                     "straight":  false,
+                                                     "name":  "Old Town",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  820,
+                                                                     "y":  520
+                                                                 },
+                                                                 {
+                                                                     "x":  1100,
+                                                                     "y":  520
+                                                                 },
+                                                                 {
+                                                                     "x":  1700,
+                                                                     "y":  560
+                                                                 },
+                                                                 {
+                                                                     "x":  1800,
+                                                                     "y":  620
+                                                                 },
+                                                                 {
+                                                                     "x":  1820,
+                                                                     "y":  1700
+                                                                 },
+                                                                 {
+                                                                     "x":  1200,
+                                                                     "y":  1770
+                                                                 },
+                                                                 {
+                                                                     "x":  640,
+                                                                     "y":  1640
+                                                                 },
+                                                                 {
+                                                                     "x":  420,
+                                                                     "y":  1300
+                                                                 },
+                                                                 {
+                                                                     "x":  430,
+                                                                     "y":  800
+                                                                 }
+                                                             ],
+                                                     "density":  "city"
+                                                 },
+                                                 {
+                                                     "id":  "zeast",
+                                                     "kind":  "zone",
+                                                     "closed":  true,
+                                                     "straight":  false,
+                                                     "name":  "Eastbank",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  2100,
+                                                                     "y":  560
+                                                                 },
+                                                                 {
+                                                                     "x":  2700,
+                                                                     "y":  520
+                                                                 },
+                                                                 {
+                                                                     "x":  2900,
+                                                                     "y":  700
+                                                                 },
+                                                                 {
+                                                                     "x":  2900,
+                                                                     "y":  1250
+                                                                 },
+                                                                 {
+                                                                     "x":  2500,
+                                                                     "y":  1650
+                                                                 },
+                                                                 {
+                                                                     "x":  2250,
+                                                                     "y":  1900
+                                                                 },
+                                                                 {
+                                                                     "x":  2100,
+                                                                     "y":  1300
+                                                                 }
+                                                             ],
+                                                     "density":  "town"
+                                                 },
+                                                 {
+                                                     "id":  "zsouth",
+                                                     "kind":  "zone",
+                                                     "closed":  true,
+                                                     "straight":  false,
+                                                     "name":  "South Gate",
+                                                     "side":  1,
+                                                     "impassable":  false,
+                                                     "notes":  "",
+                                                     "pts":  [
+                                                                 {
+                                                                     "x":  950,
+                                                                     "y":  1820
+                                                                 },
+                                                                 {
+                                                                     "x":  1450,
+                                                                     "y":  1820
+                                                                 },
+                                                                 {
+                                                                     "x":  1500,
+                                                                     "y":  2150
+                                                                 },
+                                                                 {
+                                                                     "x":  1000,
+                                                                     "y":  2200
+                                                                 }
+                                                             ],
+                                                     "density":  "village"
+                                                 }
+                                             ],
+                                  "roofs":  {
+                                                "slate":  0.6,
+                                                "thatch":  0.28,
+                                                "timber":  0.12
+                                            },
+                                  "sited":  {
+                                                "inn":  1,
+                                                "store":  1,
+                                                "provision":  1,
+                                                "smith":  1,
+                                                "apothecary":  1,
+                                                "market":  1,
+                                                "temple":  1,
+                                                "healer":  1,
+                                                "reeve":  1,
+                                                "stable":  1,
+                                                "fence":  1,
+                                                "office":  1,
+                                                "archive":  1,
+                                                "trainer":  1,
+                                                "coach":  1
                                             }
                               }
               },
