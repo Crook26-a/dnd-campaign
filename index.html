@@ -15364,6 +15364,7 @@ function renderData(){
     <button class="btn wide" id="d-download">Download survey.json</button>
     <button class="btn wide" id="d-copy">Copy JSON to clipboard</button>
     <button class="btn wide" id="d-update" title="Pick a new map file from the builder: what's new comes in, your play stays">Update from a new map file…</button>
+    <button class="btn wide" id="d-planin" title="A town plan file (the campaign folder's Town plans): it goes inside its place, and nothing else changes">Bring in a town plan…</button>
     <button class="btn wide" id="d-import" title="Replaces everything with the file (what's open now goes on the shelf first)">Load a survey.json (replaces everything)</button>
     <div class="hr"></div>
     <p class="eyebrow">Paste a survey</p>
@@ -15390,6 +15391,7 @@ function renderData(){
   };
   $("#d-import").onclick = ()=>{ fileInMode = "replace"; $("#fileIn").click(); };
   $("#d-update").onclick = ()=>{ fileInMode = "update"; $("#fileIn").click(); };
+  $("#d-planin").onclick = ()=>{ fileInMode = "plan"; $("#fileIn").click(); };
   const cd = $("#d-campdir"); if(cd) cd.onclick = ()=>pickCampFolder();
   const cs = $("#d-campsave"); if(cs) cs.onclick = ()=>saveToCamp(`${stamp()} ${(doc.title||"survey").replace(/[^\w -]/g,"").trim()}.json`);
   const cu = $("#d-campupdate"); if(cu) cu.onclick = ()=>updateFromCamp();
@@ -15463,9 +15465,30 @@ $("#fileIn").addEventListener("change", e=>{
   const f = e.target.files[0]; if(!f) return;
   const rd = new FileReader();
   const mode = fileInMode; fileInMode = "replace";
-  rd.onload = ()=>{ if(mode==="update") updateFromMap(rd.result); else loadJSON(rd.result); e.target.value=""; };
+  rd.onload = ()=>{ if(mode==="update") updateFromMap(rd.result); else if(mode==="plan") planIn(rd.result); else loadJSON(rd.result); e.target.value=""; };
   rd.readAsText(f);
 });
+/* one town plan from a file (Toolsisland<town>-city.ps1 writes them to the campaign folder's "Town plans"): it goes
+   inside the place it's for and nothing else changes, the safe way to add a town to a campaign in play (2026-10-16) */
+function planIn(text){
+  let p; try{ p = JSON.parse(text); }catch(err){ flash("That isn't valid JSON."); return; }
+  if(!p || p.format!=="ordinate-plan-v1" || !Array.isArray(p.nodes)){ alert("That isn't a town plan file.\n\nTo open a whole survey, use \"Load a survey.json\"."); return; }
+  const host = root.nodes.find(n=>n.id===p.of) || root.nodes.find(n=>(n.name||"").toLowerCase()===String(p.title||"").toLowerCase());
+  if(!host){ flash(`There's no ${p.title||"place"} on this map for that plan.`); return; }
+  const had = plans[host.id] && ((plans[host.id].nodes||[]).length || (plans[host.id].shapes||[]).length);
+  if(had && !confirm(`${host.name} already has a plan. Replace it with the one in the file?
+
+Anything you've changed inside ${host.name} would go.`)) return;
+  const place = p.place || {}; delete p.place; p.of = host.id;
+  if(planOf) leavePlanAll();
+  plans[host.id] = p; markDirty(K_PLAN(host.id));
+  if(place.notes && !String(host.notes||"").includes(place.notes)) host.notes = host.notes ? `${host.notes}
+
+${place.notes}` : place.notes;
+  if(place.services) host.services = { ...(host.services||{}), ...place.services };
+  saveParty(); pump().catch(()=>{}); render(); renderPane(true);
+  flash(`${host.name}: its plan is in (${p.nodes.length} buildings). Enter it from its card.`);
+}
 async function loadJSON(text){
   await shelveBeforeReplacing();
   return loadJSONNow(text);

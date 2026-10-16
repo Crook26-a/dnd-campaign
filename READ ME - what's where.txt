@@ -24,6 +24,10 @@ Saves\
     Claude only builds from a save when you ask him to take something from it; at the
     moment that's "2026-10-09 kalatecha (Sallowmay below decks).json" (it has the Charter House edits too).
 
+Town plans\
+    Town plans Claude lays out, one file per town. Bring one in from the app's Data tab with
+    "Bring in a town plan…": it goes inside its place, and nothing else in your campaign changes.
+
 Pictures\
     The city picture for the table.
 
