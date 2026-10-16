@@ -716,6 +716,15 @@
   .bt-head #bt-title{font-family:var(--serif);font-size:15px;color:var(--ink)}
   .bt-head .bt-hint{flex:1;font-size:10.5px;color:var(--ink-faint);font-family:var(--mono)}
   #bsvg{flex:1;width:100%;min-height:0;touch-action:none;cursor:grab}
+  #bt-strip{display:flex;gap:3px;align-items:center;padding:4px 8px;background:var(--paper-lit);border-bottom:1px solid var(--rule);overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
+  #bt-strip[hidden]{display:none} #bt-strip .ts-r{font:10px var(--mono);color:var(--ink-soft);margin-right:2px} #bt-strip .ts-next{margin-right:4px;white-space:nowrap;flex:0 0 auto}
+  .ts-c{display:inline-flex;align-items:center;flex:0 0 auto;border:1px solid var(--rule);background:var(--paper);font:11.5px var(--sans)}
+  .ts-c .ts-i{font:10.5px var(--mono);color:var(--ink-faint);padding:2px 0 2px 5px} .ts-c .ts-n{border:0;background:none;padding:2px 4px;font:inherit;cursor:pointer}
+  .ts-c.pc .ts-n{color:#2f6170} .ts-c.foe .ts-n{color:var(--lead)} .ts-c.npc .ts-n{color:var(--ink-soft)}
+  .ts-c .ts-go{border:0;border-left:1px solid var(--rule);background:none;padding:2px 4px;color:var(--ink-faint);font-size:10px;cursor:pointer}
+  .ts-c.now{border-color:var(--lead);background:var(--paper-lit);box-shadow:inset 0 -3px 0 var(--lead)} .ts-c.now .ts-n{font-weight:600}
+  .ts-c.sel{outline:1px dashed var(--ink-soft);outline-offset:1px} .ts-c.down .ts-n{text-decoration:line-through;opacity:.6} .ts-c.fled,.ts-c.hid{opacity:.55}
+  .ts-hp{width:16px;height:4px;background:var(--rule-soft);margin-right:5px;position:relative;display:inline-block} .ts-hp span{position:absolute;left:0;top:0;bottom:0;background:#7a8f4a} .ts-hp span.lo{background:var(--lead)}
   #bsvg.hand{cursor:grab} #bsvg.panning{cursor:grabbing}
   #svg.hand-tool{cursor:grab}
   .planback{margin:0 0 12px}
@@ -10056,7 +10065,7 @@ function resizeBmap(n, w, h){
   return b;
 }
 document.getElementById("field").insertAdjacentHTML("beforeend",
-  `<div id="battle" hidden><div class="bt-head"><span id="bt-title"></span><span class="bt-hint">Drag tokens · drag the floor to pan · wheel to zoom · 1 square = 5 ft</span><button class="btn" id="bt-back">Back to the map</button></div><svg id="bsvg"></svg><div id="bt-pop" hidden></div></div>`);
+  `<div id="battle" hidden><div class="bt-head"><span id="bt-title"></span><span class="bt-hint">Drag tokens · drag the floor to pan · wheel to zoom · 1 square = 5 ft</span><button class="btn" id="bt-back">Back to the map</button></div><div id="bt-strip" hidden></div><svg id="bsvg"></svg><div id="bt-pop" hidden></div></div>`);
 const bnode = () => battleOf ? (battleOf.doc.nodes||[]).find(x=>x.id===battleOf.nodeId) : null;
 /* every spell name, for typing one in */
 document.body.insertAdjacentHTML("beforeend", `<datalist id="dl-spells"></datalist>`); refreshSpellList();
@@ -10155,6 +10164,7 @@ function renderBattle(players){
   const furnish = editingInside(), n = bnode(); if(!n || (!furnish && (!n.site || !n.site.combat))){ if(players) return ""; closeBattle(); return; }
   const c = furnish ? EDIT_STAGE : n.site.combat, bm = useBmap(n); if(!furnish) placeTokens(c);
   if(!players) syncUpBtn();
+  if(!players) renderTurnStrip();
   if(!players) $("#bt-title").textContent = furnish ? `Inside ${placeLabel(n)} · ${bm.name||"its map"} · furnishing${bpaint?" (painting)":""}` : `${placeLabel(n)} · ${calmOf(c) ? "calm" : `round ${c.round}`}${bm.rows?` · ${bm.name||"this place's map"}`:""}${bpaint?" · painting":""}`;
   const svgB = $("#bsvg"), b = bview;
   if(!players) svgB.setAttribute("viewBox", `${b.x} ${b.y} ${b.w} ${b.h}`);
@@ -11032,13 +11042,7 @@ function renderBattlePanelNow(){
       for(const t of all) if((t.kind==="foe" || t.npc) && !t.shared) c.init[t.id] = 1 + Math.floor(Math.random()*20) + (t.kind==="foe" ? initBonus(foeById(t.x.foe)) : numOr(String(t.p.init||"").replace("+",""), 0));
       c.turn = null; flash("Enemies rolled. Type in the players' initiative.");
     }
-    if(a==="next"){
-      const order = combatants(c).filter(t=>!(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && !t.fled);
-      if(!order.length) return;
-      let k = order.findIndex(t=>t.id===c.turn);
-      if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
-      c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; battleSel = c.turn; act = freshAct(c.turn);
-    }
+    if(a==="next"){ if(!nextTurn(c)) return; }
     touch(); renderBattle(); renderBattlePanel();
   });
   wireFight(n, st);
@@ -13318,6 +13322,43 @@ document.addEventListener("click", e=>{
 document.addEventListener("change", e=>{
   const t = e.target; if(!t.dataset || !t.dataset.coachset) return;
   const C = coachSet(), k = t.dataset.coachset; C[k] = t.type==="checkbox" ? t.checked : k==="trouble" ? t.value : +t.value; coachSet(); saveParty(); renderPane(true);
+});
+
+/* ── the turn strip (Joseph, 2026-10-16): the turn order in one line across the top of the battle map — the round,
+   Next, then everyone in order, the one whose turn it is outlined; a name opens their card, ▶ gives them the turn.
+   Enemies show a small hit point bar, no numbers. The panel's list stays, for typing initiatives and arranging by hand ── */
+const stripName = t => t.side==="party" && !t.npc ? String(t.label).split(" ")[0] : String(t.label).replace(/^[^']*'s\s+/, "");
+function renderTurnStrip(){
+  const el = $("#bt-strip"); if(!el) return;
+  const n = bnode(), c = n && n.site && n.site.combat;
+  if(!c || editingInside() || calmOf(c)){ el.hidden = true; return; }
+  const all = combatants(c), S = c.stealth || {};
+  el.hidden = false;
+  el.innerHTML = `<span class="ts-r" title="Round ${c.round}">R${c.round}</span><button class="btn small ts-next" data-ts="next" title="Next turn">${c.turn ? "Next" : "Start"} ⏭</button>` + all.map(t=>{
+    const foe = t.kind==="foe", down = foe && t.x.max!=null && t.x.hp<=0, pct = foe && t.x.max ? Math.max(0, Math.min(100, Math.round(100*t.x.hp/t.x.max))) : null;
+    const cls = ["ts-c", t.side==="party" ? "pc" : foe ? "foe" : "npc", t.id===c.turn ? "now" : "", battleSel===t.id ? "sel" : "", down ? "down" : "", t.fled ? "fled" : "", S[t.id] ? "hid" : ""].filter(Boolean).join(" ");
+    return `<span class="${cls}" title="${esc(t.label)}${S[t.id] ? " (hidden)" : ""}${down ? " (down)" : ""}${t.fled ? " (fled)" : ""}"><span class="ts-i">${t.init ?? "–"}</span><button class="ts-n" data-ts="pick" data-id="${t.id}" title="Open their card">${esc(stripName(t))}</button>${pct!=null ? `<span class="ts-hp"><span class="${pct < 50 ? "lo" : ""}" style="width:${pct}%"></span></span>` : ""}<button class="ts-go" data-ts="turn" data-id="${t.id}" title="Their turn now">▶</button></span>`;
+  }).join("");
+  const cur = el.querySelector(".ts-c.now");                // keep whoever's turn it is in view when the strip scrolls
+  if(cur && (cur.offsetLeft < el.scrollLeft || cur.offsetLeft + cur.offsetWidth > el.scrollLeft + el.clientWidth)) el.scrollLeft = Math.max(0, cur.offsetLeft - 90);
+}
+/* the next one's turn (the dead and the fled are skipped; past the last, a new round) */
+function nextTurn(c){
+  const order = combatants(c).filter(t=>!(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && !t.fled);
+  if(!order.length) return false;
+  let k = order.findIndex(t=>t.id===c.turn);
+  if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; battleSel = c.turn; act = freshAct(c.turn);
+  return true;
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("#bt-strip [data-ts]"); if(!b) return;
+  const n = bnode(), c = n && n.site && n.site.combat; if(!c) return;
+  const a = b.dataset.ts;
+  if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
+  if(a==="next"){ if(!nextTurn(c)) return; }
+  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; battleSel = c.turn; act = freshAct(c.turn); }
+  touch(); renderBattle(); renderBattlePanel();
 });
 
 function gameLog(kind, text){
