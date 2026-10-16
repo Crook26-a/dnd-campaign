@@ -1,0 +1,114 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const out = {}; const log = [];
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await new Promise(r=>setTimeout(r, 300));
+  /* The sea, ringed by a mainland like the Mediterranean (Joseph, 2026-10-16): a long sea running east-west with one outlet,
+     a strait in the far west out to the Western Ocean (Haldeport, on Elsmoor, looks towards it); a boot of a peninsula
+     between Kalatecha and Hesk with a long gulf behind it; a ragged peninsula of fingers further east, a bay leading by a
+     narrow strait to an inner sea in the north-east; a long eastern shore, a delta, a great southern bight and a cape.
+     The land is charted ten miles in from the coast all round; port city sites are set along it. 10 px to the mile */
+  const ppm = 10, P = s => s.trim().split(/\s+/).map(t=>{ const [x, y] = t.split(',').map(Number); return { x, y }; });
+  const inside = (pt, poly) => { let c = false; for(let i=0, j=poly.length-1; i<poly.length; j=i++){ const a = poly[i], b = poly[j]; if(((a.y>pt.y)!==(b.y>pt.y)) && pt.x < (b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x) c = !c; } return c; };
+  const segD = (p, a, b) => { const dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy; let t = L ? ((p.x-a.x)*dx+(p.y-a.y)*dy)/L : 0; t = Math.max(0, Math.min(1, t)); return { d:Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy), x:a.x+t*dx, y:a.y+t*dy }; };
+  let seed = 77101; const rnd = () => { seed = (seed*16807) % 2147483647; return (seed-1)/2147483646; };
+  const frac = (pts, depth, rough, keep) => { let r = pts.map(p=>({ ...p }));
+    for(let d=0; d<depth; d++){ const nx = []; for(let i=0;i<r.length;i++){ const a = r[i], b = r[(i+1)%r.length]; nx.push(a);
+        if(a.fixed && b.fixed){ continue; }
+        const mx = (a.x+b.x)/2, my = (a.y+b.y)/2, L = Math.hypot(b.x-a.x, b.y-a.y), near = keep.some(n=>Math.hypot(n.x-mx, n.y-my) < 140);
+        const amp = (rnd()*2-1) * L * rough * Math.pow(.62, d) * (near ? .55 : 1);
+        nx.push({ x:Math.round(mx - (b.y-a.y)/(L||1)*amp), y:Math.round(my + (b.x-a.x)/(L||1)*amp) }); }
+      r = nx; }
+    return r; };
+  /* the coast, clockwise from the open ocean's far north-west (the only straight edge, x = -5200, is the ocean running on) */
+  const base = P(`-5200,-2900 -4300,-2750 -3850,-2450 -3600,-2050 -3520,-1860 -3450,-1760
+    -3300,-1690 -3150,-1730 -2900,-1760
+    -2650,-1980 -2350,-2120 -2050,-2050 -1800,-2250 -1600,-2650 -1350,-2750 -1100,-2500 -900,-2280 -600,-2300 -300,-2450 0,-2350 300,-2200 550,-2250 800,-2450 1000,-2500
+    1150,-2300 1250,-1900 1300,-1500 1450,-1100 1550,-700 1650,-350 1700,-50 1650,150 1720,330 1900,300 2000,100 1950,-150 2150,-250 2250,-450 2150,-700 2200,-1050 2350,-1400 2550,-1750 2700,-2050
+    2800,-2700 3050,-2850 3300,-2700 3400,-2400 3600,-2050 3800,-1700 4000,-1350 4150,-1000
+    4300,-700 4400,-300 4350,100 4500,450 4650,250 4750,550 4900,350 5000,600 5100,200 5200,-200 5450,-500
+    5600,-900 5550,-1300 5700,-1700 5900,-2000 5980,-2280 5950,-2500
+    5700,-2700 5500,-3100 5700,-3500 6200,-3800 6800,-4000 7500,-4100 8200,-3950 8800,-3700 9200,-3300 9000,-2900 8600,-2700 8000,-2600 7400,-2550 6900,-2600 6400,-2500 6170,-2480
+    6160,-2260 6300,-1900 6200,-1500 6450,-1100 6300,-700 6550,-400
+    7200,-300 8000,-450 8800,-300 9500,-500 10200,-700 10800,-600 11200,-200
+    11000,400 11100,1000 10900,1500 10700,1900 10200,2100 9800,2300 9400,2250 9000,2350
+    8400,2300 7800,2500 7200,2900 6600,3050 6000,2900 5500,2600 5000,2300 4600,2000 4300,1600 4100,1200 3900,1000 3700,1150 3600,1500 3300,1700
+    3000,1900 2400,2050 1800,1950 1200,2100 600,2000 0,2150 -600,2000 -1200,2200 -1800,2000 -2300,1700 -2700,1200 -2950,600 -3050,0 -3000,-600 -2880,-1000 -3020,-1180 -2920,-1330 -3000,-1440
+    -3150,-1520 -3300,-1480 -3450,-1540
+    -3560,-1380 -3660,-1150 -3800,-700 -4300,-300 -5200,-100`);
+  base[0].fixed = true; base[base.length-1].fixed = true;                      // the ocean's open edge stays straight
+  const keep = P("-3300,-1600 6070,-2380");                                   // the two straits stay as wide as drawn
+  /* a closed line simplified (Douglas-Peucker): points that don't change it by more than tol go */
+  const dp0 = (pts, tol) => { const keepI = new Uint8Array(pts.length); keepI[0] = keepI[pts.length-1] = 1; const st = [[0, pts.length-1]];
+    while(st.length){ const [i0, i1] = st.pop(); let md = 0, mi = -1; for(let i=i0+1; i<i1; i++){ const s = segD(pts[i], pts[i0], pts[i1]); if(s.d > md){ md = s.d; mi = i; } } if(md > tol){ keepI[mi] = 1; st.push([i0, mi], [mi, i1]); } }
+    return pts.filter((_, i)=>keepI[i] || pts[i].fixed); };
+  /* the coast roughened with one seed after another until it comes out clean: it never crosses itself */
+  const ccw = (a, b, c) => (c.y-a.y)*(b.x-a.x) > (b.y-a.y)*(c.x-a.x);
+  const crossings = P0 => { const m = P0.length; let c0 = 0; for(let i=0;i<m;i++) for(let j=i+2;j<m;j++){ if(i===0 && j===m-1) continue; const a = P0[i], b = P0[(i+1)%m], c = P0[j], d = P0[(j+1)%m];
+    if(ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d)) c0++; } return c0; };
+  let SEA = null, cross = 0;
+  for(const s0 of [77101, 51923, 30411, 88177, 12345, 99881, 4242, 6007, 31337, 27182]){ seed = s0; const cand = dp0(frac(frac(base, 1, .38, keep), 4, .24, keep), 2); cross = crossings(cand);
+    if(!cross){ SEA = cand; log.push(`seed ${s0}`); break; } }
+  if(!SEA) throw new Error("no seed gave a clean coast");
+  const n = SEA.length;
+  log.push(`coast: ${n} points, crossings ${cross}`);
+  for(const k of keep){ let m = 1e9; for(let i=0;i<n;i++){ const s = segD(k, SEA[i], SEA[(i+1)%n]); if(s.d < m) m = s.d; } log.push(`strait at ${k.x},${k.y}: ${Math.round(2*m/ppm)} mi across${2*m/ppm < 12 ? " (NARROW)" : ""}`); }
+  const edgeD = p => { let m = 1e9; for(let i=0;i<n;i++){ const s = segD(p, SEA[i], SEA[(i+1)%n]); if(s.d < m) m = s.d; } return m; };
+  for(const s of root.shapes.filter(s=>(s.kind==="island" && !s.mainland) || s.kind==="reef")){ const R = samplePath(s.pts, true, 3, false), wet = R.every(p=>inside(p, SEA)), d = Math.min(...R.map(edgeD))/ppm;
+    log.push(`${s.name||s.id}: ${wet ? "in the sea" : "NOT ALL IN THE SEA"}, ${Math.round(d)} mi from the coast${d < 40 ? " (CLOSE)" : ""}`); }
+  for(const nd of root.nodes.filter(q=>!q.hidden || q.region==="r3")) if(!inside(nd, SEA)) log.push("ON THE MAINLAND? " + nd.name);
+  /* the land ten miles in from the coast: distance from the water on a half-mile grid, traced round */
+  const cs = 5, xs = SEA.map(p=>p.x), ys = SEA.map(p=>p.y), gx0 = Math.min(...xs) - 200, gy0 = Math.min(...ys) - 200, gx1 = Math.max(...xs) + 200, gy1 = Math.max(...ys) + 200;
+  const W = Math.ceil((gx1-gx0)/cs), H = Math.ceil((gy1-gy0)/cs), dist = new Float32Array(W*H).fill(1e9);
+  for(let r=0; r<H; r++){ const yc = gy0 + (r+.5)*cs, xc = []; for(let i=0, j=n-1; i<n; j=i++){ const p = SEA[i], q = SEA[j]; if((p.y > yc) !== (q.y > yc)) xc.push(p.x + (yc-p.y)*(q.x-p.x)/(q.y-p.y)); }
+    xc.sort((a, b)=>a-b); for(let k=0; k+1<xc.length; k+=2){ const c0 = Math.max(0, Math.ceil((xc[k]-gx0)/cs - .5)), c1 = Math.min(W-1, Math.floor((xc[k+1]-gx0)/cs - .5)); for(let c=c0; c<=c1; c++) dist[r*W+c] = 0; } }
+  const D1 = cs, D2 = cs*Math.SQRT2;
+  for(let r=0; r<H; r++) for(let c=0; c<W; c++){ const i = r*W+c; let v = dist[i]; if(c>0) v = Math.min(v, dist[i-1]+D1); if(r>0){ v = Math.min(v, dist[i-W]+D1); if(c>0) v = Math.min(v, dist[i-W-1]+D2); if(c<W-1) v = Math.min(v, dist[i-W+1]+D2); } dist[i] = v; }
+  for(let r=H-1; r>=0; r--) for(let c=W-1; c>=0; c--){ const i = r*W+c; let v = dist[i]; if(c<W-1) v = Math.min(v, dist[i+1]+D1); if(r<H-1){ v = Math.min(v, dist[i+W]+D1); if(c<W-1) v = Math.min(v, dist[i+W+1]+D2); if(c>0) v = Math.min(v, dist[i+W-1]+D2); } dist[i] = v; }
+  const inD = (c, r) => c>=0 && r>=0 && c<W && r<H && dist[r*W+c] <= 10*ppm && gx0 + (c+.5)*cs >= -5200;   // nothing west of the ocean's open edge
+  /* marching squares round the charted land (with the water inside it): the longest loop is its inland edge */
+  const segs = new Map(), key = (x, y) => x + "," + y;
+  for(let r=-1; r<H; r++) for(let c=-1; c<W; c++){
+    const a = inD(c, r), b = inD(c+1, r), cc = inD(c+1, r+1), d = inD(c, r+1), m = (a?8:0)|(b?4:0)|(cc?2:0)|(d?1:0); if(m===0 || m===15) continue;
+    const T = [2*c+1, 2*r], R = [2*c+2, 2*r+1], B = [2*c+1, 2*r+2], L = [2*c, 2*r+1];
+    const pairs = { 1:[[L,B]], 2:[[B,R]], 3:[[L,R]], 4:[[T,R]], 5:[[L,T],[B,R]], 6:[[T,B]], 7:[[L,T]], 8:[[T,L]], 9:[[T,B]], 10:[[T,R],[B,L]], 11:[[T,R]], 12:[[L,R]], 13:[[B,R]], 14:[[L,B]] }[m];
+    for(const [p, q] of pairs){ const kp = key(...p), kq = key(...q); (segs.get(kp) || segs.set(kp, []).get(kp)).push(kq); (segs.get(kq) || segs.set(kq, []).get(kq)).push(kp); } }
+  const seen = new Set(), loops = [];
+  for(const k0 of segs.keys()){ if(seen.has(k0)) continue; const loop = [k0]; seen.add(k0); let prev = null, cur = k0;
+    for(;;){ const nb = (segs.get(cur)||[]).find(k=>k!==prev && !seen.has(k)) || null; if(!nb) break; seen.add(nb); loop.push(nb); prev = cur; cur = nb; }
+    loops.push(loop); }
+  loops.sort((a, b)=>b.length - a.length);
+  const toPt = k => { const [hx, hy] = k.split(",").map(Number); return { x:gx0 + hx/2*cs, y:gy0 + hy/2*cs }; };
+  let edge = loops[0].map(toPt);
+  /* simplified (Douglas-Peucker, a quarter mile) */
+  const dp = (pts, tol) => { const keepI = new Uint8Array(pts.length); keepI[0] = keepI[pts.length-1] = 1; const st = [[0, pts.length-1]];
+    while(st.length){ const [i0, i1] = st.pop(); let md = 0, mi = -1; for(let i=i0+1; i<i1; i++){ const s = segD(pts[i], pts[i0], pts[i1]); if(s.d > md){ md = s.d; mi = i; } } if(md > tol){ keepI[mi] = 1; st.push([i0, mi], [mi, i1]); } }
+    return pts.filter((_, i)=>keepI[i]); };
+  edge = dp(edge, 2.5);
+  log.push(`inland edge: ${edge.length} points (of ${loops[0].length}); ${loops.length} loops traced, next longest ${loops[1] ? loops[1].length : 0}`);
+  /* port city sites: each moved to the coast nearest where it's marked, then a mile and a half inland */
+  const PORTS = [
+    ["Cael", -2400, -2100, "On the north shore of the western basin."], ["Vessmouth", -1350, -2720, "At the head of a deep northern gulf."], ["Orrin", -300, -2430, "On the north shore, facing Elsmoor across the sea."],
+    ["Tamsfort", 900, -2470, "Where the north shore meets the root of the great peninsula."], ["Lucenza", 1300, -1500, "On the great peninsula's western shore, facing Kalatecha."], ["Pelleron", 1660, -350, "Near the peninsula's toe."],
+    ["Vasso", 2230, -450, "On the peninsula's heel, facing Hesk."], ["Ardena", 2950, -2820, "At the head of the long gulf behind the peninsula."], ["Corvenna", 3800, -1700, "On the gulf's eastern shore."],
+    ["Thessar", 4400, -300, "On the ragged eastern peninsula."], ["Mykar", 4950, 450, "At the tip of one of the eastern peninsula's fingers."], ["Hallgate", 6100, -2300, "On the narrow strait into the inner sea: whoever holds it holds the way through."],
+    ["Kesh", 6800, -4000, "On the inner sea's northern shore."], ["Varnis", 8000, -2580, "On the inner sea's southern shore."], ["Tarsel", 8000, -440, "On the long north-eastern shore."],
+    ["Sidonne", 11080, 1000, "On the far eastern shore."], ["Akhet", 9800, 2300, "On the great delta."], ["Sarn", 6600, 3040, "At the head of the great southern bight."],
+    ["Carthen", 4100, 1200, "On the southern cape that reaches north into the sea."], ["Iolmar", 1200, 2100, "On the long southern shore."], ["Oranne", -1800, 2000, "On the southern shore of the western basin."],
+    ["Tangar", -3000, -600, "On the western basin's far shore, near the strait."], ["Caldra", -3150, -1730, "On the north side of the strait to the ocean."], ["Westreach", -3800, -700, "On the ocean coast beyond the strait."]
+  ];
+  const ports = PORTS.map(([name, x, y, note], i)=>{ let best = null; for(let k=0;k<n;k++){ const s = segD({ x, y }, SEA[k], SEA[(k+1)%n]); if(!best || s.d < best.d) best = { ...s, k }; }
+    /* a mile and a half inland: whichever side of the coast isn't sea, stepping further in if the coast bends */
+    const a = SEA[best.k], b = SEA[(best.k+1)%n], L = Math.hypot(b.x-a.x, b.y-a.y)||1, nx = -(b.y-a.y)/L, ny = (b.x-a.x)/L; let p = null;
+    for(const dd of [15, 22, 30, 40]){ for(const sg of [1, -1]){ const q = { x:Math.round(best.x + sg*nx*dd), y:Math.round(best.y + sg*ny*dd) }; if(!inside(q, SEA)){ p = q; break; } } if(p) break; }
+    p = p || { x:Math.round(best.x), y:Math.round(best.y) }, wet = inside(p, SEA), from = edgeD(p)/ppm;
+    if(wet || from > 3) log.push(`PORT ${name}: ${wet ? "IN THE SEA" : Math.round(from) + " mi from the coast"}`);
+    return { id:"mp" + (i+1), name, x:p.x, y:p.y, notes:`A port city site on the mainland coast (placeholder name). ${note}` }; });
+  /* how big it all is */
+  const area = pts => { let a2 = 0; for(let i=0;i<pts.length;i++){ const p = pts[i], q = pts[(i+1)%pts.length]; a2 += p.x*q.y - q.x*p.y; } return Math.abs(a2)/2/(ppm*ppm); };
+  log.push(`sea ${Math.round((Math.max(...xs)-Math.min(...xs))/ppm)} x ${Math.round((Math.max(...ys)-Math.min(...ys))/ppm)} mi, ${Math.round(area(SEA)).toLocaleString()} sq mi; coast length ${Math.round(polyLength([...SEA, SEA[0]])/ppm).toLocaleString()} mi; ${ports.length} port sites`);
+  const str = pts => pts.map(p=>Math.round(p.x)+","+Math.round(p.y)).join(" ");
+  out.sea = str(SEA); out.edge = str(edge); out.ports = ports; out.log = log;
+ }catch(e){ out.err = e.message + ' ' + (e.stack||'').split('\n')[1]; }
+ const pre = document.createElement('pre'); pre.id = 'OUT'; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
+ document.title = 'RES done';
+},1500);</script>
+</body>

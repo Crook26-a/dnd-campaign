@@ -2255,11 +2255,17 @@ function inRing(ring, x, y){ let c = false; for(let i=0, j=ring.length-1; i<ring
   if((a.y > y) !== (b.y > y) && x < (b.x-a.x)*(y-a.y)/(b.y-a.y) + a.x) c = !c; } return c; }
 function ringDist(ring, x, y){ let d = Infinity; for(let i=1; i<ring.length; i++){ const a = ring[i-1], b = ring[i], dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy;
   const t = L ? Math.max(0, Math.min(1, ((x-a.x)*dx + (y-a.y)*dy)/L)) : 0; d = Math.min(d, Math.hypot(x-a.x-t*dx, y-a.y-t*dy)); } return d; }
+/* a mainland (Joseph, 2026-10-16: the continent round the sea, charted ten miles inland): an island shape marked
+   mainland whose outline is the charted land's inland edge; the sea (the water shape marked sea) is drawn over it, so its
+   land is inside its outline but not in the sea, and its coast is the sea's edge */
+const seaShape = () => (root.shapes||[]).find(s=>s.sea && s.kind==="water" && s.closed) || null;
+const landIn = (s, x, y) => inRing(shapeRing(s), x, y) && !(s.mainland && seaShape() && inRing(shapeRing(seaShape()), x, y));
+const coastDist = (s, x, y) => ringDist(shapeRing(s.mainland && seaShape() ? seaShape() : s), x, y);
 function terrainAt(x, y){
   const areas = (root.shapes||[]).filter(s=>s.closed!==false && (s.pts||[]).length > 2);
   for(const [kind, t] of SHAPE_TERRAIN) if(areas.some(s=>s.kind===kind && inRing(shapeRing(s), x, y))) return t;
-  const isle = areas.find(s=>s.kind==="island" && inRing(shapeRing(s), x, y));
-  if(isle && ringDist(shapeRing(isle), x, y) <= (+root.coastMiles || 2)*(root.ppm||10)) return "coastal";     // the shore strip: 2 miles unless the map says otherwise
+  const isle = areas.find(s=>s.kind==="island" && landIn(s, x, y));
+  if(isle && coastDist(isle, x, y) <= (+root.coastMiles || 2)*(root.ppm||10)) return "coastal";     // the shore strip: 2 miles unless the map says otherwise
   return (isle && TERRAINS[isle.terrain]) ? isle.terrain : "grassland";
 }
 /* a road's line as stretches to walk, in either direction, at the road's own mileage spread along its line */
@@ -2911,13 +2917,14 @@ function courseMiles(s){ let a = (s.course && s.course.tp) || { x:s.x, y:s.y }, 
 const RIVER_BOATS = new Set(["Rowboat", "Keelboat", "Longship"]);
 const riverBoat = s => RIVER_BOATS.has(s.vessel || "Sailing Ship");
 function seaGrid(a, b, river){
-  const ppm = root.ppm||10, isl = s => s.kind==="island" && s.closed!==false && (s.pts||[]).length > 2, rings = (root.shapes||[]).filter(isl).map(shapeRing);
+  const ppm = root.ppm||10, isl = s => s.kind==="island" && s.closed!==false && (s.pts||[]).length > 2, isles = (root.shapes||[]).filter(isl), sea = seaShape();
   const box = R => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for(const p of R){ if(p.x<x0) x0 = p.x; if(p.x>x1) x1 = p.x; if(p.y<y0) y0 = p.y; if(p.y>y1) y1 = p.y; } return { x0, y0, x1, y1 }; };
   let x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
-  const near = 30*ppm, used = [];
-  for(const R of rings){ const B = box(R); if(B.x1 < x0-near || B.x0 > x1+near || B.y1 < y0-near || B.y0 > y1+near) continue;
+  const near = 30*ppm, used = [], usedM = [];
+  for(const s of isles){ const R = shapeRing(s), B = box(R); if(B.x1 < x0-near || B.x0 > x1+near || B.y1 < y0-near || B.y0 > y1+near) continue;
+    if(s.mainland){ usedM.push(R); continue; }                                            // the continent: far too big to take whole
     used.push(R); x0 = Math.min(x0, B.x0); y0 = Math.min(y0, B.y0); x1 = Math.max(x1, B.x1); y1 = Math.max(y1, B.y1); }
-  const pad = 12*ppm; x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+  const pad = usedM.length ? Math.max(40*ppm, .35*Math.hypot(b.x-a.x, b.y-a.y)) : 12*ppm; x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
   let cs = ppm; if((x1-x0)*(y1-y0)/(cs*cs) > 500000) cs = Math.sqrt((x1-x0)*(y1-y0)/500000);
   const W = Math.ceil((x1-x0)/cs), H = Math.ceil((y1-y0)/cs), land = new Uint8Array(W*H);
   const fill = (R, v, into) => { for(let r=0; r<H; r++){                                  // each row: where it crosses the outline
@@ -2925,7 +2932,10 @@ function seaGrid(a, b, river){
     for(let i=0, j=R.length-1; i<R.length; j=i++){ const p = R[i], q = R[j]; if((p.y > yc) !== (q.y > yc)) xs.push(p.x + (yc-p.y)*(q.x-p.x)/(q.y-p.y)); }
     xs.sort((u, w)=>u-w);
     for(let k=0; k+1<xs.length; k+=2){ const c0 = Math.max(0, Math.ceil((xs[k]-x0)/cs - .5)), c1 = Math.min(W-1, Math.floor((xs[k+1]-x0)/cs - .5)); for(let c=c0; c<=c1; c++) into[r*W+c] = v; } } };
+  for(const R of usedM) fill(R, 1, land);
+  if(usedM.length && sea) fill(shapeRing(sea), 0, land);                                 // the sea within it is water again
   for(const R of used) fill(R, 1, land);
+  used.push(...usedM);
   const block = new Uint8Array(W*H);                                                    // a mile off the shore
   for(let r=0; r<H; r++) for(let c=0; c<W; c++) if(land[r*W+c]) for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){ const rr = r+dr, cc = c+dc; if(rr>=0 && rr<H && cc>=0 && cc<W) block[rr*W+cc] = 1; }
   if(river){                                                                            // the lakes, and the rivers boats can go up
@@ -3952,12 +3962,20 @@ function terrainGlyphs(sh){
 }
 /* an island's coast: pale shallows, and three ripple lines repeating its shape out into the sea (drawn under its own fill) */
 function coastRipples(sh, d, inv){
-  if(sh.kind!=="island" || !sh.closed || planOf) return "";
+  if(sh.kind!=="island" || !sh.closed || planOf || sh.mainland) return "";
   const ppm = root.ppm||10, band = "#b2c7c5", line = "#6f9590", j = `stroke-linejoin="round" fill="none"`;
   let s = `<path d="${d}" ${j} stroke="${band}" stroke-width="${2*2.6*ppm}"/>`;
   for(const mi of [2.1, 1.35, .65]){ const w = 2*mi*ppm;
     s += `<path d="${d}" ${j} stroke="${line}" stroke-opacity=".55" stroke-width="${w}"/><path d="${d}" ${j} stroke="${band}" stroke-width="${Math.max(0, w - 2.2*inv)}"/>`; }
   return `<g pointer-events="none">${s}</g>`;
+}
+/* the sea's own coast, where it has one (a sea ringed by a mainland): the same shallows and ripples, inside the water only */
+function seaShallows(sh, d, inv){        /* the coast written once and reused: it's thousands of points long */
+  const ppm = root.ppm||10, band = "#b2c7c5", line = "#6f9590", j = `stroke-linejoin="round" fill="none"`, id = `seaclip-${sh.id}`, p = `seacoast-${sh.id}`, u = `href="#${p}"`;
+  let s = `<use ${u} ${j} stroke="${band}" stroke-width="${2*2.6*ppm}"/>`;
+  for(const mi of [2.1, 1.35, .65]){ const w = 2*mi*ppm;
+    s += `<use ${u} ${j} stroke="${line}" stroke-opacity=".55" stroke-width="${w}"/><use ${u} ${j} stroke="${band}" stroke-width="${Math.max(0, w - 2.2*inv)}"/>`; }
+  return `<defs><path id="${p}" d="${d}"/></defs><clipPath id="${id}"><use ${u}/></clipPath><g pointer-events="none" clip-path="url(#${id})">${s}</g>`;
 }
 /* the compass rose: out at sea off the home port (or where the map says, root.rose), its rhumb lines running out across the water */
 let roseCache = null;
@@ -3967,7 +3985,7 @@ function roseSpot(){
   const key = `${isles.map(s=>ptsKey(s.pts)).join("|")}|${sb.x0},${sb.y0},${sb.x1},${sb.y1}`;
   if(roseCache && roseCache.key===key) return roseCache.at;
   const ppm = root.ppm||10, h = homePort() || { x:(sb.x0+sb.x1)/2, y:(sb.y0+sb.y1)/2 };
-  const clear = (x, y) => x > sb.x0 + 40*ppm && x < sb.x1 - 40*ppm && y > sb.y0 + 40*ppm && y < sb.y1 - 40*ppm && !isles.some(s=>{ const r = shapeRing(s); return inRing(r, x, y) || ringDist(r, x, y) < 30*ppm; });
+  const sea = seaShape(), clear = (x, y) => x > sb.x0 + 40*ppm && x < sb.x1 - 40*ppm && y > sb.y0 + 40*ppm && y < sb.y1 - 40*ppm && (!sea || inRing(shapeRing(sea), x, y)) && !isles.some(s=>landIn(s, x, y) || coastDist(s, x, y) < 30*ppm);
   let at = null;
   for(const mi of [110, 150, 200, 260]){ for(const deg of [225, 135, 315, 45, 270, 90, 180, 0]){ const x = h.x + Math.cos(deg*Math.PI/180)*mi*ppm, y = h.y - Math.sin(deg*Math.PI/180)*mi*ppm; if(clear(x, y)){ at = { x, y }; break; } } if(at) break; }
   at = at || { x:(sb.x0+sb.x1)/2, y:(sb.y0+sb.y1)/2 };
@@ -4008,7 +4026,8 @@ function monsterSpots(){
   const rnd = seeded(key), area = (sb.x1-sb.x0)*(sb.y1-sb.y0) / (ppm*ppm), want = Math.max(3, Math.min(14, Math.round(area / 140000))), at = [];
   for(let tries=0; at.length < want && tries < 600; tries++){
     const x = sb.x0 + (.06 + rnd()*.88)*(sb.x1-sb.x0), y = sb.y0 + (.08 + rnd()*.84)*(sb.y1-sb.y0);
-    if(isles.some(s=>{ const r = shapeRing(s); return inRing(r, x, y) || ringDist(r, x, y) < 70*ppm; })) continue;
+    if(seaShape() && !inRing(shapeRing(seaShape()), x, y)) continue;
+    if(isles.some(s=>landIn(s, x, y) || coastDist(s, x, y) < 70*ppm)) continue;
     if(rose && Math.hypot(x-rose.x, y-rose.y) < 70*ppm) continue;
     if(at.some(m=>Math.hypot(m.x-x, m.y-y) < 190*ppm)) continue;
     if((root.nodes||[]).some(n=>Math.hypot(n.x-x, n.y-y) < 35*ppm)) continue;
@@ -4394,9 +4413,12 @@ function render(){
     const kd = SHAPE_KINDS[sh.kind]||SHAPE_KINDS.water;
     const on = sel&&sel.kind==="shape"&&sel.id===sh.id;
     if(kd.alwaysOpen) sh.closed = false;
-    const d = pathOf(sh.pts, sh.closed, sh.straight);
+    /* its outline and its sampled line, worked out again only when the shape changes (the sea's coast is thousands of points) */
+    const ck = `${ptsKey(sh.pts)}|${sh.closed?1:0}|${sh.straight?1:0}|${kd.river?14:8}`;
+    if(!sh._geo || sh._geo.k!==ck) Object.defineProperty(sh, "_geo", { value:{ k:ck, d:pathOf(sh.pts, sh.closed, sh.straight), sm:samplePath(sh.pts, sh.closed, kd.river?14:8, sh.straight) }, writable:true, configurable:true, enumerable:false });
+    const d = sh._geo.d;
     const sw = (kd.barrier?3.4:1.6)*inv;
-    const sm = samplePath(sh.pts, sh.closed, kd.river?14:8, sh.straight);
+    const sm = sh._geo.sm;
 
     if(kd.road){
       const wS = sh.w==null?kd.w:sh.w;
@@ -4427,8 +4449,9 @@ function render(){
       /* a block of houses on a plan has no outline of its own outside Build: its houses are the block */
       const blend = planOf && (sh.kind==="block" || sh.kind==="zone") && dmMode && !on;
       s += blend ? `<path class="shape" d="${d}" fill="transparent" stroke="none"/>`
-        : `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${planOf && sh.kind==="block" ? "transparent" : sh.kind==="zone" ? "rgba(168,51,31,.05)" : kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${planOf && sh.kind==="block" && !on ? `stroke-opacity=".35" stroke-dasharray="${k1(4*inv)} ${k1(3*inv)}"` : kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
-      s += terrainGlyphs(sh);
+        : `<path class="shape${kd.paved?" paved":""}" d="${d}" fill="${planOf && sh.kind==="block" ? "transparent" : sh.kind==="zone" ? "rgba(168,51,31,.05)" : kd.fill}" stroke="${on?"var(--lead)":kd.stroke}" stroke-width="${sw}" ${planOf && sh.kind==="block" && !on ? `stroke-opacity=".35" stroke-dasharray="${k1(4*inv)} ${k1(3*inv)}"` : sh.mainland && !on ? `stroke-opacity=".45" stroke-dasharray="${k1(6*inv)} ${k1(5*inv)}"` : kd.dash?`stroke-dasharray="${kd.dash}"`:""}/>`;
+      if(sh.sea && !planOf) s += seaShallows(sh, d, inv);
+      if(!sh.mainland) s += terrainGlyphs(sh);
       if(sh.id===seaId) s += roseArt(inv);
       if(planOf){
         if(sh.kind==="water") s += planShore(sh, d, inv);
