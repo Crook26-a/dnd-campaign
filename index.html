@@ -380,6 +380,11 @@
   #mapfurn .scalebar{position:absolute;left:14px;bottom:34px;font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
   #mapfurn .sb-bar{height:6px;border:1px solid var(--ink);display:flex;background:var(--paper-lit)} #mapfurn .sb-bar span{flex:1} #mapfurn .sb-bar span:first-child{background:var(--ink)}
   #mapfurn .sb-lab{margin-top:2px}
+  .facmeter{position:relative;flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#9b3a2a,#d8c9a8 50%,#4f7a4a);margin:0 6px}
+  .facmeter .fm-mid{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--ink-faint)} .facmeter .fm-dot{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--ink);border:2px solid var(--paper-lit)}
+  .facfx{font-size:11.5px;margin:4px 0 6px;color:var(--ink-soft)} .facwarn{color:var(--lead)} .facrow{border-bottom:1px dotted var(--rule-soft);padding:3px 0}
+  .facchip{font:10px var(--mono);border:1px solid var(--rule-soft);border-radius:8px;padding:0 5px;white-space:nowrap} .facchip.warn{border-color:var(--lead);color:var(--lead)}
+  .facchip.t-allies,.facchip.t-trusted,.facchip.t-friendly{border-color:#4f7a4a;color:#4f7a4a}
   #threadpop{position:fixed;left:16px;bottom:16px;z-index:60;width:min(340px, calc(100vw - 32px));display:flex;flex-direction:column;gap:8px}
   .thrcard{background:var(--paper-lit);border:1px solid var(--lead);border-left:4px solid var(--lead);border-radius:4px;padding:8px 10px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
   .thrtext{font-size:12.5px;margin:0;white-space:pre-wrap} .thrties{color:var(--ink-faint);font-size:10.5px}
@@ -1350,7 +1355,7 @@ const BESTIARY = [
 function lib(){
   if(!root) return { foes:[], npcs:[], loot:[] };
   const L = (root.library = root.library || {});
-  for(const k of ["foes","npcs","loot","spells","encounters","shops"]) if(!Array.isArray(L[k])) L[k] = [];
+  for(const k of ["foes","npcs","loot","spells","encounters","shops","factions"]) if(!Array.isArray(L[k])) L[k] = [];
   return L;
 }
 const libFoeById  = id => lib().foes.find(m => m.id === id) || null;
@@ -6665,7 +6670,7 @@ let libTab = "foes", libOpen = null, libQuery = "";
 /* "+ New" fills in a draft first: it joins the library only when Add is pressed (Cancel throws it away) */
 let libDraft = null;
 const libFind = (cat, id) => (libDraft && libDraft.cat===cat && libDraft.x.id===id) ? libDraft.x : (lib()[cat]||[]).find(o=>o.id===id);
-const LIB_CATS = [["foes","Foes"],["npcs","People"],["loot","Loot"],["spells","Spells"],["encounters","Encounters"],["shops","Shop kinds"]];
+const LIB_CATS = [["foes","Foes"],["npcs","People"],["loot","Loot"],["spells","Spells"],["encounters","Encounters"],["shops","Shop kinds"],["factions","Factions"]];
 /* a spell, laid out for reading at the table */
 function srdSpellBlock(s){
   const line = (k,v) => v ? `<div class="sbl"><b>${k}</b> ${esc(String(v))}</div>` : "";
@@ -6796,6 +6801,7 @@ function usedAt(cat, id){
               : cat==="encounters" ? n.encounter===id
               : cat==="loot" ? !!(n.site&&(n.site.items||[]).some(x=>baseId(x)===id))
               : cat==="shops" ? !!(n.shop && n.shop.tpl===id)
+              : cat==="factions" ? (n.faction===id || (n.npcs||[]).some(p=>(libNpcById(p)||{}).faction===id))
               : (n.npcs||[]).includes(id);
     if(hit) out.push({ name:label(n), host, plan:planId, node:n.id });
   } };
@@ -6811,18 +6817,21 @@ function goToPlace(planId, nodeId){
 /* deleting an entry takes it out of every place that held it */
 function purgeLib(cat, id){
   const L = lib(); L[cat] = L[cat].filter(x=>x.id!==id);
+  if(cat==="factions"){ for(const p of L.npcs) if(p.faction===id) delete p.faction; }
   /* a spell of your own: everyone who knew it forgets it */
   if(cat==="spells"){ for(const p of [...partyRoster(), ...L.npcs]) if(Array.isArray(p.spells)) p.spells = p.spells.filter(s=>s!==id); refreshSpellList(); saveParty(); return; }
   const strip = nodes => { for(const n of nodes||[]){
     if(cat==="foes" && n.site && n.site.foes) n.site.foes = n.site.foes.filter(f=>f.id!==id);
     if(cat==="loot" && n.site && n.site.items) n.site.items = n.site.items.filter(x=>baseId(x)!==id);
     if(cat==="npcs" && n.npcs) n.npcs = n.npcs.filter(x=>x!==id);
+    if(cat==="factions" && n.faction===id) delete n.faction;
   } };
   strip(root.nodes); markDirty(K_SURVEY);
   for(const k in plans){ strip(plans[k].nodes); markDirty(K_PLAN(k)); }
   saveParty();
 }
 function blankLib(cat){
+  if(cat==="factions") return { id:uid("lfa"), name:"New faction", align:"", wants:"", how:"", standing:0, notes:"" };
   if(cat==="shops") return { id:uid("lsh"), name:"New shop kind", keeper:"merchant", staff:"", nmin:"4", nmax:"6", srd:"", goods:"", notes:"" };
   if(cat==="encounters") return { id:uid("le"), name:"New encounter", foes:[], terrains:[], weight:5, map:"", text:"", notes:"" };
   if(cat==="foes") return { id:uid("lf"), name:"New foe", cr:1, xp:CR_XP[1], ac:"", hp:"", speed:"30 ft.",
@@ -6846,6 +6855,7 @@ const spellHeals = s => !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||""
 function spellTidy(s){ s.heal = spellHeals(s); if(s.heal && !s.dmg){ const m = /regains?\b[^.]*?(\d+d\d+)/i.exec(s.desc||""); if(m) s.dmg = m[1]; } return s; }
 function libSummary(cat, x){
   if(cat==="spells") return esc(spellLine(x));
+  if(cat==="factions"){ const E = factionEffects(x); return `${x.align ? esc(ALIGN_ABBR[x.align]||x.align) + " · " : ""}standing ${sgn(E.s)} · ${esc(E.tier.label.toLowerCase())}${E.violent ? " · may turn violent" : ""}`; }
   if(cat==="shops"){ const T = shopTpl(x.id); return esc(T ? `kept by a ${(PEOPLE_KINDS[T.keeper]||{label:"someone"}).label.toLowerCase()} · ${T.n[0]}–${T.n[1]} things for sale · ${T.srd.length + T.goods.length} it can stock` : ""); }
   if(cat==="foes") return `CR ${crLabel(+x.cr||0)} · ${(+x.xp||0).toLocaleString()} xp${x.boss?" · boss":""}`;
   if(cat==="npcs") return esc([x.role, x.align ? (ALIGN_ABBR[x.align]||x.align) : ""].filter(Boolean).join(" · "));
@@ -6920,6 +6930,7 @@ function libForm(cat, x){
     h += `<div class="pcrow">${t("role","Role",1.3,"Tavern keeper")}${t("where","Where",1,"The Drowned Bell")}</div>
       <div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1"><label>Alignment</label><select ${a} data-f="align">${alignOptions(x.align)}</select></div>
         ${x.align ? "" : `<button class="btn" ${a} data-libact="rollalign" title="Roll an alignment (one that suits them if their role says Enemy or Potential ally)" style="margin-bottom:9px">🎲 Roll</button>`}</div>
+      ${(lib().factions||[]).length ? `<div class="field"><label>Faction <small>how they treat the party follows its standing</small></label><select ${a} data-f="faction">${factionOptions(x.faction)}</select></div>` : ""}
       ${ta("look","Look","Big laugh, strong arms…")}
       ${t("voice","Voice","1","Calls everyone \"minnow\"")}
       ${ta("wants","Wants")}${ta("knows","Knows")}
@@ -6968,6 +6979,8 @@ function libForm(cat, x){
       ${badSrd.length ? `<p class="warn" style="font-size:11px">Not found in the SRD: ${esc(badSrd.join(", "))}. Check the spelling, or list it under its own goods instead.</p>` : ""}
       ${ta("goods","Its own goods <small>one a line: name | price | what it is</small>","Loaf of bread | 2 cp | A round loaf, still warm.\nHoney cake | 1 sp | Dense and sticky.",5)}
       <p class="empty-note" style="font-size:11px;margin:-4px 0 8px">Its own goods are priced by you (your table rule) and go into the Loot library the first time they're stocked. Library items with this shop ticked under <b>Sold at</b> can turn up too.${T ? ` It can stock ${T.srd.length + T.goods.length + lib().loot.filter(q=>!q.shopGood && (q.soldAt||[]).includes(x.id)).length} things.` : ""}</p>`;
+  } else if(cat==="factions"){
+    h += factionForm(x, a, t, ta, draft);
   } else if(cat==="encounters"){
     h += encForm(x, a, ta, draft);
   } else {
@@ -7151,6 +7164,8 @@ function renderLibList(){
   if(libTab==="npcs"){
     if(items.length) h = `<button class="btn wide" data-libact="fillall" style="margin:0 0 8px" title="Blanks only — nothing you've typed changes. Personality and tactics are added only for people rolled on the Roll tab.">Fill in what's missing on everyone's sheet</button>` + h;
     h += `<p class="empty-note" style="margin-top:10px">Standard people — guards, priests, nobles, pirates, mages — are under Foes. Pick one as a person's "Fights as".</p>`;
+  } else if(libTab==="factions"){
+    h += `<p class="empty-note" style="margin-top:10px">Put people in a faction from their page (People), and a place from its Build panel (Belongs to). How they treat the party follows its standing and their alignment: your table rule.</p>`;
   } else if(libTab==="shops"){
     const app = Object.entries(SHOP_TEMPLATES).filter(([id, T])=>!q || (T.label + " " + JSON.stringify(T)).toLowerCase().includes(q));
     h += `<p class="eyebrow spaced">The app's kinds <small>${app.length}</small></p>
@@ -7235,7 +7250,7 @@ $("#pane-library").addEventListener("change", e=>{
   else if(t.tagName==="SELECT"){
     if(k.startsWith("atk.")){ const [, j, f] = k.split("."), q = (x.attacks||[])[+j]; if(q){ q[f] = t.value; saveParty(); } return; }
     x[k] = k==="cr" ? (t.value==="" && cat==="npcs" ? "" : +t.value) : k==="lv" ? +t.value : t.value;
-    if(cat==="npcs" && (k==="fightsAs" || k==="align")){ saveParty(); renderLibList(); return; }   /* a set alignment hides the roll button */
+    if((cat==="npcs" && (k==="fightsAs" || k==="align" || k==="faction")) || (cat==="factions" && k==="align")){ saveParty(); renderLibList(); return; }   /* a set alignment hides the roll button */
     if(k==="cr"){ x.xp = CR_XP[x.cr]; const xi = t.closest(".libform").querySelector('[data-f="xp"]'); if(xi) xi.value = x.xp; }
     /* a rarity with no price yet suggests the guideline one; a price you typed is left alone */
     if(k==="rarity" || k==="kind"){              /* the estimate follows the rarity (and halves for a potion), unless a price was typed */
@@ -7256,6 +7271,8 @@ $("#pane-library").addEventListener("click", e=>{
   if(b.dataset.libact==="fbin"){ const f = document.createElement("input"); f.type = "file"; f.accept = ".json,.txt,application/json,text/plain";
     f.onchange = ()=>{ const file = f.files && f.files[0]; if(!file) return; const r = new FileReader(); r.onload = ()=>fieldBookIn(String(r.result||"")); r.readAsText(file); }; f.click(); return; }
   if(b.dataset.libact==="fbout") return fieldBookOut();
+  if(b.dataset.libact==="fstand"){ const f = factionById(b.dataset.id); if(!f) return; const w = $(`#lib-list [data-fwhy="${f.id}"]`);
+    setStanding(f, standingOf(f) + (+b.dataset.d), w ? w.value.trim() : ""); renderLibList(); return; }
   if(b.dataset.libact==="fbpick") return void pickFbInbox();
   if(b.dataset.libact==="fbcheck") return void checkFbInbox(false, true);
   if(b.dataset.libcopy){
@@ -11061,9 +11078,9 @@ function renderPlayNow(){
     ${enterAsk===n.id ? enterBox(n) : ""}
     ${sailBlock(n)}${travelBlock(n)}${xpDueBlock(st)}`;
 
-  h += boardBlock(n) + threadsHere(n);
+  h += boardBlock(n) + threadsHere(n) + factionsHere(n);
   h += `<p class="eyebrow spaced">Who you'll meet</p>` + (people.length ? people.map(p=>`<div class="playperson">
-      <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button></div>
+      <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}${factionChip(p)}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button></div>
       ${condChips(p.conds||[], "by:"+p.id)}
       ${[["Look",p.look],["Voice",p.voice],["Wants",p.wants],["Knows",p.knows],["Backstory",p.backstory]].filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
       ${p.fightsAs && p.fightsAs!=="self" && foeById(p.fightsAs)?`<div class="sbl"><b>Fights as</b> <span class="libref" data-libopen="foes:${p.fightsAs}">${esc(foeById(p.fightsAs).name)}</span></div>`:""}
@@ -11919,7 +11936,7 @@ function shopPool(tid){
 }
 const shopItemId = (tid, e) => e.id || shopGood(tid, e.good).id;
 /* its price at this shop, in copper: the item's value (or its rarity's) times the shop's prices */
-const shopPrice = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*100*((n.shop && +n.shop.price) || 1)*(1 + ((n.shop && +n.shop.deal) || 0))));
+const shopPrice = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*100*((n.shop && +n.shop.price) || 1)*(1 + ((n.shop && +n.shop.deal) || 0))*shopFactionMult(n)));
 /* haggling is the DM's call; these are loose guidelines for what it can do (Joseph's table rule, not the rules) */
 const HAGGLE_DEALS = [[0,"No deal struck"],[-.1,"Talked down 10%"],[-.2,"Talked down 20%"],[-.25,"Talked down 25% (as low as they'll go)"],[.1,"Offended: 10% more"],[.25,"Offended: 25% more"]];
 const HAGGLE_HELP = `<p class="empty-note" style="font-size:11px;margin:2px 0 4px"><b>Your call.</b> Loose guidelines:</p>
@@ -12027,7 +12044,7 @@ function rollTill(tid){
 }
 const shopTill = n => coinsOf(n.shop.till = n.shop.till || rollTill(n.shop.tpl));
 /* what the shop pays for something brought in: half its going rate (Joseph's table rule), haggling aside */
-const shopOffer = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*50));
+const shopOffer = (n, id) => Math.max(1, Math.round(itemGp(libLootById(id))*50*(2 - shopFactionMult(n))));     // a friendly faction pays a little more
 /* the shop's stock of one item that's still on its shelves */
 const shopToks = (n, id) => (n.shop.items||[]).filter(t=>baseId(t)===id && ((n.site||{}).items||[]).includes(t));
 /* selling some of one item to a character: the price (each) out of their purse into the till, the items into their pack */
@@ -12120,6 +12137,7 @@ function shopBlock(n){
         ${row("Alignment", keep.align)}${row("Look", keep.look)}${row("Voice", keep.voice)}${row("Wants", keep.wants)}${row("Knows", keep.knows)}${row("Backstory", keep.backstory)}
         ${row("Sheet", sheet)}${row("Purse", purse)}${carryBlock(keep)}
         <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-bigsheet="npc:${keep.id}" title="Their whole character sheet, big, over the map">Full sheet</button><button class="btn" style="flex:1" data-libopen="npcs:${keep.id}">Their Library page</button></div></details>`; })() : ""}
+    ${shopFactionLine(n)}
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Prices</label><select data-shop="price">${[[.75,"Cheap (×¾)"],[1,"The going rate"],[1.25,"Dear (×1¼)"],[1.5,"Very dear (×1½)"],[2,"Robbery (×2)"]].map(([v, l])=>`<option value="${v}" ${(+S.price||1)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">Haggled</label><select data-shop="deal">${HAGGLE_DEALS.map(([v, l])=>`<option value="${v}" ${(+S.deal||0)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     ${haggleBox(n)}
@@ -13081,6 +13099,121 @@ document.addEventListener("click", e=>{
   if(act==="del"){ if(!confirm(`Delete this loose thread?\n\n${t.text}`)) return; root.threads = T.filter(x=>x!==t); thrPop = thrPop.filter(i=>i!==t.id); saveParty(); return threadsRedraw(); }
 });
 
+/* ── factions and standing (Joseph, 2026-10-16; your table rule: the SRD has no standing rules). Factions are in the
+   Library; the party's standing with each runs −10 to +10. What a standing means depends on alignment: a good faction
+   (or a good member of one) that dislikes the party is cold, never violent; an evil one at the same standing may well
+   turn violent. Lawful ones act through rules and ranks, chaotic ones on their own. People belong to a faction from
+   their Library page; a place can belong to one from its Build panel. Kept on the faction: standing, and slog (changes) ── */
+const STANDING_TIERS = [
+  { min:8, key:"allies", label:"Allies" }, { min:5, key:"trusted", label:"Trusted" }, { min:2, key:"friendly", label:"Friendly" },
+  { min:-1, key:"neutral", label:"Neutral" }, { min:-4, key:"unfriendly", label:"Unfriendly" }, { min:-7, key:"hostile", label:"Hostile" },
+  { min:-10, key:"sworn", label:"Sworn enemies" }];
+const STANDING_EFFECT = {
+  allies:{ good:"They'll risk a great deal for you: shelter, healing, soldiers or coin when it counts.",
+    neutral:"They back you openly where it suits you both: favours, contacts, the best work.",
+    evil:"They'll do your dirty work, and expect you to do theirs. They always call the debt in." },
+  trusted:{ good:"Help freely given: a bed, a healer, the truth as they know it.",
+    neutral:"Introductions, inside word and jobs that pay.",
+    evil:"Jobs, secrets and protection, all with a price." },
+  friendly:{ good:"Warm and helpful: they answer questions and do small favours.",
+    neutral:"Helpful when it costs them little.",
+    evil:"Civil, and happy to sell you things. They're sizing you up." },
+  neutral:{ good:"They treat you like anyone else.", neutral:"They treat you like anyone else.", evil:"They treat you like anyone else." },
+  unfriendly:{ good:"Cold: no help, no favours, and they warn others about you. Never violent: they'd go to the watch or their elders first.",
+    neutral:"Slow to help, quick to sell what they know about you.",
+    evil:"Rude and watchful. Caught alone, you might be robbed, roughed up or set up." },
+  hostile:{ good:"They won't deal with you and work against you openly: reports, warrants, turning your friends away. They fight only to stop harm, and offer surrender.",
+    neutral:"They won't deal with you, and hinder you when it's cheap to: lies, lost papers, a tip-off to your enemies.",
+    evil:"They want you hurt: ambushes, poison, a knife in a crowd. Meet them in numbers and expect a fight." },
+  sworn:{ good:"They see you as a real threat and hunt you by proper means: bounties, warrants, champions sent to bring you in alive.",
+    neutral:"They want you gone, pay others to see to it, and sell you out to anyone.",
+    evil:"They want you dead: assassins, hunting parties, and harm to the people you care about." } };
+/* prices at their shops (and what they pay for things), Charisma checks with their people, whether they'll deal at all */
+const STANDING_TERMS = { allies:{ price:-.2, check:"advantage" }, trusted:{ price:-.1, check:"advantage" }, friendly:{ price:-.05, check:"+2" },
+  neutral:{ price:0, check:"" }, unfriendly:{ price:.2, check:"−2" }, hostile:{ price:0, check:"disadvantage", refuse:true }, sworn:{ price:0, check:"disadvantage", refuse:true } };
+/* how far they'll go: "" never violent, else a warning */
+const STANDING_VIOLENCE = { unfriendly:{ evil:"May turn violent if they catch you alone." },
+  hostile:{ neutral:"Violent only if cornered, or paid well.", evil:"Violent when they can." },
+  sworn:{ good:"Will fight to bring you in, alive if they can.", neutral:"Will fight, or pay others to.", evil:"Out to kill you." } };
+const ETHIC_WAY = { lawful:"Lawful: they go through rules and ranks: fines, courts, contracts, warrants, orders from above.",
+  chaotic:"Chaotic: they act on their own: grudges, sudden moves, whatever the rules say." };
+const factionById = id => (lib().factions||[]).find(f=>f.id===id) || null;
+const standingOf = f => Math.max(-10, Math.min(10, Math.round(+(f && f.standing) || 0)));
+const standingTier = s => STANDING_TIERS.find(t=>s >= t.min);
+const moralOf = al => /Good/.test(al||"") ? "good" : /Evil/.test(al||"") ? "evil" : "neutral";
+const ethicOf = al => /^Lawful/.test(al||"") ? "lawful" : /^Chaotic/.test(al||"") ? "chaotic" : "neutral";
+const sgn = s => s > 0 ? `+${s}` : s < 0 ? `−${-s}` : "0";
+/* what the standing means: with the faction's alignment, or a member's own (a good member of a bad lot stays decent) */
+function factionEffects(f, align){
+  const s = standingOf(f), T = standingTier(s), al = align || f.align, m = moralOf(al), e = ethicOf(al), R = STANDING_TERMS[T.key];
+  return { s, tier:T, moral:m, text:STANDING_EFFECT[T.key][m], price:R.price, check:R.check, refuse:!!R.refuse,
+    violent:(STANDING_VIOLENCE[T.key]||{})[m] || "", way:s < 0 ? (ETHIC_WAY[e] || "") : "" };
+}
+function standingLines(E){
+  return [E.refuse ? "Won't deal with you: no sales, no service." : E.price ? `Prices at their shops ${E.price > 0 ? "+" : "−"}${Math.round(Math.abs(E.price)*100)}%; they pay ${E.price > 0 ? "less" : "more"} for what you sell.` : "",
+    E.check ? `Charisma checks with them: ${E.check}.` : "", E.violent ? `<b class="facwarn">${E.violent}</b>` : "", E.way].filter(Boolean);
+}
+function setStanding(f, v, why){
+  const from = standingOf(f), to = Math.max(-10, Math.min(10, Math.round(v))); if(from===to) return;
+  f.standing = to; (f.slog = Array.isArray(f.slog) ? f.slog : []).push({ day:campaignDay(), from, to, why:why||"" });
+  const T0 = standingTier(from), T1 = standingTier(to);
+  gameLog("note", `Standing with ${f.name||"a faction"}: ${sgn(from)} → ${sgn(to)}${T0!==T1 ? ` (now ${T1.label.toLowerCase()})` : ""}${why ? `: ${why}` : ""}`);
+  saveParty(); flash(`${f.name||"Faction"}: ${sgn(to)}${T0!==T1 ? `, now ${T1.label}` : ""}.`);
+}
+const factionOptions = (cur, none) => `<option value="">${none||"— none —"}</option>${(lib().factions||[]).map(f=>`<option value="${f.id}" ${f.id===cur?"selected":""}>${esc(f.name||"Faction")}</option>`).join("")}`;
+const factionMembers = f => lib().npcs.filter(p=>p.faction===f.id);
+/* the meter: −10 … +10 with the standing marked */
+function standingMeter(s){
+  const pct = (s + 10) / 20 * 100;
+  return `<div class="facmeter" title="Standing ${sgn(s)}"><div class="fm-mid"></div><div class="fm-dot" style="left:${pct}%"></div></div>`;
+}
+/* the Library page for a faction */
+function factionForm(x, a, t, ta, draft){
+  const E = factionEffects(x), mem = factionMembers(x), log = (x.slog||[]).slice(-8).reverse();
+  return `<div class="field"><label>Alignment <small>how they treat people they dislike</small></label><select ${a} data-f="align">${alignOptions(x.align)}</select></div>
+    ${ta("wants","What they want","Control of the harbour trade; the old charter back…")}
+    ${ta("how","How they work","Ledgers and lawyers; a few hard men on the docks…")}
+    <p class="grouplab" style="margin:8px 0 3px">The party's standing <small>your table rule, −10 to +10</small></p>
+    <div class="pcrow" style="align-items:center"><button class="btn small" data-libact="fstand" data-id="${x.id}" data-d="-1">−1</button>${standingMeter(E.s)}<button class="btn small" data-libact="fstand" data-id="${x.id}" data-d="1">+1</button>
+      <b class="mono" style="min-width:28px;text-align:center">${sgn(E.s)}</b></div>
+    <div class="field" style="margin:4px 0"><label>Why it changed <small>goes in the log with the next −1/+1</small></label><input type="text" data-fwhy="${x.id}" placeholder="Saved the harbourmaster's son"></div>
+    <div class="facfx"><b>${E.tier.label}.</b> ${esc(E.text)}${standingLines(E).map(l=>`<div class="sbl">${l}</div>`).join("")}</div>
+    ${draft ? "" : `<p class="grouplab" style="margin:8px 0 3px">Members <small>set on a person's Library page</small></p>${mem.length ? mem.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Someone")}</span>${p.align && moralOf(p.align)!==moralOf(x.align) ? ` <small>(${esc(ALIGN_ABBR[p.align]||p.align)}: treats you as ${moralOf(p.align)} would)</small>` : ""}`).join(", ") : `<span class="empty-note">Nobody yet.</span>`}
+    ${log.length ? `<details class="pcset"><summary>Changes <small>${(x.slog||[]).length}</small></summary>${log.map(l=>`<div class="sbl"><small class="mono">day ${l.day}</small> ${sgn(l.from)} → ${sgn(l.to)}${l.why ? `: ${esc(l.why)}` : ""}</div>`).join("")}</details>` : ""}`}`;
+}
+/* a person's chip on a place's card: their faction and how they're inclined to the party */
+function factionChip(p){
+  const f = p && p.faction && factionById(p.faction); if(!f) return "";
+  const E = factionEffects(f, p.align);
+  return ` <span class="facchip t-${E.tier.key}${E.violent ? " warn" : ""}" title="${esc(`${f.name}: ${E.tier.label} (${sgn(E.s)}). ${E.text} ${standingLines(E).join(" ").replace(/<[^>]+>/g, "")}`)}">${esc(f.name||"Faction")} ${sgn(E.s)}</span>`;
+}
+/* a place's card: the factions here (the place's own and its people's), their standing and what it means */
+function factionsHere(n){
+  const ids = [...new Set([n.faction, ...(n.npcs||[]).map(id=>(libNpcById(id)||{}).faction)].filter(Boolean))], F = ids.map(factionById).filter(Boolean);
+  if(!F.length) return "";
+  return `<p class="eyebrow spaced">Factions here</p>` + F.map(f=>{ const E = factionEffects(f);
+    return `<div class="facrow"><div class="pcrow" style="align-items:center;margin:0"><span class="libref" data-libopen="factions:${f.id}" style="flex:1">${esc(f.name||"Faction")}</span><small>${esc(E.tier.label)}</small>
+        <button class="btn small" data-fac="-1" data-id="${f.id}" title="Standing down one">−1</button><b class="mono">${sgn(E.s)}</b><button class="btn small" data-fac="1" data-id="${f.id}" title="Standing up one">+1</button></div>
+      <div class="facfx">${esc(E.text)}${standingLines(E).map(l=>`<div class="sbl">${l}</div>`).join("")}</div></div>`; }).join("");
+}
+/* the shop's faction (its keeper's, or the place's): the price change, or a warning that they won't serve the party */
+function shopFaction(n){ const k = n.shop && libNpcById(n.shop.keeper), f = (k && k.faction && factionById(k.faction)) || (n.faction && factionById(n.faction)); return f ? { f, E:factionEffects(f, k && k.faction===f.id ? k.align : "") } : null; }
+const shopFactionMult = n => { const F = shopFaction(n); return F ? 1 + F.E.price : 1; };
+function shopFactionLine(n){
+  const F = shopFaction(n); if(!F || (!F.E.price && !F.E.refuse)) return "";
+  return `<p class="empty-note" style="font-size:11px;margin:2px 0 6px;${F.E.refuse ? "color:var(--lead)" : ""}">${esc(F.f.name)} ${sgn(F.E.s)} (${esc(F.E.tier.label.toLowerCase())}): ${F.E.refuse ? "they won't serve the party." : `prices ${F.E.price > 0 ? "+" : "−"}${Math.round(Math.abs(F.E.price)*100)}% (in the prices below).`}</p>`;
+}
+/* the place's own faction, for its Build panel */
+const placeFactionPick = n => (lib().factions||[]).length ? `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><select data-fac="place" data-node="${n.id}">${factionOptions(n.faction, "No faction")}</select></div>` : "";
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("button[data-fac]"); if(!b) return;
+  const f = factionById(b.dataset.id); if(!f) return; setStanding(f, standingOf(f) + (+b.dataset.fac)); renderPane(true); renderLibList();
+});
+document.addEventListener("change", e=>{
+  const t = e.target; if(!t.dataset || t.dataset.fac!=="place") return;
+  const n = nodeById(t.dataset.node); if(!n) return; if(t.value) n.faction = t.value; else delete n.faction; touch(); renderPane(true);
+});
+
 function gameLog(kind, text){
   if(!root || !text) return;
   const L = gameLogList(), s = String(text).trim().replace(/\.$/, ""), last = L[L.length-1], now = new Date();
@@ -13395,7 +13528,7 @@ function wireFootprint(n){
 function premisesPanel(n){
   const kd = KINDS[n.kind] || {};
   const use = kd.svc || "";
-  if(!n.premises) return `${shopBlock(n)}${peopleHere(n)}
+  if(!n.premises) return `${placeFactionPick(n)}${shopBlock(n)}${peopleHere(n)}
     <p class="eyebrow spaced">Inside</p>
     <p class="empty-note" style="margin:0 0 9px">${use
       ? `Rumours, asking around, and notes for this ${kd.label.toLowerCase()}.`
@@ -13403,7 +13536,7 @@ function premisesPanel(n){
     <button class="btn wide" id="pr-add">Fill in more about it</button>`;
 
   const p = n.premises;
-  return `${shopBlock(n)}${peopleHere(n)}
+  return `${placeFactionPick(n)}${shopBlock(n)}${peopleHere(n)}
     <p class="eyebrow spaced">Inside</p>
     ${use?`<p class="empty-note" style="margin:-2px 0 10px">This sites the <b>${esc(use)}</b> service for ${esc(planParentName())}.</p>`:""}
     ${(p.keeper && p.keeper.name && !(n.npcs||[]).length) || (p.folk||[]).length ? `<p class="grouplab">Written in by name <small>(older notes: put them in properly under People here)</small></p>
