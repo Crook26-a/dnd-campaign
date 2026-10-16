@@ -4295,6 +4295,185 @@
                       "y":  -542,
                       "port":  false,
                       "hidden":  true
+                  },
+                  {
+                      "id":  "ebrack",
+                      "name":  "Brackwater",
+                      "kind":  "city",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+                                       "inn":  1,
+                                       "stable":  1,
+                                       "board":  1,
+                                       "store":  1,
+                                       "provision":  1,
+                                       "smith":  1,
+                                       "apothecary":  1,
+                                       "market":  1,
+                                       "temple":  1,
+                                       "healer":  1,
+                                       "reeve":  1,
+                                       "fence":  1,
+                                       "coach":  1
+                                   },
+                      "notes":  "A walled merchant city at the mouth of the Ox, on the island\u0027s south-east coast, facing Kalatecha across about 120 miles of sea. Its story, people and buildings are still to be worked out.",
+                      "x":  -826,
+                      "y":  -858,
+                      "port":  true,
+                      "hidden":  true
+                  },
+                  {
+                      "id":  "ehald",
+                      "name":  "Haldeport",
+                      "kind":  "city",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+                                       "inn":  1,
+                                       "stable":  1,
+                                       "board":  1,
+                                       "store":  1,
+                                       "provision":  1,
+                                       "smith":  1,
+                                       "apothecary":  1,
+                                       "market":  1,
+                                       "temple":  1,
+                                       "healer":  1,
+                                       "reeve":  1,
+                                       "fence":  1,
+                                       "coach":  1
+                                   },
+                      "notes":  "A grey harbour city on the north-west coast, the last port before open, uncharted ocean. Its story, people and buildings are still to be worked out.",
+                      "x":  -1330,
+                      "y":  -1138,
+                      "port":  true,
+                      "hidden":  true
+                  },
+                  {
+                      "id":  "eoxley",
+                      "name":  "Oxley Ford",
+                      "kind":  "town",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+                                       "inn":  1,
+                                       "stable":  1,
+                                       "coach":  1,
+                                       "board":  1,
+                                       "store":  1,
+                                       "provision":  1,
+                                       "smith":  1,
+                                       "market":  1,
+                                       "temple":  1,
+                                       "healer":  1
+                                   },
+                      "notes":  "A market town where the road crosses the Ox; river boats come up from Brackwater this far and no further.",
+                      "x":  -1000,
+                      "y":  -982,
+                      "hidden":  true
+                  },
+                  {
+                      "id":  "efenn",
+                      "name":  "Fennick",
+                      "kind":  "village",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+                                       "inn":  1,
+                                       "board":  1,
+                                       "store":  1,
+                                       "provision":  1
+                                   },
+                      "notes":  "A fishing village at the mouth of Fenn Water, on the north-east shore.",
+                      "x":  -844,
+                      "y":  -1142,
+                      "port":  true,
+                      "hidden":  true
+                  },
+                  {
+                      "id":  "ekettle",
+                      "name":  "Kettle Cove",
+                      "kind":  "village",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+                                       "inn":  1,
+                                       "board":  1,
+                                       "store":  1,
+                                       "provision":  1
+                                   },
+                      "notes":  "A fishing village in a deep cove on the south-west coast. Its boats go out at odd hours.",
+                      "x":  -1218,
+                      "y":  -860,
+                      "port":  true,
+                      "hidden":  true
+                  },
+                  {
+                      "id":  "egrey",
+                      "name":  "Greystones",
+                      "kind":  "village",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+                                       "inn":  1,
+                                       "board":  1,
+                                       "store":  1,
+                                       "provision":  1
+                                   },
+                      "notes":  "A moorland village of drystone walls and sheep, under the standing stones it\u0027s named for.",
+                      "x":  -1172,
+                      "y":  -966,
+                      "hidden":  true
+                  },
+                  {
+                      "id":  "emid",
+                      "name":  "The Midway Inn",
+                      "kind":  "post",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+                                       "inn":  1,
+                                       "stable":  1,
+                                       "coach":  1,
+                                       "board":  1,
+                                       "office":  1,
+                                       "provision":  1
+                                   },
+                      "notes":  "A coaching inn half way between the two cities, where the moor road meets the road to Greystones.",
+                      "x":  -1128,
+                      "y":  -1028,
+                      "hidden":  true
+                  },
+                  {
+                      "id":  "etor",
+                      "name":  "The Pale Tor",
+                      "kind":  "ruin",
+                      "region":  "r3",
+                      "level":  1,
+                      "origin":  false,
+                      "seat":  false,
+                      "services":  {
+
+                                   },
+                      "notes":  "A tumble of white stones on the highest point of the Spine. Some say it was a watchtower; some say it was something else.",
+                      "x":  -1060,
+                      "y":  -1114,
+                      "hidden":  true
                   }
               ],
     "roads":  [
@@ -4871,6 +5050,167 @@
                                   }
                               ],
                       "quality":  3
+                  },
+                  {
+                      "id":  "er0",
+                      "from":  "ebrack",
+                      "to":  "eoxley",
+                      "miles":  21.6,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  true,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  8,
+                      "pts":  [
+                                  {
+                                      "x":  -910,
+                                      "y":  -900
+                                  }
+                              ]
+                  },
+                  {
+                      "id":  "er1",
+                      "from":  "eoxley",
+                      "to":  "emid",
+                      "miles":  13.6,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  true,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  7,
+                      "pts":  [
+                                  {
+                                      "x":  -1060,
+                                      "y":  -1000
+                                  }
+                              ]
+                  },
+                  {
+                      "id":  "er2",
+                      "from":  "emid",
+                      "to":  "ehald",
+                      "miles":  23,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  true,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  7,
+                      "pts":  [
+                                  {
+                                      "x":  -1220,
+                                      "y":  -1086
+                                  }
+                              ]
+                  },
+                  {
+                      "id":  "er3",
+                      "from":  "emid",
+                      "to":  "egrey",
+                      "miles":  7.6,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  true,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  4,
+                      "pts":  [
+                                  {
+                                      "x":  -1150,
+                                      "y":  -996
+                                  }
+                              ]
+                  },
+                  {
+                      "id":  "er4",
+                      "from":  "egrey",
+                      "to":  "ekettle",
+                      "miles":  11.6,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  true,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  3,
+                      "pts":  [
+                                  {
+                                      "x":  -1200,
+                                      "y":  -910
+                                  }
+                              ]
+                  },
+                  {
+                      "id":  "er5",
+                      "from":  "eoxley",
+                      "to":  "efenn",
+                      "miles":  22.4,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  true,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  4,
+                      "pts":  [
+                                  {
+                                      "x":  -930,
+                                      "y":  -1050
+                                  },
+                                  {
+                                      "x":  -880,
+                                      "y":  -1110
+                                  }
+                              ]
+                  },
+                  {
+                      "id":  "er6",
+                      "from":  "emid",
+                      "to":  "etor",
+                      "miles":  11,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  false,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  2,
+                      "danger":  "dangerous",
+                      "pts":  [
+                                  {
+                                      "x":  -1090,
+                                      "y":  -1070
+                                  }
+                              ]
+                  },
+                  {
+                      "id":  "er7",
+                      "from":  "ebrack",
+                      "to":  "ekettle",
+                      "miles":  39.4,
+                      "milesLocked":  false,
+                      "name":  "",
+                      "density":  "normal",
+                      "coach":  true,
+                      "region":  "r3",
+                      "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out.",
+                      "quality":  5,
+                      "pts":  [
+                                  {
+                                      "x":  -950,
+                                      "y":  -845
+                                  },
+                                  {
+                                      "x":  -1080,
+                                      "y":  -842
+                                  }
+                              ]
                   }
               ],
     "shapes":  [
@@ -4899,6 +5239,1398 @@
                                    {
                                        "x":  -8000,
                                        "y":  5500
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "eisle",
+                       "kind":  "island",
+                       "closed":  true,
+                       "straight":  false,
+                       "name":  "Elsmoor",
+                       "side":  1,
+                       "impassable":  false,
+                       "terrain":  "grassland",
+                       "notes":  "Elsmoor (2026-10-16). Placeholder: its story, people and buildings are still to be worked out. About 65 miles across and 44 north to south, some 145 miles north-west of Kalatecha: open moorland, the Spine\u0027s hills across the north, Haldwood and Fennick Woods, the Sedge by Brackwater, and the Ox, navigable from Brackwater up to Oxley Ford. Hidden until the crew sights it.",
+                       "hidden":  true,
+                       "pts":  [
+                                   {
+                                       "x":  -1370,
+                                       "y":  -1070
+                                   },
+                                   {
+                                       "x":  -1364,
+                                       "y":  -1080
+                                   },
+                                   {
+                                       "x":  -1360,
+                                       "y":  -1092
+                                   },
+                                   {
+                                       "x":  -1360,
+                                       "y":  -1104
+                                   },
+                                   {
+                                       "x":  -1356,
+                                       "y":  -1115
+                                   },
+                                   {
+                                       "x":  -1352,
+                                       "y":  -1126
+                                   },
+                                   {
+                                       "x":  -1348,
+                                       "y":  -1138
+                                   },
+                                   {
+                                       "x":  -1344,
+                                       "y":  -1149
+                                   },
+                                   {
+                                       "x":  -1340,
+                                       "y":  -1160
+                                   },
+                                   {
+                                       "x":  -1333,
+                                       "y":  -1166
+                                   },
+                                   {
+                                       "x":  -1326,
+                                       "y":  -1172
+                                   },
+                                   {
+                                       "x":  -1319,
+                                       "y":  -1178
+                                   },
+                                   {
+                                       "x":  -1313,
+                                       "y":  -1185
+                                   },
+                                   {
+                                       "x":  -1304,
+                                       "y":  -1185
+                                   },
+                                   {
+                                       "x":  -1295,
+                                       "y":  -1188
+                                   },
+                                   {
+                                       "x":  -1287,
+                                       "y":  -1193
+                                   },
+                                   {
+                                       "x":  -1280,
+                                       "y":  -1200
+                                   },
+                                   {
+                                       "x":  -1268,
+                                       "y":  -1199
+                                   },
+                                   {
+                                       "x":  -1256,
+                                       "y":  -1201
+                                   },
+                                   {
+                                       "x":  -1246,
+                                       "y":  -1208
+                                   },
+                                   {
+                                       "x":  -1236,
+                                       "y":  -1215
+                                   },
+                                   {
+                                       "x":  -1225,
+                                       "y":  -1214
+                                   },
+                                   {
+                                       "x":  -1213,
+                                       "y":  -1213
+                                   },
+                                   {
+                                       "x":  -1201,
+                                       "y":  -1213
+                                   },
+                                   {
+                                       "x":  -1190,
+                                       "y":  -1210
+                                   },
+                                   {
+                                       "x":  -1180,
+                                       "y":  -1217
+                                   },
+                                   {
+                                       "x":  -1169,
+                                       "y":  -1220
+                                   },
+                                   {
+                                       "x":  -1158,
+                                       "y":  -1225
+                                   },
+                                   {
+                                       "x":  -1147,
+                                       "y":  -1229
+                                   },
+                                   {
+                                       "x":  -1135,
+                                       "y":  -1230
+                                   },
+                                   {
+                                       "x":  -1123,
+                                       "y":  -1235
+                                   },
+                                   {
+                                       "x":  -1112,
+                                       "y":  -1228
+                                   },
+                                   {
+                                       "x":  -1100,
+                                       "y":  -1225
+                                   },
+                                   {
+                                       "x":  -1089,
+                                       "y":  -1220
+                                   },
+                                   {
+                                       "x":  -1078,
+                                       "y":  -1213
+                                   },
+                                   {
+                                       "x":  -1067,
+                                       "y":  -1207
+                                   },
+                                   {
+                                       "x":  -1058,
+                                       "y":  -1200
+                                   },
+                                   {
+                                       "x":  -1045,
+                                       "y":  -1198
+                                   },
+                                   {
+                                       "x":  -1033,
+                                       "y":  -1201
+                                   },
+                                   {
+                                       "x":  -1022,
+                                       "y":  -1207
+                                   },
+                                   {
+                                       "x":  -1010,
+                                       "y":  -1210
+                                   },
+                                   {
+                                       "x":  -999,
+                                       "y":  -1206
+                                   },
+                                   {
+                                       "x":  -987,
+                                       "y":  -1207
+                                   },
+                                   {
+                                       "x":  -976,
+                                       "y":  -1204
+                                   },
+                                   {
+                                       "x":  -964,
+                                       "y":  -1206
+                                   },
+                                   {
+                                       "x":  -954,
+                                       "y":  -1212
+                                   },
+                                   {
+                                       "x":  -943,
+                                       "y":  -1215
+                                   },
+                                   {
+                                       "x":  -932,
+                                       "y":  -1218
+                                   },
+                                   {
+                                       "x":  -920,
+                                       "y":  -1220
+                                   },
+                                   {
+                                       "x":  -909,
+                                       "y":  -1220
+                                   },
+                                   {
+                                       "x":  -898,
+                                       "y":  -1216
+                                   },
+                                   {
+                                       "x":  -888,
+                                       "y":  -1210
+                                   },
+                                   {
+                                       "x":  -878,
+                                       "y":  -1204
+                                   },
+                                   {
+                                       "x":  -868,
+                                       "y":  -1197
+                                   },
+                                   {
+                                       "x":  -857,
+                                       "y":  -1195
+                                   },
+                                   {
+                                       "x":  -850,
+                                       "y":  -1186
+                                   },
+                                   {
+                                       "x":  -840,
+                                       "y":  -1180
+                                   },
+                                   {
+                                       "x":  -834,
+                                       "y":  -1174
+                                   },
+                                   {
+                                       "x":  -828,
+                                       "y":  -1167
+                                   },
+                                   {
+                                       "x":  -822,
+                                       "y":  -1161
+                                   },
+                                   {
+                                       "x":  -816,
+                                       "y":  -1154
+                                   },
+                                   {
+                                       "x":  -811,
+                                       "y":  -1147
+                                   },
+                                   {
+                                       "x":  -806,
+                                       "y":  -1139
+                                   },
+                                   {
+                                       "x":  -798,
+                                       "y":  -1135
+                                   },
+                                   {
+                                       "x":  -790,
+                                       "y":  -1130
+                                   },
+                                   {
+                                       "x":  -784,
+                                       "y":  -1119
+                                   },
+                                   {
+                                       "x":  -774,
+                                       "y":  -1111
+                                   },
+                                   {
+                                       "x":  -762,
+                                       "y":  -1107
+                                   },
+                                   {
+                                       "x":  -753,
+                                       "y":  -1098
+                                   },
+                                   {
+                                       "x":  -754,
+                                       "y":  -1086
+                                   },
+                                   {
+                                       "x":  -758,
+                                       "y":  -1074
+                                   },
+                                   {
+                                       "x":  -756,
+                                       "y":  -1061
+                                   },
+                                   {
+                                       "x":  -750,
+                                       "y":  -1050
+                                   },
+                                   {
+                                       "x":  -748,
+                                       "y":  -1040
+                                   },
+                                   {
+                                       "x":  -748,
+                                       "y":  -1030
+                                   },
+                                   {
+                                       "x":  -746,
+                                       "y":  -1020
+                                   },
+                                   {
+                                       "x":  -744,
+                                       "y":  -1010
+                                   },
+                                   {
+                                       "x":  -746,
+                                       "y":  -1000
+                                   },
+                                   {
+                                       "x":  -745,
+                                       "y":  -990
+                                   },
+                                   {
+                                       "x":  -743,
+                                       "y":  -980
+                                   },
+                                   {
+                                       "x":  -740,
+                                       "y":  -970
+                                   },
+                                   {
+                                       "x":  -741,
+                                       "y":  -959
+                                   },
+                                   {
+                                       "x":  -739,
+                                       "y":  -949
+                                   },
+                                   {
+                                       "x":  -737,
+                                       "y":  -938
+                                   },
+                                   {
+                                       "x":  -731,
+                                       "y":  -929
+                                   },
+                                   {
+                                       "x":  -739,
+                                       "y":  -922
+                                   },
+                                   {
+                                       "x":  -744,
+                                       "y":  -913
+                                   },
+                                   {
+                                       "x":  -751,
+                                       "y":  -905
+                                   },
+                                   {
+                                       "x":  -760,
+                                       "y":  -900
+                                   },
+                                   {
+                                       "x":  -762,
+                                       "y":  -893
+                                   },
+                                   {
+                                       "x":  -763,
+                                       "y":  -885
+                                   },
+                                   {
+                                       "x":  -766,
+                                       "y":  -878
+                                   },
+                                   {
+                                       "x":  -768,
+                                       "y":  -871
+                                   },
+                                   {
+                                       "x":  -775,
+                                       "y":  -867
+                                   },
+                                   {
+                                       "x":  -781,
+                                       "y":  -862
+                                   },
+                                   {
+                                       "x":  -787,
+                                       "y":  -857
+                                   },
+                                   {
+                                       "x":  -790,
+                                       "y":  -850
+                                   },
+                                   {
+                                       "x":  -795,
+                                       "y":  -846
+                                   },
+                                   {
+                                       "x":  -800,
+                                       "y":  -842
+                                   },
+                                   {
+                                       "x":  -805,
+                                       "y":  -838
+                                   },
+                                   {
+                                       "x":  -809,
+                                       "y":  -834
+                                   },
+                                   {
+                                       "x":  -814,
+                                       "y":  -830
+                                   },
+                                   {
+                                       "x":  -819,
+                                       "y":  -827
+                                   },
+                                   {
+                                       "x":  -825,
+                                       "y":  -824
+                                   },
+                                   {
+                                       "x":  -830,
+                                       "y":  -820
+                                   },
+                                   {
+                                       "x":  -837,
+                                       "y":  -813
+                                   },
+                                   {
+                                       "x":  -844,
+                                       "y":  -807
+                                   },
+                                   {
+                                       "x":  -853,
+                                       "y":  -804
+                                   },
+                                   {
+                                       "x":  -863,
+                                       "y":  -802
+                                   },
+                                   {
+                                       "x":  -872,
+                                       "y":  -801
+                                   },
+                                   {
+                                       "x":  -881,
+                                       "y":  -800
+                                   },
+                                   {
+                                       "x":  -890,
+                                       "y":  -798
+                                   },
+                                   {
+                                       "x":  -900,
+                                       "y":  -800
+                                   },
+                                   {
+                                       "x":  -910,
+                                       "y":  -802
+                                   },
+                                   {
+                                       "x":  -920,
+                                       "y":  -807
+                                   },
+                                   {
+                                       "x":  -930,
+                                       "y":  -812
+                                   },
+                                   {
+                                       "x":  -939,
+                                       "y":  -817
+                                   },
+                                   {
+                                       "x":  -949,
+                                       "y":  -814
+                                   },
+                                   {
+                                       "x":  -959,
+                                       "y":  -813
+                                   },
+                                   {
+                                       "x":  -970,
+                                       "y":  -813
+                                   },
+                                   {
+                                       "x":  -980,
+                                       "y":  -810
+                                   },
+                                   {
+                                       "x":  -991,
+                                       "y":  -812
+                                   },
+                                   {
+                                       "x":  -1003,
+                                       "y":  -810
+                                   },
+                                   {
+                                       "x":  -1013,
+                                       "y":  -815
+                                   },
+                                   {
+                                       "x":  -1023,
+                                       "y":  -820
+                                   },
+                                   {
+                                       "x":  -1034,
+                                       "y":  -815
+                                   },
+                                   {
+                                       "x":  -1045,
+                                       "y":  -813
+                                   },
+                                   {
+                                       "x":  -1054,
+                                       "y":  -805
+                                   },
+                                   {
+                                       "x":  -1060,
+                                       "y":  -795
+                                   },
+                                   {
+                                       "x":  -1069,
+                                       "y":  -802
+                                   },
+                                   {
+                                       "x":  -1078,
+                                       "y":  -808
+                                   },
+                                   {
+                                       "x":  -1087,
+                                       "y":  -815
+                                   },
+                                   {
+                                       "x":  -1095,
+                                       "y":  -823
+                                   },
+                                   {
+                                       "x":  -1107,
+                                       "y":  -822
+                                   },
+                                   {
+                                       "x":  -1118,
+                                       "y":  -825
+                                   },
+                                   {
+                                       "x":  -1129,
+                                       "y":  -825
+                                   },
+                                   {
+                                       "x":  -1140,
+                                       "y":  -820
+                                   },
+                                   {
+                                       "x":  -1151,
+                                       "y":  -818
+                                   },
+                                   {
+                                       "x":  -1162,
+                                       "y":  -817
+                                   },
+                                   {
+                                       "x":  -1173,
+                                       "y":  -815
+                                   },
+                                   {
+                                       "x":  -1183,
+                                       "y":  -811
+                                   },
+                                   {
+                                       "x":  -1193,
+                                       "y":  -816
+                                   },
+                                   {
+                                       "x":  -1201,
+                                       "y":  -824
+                                   },
+                                   {
+                                       "x":  -1210,
+                                       "y":  -830
+                                   },
+                                   {
+                                       "x":  -1220,
+                                       "y":  -835
+                                   },
+                                   {
+                                       "x":  -1228,
+                                       "y":  -838
+                                   },
+                                   {
+                                       "x":  -1235,
+                                       "y":  -841
+                                   },
+                                   {
+                                       "x":  -1242,
+                                       "y":  -845
+                                   },
+                                   {
+                                       "x":  -1250,
+                                       "y":  -848
+                                   },
+                                   {
+                                       "x":  -1257,
+                                       "y":  -852
+                                   },
+                                   {
+                                       "x":  -1264,
+                                       "y":  -857
+                                   },
+                                   {
+                                       "x":  -1272,
+                                       "y":  -859
+                                   },
+                                   {
+                                       "x":  -1280,
+                                       "y":  -860
+                                   },
+                                   {
+                                       "x":  -1286,
+                                       "y":  -868
+                                   },
+                                   {
+                                       "x":  -1293,
+                                       "y":  -875
+                                   },
+                                   {
+                                       "x":  -1297,
+                                       "y":  -884
+                                   },
+                                   {
+                                       "x":  -1303,
+                                       "y":  -892
+                                   },
+                                   {
+                                       "x":  -1311,
+                                       "y":  -897
+                                   },
+                                   {
+                                       "x":  -1318,
+                                       "y":  -904
+                                   },
+                                   {
+                                       "x":  -1325,
+                                       "y":  -911
+                                   },
+                                   {
+                                       "x":  -1330,
+                                       "y":  -920
+                                   },
+                                   {
+                                       "x":  -1329,
+                                       "y":  -930
+                                   },
+                                   {
+                                       "x":  -1331,
+                                       "y":  -940
+                                   },
+                                   {
+                                       "x":  -1337,
+                                       "y":  -948
+                                   },
+                                   {
+                                       "x":  -1344,
+                                       "y":  -956
+                                   },
+                                   {
+                                       "x":  -1350,
+                                       "y":  -963
+                                   },
+                                   {
+                                       "x":  -1354,
+                                       "y":  -972
+                                   },
+                                   {
+                                       "x":  -1358,
+                                       "y":  -981
+                                   },
+                                   {
+                                       "x":  -1360,
+                                       "y":  -990
+                                   },
+                                   {
+                                       "x":  -1365,
+                                       "y":  -1000
+                                   },
+                                   {
+                                       "x":  -1372,
+                                       "y":  -1008
+                                   },
+                                   {
+                                       "x":  -1373,
+                                       "y":  -1019
+                                   },
+                                   {
+                                       "x":  -1374,
+                                       "y":  -1029
+                                   },
+                                   {
+                                       "x":  -1375,
+                                       "y":  -1040
+                                   },
+                                   {
+                                       "x":  -1378,
+                                       "y":  -1050
+                                   },
+                                   {
+                                       "x":  -1374,
+                                       "y":  -1060
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "earea0",
+                       "kind":  "hills",
+                       "closed":  true,
+                       "straight":  false,
+                       "name":  "The Spine",
+                       "side":  1,
+                       "impassable":  false,
+                       "notes":  "",
+                       "hidden":  true,
+                       "pts":  [
+                                   {
+                                       "x":  -1210,
+                                       "y":  -1160
+                                   },
+                                   {
+                                       "x":  -1185,
+                                       "y":  -1166
+                                   },
+                                   {
+                                       "x":  -1165,
+                                       "y":  -1181
+                                   },
+                                   {
+                                       "x":  -1145,
+                                       "y":  -1165
+                                   },
+                                   {
+                                       "x":  -1120,
+                                       "y":  -1160
+                                   },
+                                   {
+                                       "x":  -1092,
+                                       "y":  -1159
+                                   },
+                                   {
+                                       "x":  -1068,
+                                       "y":  -1175
+                                   },
+                                   {
+                                       "x":  -1046,
+                                       "y":  -1158
+                                   },
+                                   {
+                                       "x":  -1020,
+                                       "y":  -1150
+                                   },
+                                   {
+                                       "x":  -993,
+                                       "y":  -1156
+                                   },
+                                   {
+                                       "x":  -967,
+                                       "y":  -1145
+                                   },
+                                   {
+                                       "x":  -944,
+                                       "y":  -1131
+                                   },
+                                   {
+                                       "x":  -920,
+                                       "y":  -1120
+                                   },
+                                   {
+                                       "x":  -916,
+                                       "y":  -1108
+                                   },
+                                   {
+                                       "x":  -910,
+                                       "y":  -1096
+                                   },
+                                   {
+                                       "x":  -899,
+                                       "y":  -1090
+                                   },
+                                   {
+                                       "x":  -890,
+                                       "y":  -1080
+                                   },
+                                   {
+                                       "x":  -905,
+                                       "y":  -1076
+                                   },
+                                   {
+                                       "x":  -920,
+                                       "y":  -1078
+                                   },
+                                   {
+                                       "x":  -935,
+                                       "y":  -1073
+                                   },
+                                   {
+                                       "x":  -950,
+                                       "y":  -1070
+                                   },
+                                   {
+                                       "x":  -970,
+                                       "y":  -1084
+                                   },
+                                   {
+                                       "x":  -991,
+                                       "y":  -1096
+                                   },
+                                   {
+                                       "x":  -1015,
+                                       "y":  -1087
+                                   },
+                                   {
+                                       "x":  -1040,
+                                       "y":  -1090
+                                   },
+                                   {
+                                       "x":  -1070,
+                                       "y":  -1086
+                                   },
+                                   {
+                                       "x":  -1093,
+                                       "y":  -1066
+                                   },
+                                   {
+                                       "x":  -1113,
+                                       "y":  -1088
+                                   },
+                                   {
+                                       "x":  -1140,
+                                       "y":  -1100
+                                   },
+                                   {
+                                       "x":  -1154,
+                                       "y":  -1114
+                                   },
+                                   {
+                                       "x":  -1172,
+                                       "y":  -1124
+                                   },
+                                   {
+                                       "x":  -1192,
+                                       "y":  -1120
+                                   },
+                                   {
+                                       "x":  -1210,
+                                       "y":  -1110
+                                   },
+                                   {
+                                       "x":  -1207,
+                                       "y":  -1124
+                                   },
+                                   {
+                                       "x":  -1198,
+                                       "y":  -1135
+                                   },
+                                   {
+                                       "x":  -1202,
+                                       "y":  -1148
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "earea1",
+                       "kind":  "wood",
+                       "closed":  true,
+                       "straight":  false,
+                       "name":  "Haldwood",
+                       "side":  1,
+                       "impassable":  false,
+                       "notes":  "",
+                       "hidden":  true,
+                       "pts":  [
+                                   {
+                                       "x":  -1340,
+                                       "y":  -1080
+                                   },
+                                   {
+                                       "x":  -1322,
+                                       "y":  -1085
+                                   },
+                                   {
+                                       "x":  -1304,
+                                       "y":  -1080
+                                   },
+                                   {
+                                       "x":  -1286,
+                                       "y":  -1080
+                                   },
+                                   {
+                                       "x":  -1270,
+                                       "y":  -1090
+                                   },
+                                   {
+                                       "x":  -1253,
+                                       "y":  -1084
+                                   },
+                                   {
+                                       "x":  -1238,
+                                       "y":  -1074
+                                   },
+                                   {
+                                       "x":  -1232,
+                                       "y":  -1057
+                                   },
+                                   {
+                                       "x":  -1230,
+                                       "y":  -1040
+                                   },
+                                   {
+                                       "x":  -1236,
+                                       "y":  -1024
+                                   },
+                                   {
+                                       "x":  -1250,
+                                       "y":  -1015
+                                   },
+                                   {
+                                       "x":  -1257,
+                                       "y":  -1000
+                                   },
+                                   {
+                                       "x":  -1270,
+                                       "y":  -990
+                                   },
+                                   {
+                                       "x":  -1286,
+                                       "y":  -990
+                                   },
+                                   {
+                                       "x":  -1300,
+                                       "y":  -998
+                                   },
+                                   {
+                                       "x":  -1315,
+                                       "y":  -998
+                                   },
+                                   {
+                                       "x":  -1330,
+                                       "y":  -1000
+                                   },
+                                   {
+                                       "x":  -1322,
+                                       "y":  -1020
+                                   },
+                                   {
+                                       "x":  -1326,
+                                       "y":  -1041
+                                   },
+                                   {
+                                       "x":  -1332,
+                                       "y":  -1061
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "earea2",
+                       "kind":  "wood",
+                       "closed":  true,
+                       "straight":  false,
+                       "name":  "Fennick Woods",
+                       "side":  1,
+                       "impassable":  false,
+                       "notes":  "",
+                       "hidden":  true,
+                       "pts":  [
+                                   {
+                                       "x":  -920,
+                                       "y":  -1170
+                                   },
+                                   {
+                                       "x":  -904,
+                                       "y":  -1179
+                                   },
+                                   {
+                                       "x":  -885,
+                                       "y":  -1178
+                                   },
+                                   {
+                                       "x":  -868,
+                                       "y":  -1180
+                                   },
+                                   {
+                                       "x":  -850,
+                                       "y":  -1180
+                                   },
+                                   {
+                                       "x":  -839,
+                                       "y":  -1165
+                                   },
+                                   {
+                                       "x":  -826,
+                                       "y":  -1152
+                                   },
+                                   {
+                                       "x":  -821,
+                                       "y":  -1134
+                                   },
+                                   {
+                                       "x":  -810,
+                                       "y":  -1120
+                                   },
+                                   {
+                                       "x":  -814,
+                                       "y":  -1106
+                                   },
+                                   {
+                                       "x":  -822,
+                                       "y":  -1093
+                                   },
+                                   {
+                                       "x":  -828,
+                                       "y":  -1079
+                                   },
+                                   {
+                                       "x":  -840,
+                                       "y":  -1070
+                                   },
+                                   {
+                                       "x":  -848,
+                                       "y":  -1083
+                                   },
+                                   {
+                                       "x":  -861,
+                                       "y":  -1089
+                                   },
+                                   {
+                                       "x":  -876,
+                                       "y":  -1089
+                                   },
+                                   {
+                                       "x":  -890,
+                                       "y":  -1090
+                                   },
+                                   {
+                                       "x":  -892,
+                                       "y":  -1112
+                                   },
+                                   {
+                                       "x":  -903,
+                                       "y":  -1131
+                                   },
+                                   {
+                                       "x":  -916,
+                                       "y":  -1148
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "earea3",
+                       "kind":  "marsh",
+                       "closed":  true,
+                       "straight":  false,
+                       "name":  "The Sedge",
+                       "side":  1,
+                       "impassable":  false,
+                       "notes":  "",
+                       "hidden":  true,
+                       "pts":  [
+                                   {
+                                       "x":  -920,
+                                       "y":  -930
+                                   },
+                                   {
+                                       "x":  -907,
+                                       "y":  -936
+                                   },
+                                   {
+                                       "x":  -897,
+                                       "y":  -945
+                                   },
+                                   {
+                                       "x":  -883,
+                                       "y":  -947
+                                   },
+                                   {
+                                       "x":  -870,
+                                       "y":  -940
+                                   },
+                                   {
+                                       "x":  -859,
+                                       "y":  -930
+                                   },
+                                   {
+                                       "x":  -844,
+                                       "y":  -928
+                                   },
+                                   {
+                                       "x":  -844,
+                                       "y":  -914
+                                   },
+                                   {
+                                       "x":  -840,
+                                       "y":  -900
+                                   },
+                                   {
+                                       "x":  -844,
+                                       "y":  -891
+                                   },
+                                   {
+                                       "x":  -845,
+                                       "y":  -882
+                                   },
+                                   {
+                                       "x":  -852,
+                                       "y":  -876
+                                   },
+                                   {
+                                       "x":  -860,
+                                       "y":  -870
+                                   },
+                                   {
+                                       "x":  -871,
+                                       "y":  -860
+                                   },
+                                   {
+                                       "x":  -886,
+                                       "y":  -858
+                                   },
+                                   {
+                                       "x":  -895,
+                                       "y":  -870
+                                   },
+                                   {
+                                       "x":  -910,
+                                       "y":  -875
+                                   },
+                                   {
+                                       "x":  -920,
+                                       "y":  -887
+                                   },
+                                   {
+                                       "x":  -928,
+                                       "y":  -900
+                                   },
+                                   {
+                                       "x":  -923,
+                                       "y":  -915
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "eriv0",
+                       "kind":  "river",
+                       "closed":  false,
+                       "straight":  false,
+                       "name":  "The Ox",
+                       "side":  1,
+                       "impassable":  false,
+                       "notes":  "Navigable: river boats (rowboats, keelboats, longships) can come up from the sea to Oxley Ford.",
+                       "hidden":  true,
+                       "w0":  3,
+                       "w1":  6,
+                       "navigable":  true,
+                       "pts":  [
+                                   {
+                                       "x":  -1000,
+                                       "y":  -982
+                                   },
+                                   {
+                                       "x":  -991,
+                                       "y":  -972
+                                   },
+                                   {
+                                       "x":  -981,
+                                       "y":  -965
+                                   },
+                                   {
+                                       "x":  -971,
+                                       "y":  -957
+                                   },
+                                   {
+                                       "x":  -960,
+                                       "y":  -950
+                                   },
+                                   {
+                                       "x":  -953,
+                                       "y":  -941
+                                   },
+                                   {
+                                       "x":  -944,
+                                       "y":  -933
+                                   },
+                                   {
+                                       "x":  -937,
+                                       "y":  -924
+                                   },
+                                   {
+                                       "x":  -930,
+                                       "y":  -915
+                                   },
+                                   {
+                                       "x":  -916,
+                                       "y":  -909
+                                   },
+                                   {
+                                       "x":  -904,
+                                       "y":  -900
+                                   },
+                                   {
+                                       "x":  -891,
+                                       "y":  -892
+                                   },
+                                   {
+                                       "x":  -880,
+                                       "y":  -882
+                                   },
+                                   {
+                                       "x":  -868,
+                                       "y":  -870
+                                   },
+                                   {
+                                       "x":  -854,
+                                       "y":  -862
+                                   },
+                                   {
+                                       "x":  -841,
+                                       "y":  -851
+                                   },
+                                   {
+                                       "x":  -826,
+                                       "y":  -844
+                                   },
+                                   {
+                                       "x":  -817,
+                                       "y":  -836
+                                   },
+                                   {
+                                       "x":  -802,
+                                       "y":  -828
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "eriv1",
+                       "kind":  "river",
+                       "closed":  false,
+                       "straight":  false,
+                       "name":  "The Upper Ox",
+                       "side":  1,
+                       "impassable":  false,
+                       "notes":  "",
+                       "hidden":  true,
+                       "w0":  1.2,
+                       "w1":  3,
+                       "pts":  [
+                                   {
+                                       "x":  -1070,
+                                       "y":  -1102
+                                   },
+                                   {
+                                       "x":  -1065,
+                                       "y":  -1092
+                                   },
+                                   {
+                                       "x":  -1059,
+                                       "y":  -1082
+                                   },
+                                   {
+                                       "x":  -1056,
+                                       "y":  -1070
+                                   },
+                                   {
+                                       "x":  -1050,
+                                       "y":  -1060
+                                   },
+                                   {
+                                       "x":  -1040,
+                                       "y":  -1052
+                                   },
+                                   {
+                                       "x":  -1032,
+                                       "y":  -1042
+                                   },
+                                   {
+                                       "x":  -1025,
+                                       "y":  -1031
+                                   },
+                                   {
+                                       "x":  -1020,
+                                       "y":  -1020
+                                   },
+                                   {
+                                       "x":  -1014,
+                                       "y":  -1011
+                                   },
+                                   {
+                                       "x":  -1009,
+                                       "y":  -1002
+                                   },
+                                   {
+                                       "x":  -1003,
+                                       "y":  -993
+                                   },
+                                   {
+                                       "x":  -1000,
+                                       "y":  -982
+                                   }
+                               ]
+                   },
+                   {
+                       "id":  "eriv2",
+                       "kind":  "river",
+                       "closed":  false,
+                       "straight":  false,
+                       "name":  "Fenn Water",
+                       "side":  1,
+                       "impassable":  false,
+                       "notes":  "",
+                       "hidden":  true,
+                       "w0":  1,
+                       "w1":  2.5,
+                       "pts":  [
+                                   {
+                                       "x":  -940,
+                                       "y":  -1105
+                                   },
+                                   {
+                                       "x":  -932,
+                                       "y":  -1113
+                                   },
+                                   {
+                                       "x":  -922,
+                                       "y":  -1119
+                                   },
+                                   {
+                                       "x":  -911,
+                                       "y":  -1123
+                                   },
+                                   {
+                                       "x":  -900,
+                                       "y":  -1125
+                                   },
+                                   {
+                                       "x":  -893,
+                                       "y":  -1128
+                                   },
+                                   {
+                                       "x":  -885,
+                                       "y":  -1130
+                                   },
+                                   {
+                                       "x":  -878,
+                                       "y":  -1133
+                                   },
+                                   {
+                                       "x":  -870,
+                                       "y":  -1135
+                                   },
+                                   {
+                                       "x":  -864,
+                                       "y":  -1140
+                                   },
+                                   {
+                                       "x":  -857,
+                                       "y":  -1143
+                                   },
+                                   {
+                                       "x":  -850,
+                                       "y":  -1147
+                                   },
+                                   {
+                                       "x":  -844,
+                                       "y":  -1152
+                                   },
+                                   {
+                                       "x":  -836,
+                                       "y":  -1158
+                                   },
+                                   {
+                                       "x":  -828,
+                                       "y":  -1164
+                                   },
+                                   {
+                                       "x":  -818,
+                                       "y":  -1171
                                    }
                                ]
                    },

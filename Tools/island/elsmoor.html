@@ -1,0 +1,88 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const out = {}; const log = [];
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await new Promise(r=>setTimeout(r, 300));
+  /* Elsmoor (Joseph, 2026-10-16): an island about 125 miles north-west of Kalatecha with two port cities — Brackwater on
+     the south-east coast at the mouth of the Ox, facing Kalatecha, and Haldeport on the far north-west coast. Names and
+     notes are placeholders until we go over its story together */
+  const C = { x:-1040, y:-1010 };
+  const P = s => s.trim().split(/\s+/).map(t=>{ const [x, y] = t.split(',').map(Number); return { x:x + C.x, y:y + C.y }; });
+  const inside = (pt, poly) => { let c = false; for(let i=0, j=poly.length-1; i<poly.length; j=i++){ const a = poly[i], b = poly[j]; if(((a.y>pt.y)!==(b.y>pt.y)) && pt.x < (b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x) c = !c; } return c; };
+  const segD = (p, a, b) => { const dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy; let t = L ? ((p.x-a.x)*dx+(p.y-a.y)*dy)/L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy); };
+  const lineD = (p, poly, closed) => { let m = 1e9; const n = poly.length; for(let i=0; i<(closed?n:n-1); i++) m = Math.min(m, segD(p, poly[i], poly[(i+1)%n])); return m; };
+  let seed = 40417; const rnd = () => { seed = (seed*16807) % 2147483647; return (seed-1)/2147483646; };
+  const frac = (pts, depth, rough, keep) => { let r = pts.map(p=>({ ...p }));
+    for(let d=0; d<depth; d++){ const nx = []; for(let i=0;i<r.length;i++){ const a = r[i], b = r[(i+1)%r.length]; nx.push(a);
+        const mx = (a.x+b.x)/2, my = (a.y+b.y)/2, L = Math.hypot(b.x-a.x, b.y-a.y), near = (keep||[]).some(n=>Math.hypot(n.x-mx, n.y-my) < 40);
+        const amp = (rnd()*2-1) * L * rough * Math.pow(.6, d) * (near ? .12 : 1);
+        nx.push({ x:Math.round(mx - (b.y-a.y)/(L||1)*amp), y:Math.round(my + (b.x-a.x)/(L||1)*amp) }); }
+      r = nx; }
+    return r; };
+  /* a line (a river) roughened a little, its ends kept */
+  const wiggle = (pts, depth, rough) => { let r = pts.map(p=>({ ...p }));
+    for(let d=0; d<depth; d++){ const nx = [r[0]]; for(let i=1;i<r.length;i++){ const a = r[i-1], b = r[i], mx = (a.x+b.x)/2, my = (a.y+b.y)/2, L = Math.hypot(b.x-a.x, b.y-a.y), amp = (rnd()*2-1) * L * rough * Math.pow(.6, d);
+        nx.push({ x:Math.round(mx - (b.y-a.y)/(L||1)*amp), y:Math.round(my + (b.x-a.x)/(L||1)*amp) }, b); } r = nx; }
+    return r; };
+  /* the places (relative to the middle of the island) */
+  const PL = [
+    ["ebrack", "Brackwater", "city", 214, 152, true, "A walled merchant city at the mouth of the Ox, on the island's south-east coast, facing Kalatecha across about 120 miles of sea. Its story, people and buildings are still to be worked out."],
+    ["ehald", "Haldeport", "city", -290, -128, true, "A grey harbour city on the north-west coast, the last port before open, uncharted ocean. Its story, people and buildings are still to be worked out."],
+    ["eoxley", "Oxley Ford", "town", 40, 28, false, "A market town where the road crosses the Ox; river boats come up from Brackwater this far and no further."],
+    ["efenn", "Fennick", "village", 196, -132, true, "A fishing village at the mouth of Fenn Water, on the north-east shore."],
+    ["ekettle", "Kettle Cove", "village", -178, 150, true, "A fishing village in a deep cove on the south-west coast. Its boats go out at odd hours."],
+    ["egrey", "Greystones", "village", -132, 44, false, "A moorland village of drystone walls and sheep, under the standing stones it's named for."],
+    ["emid", "The Midway Inn", "post", -88, -18, false, "A coaching inn half way between the two cities, where the moor road meets the road to Greystones."],
+    ["etor", "The Pale Tor", "ruin", -20, -104, false, "A tumble of white stones on the highest point of the Spine. Some say it was a watchtower; some say it was something else."]
+  ];
+  const nodes = PL.map(([id, name, kind, x, y, port, notes])=>({ id, name, kind, x:x + C.x, y:y + C.y, port, notes }));
+  const keep = nodes.filter(n=>n.port);
+  const ISLE = frac(P("-330,-60 -300,-150 -240,-190 -150,-200 -60,-215 30,-200 120,-210 200,-170 250,-120 290,-40 300,40 280,110 250,160 210,190 140,210 60,200 -20,215 -100,190 -180,175 -240,150 -290,90 -320,20"), 3, .28, keep);
+  const AREAS = [
+    ["hills", "The Spine", "-170,-150 -80,-150 20,-140 120,-110 150,-70 90,-60 0,-80 -100,-90 -170,-100"],
+    ["wood", "Haldwood", "-300,-70 -230,-80 -190,-30 -230,20 -290,10"],
+    ["wood", "Fennick Woods", "120,-160 190,-170 230,-110 200,-60 150,-80"],
+    ["marsh", "The Sedge", "120,80 170,70 200,110 180,140 130,135"]
+  ].map(([kind, name, s])=>({ kind, name, pts:frac(P(s), 2, .3) }));
+  /* the rivers: [name, points from the head to the mouth, navigable, head width, mouth width] */
+  const RV = [
+    ["The Ox", "40,28 80,60 110,95 160,128 214,166 252,196", true, 3, 6],
+    ["The Upper Ox", "-30,-92 -10,-50 20,-10 40,28", false, 1.2, 3],
+    ["Fenn Water", "100,-95 140,-115 170,-125 196,-142 226,-168", false, 1, 2.5]
+  ].map(([name, s, nav, w0, w1])=>({ name, pts:wiggle(P(s), 2, .12), navigable:nav, w0, w1 }));
+  /* a river that reaches the sea ends a mile past the coast, enough for boats to come in from the sea */
+  const coast0 = samplePath(ISLE, true, 6, false);
+  for(const v of RV){ const i = v.pts.findIndex(p=>!inside(p, coast0)); if(i < 1) continue;
+    const a = v.pts[i-1], b = v.pts[i], L = Math.hypot(b.x-a.x, b.y-a.y) || 1; let lo = 0, hi = 1;
+    for(let k=0; k<20; k++){ const m = (lo+hi)/2; if(inside({ x:a.x + (b.x-a.x)*m, y:a.y + (b.y-a.y)*m }, coast0)) lo = m; else hi = m; }
+    const cx = a.x + (b.x-a.x)*hi, cy = a.y + (b.y-a.y)*hi;
+    v.pts = [...v.pts.slice(0, i), { x:Math.round(cx + (b.x-a.x)/L*10), y:Math.round(cy + (b.y-a.y)/L*10) }]; }
+  /* the roads: [from, to, bends, quality 1-10, danger] */
+  const RD = [
+    ["ebrack", "eoxley", "130,110", 8, ""], ["eoxley", "emid", "-20,10", 7, ""], ["emid", "ehald", "-180,-76", 7, ""],
+    ["emid", "egrey", "-110,14", 4, ""], ["egrey", "ekettle", "-160,100", 3, ""], ["eoxley", "efenn", "110,-40 160,-100", 4, ""],
+    ["emid", "etor", "-50,-60", 2, "dangerous"], ["ebrack", "ekettle", "90,165 -40,168", 5, ""]
+  ];
+  const byId = Object.fromEntries(nodes.map(n=>[n.id, n]));
+  const roads = RD.map(([a, b, bends, q, dg], i)=>({ id:"er" + i, from:a, to:b, pts:P(bends), quality:q, danger:dg }));
+  /* checks */
+  const coast = samplePath(ISLE, true, 6, false);
+  for(const n of nodes){ const on = inside(n, coast), d = lineD(n, coast, true)/10;
+    if(!on) log.push("IN THE SEA " + n.name); else log.push(n.name + " " + d.toFixed(1) + " mi from the coast" + (n.port && d > 3 ? " (TOO FAR FOR A PORT)" : "") + (!n.port && d < 2 ? " (VERY NEAR THE COAST)" : "")); }
+  for(const r of roads){ const sm = samplePath([byId[r.from], ...r.pts, byId[r.to]], false, 10, false);
+    const wet = sm.filter(p=>!inside(p, coast)).length; r.miles = Math.round(polyLength(sm)/10*10)/10;
+    log.push("road " + byId[r.from].name + " - " + byId[r.to].name + ": " + r.miles + " mi" + (wet ? " OFF THE ISLAND " + wet : "")); }
+  for(const a of AREAS){ const off = a.pts.filter(p=>!inside(p, coast)).length; if(off) log.push("AREA OFF THE ISLAND " + a.name + " " + off); }
+  for(const v of RV){ const off = v.pts.slice(0, -1).filter(p=>!inside(p, coast)).length, end = v.pts[v.pts.length-1];
+    log.push("river " + v.name + ": " + Math.round(polyLength(v.pts)/10) + " mi" + (off ? " OFF THE ISLAND " + off : "") + ", mouth " + (lineD(end, coast, true)/10).toFixed(1) + " mi from the coast"); }
+  const kal = root.shapes.find(s=>s.id==="cisle"), kr = samplePath(kal.pts, true, 2, false);
+  log.push("nearest Kalatecha coast " + Math.round(Math.min(...ISLE.map(p=>lineD(p, kr, true)))/10) + " mi; island middle " + Math.round(Math.hypot(C.x, C.y)/10) + " mi from Kalatecha city; Brackwater " + Math.round(Math.hypot(byId.ebrack.x, byId.ebrack.y)/10) + " mi, Haldeport " + Math.round(Math.hypot(byId.ehald.x, byId.ehald.y)/10) + " mi");
+  let a2 = 0; for(let i=0;i<ISLE.length;i++){ const p = ISLE[i], q = ISLE[(i+1)%ISLE.length]; a2 += p.x*q.y - q.x*p.y; }
+  const xs = ISLE.map(p=>p.x), ys = ISLE.map(p=>p.y);
+  log.push("area " + Math.round(Math.abs(a2)/2/100) + " sq mi, " + Math.round((Math.max(...xs)-Math.min(...xs))/10) + " x " + Math.round((Math.max(...ys)-Math.min(...ys))/10) + " mi");
+  const str = pts => pts.map(p=>p.x+","+p.y).join(" ");
+  out.isle = str(ISLE); out.areas = AREAS.map(a=>({ kind:a.kind, name:a.name, pts:str(a.pts) })); out.rivers = RV.map(v=>({ ...v, pts:str(v.pts) })); out.nodes = nodes;
+  out.roads = roads.map(r=>({ ...r, pts:r.pts.map(p=>({ x:p.x, y:p.y })) })); out.log = log;
+ }catch(e){ out.err = e.message + ' ' + (e.stack||'').split('\n')[1]; }
+ const pre = document.createElement('pre'); pre.id = 'OUT'; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
+ document.title = 'RES done';
+},1500);</script>
+</body>

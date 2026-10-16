@@ -2940,7 +2940,7 @@ function seaGrid(a, b, river){
   const cell = p => ({ c:Math.max(0, Math.min(W-1, Math.floor((p.x-x0)/cs))), r:Math.max(0, Math.min(H-1, Math.floor((p.y-y0)/cs))) });
   /* the nearest open water to a port (it may stand a little inland of the drawn coast) */
   const open = p => { const { c, r } = cell(p); if(!block[r*W+c]) return r*W+c; let best = -1, bd = Infinity;
-    for(let dr=-12; dr<=12; dr++) for(let dc=-12; dc<=12; dc++){ const rr = r+dr, cc = c+dc; if(rr<0 || rr>=H || cc<0 || cc>=W || block[rr*W+cc]) continue; const d = dr*dr+dc*dc; if(d < bd){ bd = d; best = rr*W+cc; } }
+    for(let dr=-7; dr<=7; dr++) for(let dc=-7; dc<=7; dc++){ const rr = r+dr, cc = c+dc; if(rr<0 || rr>=H || cc<0 || cc>=W || block[rr*W+cc]) continue; const d = dr*dr+dc*dc; if(d <= 49 && d < bd){ bd = d; best = rr*W+cc; } }
     return best; };
   return { x0, y0, cs, W, H, block, open, any:used.length > 0 };
 }
