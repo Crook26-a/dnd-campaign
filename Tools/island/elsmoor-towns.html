@@ -1,0 +1,184 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const out = {}; const log = [];
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await new Promise(r=>setTimeout(r, 300));
+  /* Town plans for Elsmoor's two port cities (Joseph, 2026-10-16: "give them town plans, including docks; we're setting up
+     so we can do the shipping"). No pictures: laid out for their places on the island. Each harbour has open berths
+     (ship markers with berth "open") along its quays for visiting ships. Names and notes are placeholders until the
+     town story pass. Plans are at 5 px to the yard, north up, like Saltmere's and Dunmarrow's */
+  const P = s => s.trim().split(/\s+/).map(t=>{ const [x, y] = t.split(',').map(Number); return { x, y }; });
+  const S = pts => pts.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`).join(" ");
+  const inside = (pt, poly) => { let c = false; for(let i=0, j=poly.length-1; i<poly.length; j=i++){ const a = poly[i], b = poly[j]; if(((a.y>pt.y)!==(b.y>pt.y)) && pt.x < (b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x) c = !c; } return c; };
+  const segD = (p, a, b) => { const dx = b.x-a.x, dy = b.y-a.y, L = dx*dx+dy*dy; let t = L ? ((p.x-a.x)*dx+(p.y-a.y)*dy)/L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy); };
+  /* a river: its centre line and, at any point, how wide it is and which way is "left" of the flow */
+  const riverOf = (pts, w0, w1) => { const sm = samplePath(pts, false, 14, false), n = sm.length;
+    return { sm, w0, w1, at:f => { const i = Math.max(1, Math.min(n-1, Math.round(f*(n-1)))), a = sm[i-1], b = sm[i], L = Math.hypot(b.x-a.x, b.y-a.y)||1, p = sm[Math.round(f*(n-1))];
+      return { x:p.x, y:p.y, half:(w0 + (w1-w0)*f)/2, lx:(b.y-a.y)/L, ly:-(b.x-a.x)/L, ang:Math.atan2(b.y-a.y, b.x-a.x)*180/Math.PI }; } }; };
+  /* a line along the river, so far off its bank (+ to the left of the flow, - to the right), from f0 to f1 */
+  const bankLine = (R, f0, f1, off, n) => Array.from({ length:n }, (_, k)=>{ const q = R.at(f0 + (f1-f0)*k/(n-1)), d = Math.sign(off)*(q.half + Math.abs(off)); return { x:q.x + q.lx*d, y:q.y + q.ly*d }; });
+  const wetIn = (p, W) => W.polys.some(poly=>inside(p, poly)) || W.rivers.some(R=>{ let m = 1e9, at = 0; for(let i=1;i<R.sm.length;i++){ const d = segD(p, R.sm[i-1], R.sm[i]); if(d < m){ m = d; at = i/(R.sm.length-1); } } return m < (R.w0 + (R.w1-R.w0)*at)/2; });
+  const SVC = ["inn","store","provision","smith","apothecary","market","temple","healer","reeve","stable","fence","office","archive","trainer"];
+  const plan = (of, title, regions, roofs, notes) => ({ format:"ordinate-plan-v1", of, title, ppm:5, unit:"yd", compass:8, regions, nodes:[], roads:[], shapes:[], roofs, sited:{}, place:{ notes } });
+  const shp = (pl, id, kind, name, pts, closed, straight, notes, extra) => pl.shapes.push({ id, kind, closed:!!closed, straight:!!straight, name, side:1, impassable:kind==="wall" || kind==="impasse", notes:notes||"", pts:typeof pts==="string" ? P(pts) : pts.map(p=>({ x:Math.round(p.x), y:Math.round(p.y) })), ...(extra||{}) });
+  const bld = (pl, id, name, kind, x, y, w, d, rot, region, notes, extra) => { const services = {}; if(SVC.includes(kind)) services[kind] = 1; if(kind==="coachhouse"){ services.coach = 1; services.stable = 1; }
+    if(services.coach) pl.sited.coach = 1; for(const k of Object.keys(services)) pl.sited[k] = 1;
+    pl.nodes.push({ id, name, kind, region, level:1, origin:false, seat:false, services, notes:notes||"", x:Math.round(x), y:Math.round(y), w, d, rot:Math.round(rot||0), ...(extra||{}) }); };
+  const berth = (pl, id, name, x, y, rot, region) => bld(pl, id, name, "ship", x, y, 26, 8, rot, region, "A berth for any ship that comes in: the first in port without a berth of her own here ties up.", { berth:"open" });
+  /* ── the checks: buildings on dry land, berths and boats in the water, piers from the shore into it, streets out of the sea ── */
+  const check = (pl, W) => {
+    const wetKinds = new Set(["ship","boat"]), shore = new Set(["light","tower","gate"]);
+    for(const n of pl.nodes){ const wet = wetIn(n, W);
+      if(wetKinds.has(n.kind) && !wet) log.push(`${pl.title}: ${n.name||n.kind} (${n.id}) ON LAND`);
+      if(!wetKinds.has(n.kind) && wet && !shore.has(n.kind)) log.push(`${pl.title}: ${n.name||n.kind} (${n.id}) IN THE WATER`); }
+    for(const s of pl.shapes){
+      if(s.kind==="pier"){ const a = s.pts[0], b = s.pts[s.pts.length-1]; if(wetIn(a, W)) log.push(`${pl.title}: pier ${s.name} starts in the water`); if(!wetIn(b, W)) log.push(`${pl.title}: pier ${s.name} ends on land`); }
+      if(["street","lane","alley"].includes(s.kind)){ const sm = samplePath(s.pts, false, 12, s.straight), wet = sm.filter(p=>wetIn(p, W)).length; if(wet > (s.name==="Ox Bridge" ? 99 : 1)) log.push(`${pl.title}: ${s.kind} ${s.name} ${wet} points in the water`); }
+      if(s.kind==="zone"){ let n = 0, w = 0; const xs = s.pts.map(p=>p.x), ys = s.pts.map(p=>p.y);
+        for(let x=Math.min(...xs); x<Math.max(...xs); x+=40) for(let y=Math.min(...ys); y<Math.max(...ys); y+=40) if(inside({ x, y }, s.pts)){ n++; if(wetIn({ x, y }, W)) w++; }
+        log.push(`${pl.title}: zone ${s.name} ${Math.round(100*w/Math.max(1, n))}% water`); } }
+    const big = pl.nodes.filter(n=>!["well","statue"].includes(n.kind));
+    for(let i=0; i<big.length; i++) for(let j=i+1; j<big.length; j++){ const a = big[i], b = big[j], ra = Math.min(a.w, a.d)*2.5, rb = Math.min(b.w, b.d)*2.5;
+      if(Math.hypot(a.x-b.x, a.y-b.y) < ra + rb) log.push(`${pl.title}: ${a.name||a.kind} and ${b.name||b.kind} OVERLAP`); }
+    log.push(`${pl.title}: ${pl.nodes.length} markers (${pl.nodes.filter(n=>n.berth==="open").length} open berths), ${pl.shapes.length} shapes; trades ${Object.keys(pl.sited).join(", ")}`);
+  };
+
+  /* ══ BRACKWATER: the merchant city at the mouth of the Ox, facing Kalatecha. The sea lies south-east; the river comes
+     from the north-west (Oxley Ford) and widens into the estuary; the walled Guild Town and its wharves on the north bank,
+     the Pool (a walled basin) at the mouth, Southbank's shipyards across the Ox Bridge, the coast road west to Kettle Cove ══ */
+  const B = plan("ebrack", "Brackwater", [
+      { id:"b1", name:"The Wharves", threat:1, hex:"#3f6a78", notes:"The Long Wharf, the Pool and its quays: every ship that trades with Elsmoor comes in here." },
+      { id:"b2", name:"Guild Town", threat:1, hex:"#8f5a3c", notes:"Inside the walls: brick and tile, the Exchange, the merchant houses, the Lantern Church." },
+      { id:"b3", name:"Southbank", threat:2, hex:"#6a6250", notes:"Across the Ox Bridge: the yards, the slips, the tide mill and the rougher taverns." },
+      { id:"b4", name:"Outside the Walls", threat:2, hex:"#5e7a4e", notes:"The West Gate road to Oxley Ford, the coach house, and the edge of the Sedge." } ],
+    { tile:.55, slate:.35, timber:.1 },
+    "Town plan laid out 2026-10-16 (no picture): the walled Guild Town and the Long Wharf on the north bank of the Ox, the Pool at the river mouth with its quays, piers and mole, Southbank's shipyards across the Ox Bridge. Brick and tile. Its story, people and buildings are placeholders until we go over them.");
+  const ox = riverOf(P("-400,420 200,620 700,830 1200,1080 1650,1290 2050,1410 2550,1560"), 120, 240);
+  const seaB = P("3600,-300 3300,300 3000,700 2760,1080 2620,1380 2460,1560 2300,1760 2100,2120 1800,2520 1500,2920 1200,3400 4600,3400 4600,-300");
+  const poolB = P("2100,1150 2440,1040 2700,1120 2640,1330 2420,1420 2160,1360");
+  shp(B, "bsea", "water", "Brackwater Roads", seaB, true, false, "The sheltered water off the Ox mouth where ships wait for the tide.");
+  shp(B, "bpool", "water", "The Pool", poolB, true, false, "The walled basin at the river mouth, deep at every tide: Brackwater's harbour.");
+  shp(B, "box", "river", "The Ox", ox.sm.filter((_, i)=>i % 3 === 0 || i === ox.sm.length-1), false, false, "The Ox, broad and brown, navigable up to Oxley Ford.", { w0:120, w1:240 });
+  shp(B, "bstrand", "beach", "The Strand", "2300,1760 2100,2120 1800,2520 1500,2920 1420,2900 1720,2500 2020,2100 2220,1740", true, false, "Mud and shingle running south-west.");
+  shp(B, "bwharf", "street", "The Long Wharf", bankLine(ox, .5, .79, 34, 8), false, false, "The stone wharf along the north bank: bales, barrels and cranes.", { w:55 });
+  shp(B, "bkquay", "street", "Kalatecha Quay", "2080,1100 2420,990 2720,1060", false, false, "The quay along the Pool's north side, where the ships from Kalatecha tie up.", { w:50 });
+  shp(B, "bsalt", "pier", "Salt Pier", "2250,1080 2300,1250", false, false, "A stone pier into the Pool.", { w:30, stone:true });
+  shp(B, "bwool", "pier", "Wool Pier", "2470,1000 2500,1200", false, false, "A stone pier into the Pool.", { w:30, stone:true });
+  shp(B, "bmole", "pier", "The Mole", "2760,1000 2860,1180 2760,1330", false, false, "The breakwater sheltering the Pool's mouth, its light at the end.", { w:40, stone:true });
+  const brN = ox.at(.47), brS = { x:brN.x - brN.lx*(brN.half + 60), y:brN.y - brN.ly*(brN.half + 60) }, brNb = { x:brN.x + brN.lx*(brN.half + 60), y:brN.y + brN.ly*(brN.half + 60) };
+  shp(B, "bbridge", "street", "Ox Bridge", [brNb, brS], false, true, "A stone bridge of seven arches, with a toll-house at its north end.", { w:34 });
+  shp(B, "bguild", "street", "Guild Street", "965,800 1400,790 1900,850 2300,920", false, false, "The main street through Guild Town, from the West Gate to the Pool.", { w:40 });
+  shp(B, "bmkt", "street", "Market Street", `${Math.round(ox.at(.7).x + ox.at(.7).lx*(ox.at(.7).half+40))},${Math.round(ox.at(.7).y + ox.at(.7).ly*(ox.at(.7).half+40))} 1660,800 1620,450`, false, false, "", { w:34 });
+  shp(B, "bbridgest", "street", "Bridge Street", `${Math.round(brNb.x)},${Math.round(brNb.y)} 1250,800`, false, false, "", { w:34 });
+  shp(B, "bcooper", "lane", "Coopers' Lane", "2000,1220 2050,870", false, false, "", { w:22 });
+  shp(B, "bchand", "lane", "Chandlers' Row", "2150,1000 2250,700 2380,600", false, false, "", { w:22 });
+  shp(B, "btanner", "lane", "Tanners' Lane", "1100,930 1180,520", false, false, "", { w:22 });
+  shp(B, "bhigh", "lane", "High Walk", "1180,520 1620,450 2100,480", false, false, "", { w:22 });
+  shp(B, "bsouth", "street", "The South Road", `${Math.round(brS.x)},${Math.round(brS.y)} 1150,1700 850,2200 350,2750 -400,3200`, false, false, "South-west along the coast to Kettle Cove.", { w:34 });
+  shp(B, "bslip", "lane", "Slip Lane", `${Math.round(brS.x)},${Math.round(brS.y)} 1700,1520 2100,1640`, false, false, "", { w:24 });
+  shp(B, "bwest", "street", "The Oxley Road", "965,800 600,600 100,450 -500,300", false, false, "North-west along the river to Oxley Ford.", { w:34 });
+  shp(B, "bwharfmkt", "market", "Wharf Market", "1380,900 1620,940 1600,1030 1360,990", true, true, "Wool, grain and timber down the Ox; wine, spice and cloth off the ships.");
+  shp(B, "bsquare", "square", "Exchange Square", "1530,600 1790,600 1790,760 1530,760", true, true, "The paved square before the Exchange.");
+  shp(B, "bslips", "yard", "The Slips", "1650,1560 2100,1680 2060,1860 1620,1760", true, true, "Two ships on the stocks and one in frame.");
+  shp(B, "bwall1", "wall", "The Town Wall", "1000,960 965,840", false, true, "Brick walls with stone towers.");
+  shp(B, "bwall2", "wall", "", "965,760 950,600 1200,300 1700,200 2200,350 2450,700 2480,950", false, true, "");
+  shp(B, "bgrave", "graveyard", "Churchyard", "1880,560 2050,560 2050,700 1880,700", true, true, "");
+  shp(B, "zbguild", "zone", "Guild Town", "1000,930 990,620 1220,330 1700,240 2180,380 2420,710 2440,960 2060,1060 1700,1000 1300,920", true, false, "", { density:"city" });
+  shp(B, "zbsouth", "zone", "Southbank", `${Math.round(brS.x - 80)},${Math.round(brS.y + 40)} 1600,1480 2200,1640 2150,1950 1400,2050 1000,1750`, true, false, "", { density:"town" });
+  shp(B, "zbwest", "zone", "Outside the West Gate", "420,420 940,560 950,820 640,760 430,620", true, false, "", { density:"village" });
+  /* the berths: three in the Pool, two along the Long Wharf in the river */
+  berth(B, "bb1", "Pool Berth 1", 2230, 1300, 70, "b1"); berth(B, "bb2", "Pool Berth 2", 2390, 1250, 72, "b1"); berth(B, "bb3", "Pool Berth 3", 2560, 1220, 68, "b1");
+  for(const [id, f, k] of [["bb4", .74, 1], ["bb5", .84, 2]]){ const q = ox.at(f), d = q.half - 30; berth(B, id, `Wharf Berth ${k}`, q.x + q.lx*d, q.y + q.ly*d, q.ang, "b1"); }
+  bld(B, "bboat1", "", "boat", 1900, 1440, 5, 2, 20, "b1"); bld(B, "bboat2", "", "boat", 2400, 1360, 5, 2, -30, "b1");
+  bld(B, "bxch", "The Exchange", "hall", 1660, 520, 40, 26, 0, "b2", "A great brick hall with a clock: the council of merchant houses that rules Brackwater meets here, and every cargo is priced on its floor.");
+  bld(B, "bbell", "The Exchange Clock", "tower", 1525, 440, 8, 8, 0, "b2", "");
+  bld(B, "bharb", "The Harbour Office", "reeve", 2300, 960, 22, 13, -18, "b1", "Harbour dues, ships' papers and the watch. The cells are underneath.");
+  bld(B, "bcount", "The Counting House", "archive", 1450, 640, 16, 11, 0, "b2", "Ledgers of every cargo in or out for two hundred years, and the island's charts.");
+  bld(B, "bfactor", "The Factors' Hall", "office", 1880, 800, 20, 12, 3, "b2", "Where captains and merchants sign contracts, and crews are hired.");
+  bld(B, "bchurch", "The Lantern Church", "temple", 1960, 630, 30, 18, 0, "b2", "A tall brick church whose lantern tower is lit for ships coming in after dark.");
+  bld(B, "binfirm", "The Pool Infirmary", "healer", 2150, 820, 20, 12, -10, "b2", "Healers for sailors and dockhands.");
+  bld(B, "beel", "The Brackish Eel", "inn", 1660, 1060, 16, 11, 25, "b1", "A crowded tavern on the Long Wharf: eel pie, cheap rum, and news from every port.");
+  bld(B, "bbale", "The Golden Bale", "inn", 1320, 720, 20, 12, 0, "b2", "A merchants' inn with good beds and a better cellar.");
+  bld(B, "bchandl", "Harbour Chandlery", "store", 2560, 980, 15, 10, -10, "b1", "Rope, canvas, pitch, lanterns and charts.");
+  bld(B, "blarder", "The Ship's Larder", "provision", 2150, 1080, 13, 9, -15, "b1", "Victuals for the voyage, by the barrel.");
+  bld(B, "bforge", "The Ox Forge", "smith", 1500, 1640, 12, 9, 15, "b3", "Anchors, chain and ship's iron.");
+  bld(B, "bbottle", "The Green Bottle", "apothecary", 1250, 600, 8, 7, 0, "b2", "Physic and dyes.");
+  bld(B, "bmkthall", "The Cloth Hall", "market", 1480, 960, 16, 10, 10, "b1", "The covered market on the wharf.");
+  bld(B, "bfence", "The Sedge Door", "fence", 1200, 1900, 7, 5, 0, "b3", "A reed-cutter's hut at the edge of the Sedge, for goods that never saw the Harbour Office.");
+  bld(B, "byards", "Brackwater Yards", "shipwright", 1850, 1700, 34, 18, 15, "b3", "The yards that build Elsmoor's ships.");
+  bld(B, "bmill", "The Tide Mill", "house", 1350, 1430, 14, 10, 25, "b3", "A mill that grinds on the ebb.");
+  bld(B, "bware1", "Bonded Warehouse", "warehouse", 1800, 1120, 22, 12, 18, "b1", "Goods held under seal until their duty's paid.");
+  bld(B, "bware2", "Wool Store", "warehouse", 1980, 1180, 20, 11, 18, "b1", "");
+  bld(B, "bware3", "Grain Store", "warehouse", 1240, 920, 18, 11, 25, "b1", "");
+  bld(B, "bwestgate", "West Gate", "gate", 965, 800, 10, 7, 85, "b2", "The gate onto the Oxley Road. Shut at dusk.");
+  bld(B, "btw1", "", "tower", 1200, 300, 9, 9, 0, "b2", ""); bld(B, "btw2", "", "tower", 2200, 350, 9, 9, 0, "b2", "");
+  bld(B, "bmolelight", "Mole Light", "light", 2760, 1330, 11, 11, 0, "b1", "The light at the end of the Mole.");
+  bld(B, "bcoach", "The Oxley Coach House", "coachhouse", 720, 560, 22, 13, -4, "b4", "The coach for Oxley Ford, the Midway Inn and Haldeport leaves before dawn.");
+  bld(B, "bstable", "West Gate Stables", "stable", 600, 660, 16, 9, 0, "b4", "Horses and mules for the Oxley Road.");
+  bld(B, "bwell", "Exchange Well", "well", 1600, 690, 3, 3, 0, "b2", "");
+  check(B, { polys:[seaB, poolB], rivers:[ox] });
+
+  /* ══ HALDEPORT: the grey harbour city on the north-west coast, the last port before open ocean. The sea lies north-west;
+     the Hald (a deep rocky inlet) is the harbour, Hald Head with its fort and light guards the mouth, the town climbs the
+     hill south and east of the inlet; the road leaves south-east for the Midway Inn ══ */
+  const H = plan("ehald", "Haldeport", [
+      { id:"h1", name:"The Hald", threat:1, hex:"#3f6a78", notes:"The inlet and its quays: the Deepwater Quay, the Fish Quay, the whalers." },
+      { id:"h2", name:"Old Town", threat:2, hex:"#6d6a64", notes:"Grey stone and slate stepping up from the Deepwater Quay: the Kirk, the Harpoon, the steps." },
+      { id:"h3", name:"Upper Town", threat:1, hex:"#7a6a52", notes:"Above the Fish Quay: Chart Square, the Chart House, the Wayfarers' Hall." },
+      { id:"h4", name:"Hald Head", threat:2, hex:"#5e6a5a", notes:"The headland at the inlet's mouth: the fort and the light." } ],
+    { slate:.75, thatch:.15, timber:.1 },
+    "Town plan laid out 2026-10-16 (no picture): the Hald, a deep inlet that is the harbour, with the Deepwater Quay, the Fish Quay and the whalers' pier; Hald Head's fort and light at its mouth; grey stone and slate climbing the hill; the Chart House and the Wayfarers' Hall for voyages west. Its story, people and buildings are placeholders until we go over them.");
+  const seaH = P("-700,-700 2900,-700 2900,-250 2250,0 1750,260 1430,450 1560,700 1720,950 1660,1140 1470,1170 1260,1000 1060,820 860,810 700,980 470,1120 400,1000 300,830 170,800 90,960 0,1220 -300,1430 -700,1560");
+  shp(H, "hsea", "water", "The Western Ocean", seaH, true, false, "Grey water running out to the edge of every chart.");
+  shp(H, "hrock", "rock", "Hald Head", "120,820 300,840 400,1000 470,1110 350,1180 160,1130 70,1000", true, false, "The rocky headland at the inlet's mouth.");
+  shp(H, "hdeep", "street", "Deepwater Quay", "1110,900 1300,1060 1480,1220", false, false, "The deep-water quay along the inlet's south side, where the big ships berth.", { w:55 });
+  shp(H, "hfish", "street", "Fish Quay", "1500,450 1640,700 1790,960", false, false, "The fish quay along the north side: herring, cod, and the smell of both.", { w:50 });
+  shp(H, "hlong", "pier", "Long Pier", "1250,1040 1360,900", false, false, "A stone pier off the Deepwater Quay.", { w:30, stone:true });
+  shp(H, "hwhale", "pier", "Whalers' Pier", "1600,640 1480,720", false, false, "Where the whalers tie up and the try-works' barrels go down.", { w:25 });
+  shp(H, "hharb", "street", "Harbour Street", "1380,1140 1400,1450 1480,1800", false, false, "Up from the Deepwater Quay through the Old Town.", { w:38 });
+  shp(H, "hmid", "street", "The Midway Road", "1480,1800 1800,2250 2300,2800 2900,3200", false, false, "South-east across the moor to the Midway Inn.", { w:34 });
+  shp(H, "hchart", "street", "Chart Street", "1790,960 2100,1000 2450,1100", false, false, "Up from the Fish Quay to Chart Square and the Upper Town.", { w:34 });
+  shp(H, "hsteps", "lane", "The Steps", "1470,1250 1700,1260 1900,1150 2050,1010", false, false, "Stone steps climbing from the inlet head to Chart Square.", { w:20 });
+  shp(H, "hhead", "lane", "Headland Road", "1110,900 900,990 700,1090 480,1160", false, false, "Out along the shore to the fort on Hald Head.", { w:24 });
+  shp(H, "hrope", "lane", "Ropewalk", "820,1300 1250,1260", false, true, "", { w:20 });
+  shp(H, "hkirk", "lane", "Kirk Lane", "1400,1450 1100,1500 850,1400", false, false, "", { w:20 });
+  shp(H, "hupper", "lane", "Upper Row", "2100,1000 2150,700 2000,450", false, false, "", { w:22 });
+  shp(H, "hfmkt", "market", "Fish Market", "1520,1190 1690,1190 1690,1320 1520,1320", true, true, "The morning catch sold off the boats at the inlet's head.");
+  shp(H, "hsq", "square", "Chart Square", "1960,860 2160,860 2160,1010 1960,1010", true, true, "A windy square of grey flagstones with a great compass rose laid in brass.");
+  shp(H, "hkyard", "graveyard", "The Kirkyard", "960,1520 1120,1520 1120,1650 960,1650", true, true, "Stones for the men the sea never gave back.");
+  shp(H, "zhold", "zone", "Old Town", "1080,1000 1290,1120 1470,1260 1720,1240 1700,1720 1150,1780 860,1500 900,1150", true, false, "", { density:"city" });
+  shp(H, "zhup", "zone", "Upper Town", "1820,980 1700,540 2050,300 2500,560 2480,1250 1760,1240", true, false, "", { density:"town" });
+  shp(H, "zhrope", "zone", "The Ropewalk", "650,1180 1000,1150 1050,1480 700,1520", true, false, "", { density:"village" });
+  berth(H, "hb1", "Deepwater Berth 1", 1200, 860, -40, "h1"); berth(H, "hb2", "Deepwater Berth 2", 1400, 1010, -40, "h1"); berth(H, "hb3", "Deepwater Berth 3", 1100, 760, -40, "h1"); berth(H, "hb4", "Fish Quay Berth", 1560, 860, 60, "h1");
+  bld(H, "hboat1", "", "boat", 1420, 600, 5, 2, 60, "h1"); bld(H, "hboat2", "", "boat", 1630, 1000, 5, 2, 30, "h1"); bld(H, "hboat3", "", "boat", 1470, 640, 5, 2, 10, "h1");
+  bld(H, "hfort", "Haldfort", "hall", 290, 980, 38, 28, -20, "h4", "A squat stone fort on Hald Head, its guns over the inlet's mouth. Whoever holds the fort holds the harbour.");
+  bld(H, "hft1", "", "tower", 200, 900, 9, 9, 0, "h4", ""); bld(H, "hft2", "", "tower", 390, 1060, 9, 9, 0, "h4", "");
+  bld(H, "hlight", "Hald Light", "light", 140, 860, 11, 11, 0, "h4", "The last light before the open ocean. It burns all night, every night.");
+  bld(H, "hharbour", "The Harbour House", "reeve", 1330, 1170, 22, 14, -35, "h1", "The harbour-master, ships' papers and the watch.");
+  bld(H, "hcharts", "The Chart House", "archive", 2060, 790, 18, 12, 0, "h3", "Charts of the west, some drawn by captains who never came back. Its keepers buy new ones.");
+  bld(H, "hway", "The Wayfarers' Hall", "office", 2230, 930, 22, 14, 0, "h3", "Where voyages west are planned and crews are hired: the notice board is all ships wanting hands.");
+  bld(H, "hkirkb", "The Kirk of the Lost", "temple", 1040, 1430, 26, 16, 10, "h2", "A sailors' kirk of black stone; its walls are carved with the names of the drowned.");
+  bld(H, "hsick", "The Sick House", "healer", 1200, 1600, 18, 11, 0, "h2", "Beds, broth and a surgeon who has taken off more frostbitten fingers than he can count.");
+  bld(H, "hharpoon", "The Harpoon", "inn", 1660, 760, 16, 11, 60, "h1", "The whalers' tavern on the Fish Quay: loud, cold, and full of stories.");
+  bld(H, "hlast", "The Last Light", "inn", 1600, 1380, 20, 12, 0, "h2", "An inn on the Steps with a view of the light; captains stay here before sailing west.");
+  bld(H, "hchand", "Gorran's Chandlery", "store", 1250, 1160, 15, 10, -35, "h1", "Rope, canvas, pitch and harpoons.");
+  bld(H, "hsalt", "The Salt Loft", "provision", 1750, 1050, 13, 9, 30, "h1", "Salt fish and ship's biscuit for long voyages.");
+  bld(H, "hsmith", "The Iron Steps", "smith", 1500, 1550, 12, 9, 0, "h2", "Ship's iron, harpoon heads and chain.");
+  bld(H, "hpoth", "Old Hester's", "apothecary", 1250, 1450, 8, 7, 0, "h2", "Remedies for the cold and the damp, and charms for the sea.");
+  bld(H, "hfishhall", "The Fish Hall", "market", 1600, 1250, 16, 10, 0, "h1", "The covered end of the Fish Market.");
+  bld(H, "hfence", "Below the Steps", "fence", 1750, 1300, 7, 5, 0, "h2", "A cellar under the Steps where wreck goods change hands.");
+  bld(H, "hslip", "Haldeport Slip", "shipwright", 1850, 600, 26, 14, 55, "h1", "A slipway for mending ships, and building the odd whaler.");
+  bld(H, "htry", "The Try-Works", "warehouse", 1950, 380, 22, 12, 30, "h3", "Where the whalers boil down their catch. You smell it before you see it.");
+  bld(H, "hware1", "", "warehouse", 1150, 1000, 18, 10, -40, "h1", ""); bld(H, "hware2", "", "warehouse", 1700, 520, 18, 10, 60, "h1", "");
+  bld(H, "hropew", "The Ropewalk", "warehouse", 1030, 1300, 56, 6, -5, "h2", "A long low shed where the rope is laid.");
+  bld(H, "hwatch", "Inlet Watch", "tower", 860, 860, 9, 9, 0, "h4", "A watchtower on the shore road.");
+  bld(H, "harch", "The Whalebone Arch", "statue", 1780, 990, 4, 4, 0, "h3", "Two great jawbones over the top of Chart Street.");
+  bld(H, "hcoach", "The Midway Coach House", "coachhouse", 1640, 1920, 22, 13, 30, "h2", "The coach across the moor to the Midway Inn, Oxley Ford and Brackwater.");
+  bld(H, "hstable", "Moor Road Stables", "stable", 1780, 2050, 16, 9, 30, "h2", "Horses and ponies for the moor.");
+  bld(H, "hwell", "Square Well", "well", 2120, 990, 3, 3, 0, "h3", "");
+  check(H, { polys:[seaH], rivers:[] });
+
+  out.plans = [B, H]; out.log = log;
+ }catch(e){ out.err = e.message + ' ' + (e.stack||'').split('\n')[1]; }
+ const pre = document.createElement('pre'); pre.id = 'OUT'; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
+ document.title = 'RES done';
+},1500);</script>
+</body>

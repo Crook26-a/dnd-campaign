@@ -10,9 +10,10 @@ function Shp($id, $kind, $name, $pts, [bool]$closed, [bool]$straight, $notes = "
   $o = [ordered]@{ id = $id; kind = $kind; closed = $closed; straight = $straight; name = $name; side = 1; impassable = ($kind -in 'wall','impasse'); notes = $notes; pts = (Pts $pts) }
   if($w -ne $null){ $o.w = $w }; [pscustomobject]$o }
 $SVC = @("inn","store","provision","smith","apothecary","market","temple","healer","reeve","stable","fence","office","archive")
-function Bld($id, $name, $kind, $x, $y, $w, $dp, $rot, $region, $notes){
+function Bld($id, $name, $kind, $x, $y, $w, $dp, $rot, $region, $notes, $extra = @{}){
   $s = [ordered]@{}; if($SVC -contains $kind){ $s[$kind] = 1 }
-  [pscustomobject][ordered]@{ id = $id; name = $name; kind = $kind; region = $region; level = 1; origin = $false; seat = $false; services = [pscustomobject]$s; notes = $notes; x = $x; y = $y; w = $w; d = $dp; rot = $rot } }
+  $o = [ordered]@{ id = $id; name = $name; kind = $kind; region = $region; level = 1; origin = $false; seat = $false; services = [pscustomobject]$s; notes = $notes; x = $x; y = $y; w = $w; d = $dp; rot = $rot }
+  foreach($k in $extra.Keys){ $o[$k] = $extra[$k] }; [pscustomobject]$o }
 
 $regions = @(
   [pscustomobject][ordered]@{ id = "h1"; name = "The Harbour"; threat = 1; hex = "#3f6f78"; notes = "The quay, the piers and the market: ships, cargo, gulls and noise." }
@@ -68,10 +69,10 @@ $nodes = @(
   (Bld "hkstall1" "" "stall" 2230 1580 3 3 0 "h1" "")
   (Bld "hkstall2" "" "stall" 2380 1730 3 3 0 "h1" "")
   (Bld "hktent" "" "tent" 2240 1740 5 4 0 "h1" "")
-  (Bld "hkship1" "" "ship" 1360 1620 8 3 80 "h1" "")
-  (Bld "hkship2" "" "ship" 1760 1650 8 3 95 "h1" "")
-  (Bld "hkship3" "" "ship" 2120 1680 8 3 70 "h1" "")
-  (Bld "hkship4" "" "ship" 1100 1780 8 3 15 "h1" "")
+  (Bld "hkship1" "Harbour Berth 1" "ship" 1360 1620 8 3 80 "h1" "A berth for any ship that comes in: the first in port without a berth of her own here ties up." @{ berth = "open" })
+  (Bld "hkship2" "Harbour Berth 2" "ship" 1760 1650 8 3 95 "h1" "A berth for any ship that comes in: the first in port without a berth of her own here ties up." @{ berth = "open" })
+  (Bld "hkship3" "Harbour Berth 3" "ship" 2120 1680 8 3 70 "h1" "A berth for any ship that comes in: the first in port without a berth of her own here ties up." @{ berth = "open" })
+  (Bld "hkship4" "Harbour Berth 4" "ship" 1100 1780 8 3 15 "h1" "A berth for any ship that comes in: the first in port without a berth of her own here ties up." @{ berth = "open" })
   (Bld "hkboat1" "" "boat" 1450 1800 2 1 60 "h1" "")
   (Bld "hkboat2" "" "boat" 2240 1830 2 1 30 "h1" "")
   (Bld "hkcath" "Hesk Cathedral" "temple" 1820 880 44 22 0 "h3" "A great grey Gothic cathedral with a square tower and pinnacles, high on the hill above the harbour.")
