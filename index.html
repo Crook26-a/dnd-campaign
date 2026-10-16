@@ -380,6 +380,12 @@
   #mapfurn .scalebar{position:absolute;left:14px;bottom:34px;font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
   #mapfurn .sb-bar{height:6px;border:1px solid var(--ink);display:flex;background:var(--paper-lit)} #mapfurn .sb-bar span{flex:1} #mapfurn .sb-bar span:first-child{background:var(--ink)}
   #mapfurn .sb-lab{margin-top:2px}
+  #threadpop{position:fixed;left:16px;bottom:16px;z-index:60;width:min(340px, calc(100vw - 32px));display:flex;flex-direction:column;gap:8px}
+  .thrcard{background:var(--paper-lit);border:1px solid var(--lead);border-left:4px solid var(--lead);border-radius:4px;padding:8px 10px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+  .thrtext{font-size:12.5px;margin:0;white-space:pre-wrap} .thrties{color:var(--ink-faint);font-size:10.5px}
+  .thrrow{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px dotted var(--rule-soft)} .thrrow .sr-a{display:flex;gap:4px;flex:0 0 auto}
+  .thrrow.due{border-left:3px solid var(--lead);padding-left:5px} .thrrow.done .thrtext{color:var(--ink-faint);text-decoration:line-through}
+  .thrform{border:1px solid var(--rule-soft);border-radius:4px;padding:6px 8px;margin:0 0 6px;background:var(--paper)}
   .shoprow{display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px dotted var(--rule-soft);font-size:12px} .shoprow .sr-n{flex:1;min-width:0} .shoprow .sr-a{display:flex;gap:4px;flex:0 0 auto} .shoprow select{max-width:118px}
   #mapfurn .rosebox{position:absolute;right:62px;bottom:14px;opacity:.92} #mapfurn .rosebox[hidden]{display:none}
   .pv-rose{position:fixed;right:2vw;bottom:2vh;pointer-events:none;z-index:3} .pv-rose svg{width:min(15vh,150px);height:auto}
@@ -2053,6 +2059,7 @@ function syncUpBtn(){
 }
 function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecharge==="function") try{ dawnRecharge(); }catch(err){}      /* a new day: charges come back */
   if(typeof rivalTick==="function" && rivalTick() && !planOf && !battleOf) setTimeout(render, 0);
+  if(typeof threadCheck==="function") try{ threadCheck(); }catch(err){}                 /* a new day: loose threads that come due */
   const s = document.getElementById("timeBar"); if(s){ s.value = timeOfDay(); s.title = `The time of day, everywhere: about ${hourWord(clockHour())}`; } const d = document.getElementById("dayNum"); if(d && document.activeElement!==d) d.value = campaignDay(); }
 function wireTimeBar(){
   document.getElementById("pscreenBtn").insertAdjacentHTML("beforebegin", `<button id="upBtn" hidden></button><button id="sailBtn" hidden title="Out to the sea chart with the ship, ready to sail">⛵ Set sail</button><span class="worldclock" title="The world's clock: the campaign day and the time of day. Every place follows it (unless a place is set to always bright, dim or dark).">
@@ -3319,7 +3326,7 @@ function joinUp(g){
   const other = groupsOf().find(x=>x!==g && sameAt(x.at, g.at)); if(!other) return g;
   other.members.push(...g.members); g.members = []; if(root.activeGroup===g.id) root.activeGroup = other.id; groupsOf(); return other;
 }
-function partyMoved(msg){ markDirty(K_SURVEY); saveParty(); if(msg){ flash(msg); if(!/ is on the move.$/.test(msg)) gameLog("move", msg); } }
+function partyMoved(msg){ markDirty(K_SURVEY); saveParty(); if(msg){ flash(msg); if(!/ is on the move.$/.test(msg)) gameLog("move", msg); } threadCheck(); }
 function dropGroup(id, w){ let g = groupsOf().find(x=>x.id===id); if(!g) return; g.at = atFromDrop(w); g = joinUp(g); partyMoved(`${groupName(g)}: ${groupWord(g)}.`); }
 /* one person dragged on board: on their own there, or into the group already there */
 function moveMember(id, at){
@@ -11054,7 +11061,7 @@ function renderPlayNow(){
     ${enterAsk===n.id ? enterBox(n) : ""}
     ${sailBlock(n)}${travelBlock(n)}${xpDueBlock(st)}`;
 
-  h += boardBlock(n);
+  h += boardBlock(n) + threadsHere(n);
   h += `<p class="eyebrow spaced">Who you'll meet</p>` + (people.length ? people.map(p=>`<div class="playperson">
       <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button></div>
       ${condChips(p.conds||[], "by:"+p.id)}
@@ -12966,6 +12973,114 @@ const GLOG_KIND = { session:"Session", note:"Note", move:"Moved", sail:"At sea",
   search:"Search", loot:"Loot", rest:"Rest", xp:"XP", level:"Level", favor:"Favor", pic:"Showed", scene:"Scene", mission:"Mission",
   heal:"Healed", check:"Check", item:"Item", spell:"Spell", cond:"Condition", time:"Time" };
 const gameLogList = () => root ? (Array.isArray(root.gameLog) ? root.gameLog : (root.gameLog = [])) : [];
+/* ── loose threads (Joseph, 2026-10-16): notes tied to a place, a person and/or days, that pop up on the DM's screen when
+   they come due: the party arrives there, someone it's tied to is where the party is, or the day comes. A thread pops
+   once each time it comes due (arrive, leave, come back: it pops again) until it's marked done. Kept in root.threads:
+   { id, text, place:"plan/node" key or "", person:library person id or "", day, until, made, done, live } ── */
+const threadsOf = () => (root.threads = Array.isArray(root.threads) ? root.threads : []);
+let thrEdit = null, thrDraft = null, thrPop = [];            // the thread being edited in the Session tab; the pop-ups showing
+/* where the party is: the keys of every place any group is at (a town counts when they're anywhere in it) */
+function partyHereKeys(){
+  const keys = new Set();
+  for(const g of groupsOf()){ const a = g.at || {}; if(!a.map) continue;
+    if(a.map==="survey"){ if(a.node) keys.add("/" + a.node); } else { keys.add("/" + a.map); if(a.node) keys.add(a.map + "/" + a.node); } }
+  return keys;
+}
+function nodeByKey(k){ const r = placeRef(k), nodes = r.plan ? ((plans[r.plan]||{}).nodes || []) : (root.nodes || []); return nodes.find(n=>n.id===r.node) || null; }
+const placeKeyOf = n => `${planOf||""}/${n.id}`;
+/* the people at the places the party is */
+function partyMeets(keys){ const s = new Set(); for(const k of keys){ const n = nodeByKey(k); for(const id of (n && n.npcs) || []) s.add(id); } return s; }
+function threadDue(t, keys, meets){
+  if(t.done || !(t.place || t.person || t.day)) return false;
+  const d = campaignDay();
+  return (!t.place || keys.has(t.place)) && (!t.person || meets.has(t.person)) && (!t.day || d >= +t.day) && (!t.until || d <= +t.until);
+}
+/* where/who/when a thread is tied to, in words */
+function threadTies(t){
+  const n = t.place && nodeByKey(t.place), r = t.place && placeRef(t.place), host = r && r.plan && root.nodes.find(x=>x.id===r.plan), p = t.person && libNpcById(t.person);
+  return [t.place ? (n ? `at ${esc(placeLabel(n))}${host ? ` <small>in ${esc(host.name||"")}</small>` : ""}` : `<i>a place that's gone</i>`) : "",
+    t.person ? (p ? `with <span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"someone")}</span>` : `<i>someone who's gone</i>`) : "",
+    t.day ? (t.until ? `days ${+t.day}–${+t.until}` : `from day ${+t.day}`) : t.until ? `until day ${+t.until}` : ""].filter(Boolean).join(" · ");
+}
+/* the check, after the party moves or the day changes: anything newly due pops up */
+function threadCheck(){
+  if(location.hash==="#player" || typeof root==="undefined" || !root || !Array.isArray(root.threads) || !root.threads.length) return;
+  const keys = partyHereKeys(), meets = partyMeets(keys); let changed = false;
+  for(const t of root.threads){ const due = threadDue(t, keys, meets);
+    if(due && t.live===false && !thrPop.includes(t.id)) thrPop.push(t.id);         // never seen before (live unset): no pop, so a load doesn't flood
+    if(t.live!==due){ t.live = due; changed = true; } }
+  if(changed){ saveParty(); showThreadPop(); }
+}
+function showThreadPop(){
+  let el = $("#threadpop");
+  thrPop = thrPop.filter(id=>{ const t = threadsOf().find(x=>x.id===id); return t && !t.done && t.live; });       // gone once they leave, or it stops being true
+  if(!thrPop.length){ if(el) el.remove(); return; }
+  if(!el){ el = document.createElement("div"); el.id = "threadpop"; document.body.appendChild(el); }
+  el.innerHTML = thrPop.map(id=>{ const t = threadsOf().find(x=>x.id===id);
+    return `<div class="thrcard"><p class="eyebrow" style="margin:0 0 3px">Loose thread <small>${threadTies(t)}</small></p><p class="thrtext">${esc(t.text)}</p>
+      <div class="pcrow" style="margin:6px 0 0"><button class="btn small" data-thr="done" data-id="${t.id}" title="It's dealt with: it won't pop up again">Done</button><button class="btn small" data-thr="later" data-id="${t.id}" title="Not now: it pops up again next time it comes due">Later</button>${t.place ? `<button class="btn small" data-thr="show" data-id="${t.id}">Show the place</button>` : ""}</div></div>`; }).join("");
+}
+function threadRow(t){
+  const due = !t.done && threadDue(t, partyHereKeys(), partyMeets(partyHereKeys()));
+  return `<div class="thrrow${due ? " due" : ""}${t.done ? " done" : ""}"><div style="flex:1;min-width:0"><div class="thrtext">${esc(t.text)}</div><small class="thrties">${threadTies(t) || "<i>not tied to anything: it won't pop up</i>"}${due ? ` · <b>now</b>` : ""}${t.done ? ` · done day ${t.done}` : ""}</small></div>
+    <span class="sr-a">${t.done ? `<button class="btn small" data-thr="reopen" data-id="${t.id}">Reopen</button>` : `<button class="btn small" data-thr="done" data-id="${t.id}">Done</button>`}<button class="btn small" data-thr="edit" data-id="${t.id}">Edit</button><button class="fdel" data-thr="del" data-id="${t.id}" title="Delete it">×</button></span></div>`;
+}
+function threadForm(t){
+  const r = t.place ? placeRef(t.place) : null, cur = r ? (r.plan ? [r.plan, r.node] : ["survey", r.node]) : [null, null];
+  const opts = whereOptions(cur[0], cur[1], false).replace("— nowhere known —", "— no place —");
+  const ppl = [...lib().npcs].filter(p=>p.name).sort((a, b)=>a.name.localeCompare(b.name));
+  return `<div class="thrform"><div class="field"><label>What's the thread</label><textarea id="thr-text" rows="3" placeholder="The widow Lucia Vela waits on the pier for news of her husband.">${esc(t.text||"")}</textarea></div>
+    <div class="field"><label>Pops up at <small>when the party gets there</small></label><select id="thr-place">${opts}</select></div>
+    <div class="field"><label>With <small>when the party is where they are</small></label><select id="thr-person"><option value="">— nobody —</option>${ppl.map(p=>`<option value="${p.id}" ${p.id===t.person?"selected":""}>${esc(p.name)}${p.role?` (${esc(p.role)})`:""}</option>`).join("")}</select></div>
+    <div class="pcrow"><div class="field" style="flex:1"><label>From day</label><input id="thr-day" type="number" min="1" value="${t.day||""}" placeholder="any"></div><div class="field" style="flex:1"><label>Until day</label><input id="thr-until" type="number" min="1" value="${t.until||""}" placeholder="any"></div></div>
+    <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Everything you set has to be true for it to pop up: a place and a day means "there, on or after that day". Today is day ${campaignDay()}.</p>
+    <div class="pcrow"><button class="btn on" style="flex:2" data-thr="save">${t.id ? "Save" : "Add the thread"}</button><button class="btn" style="flex:1" data-thr="cancel">Cancel</button></div></div>`;
+}
+/* the Session tab's list: every open thread (the ones due now first), then the ones done */
+function threadsPanel(){
+  const T = threadsOf(), keys = partyHereKeys(), meets = partyMeets(keys), open = T.filter(t=>!t.done), done = T.filter(t=>t.done);
+  const due = open.filter(t=>threadDue(t, keys, meets)).length;
+  open.sort((a, b)=>(threadDue(b, keys, meets) - threadDue(a, keys, meets)));
+  const form = thrEdit ? threadForm(thrEdit==="new" ? thrDraft : (T.find(t=>t.id===thrEdit) || {})) : "";
+  return `<details class="pcset pcsec" data-invfor="threads" ${openInv.has("threads") || thrEdit || due ? "open" : ""}><summary>Loose threads <small>${open.length} open${due ? ` · ${due} now` : ""}</small></summary>
+    <p class="empty-note" style="font-size:11px;margin:2px 0 6px">Notes tied to a place, a person or days. They pop up when they come due: the party gets there, meets them, or the day comes.</p>
+    ${thrEdit==="new" ? form : `<button class="btn wide" data-thr="new" style="margin-bottom:6px">+ A loose thread</button>`}
+    ${open.map(t=>t.id===thrEdit ? form : threadRow(t)).join("") || `<p class="empty-note" style="font-size:11px;margin:0 0 6px">None open.</p>`}
+    ${done.length ? `<details class="pcset"><summary>Done <small>${done.length}</small></summary>${done.map(t=>t.id===thrEdit ? form : threadRow(t)).join("")}</details>` : ""}</details>`;
+}
+/* a place's card: the threads tied to it and to the people here, and a quick way to add one */
+function threadsHere(n){
+  const k = placeKeyOf(n), ppl = new Set(n.npcs||[]), T = threadsOf().filter(t=>!t.done && (t.place===k || (t.person && ppl.has(t.person))));
+  return `<p class="eyebrow spaced">Loose threads</p>${T.map(threadRow).join("")}
+    <div class="pcrow" style="margin:4px 0 8px"><input type="text" id="thr-quick" data-key="${esc(k)}" placeholder="A note for when they're here…" style="flex:1;min-width:0"><button class="btn small" data-thr="quick">Add</button></div>`;
+}
+function threadsRedraw(){ renderSession(); if(pane!=="session") renderPane(true); showThreadPop(); }       // at the table the Session tab is always open beside the card
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-thr]"); if(!b) return;
+  const act = b.dataset.thr, T = threadsOf(), t = T.find(x=>x.id===b.dataset.id);
+  if(act==="new"){ thrEdit = "new"; thrDraft = { text:"", place:"", person:"", day:"", until:"" }; openInv.add("threads"); return threadsRedraw(); }
+  if(act==="cancel"){ thrEdit = null; thrDraft = null; return threadsRedraw(); }
+  if(act==="edit" && t){ thrEdit = t.id; openInv.add("threads"); if(pane!=="session"){ pane = "session"; syncTabs(); } return threadsRedraw(); }
+  if(act==="save"){
+    const text = $("#thr-text").value.trim(); if(!text){ flash("Write the thread first."); return; }
+    const pv = $("#thr-place").value, [m, id] = pv.split("|"), place = !pv ? "" : m==="survey" ? "/" + id : id ? `${m}/${id}` : "/" + m;
+    const x = thrEdit==="new" ? { id:uid("th"), made:campaignDay() } : T.find(q=>q.id===thrEdit); if(!x) return;
+    Object.assign(x, { text, place, person:$("#thr-person").value, day:+$("#thr-day").value || null, until:+$("#thr-until").value || null });
+    if(thrEdit==="new") T.unshift(x);
+    const keys = partyHereKeys(); x.live = threadDue(x, keys, partyMeets(keys));        // already true now: it shows as "now", without popping
+    thrEdit = null; thrDraft = null; saveParty(); flash(x.live ? "Thread saved: it's due now (they're there)." : "Thread saved."); return threadsRedraw();
+  }
+  if(act==="quick"){ const inp = $("#thr-quick"), text = inp && inp.value.trim(); if(!text){ flash("Write the thread first."); return; }
+    const x = { id:uid("th"), made:campaignDay(), text, place:inp.dataset.key, person:"", day:null, until:null }, keys = partyHereKeys(); x.live = threadDue(x, keys, partyMeets(keys));
+    T.unshift(x); saveParty(); flash("Loose thread added: it pops up when the party gets here."); return threadsRedraw(); }
+  if(!t) return;
+  if(act==="done"){ t.done = campaignDay(); thrPop = thrPop.filter(i=>i!==t.id); gameLog("note", `Loose thread tied off: ${t.text}`); saveParty(); return threadsRedraw(); }
+  if(act==="reopen"){ delete t.done; const keys = partyHereKeys(); t.live = threadDue(t, keys, partyMeets(keys)); saveParty(); return threadsRedraw(); }
+  if(act==="later"){ thrPop = thrPop.filter(i=>i!==t.id); return showThreadPop(); }
+  if(act==="show"){ showPlace(t.place); return; }
+  if(act==="del"){ if(!confirm(`Delete this loose thread?\n\n${t.text}`)) return; root.threads = T.filter(x=>x!==t); thrPop = thrPop.filter(i=>i!==t.id); saveParty(); return threadsRedraw(); }
+});
+
 function gameLog(kind, text){
   if(!root || !text) return;
   const L = gameLogList(), s = String(text).trim().replace(/\.$/, ""), last = L[L.length-1], now = new Date();
@@ -14828,7 +14943,7 @@ function renderSession(){
   const S = sessionDocs(), el = $("#pane-session");
   if(!S.find(d=>d.id===sessOpen)) sessOpen = S.length ? S[S.length-1].id : null;
   const d = docById(sessOpen);
-  let h = `<p class="eyebrow">Session script</p>
+  let h = threadsPanel() + `<p class="eyebrow spaced">Session script</p>
     <div class="pcrow"><select id="ss-pick" style="flex:1;min-width:0">${S.map(x=>`<option value="${x.id}" ${x.id===sessOpen?"selected":""}>${esc(x.title||"Untitled session")}${x.date?` · ${esc(x.date)}`:""}</option>`).join("") || `<option>No sessions yet</option>`}</select>
       <button class="btn" data-dact="newsession">+ New</button></div>`;
   if(!d){ el.innerHTML = h + `<p class="empty-note">No session scripts yet. Make one, or bring a Word script in from the Docs tab.</p>`; return; }
