@@ -2901,11 +2901,89 @@ const STOP_EVERY = [[0,"Don't stop",""],[12,"Stop every ½ day","Half a day at s
 const sailMph = s => vesselMph(s) * (s.wind==="head" ? .5 : 1);
 const dayFactor = s => 24 / Math.max(1, Math.min(24, +s.sailHours || 24));   // hours of the world per hour under sail
 function courseMiles(s){ let a = (s.course && s.course.tp) || { x:s.x, y:s.y }, d = 0;    /* from where she truly is, not where her wandering puts her */ for(const p of (s.course && s.course.pts) || []){ d += Math.hypot(p.x-a.x, p.y-a.y); a = p; } return d / (root.ppm||10); }
+/* ── ships keep to the sea (Joseph, 2026-10-16: the Sallowmay sailed from Dunmarrow straight across the island). "Sail
+   to" works the course out round the land: the islands drawn on the chart are laid on a grid about a mile to the square,
+   with a mile's clearance off every shore, and the way is the shortest across the grid (A*), pulled tight into a few
+   waypoints. A port that sits inland of the drawn coast steps out to the nearest open water first. The waypoints are
+   marked auto; any you shape by hand are yours, and a new destination is worked out on from the last of them.
+   Rowboats, keelboats and longships (your table rule: the SRD doesn't say which boats go upriver) can also take rivers
+   marked Navigable and the lakes on the chart; sailing ships, warships and galleys keep to the sea ── */
+const RIVER_BOATS = new Set(["Rowboat", "Keelboat", "Longship"]);
+const riverBoat = s => RIVER_BOATS.has(s.vessel || "Sailing Ship");
+function seaGrid(a, b, river){
+  const ppm = root.ppm||10, isl = s => s.kind==="island" && s.closed!==false && (s.pts||[]).length > 2, rings = (root.shapes||[]).filter(isl).map(shapeRing);
+  const box = R => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for(const p of R){ if(p.x<x0) x0 = p.x; if(p.x>x1) x1 = p.x; if(p.y<y0) y0 = p.y; if(p.y>y1) y1 = p.y; } return { x0, y0, x1, y1 }; };
+  let x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  const near = 30*ppm, used = [];
+  for(const R of rings){ const B = box(R); if(B.x1 < x0-near || B.x0 > x1+near || B.y1 < y0-near || B.y0 > y1+near) continue;
+    used.push(R); x0 = Math.min(x0, B.x0); y0 = Math.min(y0, B.y0); x1 = Math.max(x1, B.x1); y1 = Math.max(y1, B.y1); }
+  const pad = 12*ppm; x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+  let cs = ppm; if((x1-x0)*(y1-y0)/(cs*cs) > 500000) cs = Math.sqrt((x1-x0)*(y1-y0)/500000);
+  const W = Math.ceil((x1-x0)/cs), H = Math.ceil((y1-y0)/cs), land = new Uint8Array(W*H);
+  const fill = (R, v, into) => { for(let r=0; r<H; r++){                                  // each row: where it crosses the outline
+    const yc = y0 + (r+.5)*cs, xs = [];
+    for(let i=0, j=R.length-1; i<R.length; j=i++){ const p = R[i], q = R[j]; if((p.y > yc) !== (q.y > yc)) xs.push(p.x + (yc-p.y)*(q.x-p.x)/(q.y-p.y)); }
+    xs.sort((u, w)=>u-w);
+    for(let k=0; k+1<xs.length; k+=2){ const c0 = Math.max(0, Math.ceil((xs[k]-x0)/cs - .5)), c1 = Math.min(W-1, Math.floor((xs[k+1]-x0)/cs - .5)); for(let c=c0; c<=c1; c++) into[r*W+c] = v; } } };
+  for(const R of used) fill(R, 1, land);
+  const block = new Uint8Array(W*H);                                                    // a mile off the shore
+  for(let r=0; r<H; r++) for(let c=0; c<W; c++) if(land[r*W+c]) for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){ const rr = r+dr, cc = c+dc; if(rr>=0 && rr<H && cc>=0 && cc<W) block[rr*W+cc] = 1; }
+  if(river){                                                                            // the lakes, and the rivers boats can go up
+    for(const s of root.shapes||[]){
+      if(s.kind==="water" && s.closed!==false && (s.pts||[]).length > 2 && used.some(R=>inRing(R, s.pts[0].x, s.pts[0].y))){ fill(shapeRing(s), 0, land); fill(shapeRing(s), 0, block); }
+      if(s.kind==="river" && s.navigable && (s.pts||[]).length > 1){ const sm = samplePath(s.pts, false, 12, s.straight), along = [];
+        for(let i=1; i<sm.length; i++){ const a0 = sm[i-1], b0 = sm[i], n = Math.max(1, Math.ceil(Math.hypot(b0.x-a0.x, b0.y-a0.y)/(cs/2))); for(let k=0; k<=n; k++) along.push({ x:a0.x + (b0.x-a0.x)*k/n, y:a0.y + (b0.y-a0.y)*k/n }); }
+        for(const p of along){ const c = Math.floor((p.x-x0)/cs), r = Math.floor((p.y-y0)/cs);
+        for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){ const rr = r+dr, cc = c+dc; if(rr>=0 && rr<H && cc>=0 && cc<W && (!dr || !dc)){ land[rr*W+cc] = 0; block[rr*W+cc] = 0; } } } }
+    }
+  }
+  const cell = p => ({ c:Math.max(0, Math.min(W-1, Math.floor((p.x-x0)/cs))), r:Math.max(0, Math.min(H-1, Math.floor((p.y-y0)/cs))) });
+  /* the nearest open water to a port (it may stand a little inland of the drawn coast) */
+  const open = p => { const { c, r } = cell(p); if(!block[r*W+c]) return r*W+c; let best = -1, bd = Infinity;
+    for(let dr=-12; dr<=12; dr++) for(let dc=-12; dc<=12; dc++){ const rr = r+dr, cc = c+dc; if(rr<0 || rr>=H || cc<0 || cc>=W || block[rr*W+cc]) continue; const d = dr*dr+dc*dc; if(d < bd){ bd = d; best = rr*W+cc; } }
+    return best; };
+  return { x0, y0, cs, W, H, block, open, any:used.length > 0 };
+}
+/* the way by water from a to b: waypoints between them (not b itself); [] when the straight line is clear, null if there's no way */
+function seaWay(a, b, river){
+  const G = seaGrid(a, b, river); if(!G.any) return [];
+  const { W, H, block, cs, x0, y0 } = G, at = i => ({ x:x0 + (i%W+.5)*cs, y:y0 + (((i/W)|0)+.5)*cs });
+  const clear = (p, q) => { const n = Math.max(1, Math.ceil(Math.hypot(q.x-p.x, q.y-p.y) / (cs*.4))); for(let i=0; i<=n; i++){ const x = p.x + (q.x-p.x)*i/n, y = p.y + (q.y-p.y)*i/n, c = Math.floor((x-x0)/cs), r = Math.floor((y-y0)/cs); if(c>=0 && c<W && r>=0 && r<H && block[r*W+c]) return false; } return true; };
+  if(clear(a, b)) return [];
+  const S = G.open(a), T = G.open(b); if(S < 0 || T < 0) return null;
+  const tc = T%W, tr = (T/W)|0;
+  const g = new Float32Array(W*H).fill(Infinity), from = new Int32Array(W*H).fill(-1), shut = new Uint8Array(W*H);
+  const hx = i => { const dc = Math.abs(i%W - tc), dr = Math.abs(((i/W)|0) - tr); return Math.max(dc, dr) + .414*Math.min(dc, dr); };
+  const heap = [], push = (i, f) => { heap.push([f, i]); let k = heap.length-1; while(k){ const u = (k-1)>>1; if(heap[u][0] <= heap[k][0]) break; [heap[u], heap[k]] = [heap[k], heap[u]]; k = u; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if(heap.length){ heap[0] = last; let k = 0; for(;;){ const l = 2*k+1, r = l+1; let m = k; if(l<heap.length && heap[l][0]<heap[m][0]) m = l; if(r<heap.length && heap[r][0]<heap[m][0]) m = r; if(m===k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+  g[S] = 0; push(S, hx(S));
+  while(heap.length){
+    const [, i] = pop(); if(shut[i]) continue; shut[i] = 1; if(i===T) break;
+    const c = i%W, r = (i/W)|0;
+    for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){ if(!dr && !dc) continue; const rr = r+dr, cc = c+dc; if(rr<0 || rr>=H || cc<0 || cc>=W) continue;
+      const j = rr*W+cc; if(block[j] || shut[j]) continue;
+      if(dr && dc && (block[r*W+cc] || block[rr*W+c])) continue;                         // no slipping between two bits of land
+      const d = g[i] + (dr && dc ? 1.414 : 1); if(d < g[j]){ g[j] = d; from[j] = i; push(j, d + hx(j)); } }
+  }
+  if(T!==S && from[T] < 0) return null;
+  const cells = []; for(let i=T; ; i = from[i]){ cells.unshift(at(i)); if(i===S || from[i] < 0) break; }
+  const path = [a, ...cells, b], out = []; let k = 0;                                    // pulled tight: as far as it can see each time
+  while(k < path.length-1){ let j = path.length-1; while(j > k+1 && !clear(path[k], path[j])) j--; if(j < path.length-1) out.push({ x:Math.round(path[j].x), y:Math.round(path[j].y) }); k = j; }
+  return out;
+}
 function setCourseTo(s, dest){
   const end = { x:dest.x + 14, y:dest.y + 12 };      // just offshore of it
-  s.course = s.course || { pts:[], mps:s.pace || 2 }; const pts = s.course.pts;     // her last pace
-  if(pts.length && s.course.to) pts[pts.length-1] = end; else pts.push(end);
+  const old = s.course ? s.course.pts : [], keep = old.slice();
+  if(keep.length && s.course.to) keep.pop();                                        // the old destination,
+  while(keep.length && keep[keep.length-1].auto) keep.pop();                        // and the way to it the app worked out
+  const from = keep.length ? keep[keep.length-1] : ((s.course && s.course.tp) || { x:s.x, y:s.y }), way = seaWay(from, end, riverBoat(s));
+  /* no way by water (inland, or up a river she can't take): she stays on the course she had */
+  if(way===null){ flash(`${s.name||"She"} can't reach ${dest.name||"there"} by water${riverBoat(s) ? "" : ` (a ${(s.vessel||"Sailing Ship").toLowerCase()} keeps to the sea; a rowboat, keelboat or longship can take a navigable river)`}.`); return false; }
+  s.course = s.course || { pts:[], mps:s.pace || 2 }; const pts = s.course.pts = keep;      // her last pace
+  for(const p of way) pts.push({ ...p, auto:true });
+  pts.push(end);
   s.course.to = dest.id; delete s.course.rate;
+  return true;
 }
 function courseOverlay(inv){
   let g = "";
@@ -3189,7 +3267,7 @@ document.getElementById("pane-inspect").addEventListener("change", e=>{
   const t = e.target.closest("[data-rival]"); if(!t) return;
   const s = selNode(); if(!isRival(s)) return; const k = t.dataset.rival;
   if(k==="to" && t.value==="follow"){ s.follow = true; const keep = s.course && s.course.leaves; delete s.course; courseEdit = null; syncFollowers(); if(s.course && keep!=null) s.course.leaves = keep; }
-  else if(k==="to"){ delete s.follow; const d = nodeById(t.value); if(d){ const keep = s.course && s.course.leaves; if(s.course) delete s.course.follow; setCourseTo(s, d); courseEdit = null; s.course.leaves = keep!=null ? keep : worldHours(); } else delete s.course; }
+  else if(k==="to"){ delete s.follow; const d = nodeById(t.value); if(d){ const keep = s.course && s.course.leaves; if(s.course) delete s.course.follow; if(setCourseTo(s, d)){ courseEdit = null; s.course.leaves = keep!=null ? keep : worldHours(); } } else delete s.course; }
   else if(k==="amode"){ if(t.value) s.arrive = { mode:"timed", h:(s.arrive && s.arrive.h) ?? 6, after:s.arrive ? s.arrive.after!==false : true, dice:(s.arrive && s.arrive.dice) || "1d12", way:(s.arrive && s.arrive.way) || "" }; else delete s.arrive; }
   else if(k==="ah" && s.arrive){ s.arrive.h = Math.max(0, +t.value||0); delete s.arrive.rolled; }
   else if(k==="adir" && s.arrive){ s.arrive.after = t.value==="after"; delete s.arrive.rolled; }
@@ -3480,7 +3558,7 @@ document.addEventListener("keydown", e=>{ if(e.key!=="Escape") return;
 function shipBlock(n){
   if(!sailsAbout(n) || planOf) return "";
   const v = n.lastVoyage;
-  return `${n.rival ? rivalBlock(n) : courseBlock(n)}<div class="field" style="margin-bottom:4px"><label>She sails as</label><select data-ship="vessel">${VESSELS.map(([k, mph])=>`<option value="${k}" ${(n.vessel||"Sailing Ship")===k?"selected":""}>${k} — ${mph} mph</option>`).join("")}</select></div>
+  return `${n.rival ? rivalBlock(n) : courseBlock(n)}<div class="field" style="margin-bottom:4px"><label>She sails as</label><select data-ship="vessel">${VESSELS.map(([k, mph])=>`<option value="${k}" ${(n.vessel||"Sailing Ship")===k?"selected":""}>${k} — ${mph} mph</option>`).join("")}</select></div><p class="empty-note" style="font-size:10.5px;margin:-2px 0 6px">${riverBoat(n) ? "She can go up rivers marked Navigable, and onto lakes (your table rule)." : "She keeps to the sea: a rowboat, keelboat or longship can go up navigable rivers (your table rule)."}</p>
     <div class="pcrow"><div class="field" style="flex:1.4;margin:0"><label>Wind</label><select data-ship="wind">${WINDS.map(([k,l])=>`<option value="${k}" ${(n.wind||"fair")===k?"selected":""}>${l}</option>`).join("")}</select></div>
       <div class="field" style="flex:.8;margin:0"><label>Hours a day</label><input data-ship="sailHours" class="mono" type="number" min="1" max="24" value="${+n.sailHours||24}" title="How many hours a day she sails (your call; the rules don't say)"></div></div>
     ${n.sailNote ? `<p class="empty-note" style="font-size:11px;margin:4px 0 0">${esc(n.sailNote)}</p>` : ""}
@@ -14529,7 +14607,8 @@ function renderInspectInner(){
           <div class="field"><label>At the head</label><input id="s-w0" class="mono" type="number" step="0.5" min="0.5" max="60" value="${sh.w0==null?1.6:sh.w0}"></div>
           <div class="field"><label>At the mouth</label><input id="s-w1" class="mono" type="number" step="0.5" min="0.5" max="60" value="${sh.w1==null?5.5:sh.w1}"></div>
         </div>
-        <button class="btn wide" id="s-rev">Reverse the flow</button>`:""}
+        <button class="btn wide" id="s-rev">Reverse the flow</button>
+        ${planOf ? "" : `<label class="check" style="margin-top:8px" title="Rowboats, keelboats and longships can sail up it (your table rule); sailing ships, warships and galleys can't"><input id="s-nav" type="checkbox" ${sh.navigable?"checked":""}> Navigable: river boats can go up it</label>`}`:""}
       ${(kd.hachure&&!sh.closed)?`<button class="btn wide" id="s-flip" style="margin-top:11px">Put the water on the other side</button>`:""}
       ${sh.closed?"":`
         <p class="eyebrow spaced">Carry it further</p>
@@ -14556,6 +14635,7 @@ function renderInspectInner(){
     const wS = $("#s-w"); if(wS) wS.oninput = e=>{ sh.w = Math.max(.5, Math.min(60, +e.target.value||kd.w)); touch(); };
     const cl = $("#s-closed"); if(cl) cl.onchange = e=>{ sh.closed=e.target.checked; if(sh.closed) editing=null; touch(); renderInspect(); };
     $("#s-imp").onchange = e=>{ sh.impassable=e.target.checked; touch(); };
+    if($("#s-nav")) $("#s-nav").onchange = e=>{ if(e.target.checked) sh.navigable = true; else delete sh.navigable; touch(); };
     if($("#s-terrain")) $("#s-terrain").onchange = e=>{ sh.terrain = e.target.value; touch(); };
     if($("#s-density")) $("#s-density").onchange = e=>{ sh.density = e.target.value; touch(); render(); };
     $("#s-notes").oninput = e=>{ sh.notes=e.target.value; touch(); };
