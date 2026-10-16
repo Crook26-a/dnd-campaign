@@ -9523,7 +9523,7 @@ function lightRow(n){
         <select class="giveto" data-ltcarry="${l.id}">${tokOpts(l.on)}</select>
         <button class="btn" data-lt="lit" data-id="${l.id}">${l.lit?"Put out":"Light"}</button><button class="fdel" data-lt="del" data-id="${l.id}" title="Take it away">×</button></div>`; }).join("")}
     <div class="bmpal" style="margin-top:4px">${Object.entries(LIGHT_KINDS).map(([k,x])=>`<button data-ltadd="${k}" title="${esc(x.rule)}">+ ${esc(x.name)}</button>`).join("")}</div>
-    <p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Drag a light on the map to move it; click it to put it out or light it. Click a door to shut or open it. Walls, shut doors and other solid things block light and sight.</p></div>`;
+    <p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Drag a light on the map to move it; click it to put it out or light it; right-click it (or × above) to take it away. Click a door to shut or open it. Walls, shut doors and other solid things block light and sight.</p></div>`;
 }
 function wireLightRow(el, n){
   const c = () => siteOf(n).combat, redo = () => { touch(); renderBattle(); renderBattlePanel(); };
@@ -10194,8 +10194,10 @@ $("#bsvg").addEventListener("pointerdown", e=>{
   /* moving the map, whatever is picked: the middle button, Space held down, or the hand */
   if(e.button===1 || ((spaceDown || bhand) && e.button===0)){ e.preventDefault(); bdrag = { pan:true, sx:e.clientX, sy:e.clientY, vb:{...bview} }; $("#bsvg").classList.add("panning"); return; }
   const n = bnode(), lineup = n && n.site && n.site.combat && n.site.combat.layout==="lineup";
-  /* a light on the floor: drag it to move it, click it to put it out or light it */
+  /* a light on the floor: drag it to move it, click it to put it out or light it, right-click to take it away */
   const lt = e.target.closest("[data-light]");
+  if(lt && n && e.button===2){ const st = siteOf(n), l = (st.lights||[]).find(x=>x.id===lt.dataset.light); bdrag = null;
+    if(l){ st.lights = st.lights.filter(x=>x!==l); touch(); renderBattle(); renderBattlePanel(); flash(`${(LIGHT_KINDS[l.kind]||{}).name||"Light"} taken away.`); } return; }
   if(lt && n && !lineup && !bpaint){ bdrag = { light:lt.dataset.light, sx:e.clientX, sy:e.clientY, moved:false }; return; }
   /* furnishing: someone planned for here — drag to where they stand, right-click to take them away */
   const pt = e.target.closest("[data-ptok]");
@@ -10357,7 +10359,7 @@ function askOpportunity(moverId, from){
 }
 $("#bsvg").addEventListener("pointerup", bend);
 /* right-click deletes while painting, so no menu (the square clicked may already be redrawn when the menu event comes) */
-document.addEventListener("contextmenu", e=>{ if((bpaint || (e.target.closest && e.target.closest("[data-ptok]"))) && !$("#battle").hidden && (!e.target.isConnected || e.target.closest("#battle"))) e.preventDefault();
+document.addEventListener("contextmenu", e=>{ if((bpaint || (e.target.closest && e.target.closest("[data-ptok], [data-light]"))) && !$("#battle").hidden && (!e.target.isConnected || e.target.closest("#battle"))) e.preventDefault();
   if(courseEdit && (!e.target.isConnected || e.target.closest("#field"))) e.preventDefault(); });      // right-click drops a waypoint
 /* double-click a label (Text piece picked) to change its words */
 $("#bsvg").addEventListener("dblclick", e=>{ if(bpaint!=="text") return; const n = bnode(); if(!n) return; const i = labelAt(n, bpoint(e)); if(i>=0 && editLabel(n, i)){ touch(); renderBattle(); } });
