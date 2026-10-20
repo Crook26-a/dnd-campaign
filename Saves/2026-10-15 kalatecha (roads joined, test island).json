@@ -33379,7 +33379,31 @@
                                        "y":  -230
                                    }
                                ],
-                       "sea":  true
+                       "sea":  true,
+                       "labels":  [
+                                      {
+                                          "name":  "The Kalatecha Sea",
+                                          "x":  3600,
+                                          "y":  2700,
+                                          "w":  9000
+                                      },
+                                      {
+                                          "name":  "The Middle Sea",
+                                          "x":  19500,
+                                          "y":  3000,
+                                          "w":  10000,
+                                          "hidden":  true,
+                                          "reveal":  400
+                                      },
+                                      {
+                                          "name":  "The Hidden Sea",
+                                          "x":  16500,
+                                          "y":  -7800,
+                                          "w":  5200,
+                                          "hidden":  true,
+                                          "reveal":  200
+                                      }
+                                  ]
                    },
                    {
                        "id":  "eisle",

@@ -394,6 +394,7 @@
   .thrrow{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px dotted var(--rule-soft)} .thrrow .sr-a{display:flex;gap:4px;flex:0 0 auto}
   .thrrow.due{border-left:3px solid var(--lead);padding-left:5px} .thrrow.done .thrtext{color:var(--ink-faint);text-decoration:line-through}
   .thrform{border:1px solid var(--rule-soft);border-radius:4px;padding:6px 8px;margin:0 0 6px;background:var(--paper)}
+  .sealab{font-family:var(--serif);font-style:italic;letter-spacing:.32em;fill:#4f6f76;fill-opacity:.8;paint-order:stroke;stroke:#cfdcd9;stroke-width:.6px;stroke-opacity:.6}
   .shoprow{display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px dotted var(--rule-soft);font-size:12px} .shoprow .sr-n{flex:1;min-width:0} .shoprow .sr-a{display:flex;gap:4px;flex:0 0 auto} .shoprow select{max-width:118px}
   #mapfurn .rosebox{position:absolute;right:62px;bottom:14px;opacity:.92} #mapfurn .rosebox[hidden]{display:none}
   .pv-rose{position:fixed;right:2vw;bottom:2vh;pointer-events:none;z-index:3} .pv-rose svg{width:min(15vh,150px);height:auto}
@@ -1942,6 +1943,19 @@ function playerMapScene(){
     [...e.children].forEach(c=>{ if(c!==line) c.remove(); });     // no miles on it: they don't know how far it goes
     e.removeAttribute("data-pa"); e.removeAttribute("data-pb");
   });
+  const ML = !planOf && (doc.shapes||[]).find(s=>s.mainland && s.hidden), SEA = !planOf && seaShape();
+  if(ML && SEA){ const sEl = copy.querySelector(`[data-ps="${SEA.id}"]`), mEl = copy.querySelector(`[data-ps="${ML.id}"]`);
+    if(sEl){ const ns = "http://www.w3.org/2000/svg", ppm = root.ppm||10, sb = seaBounds(), pad = 400*ppm, parent = sEl.parentNode, next = sEl.nextSibling;
+      const fill = (sEl.querySelector("path.shape") && sEl.querySelector("path.shape").getAttribute("fill")) || "#9db6bc";
+      const water = document.createElementNS(ns, "rect"); water.setAttribute("x", sb.x0 - pad); water.setAttribute("y", sb.y0 - pad); water.setAttribute("width", sb.x1 - sb.x0 + 2*pad); water.setAttribute("height", sb.y1 - sb.y0 + 2*pad); water.setAttribute("fill", fill);
+      const clip = document.createElementNS(ns, "clipPath"); clip.setAttribute("id", "pseen");
+      for(const [x, y, r] of [...(ML.seen||[]), ...(chartOn() ? chartOf().seen : [])]){ const c = document.createElementNS(ns, "circle"); c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", r*ppm); clip.appendChild(c); }
+      const g = document.createElementNS(ns, "g"); g.setAttribute("clip-path", "url(#pseen)");
+      if(mEl){ mEl.removeAttribute("data-ps"); mEl.removeAttribute("opacity"); g.appendChild(mEl); }
+      const labs = [...sEl.querySelectorAll("[data-sealab]")]; g.appendChild(sEl);
+      parent.insertBefore(water, next); parent.insertBefore(clip, next); parent.insertBefore(g, next); for(const l of labs) parent.insertBefore(l, next); } }
+  /* the sea's names they haven't come to yet */
+  if(SEA) (SEA.labels||[]).forEach((L, i)=>{ if(L.hidden) copy.querySelectorAll(`[data-sealab="${i}"]`).forEach(e=>e.remove()); });
   const hidS = new Set((doc.shapes||[]).filter(s=>s.hidden).map(s=>s.id));
   copy.querySelectorAll("[data-ps]").forEach(e=>{ if(hidS.has(e.getAttribute("data-ps"))) e.remove(); else e.removeAttribute("opacity"); });
   /* the overlays go, except a place a document's pin is pointing at */
@@ -2769,12 +2783,18 @@ const spotMiles = () => +(root.chart && root.chart.spot) || 10;
 function chartSpot(ship){
   if(!ship) return [];                                   // works with the players' chart on or off: hidden places turn up either way
   const on = chartOn(), R = spotMiles()*(root.ppm||10), got = [];
+  /* the mainland comes into the players' view a stretch at a time: what's in sight of the ship (Joseph, 2026-10-16) */
+  for(const s of (root.shapes||[])) if(s.mainland && s.hidden && !s.secret && coastDist(s, ship.x, ship.y) <= R){
+    const seen = s.seen = Array.isArray(s.seen) ? s.seen : [], ppm = root.ppm||10;
+    if(!seen.some(([x, y])=>Math.hypot(x-ship.x, y-ship.y) < R/3)){ if(!seen.length) got.push(`the coast of ${s.name||"the mainland"}`); seen.push([Math.round(ship.x), Math.round(ship.y), Math.round(R/ppm + 5)]); } }
+  /* the sea's names: one turns up once the ship is within its reach of it */
+  { const sea = seaShape(); for(const L of (sea && sea.labels) || []) if(L.hidden && !L.secret && Math.hypot(L.x-ship.x, L.y-ship.y) <= (+L.reveal || 300)*(root.ppm||10)){ delete L.hidden; got.push(L.name); } }
   for(const n of root.nodes){
     if(n===ship || sailsAbout(n) || n.secret || Math.hypot(n.x-ship.x, n.y-ship.y) > R) continue;
     const was = !!n.hidden; if(was){ delete n.hidden; got.push(n.name||"a place"); }
     if(on && !n.charted){ if(!was && !inSight(n.x, n.y)) got.push(n.name||"a place"); n.charted = true; }
   }
-  for(const s of (root.shapes||[])) if(s.hidden && !s.secret && (s.pts||[]).some(p=>Math.hypot(p.x-ship.x, p.y-ship.y) <= R)){ delete s.hidden; got.push(s.name||({ reef:"a reef", island:"an island" })[s.kind]||"a feature"); }
+  for(const s of (root.shapes||[])) if(s.hidden && !s.secret && !s.mainland && (s.pts||[]).some(p=>Math.hypot(p.x-ship.x, p.y-ship.y) <= R)){ delete s.hidden; got.push(s.name||({ reef:"a reef", island:"an island" })[s.kind]||"a feature"); }
   return got;
 }
 /* the navigator's check for a voyage (Joseph's table rule): a natural 20 halves the time; a total under 10
@@ -2839,7 +2859,7 @@ function chartReveal(a, b, miles){
 function chartSight(){
   const got = [];
   for(const n of root.nodes) if(n.hidden && !n.secret && inSight(n.x, n.y)){ delete n.hidden; got.push(n.name||"a place"); }
-  for(const s of (root.shapes||[])) if(s.hidden && !s.secret && (s.pts||[]).some(p=>inSight(p.x, p.y))){ delete s.hidden; got.push(s.name||({ reef:"a reef", island:"an island" })[s.kind]||"a feature"); }
+  for(const s of (root.shapes||[])) if(s.hidden && !s.secret && !s.mainland && (s.pts||[]).some(p=>inSight(p.x, p.y))){ delete s.hidden; got.push(s.name||({ reef:"a reef", island:"an island" })[s.kind]||"a feature"); }
   return got;
 }
 /* the brush: reveal or hide the chart by hand, a click or a drag on the sea chart */
@@ -3992,6 +4012,12 @@ function coastRipples(sh, d, inv){
     s += `<path d="${d}" ${j} stroke="${line}" stroke-opacity=".55" stroke-width="${w}"/><path d="${d}" ${j} stroke="${band}" stroke-width="${Math.max(0, w - 2.2*inv)}"/>`; }
   return `<g pointer-events="none">${s}</g>`;
 }
+/* the map's card opens the sea's card; the sea's card names its basins */
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-seacard]"); if(!b) return; const S = seaShape(); if(S) select("shape", S.id); });
+document.addEventListener("change", e=>{ const t = e.target, S = t.dataset && (t.dataset.sealabname!=null || t.dataset.sealabhid!=null) && seaShape(); if(!S) return;
+  const L = (S.labels||[])[+(t.dataset.sealabname ?? t.dataset.sealabhid)]; if(!L) return;
+  if(t.dataset.sealabname!=null){ L.name = t.value.trim(); } else { if(t.checked) L.hidden = true; else delete L.hidden; }
+  markDirty(K_SURVEY); saveParty(); render(); renderPane(true); });
 /* the sea's own coast, where it has one (a sea ringed by a mainland): the same shallows and ripples, inside the water only */
 function seaShallows(sh, d, inv){        /* the coast written once and reused: it's thousands of points long */
   const ppm = root.ppm||10, band = "#b2c7c5", line = "#6f9590", j = `stroke-linejoin="round" fill="none"`, id = `seaclip-${sh.id}`, p = `seacoast-${sh.id}`, u = `href="#${p}"`;
@@ -4530,7 +4556,12 @@ function render(){
     }
     /* closed features catch a click anywhere inside, not just on the hairline */
     s += `<path class="shapehit${sh.closed?" fillhit":""}" data-shape="${sh.id}" d="${d}" stroke-width="${Math.max(16,HIT*1.6)*inv}"/>`;
-    if(sh.name && !(sh.kind==="zone" && dmMode) && (planOf || view.k >= .15 || ["island","water"].includes(sh.kind))){
+    if(sh.sea && !planOf && (sh.labels||[]).length){
+      sh.labels.forEach((L, i)=>{ if(!L.name) return; const fs = Math.min(22*inv, (+L.w || 9000)/(L.name.length*1.05));       // never wider than its basin
+        s += `<text class="sealab" data-sealab="${i}" x="${L.x}" y="${L.y}" font-size="${fs}" text-anchor="middle" pointer-events="none"${L.hidden ? ` opacity=".55"` : ""}>${esc(L.name.toUpperCase())}</text>`;
+        const w = L.name.length*fs*.78; labelBlock.push({ x:L.x - w/2, y:L.y - fs, w, h:fs*1.3 }); });
+    }
+    else     if(sh.name && !(sh.kind==="zone" && dmMode) && (planOf || view.k >= .15 || ["island","water"].includes(sh.kind))){
       const mid = polyAt(sm, .5);
       if(kd.road){                                   // a street's name runs along it, the right way up
         let deg = (mid.ang||0)*180/Math.PI; if(deg>90||deg<-90) deg += 180;
@@ -5396,7 +5427,9 @@ svg.addEventListener("pointerdown", steady(e=>{
       drag = { mode:"node", id:n.id, ox:n.x-w.x, oy:n.y-w.y, moved:false };
     }
     else if(rEl) select("road", rEl.dataset.road);
-    else if(shEl) select("shape", shEl.dataset.shape);
+    else if(shEl){ const S = !planOf && seaShape();
+      if(S && shEl.dataset.shape===S.id){ sel = null; render(); renderPane(true); }            // the open sea: the map's own card (the sea's card is a button on it)
+      else select("shape", shEl.dataset.shape); }
     return;
   }
 
@@ -14611,6 +14644,7 @@ function renderInspectInner(){
     const warns = mapWarnings(), E = encSet(), placed = (doc.roads||[]).reduce((s, r)=>s + (r.encs||[]).length, 0);
     el.innerHTML = `
       ${cardHead("This map", `<span class="cnm">${esc(doc.title||"The survey")}</span>`, null, null, `${doc.nodes.length} places · ${doc.roads.length} roads · ${roadsMi} road ${UNIT()} · ${doc.regions.length} region${doc.regions.length===1?"":"s"}`)}
+      ${seaShape() ? `<button class="btn wide" data-seacard style="margin:0 0 8px" title="The sea's own card: its names, its notes, whether players see it">The sea: ${esc(((seaShape().labels||[]).map(l=>l.name).filter(Boolean).join(", ")) || seaShape().name || "its card")}</button>` : ""}
       ${csec("map:warn", "Wants attention", warns.length ? String(warns.length) : "nothing", warns.length ? warns.map(w=>`<p class="cwarn">${w}</p>`).join("") : `<p class="allclear">Nothing needs looking at.</p>`, true)}
       ${csec("map:roads", "Road tools", "", `
         <p class="empty-note" style="margin:0 0 8px">Bring the roads and the drawing into line, and the places onto their roads.</p>
@@ -14637,6 +14671,7 @@ function renderInspectInner(){
     el.innerHTML = `
       <p class="eyebrow">Drawn feature</p>
       <div class="field"><label>Name</label><input id="s-name" type="text" value="${esc(sh.name)}" placeholder="unnamed"></div>
+      ${sh.sea && (sh.labels||[]).length ? `<p class="eyebrow spaced">Its names on the chart</p>${sh.labels.map((L, i)=>`<div class="pcrow" style="align-items:center"><input type="text" data-sealabname="${i}" value="${esc(L.name||"")}" style="flex:1;min-width:0"><label class="check" style="margin:0" title="Off the players' screen until the crew sails within ${+L.reveal||300} miles of it"><input type="checkbox" data-sealabhid="${i}" ${L.hidden?"checked":""}> Hidden</label></div>`).join("")}<p class="empty-note" style="font-size:10.5px;margin:2px 0 8px">Each basin's name, where it stands on the chart. A hidden one turns up on the players' screen when the crew sails into it.</p>` : ""}
       <div class="field"><label>Kind</label><select id="s-kind">${SHAPE_KEYS.map(k=>`<option value="${k}" ${k===sh.kind?"selected":""}>${SHAPE_KINDS[k].label}</option>`).join("")}</select></div>
       ${kd.alwaysOpen?"":`<label class="check"><input id="s-closed" type="checkbox" ${sh.closed?"checked":""}> Closed outline</label>`}
       <label class="check" style="margin-top:6px"><input id="s-straight" type="checkbox" ${sh.straight?"checked":""}> Straight lines between points</label>
