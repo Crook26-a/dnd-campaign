@@ -33385,7 +33385,15 @@
                                           "name":  "The Kalatecha Sea",
                                           "x":  3600,
                                           "y":  2700,
-                                          "w":  9000
+                                          "cy":  0,
+                                          "w":  9000,
+                                          "climate":  "med_west",
+                                          "box":  [
+                                                      -7700,
+                                                      -12000,
+                                                      11000,
+                                                      12000
+                                                  ]
                                       },
                                       {
                                           "name":  "The Middle Sea",
@@ -33393,7 +33401,14 @@
                                           "y":  3000,
                                           "w":  10000,
                                           "hidden":  true,
-                                          "reveal":  400
+                                          "reveal":  400,
+                                          "climate":  "med_east",
+                                          "box":  [
+                                                      11000,
+                                                      -5200,
+                                                      40000,
+                                                      12000
+                                                  ]
                                       },
                                       {
                                           "name":  "The Hidden Sea",
@@ -33401,7 +33416,29 @@
                                           "y":  -7800,
                                           "w":  5200,
                                           "hidden":  true,
-                                          "reveal":  200
+                                          "reveal":  200,
+                                          "climate":  "fey_spring",
+                                          "box":  [
+                                                      12000,
+                                                      -12000,
+                                                      25000,
+                                                      -5200
+                                                  ]
+                                      },
+                                      {
+                                          "name":  "The Western Ocean",
+                                          "x":  -10200,
+                                          "y":  -3600,
+                                          "w":  5000,
+                                          "hidden":  true,
+                                          "reveal":  150,
+                                          "climate":  "open_ocean",
+                                          "box":  [
+                                                      -20000,
+                                                      -12000,
+                                                      -7700,
+                                                      12000
+                                                  ]
                                       }
                                   ]
                    },

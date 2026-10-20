@@ -15,10 +15,13 @@ $sea.pts = Pts $o.sea
 $sea | Add-Member -NotePropertyName sea -NotePropertyValue $true -Force
 $sea.straight = $true                                 # thousands of points: straight segments draw it just as well, far lighter
 # the three basins' names (Joseph, 2026-10-16), set once: renames made in the app are kept
-if(-not $sea.labels -or -not $sea.labels[0].w){ $sea | Add-Member -NotePropertyName labels -NotePropertyValue @(
-  [pscustomobject][ordered]@{ name = "The Kalatecha Sea"; x = 3600; y = 2700; w = 9000 },
-  [pscustomobject][ordered]@{ name = "The Middle Sea"; x = 19500; y = 3000; w = 10000; hidden = $true; reveal = 400 },
-  [pscustomobject][ordered]@{ name = "The Hidden Sea"; x = 16500; y = -7800; w = 5200; hidden = $true; reveal = 200 }) -Force }
+# each with its climate (the app's CLIMATES, your table rule) and the box of water it covers ([x0, y0, x1, y1]; the first box
+# that holds a spot gives its weather), 2026-10-20: the Hidden Sea an Irish spring all year, kept so by the fey
+if(-not $sea.labels -or -not $sea.labels[0].climate -or $null -eq $sea.labels[0].cy){ $sea | Add-Member -NotePropertyName labels -NotePropertyValue @(
+  [pscustomobject][ordered]@{ name = "The Kalatecha Sea"; x = 3600; y = 2700; cy = 0; w = 9000; climate = "med_west"; box = @(-7700, -12000, 11000, 12000) },
+  [pscustomobject][ordered]@{ name = "The Middle Sea"; x = 19500; y = 3000; w = 10000; hidden = $true; reveal = 400; climate = "med_east"; box = @(11000, -5200, 40000, 12000) },
+  [pscustomobject][ordered]@{ name = "The Hidden Sea"; x = 16500; y = -7800; w = 5200; hidden = $true; reveal = 200; climate = "fey_spring"; box = @(12000, -12000, 25000, -5200) },
+  [pscustomobject][ordered]@{ name = "The Western Ocean"; x = -10200; y = -3600; w = 5000; hidden = $true; reveal = 150; climate = "open_ocean"; box = @(-20000, -12000, -7700, 12000) }) -Force }
 $oldMain = $d.shapes | Where-Object id -eq "cmain"
 $main = [pscustomobject][ordered]@{ id = "cmain"; kind = "island"; closed = $true; straight = $true; name = "The Mainland"; side = 1; impassable = $false; terrain = "grassland"; mainland = $true
   notes = "The continent round the sea (2026-10-16), charted ten miles in from the coast; beyond that it's unmapped. Placeholder name. Set up for a campaign on land one day."; hidden = $true; pts = (Pts $o.edge) }
