@@ -397,6 +397,10 @@
   .sealab{font-family:var(--serif);font-style:italic;letter-spacing:.32em;fill:#4f6f76;fill-opacity:.8;paint-order:stroke;stroke:#cfdcd9;stroke-width:.6px;stroke-opacity:.6}
   .shoprow{display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px dotted var(--rule-soft);font-size:12px} .shoprow .sr-n{flex:1;min-width:0} .shoprow .sr-a{display:flex;gap:4px;flex:0 0 auto} .shoprow select{max-width:118px}
   #mapfurn .rosebox{position:absolute;right:62px;bottom:14px;opacity:.92} #mapfurn .rosebox[hidden]{display:none}
+  .pv-weather{position:fixed;left:2vw;top:2vh;z-index:3;max-width:min(36vw,420px);background:rgba(239,228,198,.92);border:2px solid #3a2e1e;box-shadow:0 0 0 4px rgba(239,228,198,.92),0 0 0 6px #6d5c43;padding:1.2vh 1.4vw;font-family:var(--serif);color:#3a2e1e;pointer-events:none}
+  .pv-weather .pvw-h{font-size:min(3.4vh,30px)} .pv-weather .pvw-h span{font-size:.6em;color:#6d5c43;margin-left:.4em} .pv-weather .pvw-l{font-size:min(2.2vh,20px);margin:.3vh 0 .6vh}
+  .pv-weather .pvw-m{font-size:min(1.8vh,16px);color:#4a3d2a;margin-top:.3vh}
+  #wxPop .wx-edit .pcrow{margin:0 0 4px} #wxPop .wx-edit select{max-width:150px} .wxchip .wx-set{color:var(--lead)}
   .pv-rose{position:fixed;right:2vw;bottom:2vh;pointer-events:none;z-index:3} .pv-rose svg{width:min(15vh,150px);height:auto}
   #mapfurn .cartouche{position:absolute;left:14px;top:12px;padding:7px 16px 8px;background:var(--paper-lit);border:1px solid var(--ink);box-shadow:0 0 0 3px var(--paper-lit),0 0 0 4px var(--ink-soft);text-align:center;max-width:260px}
   #mapfurn .cartouche[hidden]{display:none}
@@ -1907,6 +1911,7 @@ function sendPlayers(now){
       else if(playerShow.kind==="standing") msg = { kind:"board", html:`<div class="lb lb-tv"><div class="lb-h">Who is where</div>${xpStanding(partyRoster(), true)}</div>` };
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
       else msg = playerMapScene();
+      if(msg && msg.kind==="svg" && typeof playersWeather==="function") msg.weather = playersWeather();
       playerWin.postMessage({ ordinate:"scene", ...msg }, "*");
     }catch(err){}
   }, now ? 0 : 120);
@@ -2021,6 +2026,7 @@ function playerMode(){
       x = fit(x, w, B.x0, B.x1); y = fit(y, h, B.y0, B.y1); vbox = `${x} ${y} ${w} ${h}`; }
     if(d.kind==="svg") v.innerHTML = `<svg class="pv-svg" viewBox="${vbox}" preserveAspectRatio="xMidYMid meet" style="background:${d.bg}">${d.svg}</svg>`
       + (d.rose ? `<div class="pv-rose">${d.rose}</div>` : "")
+      + (d.weather ? `<div class="pv-weather">${d.weather}</div>` : "")
       + (d.order ? `<div id="pv-order"><span class="rd">Round ${d.order.round}</span>${d.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${esc(o.label)}</span>`).join("")}</div>` : "");
     else if(d.kind==="picture" && d.blob){ url = URL.createObjectURL(d.blob); v.innerHTML = `<img class="pv-img" src="${url}" alt="">`; }
     else if(d.kind==="board") v.innerHTML = `<div class="pv-board">${d.html}</div>`;
@@ -2055,6 +2061,7 @@ function renderPScreen(){
     <p class="grouplab">They see</p>
     <div class="adtabs">${showBtn("map", "The map")}${showBtn("blank", "Nothing")}${(lib().factions||[]).length ? showBtn("factions", "Factions") : ""}</div>
     <label class="check" style="margin:2px 0 6px"><input type="checkbox" data-ps="freeze" ${playerFrozen?"checked":""}> Freeze it here while I look around</label>
+    <label class="check" style="margin:2px 0 6px" title="The temperature, the wind and what they mean, in a corner of their screen"><input type="checkbox" data-ps="weather" ${root.pshowWeather!==false?"checked":""}> Show them the weather</label>
     ${playerFrozen ? `<button class="btn wide" data-ps="send">Show them what I see now</button>` : ""}
     <p class="empty-note" style="font-size:11px;margin:0 0 6px">It follows your map: the town, the sea chart, or the battle map when a fight is open. Places and features you mark <i>Hidden from the players' screen</i> (in DM mode, in their panel) don't show${hidHere?` — ${hidHere} hidden on this map`:""}.</p>
     <p class="grouplab">The sea chart</p>
@@ -2156,6 +2163,7 @@ function wirePScreen(){
   });
   el.addEventListener("change", async e=>{
     const t = e.target;
+    if(t.dataset.ps==="weather"){ root.pshowWeather = t.checked; saveParty(); sendPlayers(true); return; }
     if(t.dataset.ps==="freeze"){ playerFrozen = t.checked; if(!playerFrozen) sendPlayers(true); renderPScreen(); return; }
     /* the sea chart: on or off, how far the crew sees, and the DM's own shading */
     if(t.dataset.ps==="chart"){ const c = chartOf(); c.on = t.checked; if(c.on) chartSeed(); else chartBrush = null; touch(); renderPScreen(); sendPlayers(true);
@@ -2746,7 +2754,7 @@ function trailLines(forPlayers){
    ══════════════════════════════════════════════════════════════ */
 const VESSELS = [["Rowboat",1.5],["Keelboat",1],["Sailing Ship",2],["Warship",2.5],["Longship",3],["Galley",4],["Airship",8]];
 const vesselMph = s => (VESSELS.find(([k])=>k===(s.vessel||"Sailing Ship")) || VESSELS[2])[1];
-const WINDS = [["fair","Fair wind"],["head","Against a strong wind (half speed)"]];
+const WINDS = [["weather","From the day's weather"],["fair","Fair wind, whatever the weather"],["head","Against a strong wind (half speed)"]];
 /* the hour behind the time of day, so a voyage can end at dusk or in the night */
 const PHASE_HOUR = { day:8, dim:19, night:22 };
 const phaseAt = h => (h>=7 && h<19) ? "day" : ((h>=5 && h<7) || (h>=19 && h<21)) ? "dim" : "night";
@@ -2771,7 +2779,7 @@ function voyage(ship, from, to){
   let said = seen.length ? ` Sighted: ${seen.join(", ")}.` : "";
   if(seen.length) gameLog("sight", `Sighted ${seen.join(", ")} from ${ship.name||"the ship"}`);
   if(ship.timeOff) return said;
-  const mph = vesselMph(ship) * (ship.wind==="head" ? .5 : 1), perDay = Math.max(1, Math.min(24, +ship.sailHours || 24));
+  const mph = sailMph(ship), perDay = Math.max(1, Math.min(24, +ship.sailHours || 24));
   const sailing = miles / mph, days = Math.floor(sailing / perDay), hrs = days*24 + (sailing - days*perDay);
   passHours(hrs);
   ship.lastVoyage = { miles:Math.round(miles*10)/10, mph, hours:Math.round(hrs*10)/10, day:campaignDay(), time:timeOfDay() };
@@ -2930,7 +2938,9 @@ var courseEdit = null, voyagePlay = null;               // the ship whose course
 const COURSE_PACES = [1, 2, 5, 10, 20, 50];
 /* she can stop by herself every so often under sail: [world hours, the choice, what the pause says] */
 const STOP_EVERY = [[0,"Don't stop",""],[12,"Stop every ½ day","Half a day at sea"],[24,"Stop every day","A day at sea"],[48,"Stop every 2 days","Two days at sea"],[72,"Stop every 3 days","Three days at sea"],[168,"Stop every week","A week at sea"]];
-const sailMph = s => vesselMph(s) * (s.wind==="head" ? .5 : 1);
+/* her speed today: against a strong wind (set by hand), or the day's wind on her heading (your table rule) */
+const windNow = s => s.wind==="head" ? .5 : s.wind==="fair" ? 1 : typeof windOnShip==="function" ? windOnShip(s, weatherAtShip(s), headingOf(s)).f : 1;
+const sailMph = s => Math.round(vesselMph(s) * windNow(s) * 100)/100;
 const dayFactor = s => 24 / Math.max(1, Math.min(24, +s.sailHours || 24));   // hours of the world per hour under sail
 function courseMiles(s){ let a = (s.course && s.course.tp) || { x:s.x, y:s.y }, d = 0;    /* from where she truly is, not where her wandering puts her */ for(const p of (s.course && s.course.pts) || []){ d += Math.hypot(p.x-a.x, p.y-a.y); a = p; } return d / (root.ppm||10); }
 /* ── ships keep to the sea (Joseph, 2026-10-16: the Sallowmay sailed from Dunmarrow straight across the island). "Sail
@@ -3063,7 +3073,9 @@ function playCourse(s){
   if(!s.course || !s.course.pts.length || planOf) return;
   courseEdit = null;
   /* the time the whole voyage takes, the navigator's check included, set once when she first sails; spread over every mile */
-  if(!s.course.rate){ const m = courseMiles(s); s.course.rate = m ? navAdjust(m / sailMph(s) * dayFactor(s), s.course.nav) / m : 0; }
+  if(!s.course.rate){ const m = courseMiles(s), nv = s.course.nav, wn = typeof weatherNav==="function" ? weatherNav(weatherAtShip(s)).mod : 0;
+    const navW = nv && !nv.nat20 && nv.total!=="" && nv.total!=null ? { ...nv, total:+nv.total + wn } : nv;     // the day's weather helps or hinders the navigator (your table rule)
+    s.course.wf = windNow(s); s.course.rate = m ? navAdjust(m / sailMph(s) * dayFactor(s), navW) / m : 0; }
   /* where she truly is on the course (her wandering is drawn on top of it); a new trail when a new voyage starts */
   const c = s.course, ppm = root.ppm||10;
   if(c.tp && Math.hypot(s.x - c.tp.x - ((c.off||{}).x||0), s.y - c.tp.y - ((c.off||{}).y||0)) > ppm/2){ c.tp = { x:s.x, y:s.y }; c.off = null; }   // moved by hand while paused
@@ -3099,7 +3111,7 @@ function stepCourse(t){
     if(d <= go){ c.tp.x = p.x; c.tp.y = p.y; go -= d; c.pts.shift(); }
     else { c.tp.x += (p.x-c.tp.x)*go/d; c.tp.y += (p.y-c.tp.y)*go/d; go = 0; }
   }
-  const miles = Math.hypot(c.tp.x-tFrom.x, c.tp.y-tFrom.y) / (root.ppm||10), hrs = miles * (s.course.rate || dayFactor(s) / sailMph(s));
+  const miles = Math.hypot(c.tp.x-tFrom.x, c.tp.y-tFrom.y) / (root.ppm||10), hrs = miles * (s.course.rate ? s.course.rate * ((s.course.wf || 1) / Math.max(.05, windNow(s))) : dayFactor(s) / sailMph(s));     // each day's wind as she sails
   c.done = (c.done||0) + miles;
   const off = c.pts.length ? wanderOffset(c) : { x:0, y:0 }; c.off = off;
   s.x = c.tp.x + off.x; s.y = c.tp.y + off.y; addWake(s);
@@ -3130,6 +3142,8 @@ function courseBlock(n){
   return `<p class="grouplab" style="margin:8px 0 3px">A voyage</p>
     <div class="field" style="margin-bottom:4px"><label>Sail to</label><select data-course="to" ${playing?"disabled":""}><option value="">${c?"(a point on the sea)":"Pick a place…"}</option>${places}</select></div>
     ${navRow}
+    ${c && typeof weatherAtShip==="function" ? (()=>{ const w = weatherAtShip(n); if(!w) return ""; const wo = windOnShip(n, w, headingOf(n)), nv = weatherNav(w);
+      return `<p class="empty-note" style="font-size:11px;margin:0 0 4px">Today: ${esc(wo.word ? wo.word.replace(/^the /, "the ") : w.windWord)}${nv.word ? ` · Navigation ${esc(nv.word)}` : ""} <small>(your table rule)</small></p>`; })() : ""}
     ${c && c.pts.length ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${c.pts.length-1 ? `${c.pts.length-1} waypoint${c.pts.length===2?"":"s"}, ` : ""}${miles.toFixed(1)} mi: about ${hoursWord(hrs)} at ${sailMph(n)} mph${playing ? "" : `, arriving ${(()=>{ const h = clockHour() + hrs, d = Math.floor(h/24); return `day ${campaignDay()+d}, ${TIME_WORD[phaseAt(h - d*24)]} (about ${hourWord(h - d*24)})`; })()}`}.</p>
       <div class="pcrow">${playing ? `<button class="btn" style="flex:1" data-course="pause">⏸ Pause</button>`
           : `<button class="btn" style="flex:1" data-course="play">▶ Sail</button><button class="btn" style="flex:1" data-course="shape">${shaping?"Done shaping":"Shape the course"}</button>`}
@@ -3618,7 +3632,7 @@ function shipBlock(n){
   if(!sailsAbout(n) || planOf) return "";
   const v = n.lastVoyage;
   return `${n.rival ? rivalBlock(n) : courseBlock(n)}<div class="field" style="margin-bottom:4px"><label>She sails as</label><select data-ship="vessel">${VESSELS.map(([k, mph])=>`<option value="${k}" ${(n.vessel||"Sailing Ship")===k?"selected":""}>${k} — ${mph} mph</option>`).join("")}</select></div><p class="empty-note" style="font-size:10.5px;margin:-2px 0 6px">${riverBoat(n) ? "She can go up rivers marked Navigable, and onto lakes (your table rule)." : "She keeps to the sea: a rowboat, keelboat or longship can go up navigable rivers (your table rule)."}</p>
-    <div class="pcrow"><div class="field" style="flex:1.4;margin:0"><label>Wind</label><select data-ship="wind">${WINDS.map(([k,l])=>`<option value="${k}" ${(n.wind||"fair")===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="pcrow"><div class="field" style="flex:1.4;margin:0"><label>Wind</label><select data-ship="wind">${WINDS.map(([k,l])=>`<option value="${k}" ${(n.wind||"weather")===k?"selected":""}>${l}</option>`).join("")}</select></div>
       <div class="field" style="flex:.8;margin:0"><label>Hours a day</label><input data-ship="sailHours" class="mono" type="number" min="1" max="24" value="${+n.sailHours||24}" title="How many hours a day she sails (your call; the rules don't say)"></div></div>
     ${n.sailNote ? `<p class="empty-note" style="font-size:11px;margin:4px 0 0">${esc(n.sailNote)}</p>` : ""}
     <label class="check" style="margin:6px 0"><input type="checkbox" data-ship="time" ${n.timeOff?"":"checked"}> Moving her on the sea chart passes time</label>
@@ -13528,9 +13542,11 @@ document.addEventListener("click", e=>{
    THE CALENDAR AND THE WEATHER (Joseph, 2026-10-20) — Day 1 is 19 May (root.calendar.start), so every day has a date.
    Each sea has its own climate (your table rule, modelled on the real Mediterranean): the sea's names on the chart
    (the sea shape's labels) carry a climate and the box of water it covers; wherever the party is takes the weather of
-   the sea it's in. A day's weather is rolled from the day and the sea, so it's the same every time it's looked at,
-   until it's rolled again. The Hidden Sea is an Irish spring all year, kept so by the fey, with a fey roll on top.
-   What weather does at the table is from the 2014 rules' environment effects (the 5.1 SRD).
+   the sea it's in. Weather comes in spells, as it does: warm and cold stretches, fronts of two or three days, winds
+   that settle in, all drifting smoothly from day to day; the day's own roll sits on top of that. It's the same
+   every time it's looked at, until it's rolled again or set by hand (the DM's word wins). The Hidden Sea is an Irish
+   spring all year, kept so by the fey, with a fey roll on top. What weather does at the table is from the 2014 rules'
+   environment effects (the 5.1 SRD); what it does to a ship and her navigator is your table rule.
    ══════════════════════════════════════════════════════════════ */
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const MONTH_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
@@ -13545,14 +13561,14 @@ const dateWord = day => { const t = dateOf(day); return `${t.day} ${MONTHS[t.mon
 const seasonOf = doy => doy < 59 || doy >= 334 ? "winter" : doy < 151 ? "spring" : doy < 243 ? "summer" : "autumn";
 /* each sea's climate (°F, coastal daytime highs; chances a day): your table rule, after the real seas named */
 const CLIMATES = {
-  med_west:{ label:"Western Mediterranean", winter:58, summer:86, night:12, lat:true, rainWinter:.38, rainSummer:.05, heavy:.25, fog:.05, calm:.3, strongWind:.15, prevail:["NW","N","W"],
-    winds:[{ season:"winter", p:.18, name:"a cold north wind off the mainland", dir:"N", strong:true, temp:-5 }, { season:"any", p:.06, name:"an easterly bringing fog", dir:"E", fog:true }] },
-  med_east:{ label:"Eastern Mediterranean and the Libyan coast", winter:65, summer:92, night:14, lat:true, rainWinter:.28, rainSummer:.02, heavy:.3, fog:.03, calm:.25, strongWind:.18, prevail:["N","NW","NE"],
+  med_west:{ label:"Western Mediterranean", winter:58, summer:86, night:12, lat:true, rainWinter:.38, rainSummer:.05, heavy:.25, fog:.05, calm:.12, strongWind:.15, prevail:["NW","N","W"],
+    winds:[{ season:"winter", p:.18, name:"a cold north wind off the mainland", dir:"N", strong:true, temp:-5 }, { season:"any", p:.025, name:"an easterly bringing fog", dir:"E", fog:true }] },
+  med_east:{ label:"Eastern Mediterranean and the Libyan coast", winter:65, summer:92, night:14, lat:true, rainWinter:.28, rainSummer:.02, heavy:.3, fog:.03, calm:.1, strongWind:.18, prevail:["N","NW","NE"],
     winds:[{ season:"summer", p:.4, name:"the steady north wind of summer", dir:"N", strong:true, temp:-3 }, { season:"spring", p:.15, name:"a hot, dusty wind off the southern desert", dir:"S", temp:12, haze:true },
       { season:"autumn", p:.15, name:"a hot, dusty wind off the southern desert", dir:"S", temp:10, haze:true }, { season:"autumn", p:.07, name:"an autumn storm", dir:"SW", strong:true, storm:true }] },
-  fey_spring:{ label:"An Irish spring, all year (the fey keep it so)", winter:54, summer:61, night:10, lat:false, rainWinter:.58, rainSummer:.5, heavy:.1, fog:.32, calm:.25, strongWind:.12, prevail:["SW","W","S"], changeable:.55, fey:.2,
+  fey_spring:{ label:"An Irish spring, all year (the fey keep it so)", winter:54, summer:61, night:10, lat:false, rainWinter:.58, rainSummer:.5, heavy:.1, fog:.32, calm:.15, strongWind:.12, prevail:["SW","W","S"], changeable:.55, fey:.2,
     winds:[{ season:"any", p:.05, name:"a sudden gale out of nowhere", dir:"W", strong:true, storm:true }] },
-  open_ocean:{ label:"The open Atlantic", winter:56, summer:74, night:8, lat:true, rainWinter:.42, rainSummer:.14, heavy:.3, fog:.1, calm:.15, strongWind:.3, prevail:["W","NW","SW"],
+  open_ocean:{ label:"The open Atlantic", winter:56, summer:74, night:8, lat:true, rainWinter:.42, rainSummer:.14, heavy:.3, fog:.1, calm:.06, strongWind:.3, prevail:["W","NW","SW"],
     winds:[{ season:"winter", p:.1, name:"an ocean gale", dir:"W", strong:true, storm:true }] }
 };
 /* the Hidden Sea's fey weather (your table rule): rolled on top of the day's weather, a d12 */
@@ -13570,40 +13586,59 @@ const FEY_WEATHER = [
   "A spring tide out of season: the water rises and falls twice as far as it should.",
   "Lights skim the waves at dusk, keeping just ahead, as if leading somewhere."
 ];
+const WX_DIRS = ["N","NE","E","SE","S","SW","W","NW"];
+const WX_SKIES = ["clear","fair","a few clouds","sun and cloud by turns","overcast","dark and low","fog","hazy with dust"];
+const WX_PRECIP = [["","None"],["light rain","Light rain"],["showers","Showers"],["heavy rain","Heavy rain"],["a storm: driving rain","A storm"],["light snow","Light snow"],["heavy snow","Heavy snow"]];
 /* which sea a spot is in: the first name whose box holds it, else the nearest name */
 function seaAt(x, y){
   const sea = seaShape(), L = ((sea && sea.labels) || []).map((l, i)=>({ ...l, i })).filter(l=>CLIMATES[l.climate]); if(!L.length) return null;
   return L.find(l=>Array.isArray(l.box) && x >= l.box[0] && y >= l.box[1] && x <= l.box[2] && y <= l.box[3]) || L.reduce((a, b)=>Math.hypot(b.x-x, b.y-y) < Math.hypot(a.x-x, a.y-y) ? b : a);
 }
 /* where the weather is wanted: the party (on the road, aboard a ship, at a place or in a town) */
+function wxShip(){ const at = partyWhere(); if(at.map==="survey" && at.node){ const n = root.nodes.find(q=>q.id===at.node); if(n && sailsAbout(n)) return n; }
+  if(at.map && at.map!=="survey"){ const n = root.nodes.find(q=>q.id===at.map); if(n && sailsAbout(n)) return n; } return null; }
 function wxSpot(){
   const J = root.journey; if(J){ const p = journeyAt(J); return { x:p.x, y:p.y }; }
-  const at = partyWhere(); if(at.map==="survey" && at.node){ const n = root.nodes.find(q=>q.id===at.node); if(n && sailsAbout(n)) return { x:n.x, y:n.y }; }
+  const s = wxShip(); if(s) return { x:s.x, y:s.y };
   return partySpot() || (root.nodes.find(n=>n.origin) || { x:0, y:0 });
 }
 const wxRng = seedStr => { let h = 2166136261; for(let i=0; i<seedStr.length; i++){ h ^= seedStr.charCodeAt(i); h = Math.imul(h, 16777619); } return () => { h += 0x6D2B79F5; let t = h; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
-/* the day's weather in one sea: rolled from the day, the sea and how many times it's been rolled again */
-function weatherFor(day, L, at){
-  const C = CLIMATES[L.climate], t = dateOf(day), season = seasonOf(t.doy), k = `${day}|${L.i}`, again = ((root.weatherRolls||{})[k]) || 0;
+/* a value from -1 to 1 that drifts smoothly over the days: new each `every` days, eased between */
+const wxDrift = (key, day, every) => { const k = Math.floor(day/every), f = day/every - k, v = n => wxRng(`${root.weatherSeed||1}|${key}|${n}`)()*2 - 1, e = (1 - Math.cos(Math.PI*f))/2; return v(k)*(1-e) + v(k+1)*e; };
+/* the day's weather in one sea, as the app has it (before any hand-set change) */
+function weatherRolled(day, L, at){
+  const C = CLIMATES[L.climate], t = dateOf(day), season = seasonOf(t.doy), k = `${day}|${L.i}`, again = ((root.weatherRolls||{})[k]) || 0, sk = `${L.i}`;
   const r = wxRng(`${root.weatherSeed||1}|${k}|${again}`), d = n => 1 + Math.floor(r()*n);
   const warm = (1 - Math.cos(2*Math.PI*(t.doy - 25)/365))/2, ppm = root.ppm||10;
-  let high = C.winter + (C.summer - C.winter)*warm + (C.lat && at ? (at.y - (L.cy ?? L.y))/ppm/60 : 0) + (d(4) + d(4) - 5);     // about 1° cooler for every 60 miles north of the sea's anchor (north is up the chart)
-  const odd = d(20); let oddWord = "";
-  if(odd >= 15 && odd <= 17){ const n = d(4)*3; high -= n; oddWord = `${n}° colder than usual`; } else if(odd >= 18){ const n = d(4)*3; high += n; oddWord = `${n}° warmer than usual`; }
-  const named = (C.winds||[]).find(w=>(w.season==="any" || w.season===season) && r() < w.p) || null;
+  /* spells of weather: a warm or cold stretch over a week or two, a few days' wobble on top, and the day's own */
+  const spell = wxDrift(`${sk}|warm`, day, 9)*5 + wxDrift(`${sk}|wobble`, day, 3)*4 + (d(5) - 3);
+  const storminess = wxDrift(`${sk}|storm`, day, 3);                 // fronts: wet, windy days come in runs
+  let high = C.winter + (C.summer - C.winter)*warm + (C.lat && at ? (at.y - (L.cy ?? L.y))/ppm/60 : 0) + spell;     // about 1° cooler for every 60 miles north of the sea's anchor (north is up the chart)
+  const oddWord = Math.abs(spell) >= 6 ? `${spell > 0 ? "a warm spell" : "a cold spell"}, ${Math.round(Math.abs(spell))}° ${spell > 0 ? "warmer" : "colder"} than usual` : "";
+  /* a named wind settles in for a few days when it comes */
+  const wr = wxRng(`${root.weatherSeed||1}|${sk}|wind|${Math.floor(day/3)}`);
+  const named = (C.winds||[]).find(w=>(w.season==="any" || w.season===season) && wr() < w.p) || null;
   if(named && named.temp) high += named.temp;
-  const pRain = C.rainSummer + (C.rainWinter - C.rainSummer)*(1 - warm), wet = (named && named.storm) || r() < pRain, heavy = (named && named.storm) || (wet && r() < C.heavy);
-  const fog = (named && named.fog) || (!heavy && r() < C.fog), changeable = !!C.changeable && r() < C.changeable;
-  const strong = (named && named.strong) || heavy && r() < .5 || r() < C.strongWind, calm = !strong && r() < C.calm;
-  const dir = (named && named.dir) || C.prevail[Math.floor(r()*C.prevail.length)];
+  const pRain = Math.max(0, Math.min(.95, (C.rainSummer + (C.rainWinter - C.rainSummer)*(1 - warm)) * (1 + storminess*1.1)));
+  const wet = (named && named.storm) || r() < pRain, heavy = (named && named.storm) || (wet && r() < C.heavy * (1 + Math.max(0, storminess)));
+  const fog = (named && named.fog) || (!heavy && r() < C.fog * (1 + Math.max(0, -storminess)*.6)), changeable = !!C.changeable && r() < C.changeable;
+  const strong = (named && named.strong) || (heavy && r() < .5) || r() < C.strongWind * (1 + Math.max(0, storminess)*1.2), calm = !strong && r() < C.calm * (1 + Math.max(0, -storminess));
+  const dirKnot = wxRng(`${root.weatherSeed||1}|${sk}|dir|${Math.floor(day/2)}`), dir = (named && named.dir) || C.prevail[Math.floor(dirKnot()*C.prevail.length)];
   high = Math.round(high); const low = Math.round(high - C.night - d(4) + 2), snow = wet && high <= 34;
   const precip = !wet ? "" : snow ? (heavy ? "heavy snow" : "light snow") : named && named.storm ? "a storm: driving rain" : heavy ? "heavy rain" : C.changeable ? "showers" : "light rain";
-  const sky = fog ? "fog" : named && named.haze ? "hazy with dust" : heavy ? "dark and low" : wet ? (changeable ? "showers and sunshine" : "overcast") : changeable ? "sun and cloud by turns" : ["clear", "fair", "fair", "a few clouds"][Math.floor(r()*4)];
-  const wind = calm ? "calm" : `${strong ? "strong" : "light"} ${dir} wind`;
+  const sky = fog ? "fog" : named && named.haze ? "hazy with dust" : heavy ? "dark and low" : wet ? (changeable ? "sun and cloud by turns" : "overcast") : changeable ? "sun and cloud by turns" : ["clear", "fair", "fair", "a few clouds"][Math.floor(r()*4)];
   const fey = C.fey && r() < C.fey ? FEY_WEATHER[Math.floor(r()*FEY_WEATHER.length)] : "";
-  return { day, date:dateWord(day), season, sea:L.name, climate:C.label, high, low, sky, precip, wind, strong, heavy:heavy && !snow, snowHeavy:heavy && snow, fog, named:named ? named.name : "", odd:oddWord, changeable, fey, rolled:again };
+  return { high, low, sky, precip, wind:calm ? "calm" : strong ? "strong" : "light", dir, named:named ? named.name : "", odd:oddWord, changeable, fey };
 }
-/* what it means at the table: the 2014 rules' environment effects (the 5.1 SRD), and the sea's own */
+/* the day's weather: the app's, with anything the DM set by hand on top; and what follows from it */
+function weatherFor(day, L, at){
+  const C = CLIMATES[L.climate], k = `${day}|${L.i}`, set = (root.weatherSet||{})[k], base = weatherRolled(day, L, at), w = { ...base, ...(set||{}) };
+  const p = w.precip||"";
+  return { ...w, day, date:dateWord(day), season:seasonOf(dateOf(day).doy), sea:L.name, climate:C.label, set:!!set, rolled:((root.weatherRolls||{})[k])||0, key:k,
+    strong:w.wind==="strong", calm:w.wind==="calm", heavy:p==="heavy rain" || p.startsWith("a storm"), snowHeavy:p==="heavy snow", storm:p.startsWith("a storm"), fog:w.sky==="fog",
+    windWord:w.wind==="calm" ? "calm" : `${w.wind} ${w.dir} wind` };
+}
+/* what it means at the table: the 2014 rules' environment effects (the 5.1 SRD) */
 function weatherRules(w){
   const out = [];
   if(w.strong) out.push("Strong wind: disadvantage on ranged weapon attack rolls and on Wisdom (Perception) checks that rely on hearing; it puts out open flames and disperses fog.");
@@ -13613,40 +13648,103 @@ function weatherRules(w){
   if(w.low <= 0) out.push("Extreme cold (0°F or below): without cold weather gear, a DC 10 Constitution saving throw each hour or a level of exhaustion.");
   return out;
 }
+/* ── at sea (your table rule): what the wind does to a ship on her heading, and what the sky does to her navigator ── */
+const OARED = new Set(["Galley","Longship","Keelboat","Rowboat"]);
+const dirVec = d => { const a = WX_DIRS.indexOf(d)*Math.PI/4; return { x:Math.sin(a), y:-Math.cos(a) }; };       // the way the wind comes FROM
+/* how fast she goes for the wind, against how fast she'd go in a fair breeze: { f, word } */
+function windOnShip(s, w, heading){
+  if(!w || (s.wind && s.wind!=="weather")) return { f:1, word:"" };
+  const oars = OARED.has(s.vessel || "Sailing Ship");
+  if(w.calm) return oars ? { f:1, word:"a calm: rowing" } : { f:.25, word:"becalmed: drifting at a quarter speed" };
+  if(!heading) return { f:1, word:"" };
+  const from = dirVec(w.dir), to = { x:-from.x, y:-from.y }, L = Math.hypot(heading.x, heading.y) || 1, cos = (heading.x*to.x + heading.y*to.y)/L;
+  const side = cos > .5 ? "behind her" : cos < -.5 ? "against her" : "across her";
+  const f = w.strong ? (cos > .5 ? 1.25 : cos < -.5 ? (oars ? .75 : .5) : 1.15) : (cos > .5 ? 1.1 : cos < -.5 ? (oars ? .9 : .75) : 1);
+  const pct = Math.round((f - 1)*100);
+  return { f, word:`the ${w.windWord} is ${side}: ${pct === 0 ? "her usual speed" : pct > 0 ? `${pct}% faster` : f===.5 ? "half speed, tacking" : `${-pct}% slower`}` };
+}
+/* the navigator's check today: a bonus or penalty for what can be seen (your table rule) */
+function weatherNav(w){
+  if(!w) return { mod:0, word:"" };
+  const parts = [];
+  if(w.fog) parts.push([-5, "fog"]); else if(w.storm) parts.push([-3, "a storm"]); else if(w.heavy || w.snowHeavy) parts.push([-2, "heavy rain"]);
+  if(w.strong && !w.storm) parts.push([-1, "strong wind"]);
+  if(!w.fog && ["clear","fair"].includes(w.sky)) parts.push([1, "clear skies for sun and star sights"]);
+  const mod = parts.reduce((a, [m])=>a+m, 0);
+  return { mod, word:parts.length ? `${sgn(mod)} (${parts.map(([, x])=>x).join(", ")})` : "" };
+}
+const headingOf = s => { const c = s && s.course, a = c && (c.tp || s), b = c && c.pts && c.pts[0]; return b ? { x:b.x - a.x, y:b.y - a.y } : null; };
+const weatherAtShip = s => { const L = s && seaAt(s.x, s.y); return L ? weatherFor(campaignDay(), L, s) : null; };
 const weatherHere = () => { const at = wxSpot(), L = seaAt(at.x, at.y); return L ? weatherFor(campaignDay(), L, at) : null; };
-const wxIcon = w => w.fog ? "🌫" : w.snowHeavy || (w.precip||"").includes("snow") ? "❄" : w.heavy || w.precip.startsWith("a storm") ? "⛈" : w.precip ? (w.changeable ? "🌦" : "🌧") : w.sky.startsWith("hazy") ? "🌫" : w.sky==="clear" ? "☀" : w.sky.includes("cloud") ? "⛅" : "🌤";
+const wxIcon = w => w.fog ? "🌫" : w.snowHeavy || (w.precip||"").includes("snow") ? "❄" : w.heavy ? "⛈" : w.precip ? "🌦" : (w.sky||"").startsWith("hazy") ? "🌫" : w.sky==="clear" ? "☀" : (w.sky||"").includes("cloud") || w.sky==="overcast" || w.sky==="dark and low" ? "⛅" : "🌤";
+const wxTemp = w => { const tod = timeOfDay(); return tod==="night" ? w.low : tod==="dim" ? Math.round((w.high + w.low)/2) : w.high; };
+/* the players' screen: the weather where they are, and what it means for them (no fey: the DM tells that) */
+function playersWeather(){
+  if(root.pshowWeather===false) return "";
+  const w = weatherHere(); if(!w) return "";
+  const ship = wxShip(), lines = [];
+  if(ship){ const wo = windOnShip(ship, w, headingOf(ship)); if(wo.word) lines.push(`Sailing: ${wo.word}.`);
+    const nv = weatherNav(w); if(nv.word) lines.push(`Navigation ${nv.word}.`); }
+  if(w.strong) lines.push("Strong wind: ranged attacks at disadvantage; hard to hear; open flames blow out.");
+  if(w.heavy || w.snowHeavy) lines.push("Heavy rain: hard to see and hear; open flames go out.");
+  if(w.fog) lines.push("Fog: you can't see far.");
+  if(w.high >= 100) lines.push("Extreme heat: drink, or tire.");
+  return `<div class="pvw-h">${wxIcon(w)} <b>${wxTemp(w)}°F</b> <span>${esc(w.date)}</span></div><div class="pvw-l">${esc(w.windWord[0].toUpperCase() + w.windWord.slice(1))} · ${esc(w.sky)}${w.precip ? `, ${esc(w.precip)}` : ""}</div>${lines.map(l=>`<div class="pvw-m">${esc(l)}</div>`).join("")}`;
+}
 /* the chip beside the day: the date, the weather where the party is; a click opens the whole of it */
 function syncWeather(){
   const el = document.getElementById("wxChip"); if(!el || typeof root==="undefined" || !root) return;
-  const w = weatherHere(), tod = timeOfDay(), temp = w && (tod==="night" ? w.low : tod==="dim" ? Math.round((w.high + w.low)/2) : w.high);
-  el.innerHTML = `<span class="wx-date">${esc(dateWord(campaignDay()))}</span>${w ? ` <span class="wx-now">${wxIcon(w)} ${temp}°</span>${w.fey ? ` <span class="wx-fey" title="Something fey">✧</span>` : ""}` : ""}`;
-  el.title = w ? `${w.sea}, ${w.date}: ${w.sky}${w.precip ? ", " + w.precip : ""}, ${w.wind}; high ${w.high}°F, low ${w.low}°F. Click for the whole of it.` : "The date";
-  const pop = document.getElementById("wxPop"); if(pop && !pop.hidden) wxPopFill();
+  const w = weatherHere();
+  el.innerHTML = `<span class="wx-date">${esc(dateWord(campaignDay()))}</span>${w ? ` <span class="wx-now">${wxIcon(w)} ${wxTemp(w)}°</span>${w.set ? ` <span class="wx-set" title="Set by hand">✎</span>` : ""}${w.fey ? ` <span class="wx-fey" title="Something fey">✧</span>` : ""}` : ""}`;
+  el.title = w ? `${w.sea}, ${w.date}: ${w.sky}${w.precip ? ", " + w.precip : ""}, ${w.windWord}; high ${w.high}°F, low ${w.low}°F. Click for the whole of it.` : "The date";
+  const pop = document.getElementById("wxPop"); if(pop && !pop.hidden && !wxEditing) wxPopFill();
+  if(typeof sendPlayers==="function" && root.pshowWeather!==false) try{ sendPlayers(); }catch(err){}
 }
+var wxEditing = false;
 function wxPopFill(){
   const pop = document.getElementById("wxPop"), w = weatherHere(); if(!pop) return;
   if(!w){ pop.innerHTML = `<p class="empty-note">${esc(dateWord(campaignDay()))}. No sea with a climate here, so no weather is rolled.</p>`; return; }
-  const rules = weatherRules(w), t = dateOf(campaignDay());
+  const rules = weatherRules(w), t = dateOf(campaignDay()), ship = wxShip(), wo = ship ? windOnShip(ship, w, headingOf(ship)) : null, nv = weatherNav(w);
+  const sel = (k, opts, cur) => `<select data-wxf="${k}">${opts.map(o=>{ const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${v===cur?"selected":""}>${esc(l)}</option>`; }).join("")}</select>`;
   pop.innerHTML = `<div class="pcrow" style="align-items:center;margin:0 0 4px"><p class="eyebrow" style="margin:0;flex:1">The weather · ${esc(w.sea)}</p><button class="fdel" data-wx="x" title="Close">×</button></div>
-    <p class="wx-big">${wxIcon(w)} ${esc(w.date)}${t.year ? `, year ${t.year+1}` : ""} <small>· ${esc(w.season)}</small></p>
-    <p style="margin:2px 0 6px"><b>${w.high}°F</b> by day, <b>${w.low}°F</b> at night · ${esc(w.sky)}${w.precip ? `, ${esc(w.precip)}` : ""} · ${esc(w.wind)}</p>
+    <p class="wx-big">${wxIcon(w)} ${esc(w.date)}${t.year ? `, year ${t.year+1}` : ""} <small>· ${esc(w.season)}${w.set ? " · set by hand" : ""}</small></p>
+    ${wxEditing ? `<div class="wx-edit">
+        <div class="pcrow"><label class="mini">High <input class="mono" type="number" data-wxf="high" value="${w.high}" style="width:56px">°F</label><label class="mini">Low <input class="mono" type="number" data-wxf="low" value="${w.low}" style="width:56px">°F</label></div>
+        <div class="pcrow"><label class="mini" style="flex:1">Sky ${sel("sky", WX_SKIES, w.sky)}</label><label class="mini" style="flex:1">Rain ${sel("precip", WX_PRECIP, w.precip||"")}</label></div>
+        <div class="pcrow"><label class="mini" style="flex:1">Wind ${sel("wind", [["calm","Calm"],["light","Light"],["strong","Strong"]], w.wind)}</label><label class="mini" style="flex:1">From ${sel("dir", WX_DIRS, w.dir)}</label></div>
+        ${CLIMATES[seaAt(wxSpot().x, wxSpot().y).climate].fey ? `<label class="mini" style="display:block">Fey weather ${sel("fey", [["", "None today"], ...FEY_WEATHER.map((f, i)=>[f, `${i+1}. ${f.slice(0, 48)}…`])], w.fey||"")}</label>` : ""}
+        <div class="pcrow" style="margin-top:6px"><button class="btn small on" data-wx="done" style="flex:1">Done</button></div></div>`
+      : `<p style="margin:2px 0 6px"><b>${w.high}°F</b> by day, <b>${w.low}°F</b> at night · ${esc(w.sky)}${w.precip ? `, ${esc(w.precip)}` : ""} · ${esc(w.windWord)}</p>
     ${w.named ? `<p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${esc(w.named[0].toUpperCase() + w.named.slice(1))}.</p>` : ""}
-    ${w.odd ? `<p class="empty-note" style="font-size:11.5px;margin:0 0 4px">An odd day: ${esc(w.odd)}.</p>` : ""}
+    ${w.odd ? `<p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${esc(w.odd[0].toUpperCase() + w.odd.slice(1))}.</p>` : ""}
     ${w.changeable ? `<p class="empty-note" style="font-size:11.5px;margin:0 0 4px">Changeable: it may turn by the hour.</p>` : ""}
     ${w.fey ? `<div class="wx-feybox"><b>✧ Fey weather</b> ${esc(w.fey)}</div>` : ""}
+    ${ship ? `<p class="grouplab" style="margin:6px 0 2px">At sea <small>your table rule</small></p>${wo && wo.word ? `<p class="wx-rule">${esc(ship.name||"The ship")}: ${esc(wo.word)}.${ship.wind && ship.wind!=="weather" ? "" : ""}</p>` : ship.wind && ship.wind!=="weather" ? `<p class="wx-rule">${esc(ship.name||"The ship")}'s wind is set by hand on her card.</p>` : ""}${nv.word ? `<p class="wx-rule">Navigation ${esc(nv.word)}.</p>` : ""}` : ""}
     ${rules.length ? `<p class="grouplab" style="margin:6px 0 2px">At the table <small>the 2014 rules</small></p>${rules.map(x=>`<p class="wx-rule">${esc(x)}</p>`).join("")}` : ""}
     <p class="empty-note" style="font-size:10.5px;margin:6px 0 4px">${esc(w.climate)}: your table rule.</p>
-    <div class="pcrow"><button class="btn small" data-wx="again" style="flex:1">Roll it again</button>${w.rolled ? `<button class="btn small" data-wx="back" title="The day's first roll">Back to the first</button>` : ""}</div>`;
+    <div class="pcrow"><button class="btn small" data-wx="again" style="flex:1" title="The day's own roll again (the run of weather it's part of stays)">Roll it again</button><button class="btn small" data-wx="edit" style="flex:1">Set it by hand</button></div>
+    ${w.set || w.rolled ? `<button class="btn small wide" data-wx="back" style="margin-top:4px">Use the app's weather</button>` : ""}`}`;
 }
 document.addEventListener("click", e=>{
   const chip = e.target.closest && e.target.closest("#wxChip");
   if(chip){ let pop = document.getElementById("wxPop"); if(!pop){ pop = document.createElement("div"); pop.id = "wxPop"; pop.hidden = true; document.body.appendChild(pop); }
-    pop.hidden = !pop.hidden; if(!pop.hidden){ const r = chip.getBoundingClientRect(); pop.style.top = (r.bottom + 6) + "px"; pop.style.left = Math.max(8, Math.min(window.innerWidth - 348, r.left - 60)) + "px"; wxPopFill(); } return; }
+    pop.hidden = !pop.hidden; wxEditing = false; if(!pop.hidden){ const r = chip.getBoundingClientRect(); pop.style.top = (r.bottom + 6) + "px"; pop.style.left = Math.max(8, Math.min(window.innerWidth - 348, r.left - 60)) + "px"; wxPopFill(); } return; }
   const b = e.target.closest && e.target.closest("[data-wx]"); if(!b) return;
-  if(b.dataset.wx==="x"){ document.getElementById("wxPop").hidden = true; return; }
-  const at = wxSpot(), L = seaAt(at.x, at.y); if(!L) return; const k = `${campaignDay()}|${L.i}`, R = (root.weatherRolls = root.weatherRolls || {});
-  if(b.dataset.wx==="again") R[k] = (R[k]||0) + 1; else delete R[k];
+  const a = b.dataset.wx;
+  if(a==="x"){ document.getElementById("wxPop").hidden = true; wxEditing = false; return; }
+  if(a==="edit"){ wxEditing = true; wxPopFill(); return; }
+  if(a==="done"){ wxEditing = false; wxPopFill(); syncWeather(); return; }
+  const at = wxSpot(), L = seaAt(at.x, at.y); if(!L) return; const k = `${campaignDay()}|${L.i}`;
+  if(a==="again"){ const R = (root.weatherRolls = root.weatherRolls || {}); R[k] = (R[k]||0) + 1; if(root.weatherSet) delete root.weatherSet[k]; }
+  if(a==="back"){ if(root.weatherRolls) delete root.weatherRolls[k]; if(root.weatherSet) delete root.weatherSet[k]; }
   saveParty(); syncWeather(); wxPopFill();
+});
+/* a hand-set field: stored over the app's weather for that day and sea */
+document.addEventListener("change", e=>{
+  const t = e.target; if(!t.dataset || !t.dataset.wxf) return;
+  const at = wxSpot(), L = seaAt(at.x, at.y); if(!L) return; const k = `${campaignDay()}|${L.i}`, S = (root.weatherSet = root.weatherSet || {}), f = t.dataset.wxf;
+  S[k] = S[k] || {}; S[k][f] = ["high","low"].includes(f) ? Math.round(+t.value) : t.value;
+  saveParty(); syncWeather();
 });
 
 function gameLog(kind, text){
