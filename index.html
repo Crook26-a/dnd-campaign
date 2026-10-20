@@ -2941,6 +2941,17 @@ const STOP_EVERY = [[0,"Don't stop",""],[12,"Stop every ½ day","Half a day at s
 /* her speed today: against a strong wind (set by hand), or the day's wind on her heading (your table rule) */
 const windNow = s => s.wind==="head" ? .5 : s.wind==="fair" ? 1 : typeof windOnShip==="function" ? windOnShip(s, weatherAtShip(s), headingOf(s)).f : 1;
 const sailMph = s => Math.round(vesselMph(s) * windNow(s) * 100)/100;
+/* world hours per mile today (your table rule): her speed in today's wind, and the navigator's check with today's sky. A
+   natural 20 halves the time; each point of the total under 10 adds half a day over the voyage, spread over its miles
+   (c.m0, its length when she set off). Worked out afresh as she goes, so the weather changing changes the voyage */
+function rateToday(s){
+  const c = s.course; if(!c) return 0;
+  const base = dayFactor(s) / Math.max(.05, sailMph(s)), nv = c.nav;
+  if(nv && nv.nat20) return base/2;
+  if(!nv || nv.total==null || nv.total==="") return base;
+  const t = +nv.total + (typeof weatherNav==="function" ? weatherNav(weatherAtShip(s)).mod : 0);
+  return base + (t < 10 ? 12*(10 - t) / Math.max(1, c.m0 || courseMiles(s)) : 0);
+}
 const dayFactor = s => 24 / Math.max(1, Math.min(24, +s.sailHours || 24));   // hours of the world per hour under sail
 function courseMiles(s){ let a = (s.course && s.course.tp) || { x:s.x, y:s.y }, d = 0;    /* from where she truly is, not where her wandering puts her */ for(const p of (s.course && s.course.pts) || []){ d += Math.hypot(p.x-a.x, p.y-a.y); a = p; } return d / (root.ppm||10); }
 /* ── ships keep to the sea (Joseph, 2026-10-16: the Sallowmay sailed from Dunmarrow straight across the island). "Sail
@@ -3052,6 +3063,7 @@ function setCourseTo(s, dest){
   for(const p of way) pts.push({ ...p, auto:true });
   pts.push(end);
   s.course.to = dest.id; delete s.course.rate;
+  delete s.course.m0;
   return true;
 }
 function courseOverlay(inv){
@@ -3073,9 +3085,8 @@ function playCourse(s){
   if(!s.course || !s.course.pts.length || planOf) return;
   courseEdit = null;
   /* the time the whole voyage takes, the navigator's check included, set once when she first sails; spread over every mile */
-  if(!s.course.rate){ const m = courseMiles(s), nv = s.course.nav, wn = typeof weatherNav==="function" ? weatherNav(weatherAtShip(s)).mod : 0;
-    const navW = nv && !nv.nat20 && nv.total!=="" && nv.total!=null ? { ...nv, total:+nv.total + wn } : nv;     // the day's weather helps or hinders the navigator (your table rule)
-    s.course.wf = windNow(s); s.course.rate = m ? navAdjust(m / sailMph(s) * dayFactor(s), navW) / m : 0; }
+  if(!s.course.m0) s.course.m0 = courseMiles(s);          // the voyage's length when she set off: the navigator's check is spread over it
+  s.course.rate = rateToday(s);
   /* where she truly is on the course (her wandering is drawn on top of it); a new trail when a new voyage starts */
   const c = s.course, ppm = root.ppm||10;
   if(c.tp && Math.hypot(s.x - c.tp.x - ((c.off||{}).x||0), s.y - c.tp.y - ((c.off||{}).y||0)) > ppm/2){ c.tp = { x:s.x, y:s.y }; c.off = null; }   // moved by hand while paused
@@ -3111,7 +3122,7 @@ function stepCourse(t){
     if(d <= go){ c.tp.x = p.x; c.tp.y = p.y; go -= d; c.pts.shift(); }
     else { c.tp.x += (p.x-c.tp.x)*go/d; c.tp.y += (p.y-c.tp.y)*go/d; go = 0; }
   }
-  const miles = Math.hypot(c.tp.x-tFrom.x, c.tp.y-tFrom.y) / (root.ppm||10), hrs = miles * (s.course.rate ? s.course.rate * ((s.course.wf || 1) / Math.max(.05, windNow(s))) : dayFactor(s) / sailMph(s));     // each day's wind as she sails
+  const miles = Math.hypot(c.tp.x-tFrom.x, c.tp.y-tFrom.y) / (root.ppm||10), hrs = miles * rateToday(s);                     // today's wind and sky, as she sails
   c.done = (c.done||0) + miles;
   const off = c.pts.length ? wanderOffset(c) : { x:0, y:0 }; c.off = off;
   s.x = c.tp.x + off.x; s.y = c.tp.y + off.y; addWake(s);
@@ -3129,7 +3140,7 @@ function stepCourse(t){
 /* the course, in her panel: where to, how far, how long, and the controls to shape it and sail it */
 function courseBlock(n){
   const c = n.course, to = c && c.to && nodeById(c.to), miles = courseMiles(n);
-  const hrs = c && c.rate ? miles * c.rate : navAdjust(miles / sailMph(n) * dayFactor(n), c && c.nav);
+  const hrs = c ? miles * rateToday(n) : 0;                      // at today's pace
   const playing = voyagePlay && voyagePlay.id===n.id, shaping = courseEdit===n.id;
   const opt = x => `<option value="${x.id}" ${to&&to.id===x.id?"selected":""}>${esc(x.name||"A place")}${x.hidden?" (not found yet)":""}${x.visited?" (been there)":""}</option>`;
   const others = doc.nodes.filter(x=>x!==n && isPort(x)), known = others.filter(x=>x.route);
@@ -3194,7 +3205,7 @@ function voyageBarHtml(){
   const sel = `<select data-vb="to" title="Where to">${c ? "" : `<option value="">Sail to…</option>`}${c && !to ? `<option value="" selected>(a point at sea)</option>` : ""}${known.length ? `<optgroup label="Known routes">${known.map(opt).join("")}</optgroup>` : ""}<optgroup label="${known.length?"Elsewhere":"Ports of call"}">${ports.filter(x=>!x.route).map(opt).join("")}</optgroup></select>`;
   if(!c){ const port = nearPort(s);
     return `<span class="vb-ship">⛵ <b>${nm}</b>${port ? ` at ${esc(port.name)}` : ""}</span>${sel}${port ? `<button data-vb="ashore" data-id="${port.id}">⚓ Go ashore</button>` : ""}${(hasDecks(s.id) || sailsAbout(s)) ? `<button data-vb="aboard">Go aboard</button>` : ""}`; }
-  const miles = courseMiles(s), hrs = c.rate ? miles*c.rate : navAdjust(miles / sailMph(s) * dayFactor(s), c.nav), nav = c.nav || {};
+  const miles = courseMiles(s), hrs = miles * rateToday(s), nav = c.nav || {};
   const rv = to && root.nodes.find(r=>isRival(r) && r.course && r.course.to===to.id), re = rv && rivalEta(rv), me = worldHours() + hrs;
   return `<span class="vb-ship">⛵ <b>${nm}</b></span>${sel}<span class="vb-eta">${miles.toFixed(1)} mi · about ${hoursWord(hrs)}${rv ? ` · <b title="${esc(rv.name||"The rival")} arrives ${esc(whenWord(re))}">${me < re ? `ahead of ${esc(rv.name||"the rival")} by ${hoursWord(re-me)}` : me > re ? `${esc(rv.name||"the rival")} ahead by ${hoursWord(me-re)}` : "level with the rival"}</b>` : ""}</span>
     <span class="vb-nav" title="The navigator's check (your rule: a natural 20 halves the time; a total under 10 adds half a day for each point below 10)">Nav <input data-vb="navtotal" type="number" value="${nav.total??""}" placeholder="–"><label><input type="checkbox" data-vb="nat20" ${nav.nat20?"checked":""}>nat 20</label></span>
@@ -3246,8 +3257,7 @@ const whenWord = h => { const d = Math.floor(h/24), r = h - d*24; return `day ${
 function courseRate(s){                                    // world hours per mile, the navigator's check included
   const c = s.course; if(!c) return 0;
   if(isRival(s)){ const T = timedArrival(s); if(T!=null){ const m = courseMiles(s); return m ? Math.max(.005, (T - Math.max(worldHours(), c.leaves||0)) / m) : 0; } }
-  if(c.rate) return c.rate;
-  const m = courseMiles(s); return m ? navAdjust(m / sailMph(s) * dayFactor(s), c.nav) / m : 0;
+  return rateToday(s);
 }
 /* the players see her within her own spotting distance (n.spotMi, else the chart's), or never (n.tvHide) */
 const rivalSpotMi = r => +r.spotMi > 0 ? +r.spotMi : spotMiles();
@@ -3288,7 +3298,7 @@ function rivalTick(){
     const c = s.course, start = Math.max(last, c.leaves||last); if(now <= start) continue;
     if(c.miles0==null) c.miles0 = courseMiles(s);
     /* timed against the crew: whatever pace gets her in at that hour; otherwise her own, fixed when she sets off */
-    const T = timedArrival(s), rate = T!=null ? Math.max(.005, (T - start) / Math.max(.01, courseMiles(s))) : (c.rate = c.rate || courseRate(s));
+    const T = timedArrival(s), rate = T!=null ? Math.max(.005, (T - start) / Math.max(.01, courseMiles(s))) : rateToday(s);
     c.moved = true;
     let go = (now - start) / (rate || 1) * (root.ppm||10);
     while(go > 0 && c.pts.length){ const p = c.pts[0], d = Math.hypot(p.x-s.x, p.y-s.y);
@@ -3667,6 +3677,9 @@ const chartFlags = n => planOf || sailsAbout(n) ? "" : `<label class="check" sty
 /* the way to each known route not yet visited, from the party's ship: dotted, on both screens */
 function routeLines(forPlayers){
   const ship = partyShip(); if(!ship || ship.hidden) return "";
+  /* with a course plotted, the players see that: the way she's actually going (the straight line is only a bearing) */
+  if(forPlayers && ship.course && ship.course.pts.length){ const pts = [{ x:ship.x, y:ship.y }, ...ship.course.pts];
+    return `<polyline points="${pts.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`).join(" ")}" fill="none" stroke="#8a2e1e" stroke-width="2.4" stroke-dasharray="7 6" stroke-linecap="round" stroke-opacity=".8" style="pointer-events:none"/>`; }
   return root.nodes.filter(n=>n.route && !n.visited && n!==ship).map(n=>`<line x1="${ship.x}" y1="${ship.y}" x2="${n.x}" y2="${n.y}" stroke="${forPlayers?"#8a2e1e":"#8a2e1e"}" stroke-width="${forPlayers?2.4:1.4}" stroke-dasharray="2 7" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="${forPlayers?.85:.55}" style="pointer-events:none"/>`).join("");
 }
 document.getElementById("pane-inspect").addEventListener("click", e=>{
@@ -13698,9 +13711,9 @@ function syncWeather(){
   el.innerHTML = `<span class="wx-date">${esc(dateWord(campaignDay()))}</span>${w ? ` <span class="wx-now">${wxIcon(w)} ${wxTemp(w)}°</span>${w.set ? ` <span class="wx-set" title="Set by hand">✎</span>` : ""}${w.fey ? ` <span class="wx-fey" title="Something fey">✧</span>` : ""}` : ""}`;
   el.title = w ? `${w.sea}, ${w.date}: ${w.sky}${w.precip ? ", " + w.precip : ""}, ${w.windWord}; high ${w.high}°F, low ${w.low}°F. Click for the whole of it.` : "The date";
   const pop = document.getElementById("wxPop"); if(pop && !pop.hidden && !wxEditing) wxPopFill();
-  if(typeof sendPlayers==="function" && root.pshowWeather!==false) try{ sendPlayers(); }catch(err){}
+  if(typeof sendPlayers==="function" && root.pshowWeather!==false){ const pw = playersWeather(); if(pw!==lastPlayersWx){ lastPlayersWx = pw; try{ sendPlayers(true); }catch(err){} } }
 }
-var wxEditing = false;
+var wxEditing = false; var lastPlayersWx = null;
 function wxPopFill(){
   const pop = document.getElementById("wxPop"), w = weatherHere(); if(!pop) return;
   if(!w){ pop.innerHTML = `<p class="empty-note">${esc(dateWord(campaignDay()))}. No sea with a climate here, so no weather is rolled.</p>`; return; }
