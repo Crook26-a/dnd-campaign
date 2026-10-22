@@ -7,7 +7,6 @@ Tick each part as you finish it. The 📍 beside a part shows its place on the m
 ## Before the players arrive
 
 - [ ] Check the app has the campaign as it should be: Session 1's XP, and the party aboard the Sallowmay at Kalatecha, night of day 1. If it doesn't, ☰ More → Data → **Load a survey.json** and pick the newest save in the Saves folder.
-- [ ] ☰ More → Party & XP → **Players of the session**: declare Session 1's player of the session, if you haven't yet (do it before the next step).
 - [ ] The game log on the left: click **Start session 2**. Missed checks can only cost XP earned after this, and "This session" on the leaderboards counts from here.
 - [ ] Sea chart, the Sallowmay's voyage bar: **Sail to** Lantern Rock, **Nav** 25 (Xuna's roll as they cast off at the end of Session 1: the plain sailing time, about 2 days and 3 hours, so they reach the reef in the small hours of day 4), **Stop every** ½ day (she'll stop at 10 in the morning and 10 at night). Press **▶ Sail** when the Opening is done.
 - [ ] Sea chart, click the Undaunted: in her panel, **Sail to** Lantern Rock and **sets off in** ½ day (she leaves at dawn, as Hargrove-Vance boasted). Give her navigator a total of 12.
