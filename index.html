@@ -954,6 +954,7 @@
   .bmpal button{text-align:left;font-size:10.5px;padding:3px 4px;background:var(--paper-lit);border:1px solid var(--rule);border-radius:2px;cursor:pointer;color:var(--ink)}
   .bmpal button.on{border-color:var(--lead);box-shadow:inset 0 0 0 1px var(--lead)}
   .btok{cursor:grab}
+  .btok.fallen > :not(title){transform:rotate(90deg) scale(.92);opacity:.7}
   .initrow{display:grid;grid-template-columns:38px 1fr auto auto;gap:5px;align-items:center;padding:3px 4px;border-radius:2px;font-family:var(--serif);font-size:12.5px}
   .initrow .ir-ctl{display:flex;gap:1px;opacity:.35}
   .initrow:hover .ir-ctl,.initrow.cur .ir-ctl{opacity:1}
@@ -10659,6 +10660,30 @@ function startDance(c, ids, mode){
       for(const q of near){ const s = freeSquareIn(n, q.x, q.y, p[1]); if(s.x===q.x && s.y===q.y){ c.pos[p[1]] = { x:q.x, y:q.y }; break; } } } }
   c.dance = [...(c.dance||[]), ...out]; return out;
 }
+/* a bell (or the DM) can take a dancer: one of a room's dancers, at random, stops and drops to the floor (Unconscious, drawn
+   lying down: c.fallen[id]) until woken from the Dancing section. Party members are never taken */
+function takeRooms(){ const out = []; for(const [pid, pl] of Object.entries(plans)) for(const nd of (pl.nodes||[])) if(nd.bmap && nd.bmap.rows) out.push([`${pid}/${nd.id}`, `${placeLabel(nd)}${Object.keys(plans).length>1 ? ` (${(root.nodes||[]).find(x=>x.id===pid)?.name||pid})` : ""}`]); return out; }
+function takeDancer(ref){
+  const r = placeRef(ref), host = r.plan ? plans[r.plan] : root, nd = host && (host.nodes||[]).find(x=>x.id===r.node);
+  const c = nd && nd.site && nd.site.combat; if(!c || !Array.isArray(c.dance)) return `No one was dancing in ${nd ? placeLabel(nd) : "that room"} to take.`;
+  const party = new Set(combatants(c).filter(t=>t.side==="party").map(t=>t.id));
+  const pool = c.dance.flat().filter(id=>!party.has(id)); if(!pool.length) return "No one was dancing there to take.";
+  const id = pool[Math.floor(Math.random()*pool.length)];
+  stopDance(c, id); (c.fallen = c.fallen || {})[id] = true;
+  let name = "Someone";
+  if(String(id).startsWith("p:")){ const p = libNpcById(String(id).slice(2)); if(p){ name = p.name || name; p.conds = p.conds || []; if(!p.conds.includes("Unconscious")) p.conds.push("Unconscious"); markDirty(K_SURVEY); } }
+  else { const t = combatants(c).find(x=>x.id===id); if(t){ name = t.label || name; if(t.x){ t.x.conds = t.x.conds || []; if(!t.x.conds.includes("Unconscious")) t.x.conds.push("Unconscious"); } } }
+  if(r.plan) markDirty(K_PLAN(r.plan)); else markDirty(K_SURVEY);
+  gameLog("clock", `${name} stopped dancing and dropped to the floor`);
+  if(battleOf) renderBattle(); sendPlayers(true);
+  return `${name} drops to the floor.`;
+}
+function wakeFallen(c){
+  for(const id of Object.keys(c.fallen||{})){
+    if(String(id).startsWith("p:")){ const p = libNpcById(String(id).slice(2)); if(p && p.conds) p.conds = p.conds.filter(x=>x!=="Unconscious"); }
+    else { const t = combatants(c).find(x=>x.id===id); if(t && t.x && t.x.conds) t.x.conds = t.x.conds.filter(x=>x!=="Unconscious"); } }
+  delete c.fallen; markDirty(K_SURVEY);
+}
 /* a token's insides, turned: round the couple's middle, kept upright, at the same point in the turn however often it's redrawn */
 function danceWrap(c, id, inner, players){
   const pr = danceOf(c, id), me = c.pos && c.pos[id]; if(!pr || !me) return inner;
@@ -10670,6 +10695,7 @@ function danceWrap(c, id, inner, players){
 }
 /* wrap the token just added to the map's string (from its start) */
 function danceToken(g, from, c, id, players){
+  if(c && c.fallen && c.fallen[id]){ const open = g.indexOf(">", from); g = g.slice(0, from) + g.slice(from, open).replace('class="btok', 'class="btok fallen') + g.slice(open); }
   if(!danceOf(c, id)) return g;
   const open = g.indexOf(">", from) + 1, close = g.lastIndexOf("</g>");
   return g.slice(0, open) + danceWrap(c, id, g.slice(open, close), players) + g.slice(close);
@@ -10686,11 +10712,15 @@ function danceBlock(c){
     ${on.map(x=>{ const pr = danceOf(c, x.id), w = pr ? (pr.length>1 ? `♪ with ${esc(nameOf(pr.find(y=>y!==x.id)))}` : "♪ alone") : "";
       return `<label class="check" style="margin:1px 0"><input type="checkbox" data-dpick="${esc(x.id)}"> ${esc(x.name)}${x.party?" <small>(party)</small>":""}${w?` <small style="color:#6b2a6b">${w}</small>`:""}</label>`; }).join("")}
     <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-dance="pair">Dance together</button><button class="btn" style="flex:1" data-dance="all" title="Every token on this map that isn't in the party">Everyone not in the party</button></div>
+    ${pairs.length ? `<button class="btn wide" data-dance="take" title="What a bell set to take a dancer does: one of them, at random, drops to the floor">Take a dancer at random</button>` : ""}
+    ${Object.keys(c.fallen||{}).length ? `<button class="btn wide" data-dance="wake" title="Everyone who dropped to the floor gets up (no longer Unconscious)">Wake the fallen (${Object.keys(c.fallen).length})</button>` : ""}
     ${pairs.length ? `<button class="btn wide" data-dance="stop">Stop all the dancing</button>` : ""}</details>`;
 }
 function wireDance(el, c){
   el.querySelectorAll("[data-dance]").forEach(b=>b.onclick = ()=>{
     const a = b.dataset.dance;
+    if(a==="take"){ const n = bnode(); flash(takeDancer(`${planOf||""}/${n.id}`)); renderBattlePanel(); return; }
+    if(a==="wake"){ wakeFallen(c); touch(); renderBattle(); renderBattlePanel(); sendPlayers(true); flash("The fallen get up."); return; }
     if(a==="pair" || a==="all"){
       const ids = a==="pair" ? [...el.querySelectorAll("[data-dpick]:checked")].map(x=>x.dataset.dpick)
         : [...combatants(c).filter(t=>t.side!=="party" && c.pos[t.id]).map(t=>t.id), ...bystanders(c).filter(x=>c.pos[x.id]).map(x=>x.id)];
@@ -14291,7 +14321,7 @@ function cdTick(){
   if(!c || !c.on || !c.endsAt) return;
   const el = cdElapsedMin(c); let changed = false;
   for(const b of c.bells.slice().sort((a, b)=>(+a.at||0)-(+b.at||0)))
-    if(!b.rung && el >= (+b.at||0) && (+b.at||0) < (+c.total||0)/60){ b.rung = true; changed = true; cdRing({ label:b.label, note:b.note, tolls:1 });
+    if(!b.rung && el >= (+b.at||0) && (+b.at||0) < (+c.total||0)/60){ b.rung = true; changed = true; const took = b.take ? takeDancer(b.take) : ""; cdRing({ label:b.label, note:[b.note, took].filter(Boolean).join(" "), tolls:1 });
       gameLog("clock", `The countdown's bell: ${b.label || `${b.at} minutes in`}`); }
   if(cdLeft(c) <= 0){ c.endsAt = null; c.left = 0; c.done = true; changed = true;
     cdRing({ label:c.doneLabel || "Time's up", note:c.doneNote, tolls:3, done:true }); gameLog("clock", `The countdown ran out: ${c.doneLabel || "time's up"}`); }
@@ -14341,7 +14371,8 @@ function cdSection(){
     <label class="check" style="margin:2px 0 6px" title="A bell tolls on this computer when one comes due, three times at zero"><input type="checkbox" data-cdf="sound" ${c.sound!==false?"checked":""}> Toll a bell out loud</label>
     <p class="mini" style="margin:6px 0 2px">Bells: ${c.gameShow && cdHasGame(c) ? "the in-game time" : "minutes after the start"}, what they see, your note</p>
     ${bells.map(b=>`<div class="cd-bell${b.rung?" rung":""}"><label title="Ticked once it has rung. Untick it to ring again when its time comes."><input type="checkbox" data-cdb="rung" data-id="${b.id}" ${b.rung?"checked":""}></label><input data-cdb="at" data-id="${b.id}" class="mono" value="${cdBellShow(c, b)}" style="width:${c.gameShow && cdHasGame(c) ? 70 : 46}px" title="${c.gameShow && cdHasGame(c) ? "The in-game time it rings, like 10:30 pm (or minutes after the start, like 42)" : "Minutes after the start"}"><input data-cdb="label" data-id="${b.id}" value="${esc(b.label||"")}" placeholder="What they see" title="Shown big on their screen for a few seconds"><button class="fdel" data-cd="bdel" data-id="${b.id}" title="Remove this bell">×</button>
-      <input data-cdb="note" data-id="${b.id}" class="cd-note" value="${esc(b.note||"")}" placeholder="Your note (only you see it)" title="On your screen when it rings"></div>`).join("") || `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No bells yet.</p>`}
+      <input data-cdb="note" data-id="${b.id}" class="cd-note" value="${esc(b.note||"")}" placeholder="Your note (only you see it)" title="On your screen when it rings">
+      <label class="mini" style="display:flex;gap:4px;align-items:center;margin:2px 0 0" title="When it rings, one of the dancers in that room, picked at random, stops and drops to the floor (Unconscious); your banner names who">Takes a dancer from <select data-cdb="take" data-id="${b.id}" style="flex:1;min-width:0"><option value="">no one</option>${takeRooms().map(([v, l])=>`<option value="${esc(v)}" ${b.take===v?"selected":""}>${esc(l)}</option>`).join("")}</select></label></div>`).join("") || `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No bells yet.</p>`}
     <button class="btn wide" data-cd="badd" title="A new bell, after the last one">+ Add a bell</button>
     <div class="pcrow" style="align-items:center;margin-top:6px"><label class="mini" style="flex:1">At zero</label><input data-cdf="doneLabel" value="${esc(c.doneLabel||"")}" placeholder="Time's up" style="flex:2" title="What they see when it runs out"></div>
     <input data-cdf="doneNote" value="${esc(c.doneNote||"")}" placeholder="Your note at zero (only you see it)" style="width:100%;box-sizing:border-box" title="On your screen when it runs out">` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">A real clock counting down on their screen, with bells that ring at set times: for a race against time.</p>`}
@@ -16513,6 +16544,9 @@ function setScene(d, key){
             if(f.hide > 0) (c.stealth = c.stealth || {})[x.id] = { hide:f.hide };
           });
         }
+        if(s.dance){ placeTokens(c); const ex = new Set(s.dance.except||[]);
+          const ids = [...bystanders(c).map(b=>b.id), ...combatants(c).filter(t=>t.side!=="party").map(t=>t.id)].filter(id=>!ex.has(id) && c.pos && c.pos[id]);
+          startDance(c, ids, s.dance.mode || "any"); }
         placeTokens(c); touch(); renderBattle(); renderBattlePanel();
       } else if(planOf || !o.plan) showPlace(o.plan ? `${o.plan}/${o.node}` : o.node);
     }

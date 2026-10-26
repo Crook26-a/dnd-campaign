@@ -1,0 +1,44 @@
+// uses: nothing
+<script>
+/* a bell that takes a dancer (b.take = "plan/node"): one of the room's dancers at random stops, drops to the floor
+   (Unconscious, c.fallen, drawn lying down on both screens) and the bell's banner names them; Wake the fallen;
+   a scene setup that starts the dancing (setups[key].dance = { mode, except }) */
+const __TK = { format:"ordinate-survey-v1", title:"Take Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test Hall", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"ball" } }],
+  library:{ foes:[], loot:[], npcs:[
+    { id:"n1", name:"Arno", gender:"Man" }, { id:"n2", name:"Bella", gender:"Woman" }, { id:"n3", name:"Cato", gender:"Man" }, { id:"n4", name:"Dina", gender:"Woman" }, { id:"n5", name:"Host", gender:"Man" } ] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test Hall", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"ball", name:"The Ballroom", kind:"hall", x:100, y:100, w:20, d:12, site:{ kind:"", level:5, once:true, waves:1, foes:[], loot:{}, items:[], light:"bright" }, npcs:["n1","n2","n3","n4","n5"], bmap:{ name:"The Ballroom",
+      rows:["############","#..........#","#..........#","#..........#","#..........#","#..........#","############"],
+      start:{ party:[[1,5],[2,5]], enemy:[], npc:[[3,2],[4,2],[7,2],[8,2],[5,4]] } } } ] } },
+  countdown:{ on:true, title:"Until midnight", total:3600, left:3600, endsAt:null, show:true, sound:false, bells:[{ id:"b1", at:1, label:"The first bell", note:"A soul goes.", take:"h/ball", rung:false }] },
+  docs:[{ id:"d1", kind:"session", title:"Night", md:"# Night\n\n## The dance {5 min} {place: h/ball}\n\nThey dance.\n", done:{},
+    setups:{ "the-dance":{ at:{ map:"h", node:"ball" }, open:{ plan:"h", node:"ball", battle:true }, dance:{ mode:"mw", except:["p:n5"] } } } }] };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ try{
+  loadJSONNow(JSON.stringify(__TK)); await wait(300); setDmMode(true); await wait(50);
+  /* the scene setup starts the dancing: a man and a woman each, the host left out */
+  setScene(root.docs[0], 'the-dance'); await wait(150);
+  const c = bnode().site.combat; out.push('setup dance: ' + JSON.stringify(c.dance));
+  /* the bell rings (a minute in) and takes one of the four */
+  cdStart(); root.countdown.endsAt -= 61000; cdTick(); await wait(300);
+  const fallen = Object.keys(c.fallen||{}); const who = fallen.map(id=>libNpcById(id.slice(2)).name);
+  out.push('after the bell: fallen ' + fallen.length + ', still dancing ' + (c.dance||[]).flat().length + ', the fallen is out of the dance ' + !(c.dance||[]).flat().includes(fallen[0]) + ', Unconscious ' + libNpcById(fallen[0].slice(2)).conds.includes('Unconscious'));
+  out.push('banner names them: ' + txt(document.getElementById('cdbanner')).includes(who[0]) + ', host untouched ' + !fallen.includes('p:n5'));
+  const tv = playerMapScene(); const re = new RegExp('class="btok[^"]*fallen[^"]*" data-tok="' + fallen[0].replace(':','\\:') + '"');
+  out.push('drawn lying down on the TV ' + re.test(tv.svg || (tv.panes||[]).map(p=>p.svg).join('')) + ', on the DM screen ' + !!document.querySelector('#bsvg .btok.fallen'));
+  /* by hand: take another, then wake them */
+  battleSel = null; renderBattlePanel(); await wait(30);
+  const tk = document.querySelector('#pane-inspect [data-dance="take"]'); out.push('take button ' + !!tk); if(tk){ tk.click(); await wait(80); }
+  out.push('taken by hand: fallen ' + Object.keys(c.fallen||{}).length);
+  const wk = document.querySelector('#pane-inspect [data-dance="wake"]'); out.push('wake button: ' + (wk && wk.textContent.trim())); if(wk){ wk.click(); await wait(80); }
+  out.push('woken: fallen ' + Object.keys(c.fallen||{}).length + ', anyone Unconscious ' + lib().npcs.some(p=>(p.conds||[]).includes('Unconscious')));
+  /* the bell's editor has the room picker */
+  const ps = document.getElementById('pscreen'); ps.hidden = false; cdSecOpen = true; renderPScreen(); await wait(30);
+  const sel = ps.querySelector('[data-cdb="take"]'); out.push('bell editor: ' + (sel ? sel.value + ' of ' + [...sel.options].map(o=>o.textContent).join(' / ') : 'none'));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

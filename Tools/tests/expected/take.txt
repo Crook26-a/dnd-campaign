@@ -1,0 +1,9 @@
+setup dance: [["p:n1","p:n2"],["p:n3","p:n4"]]
+after the bell: fallen 1, still dancing 2, the fallen is out of the dance true, Unconscious true
+banner names them: true, host untouched true
+drawn lying down on the TV true, on the DM screen true
+take button true
+taken by hand: fallen 2
+wake button: Wake the fallen (2)
+woken: fallen 0, anyone Unconscious false
+bell editor: h/ball of no one / The Ballroom
