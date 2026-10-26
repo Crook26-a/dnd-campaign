@@ -7274,7 +7274,7 @@ function libSummary(cat, x){
   if(cat==="factions"){ const E = factionEffects(x); if(playerShow.kind==="factions") setTimeout(()=>sendPlayers(true), 0); return `${x.align ? esc(ALIGN_ABBR[x.align]||x.align) + " · " : ""}standing ${sgn(E.s)} · ${esc(E.tier.label.toLowerCase())}${E.violent ? " · may turn violent" : ""}`; }
   if(cat==="shops"){ const T = shopTpl(x.id); return esc(T ? `kept by a ${(PEOPLE_KINDS[T.keeper]||{label:"someone"}).label.toLowerCase()} · ${T.n[0]}–${T.n[1]} things for sale · ${T.srd.length + T.goods.length} it can stock` : ""); }
   if(cat==="foes") return `CR ${crLabel(+x.cr||0)} · ${(+x.xp||0).toLocaleString()} xp${x.boss?" · boss":""}`;
-  if(cat==="npcs") return esc([x.role, x.align ? (ALIGN_ABBR[x.align]||x.align) : ""].filter(Boolean).join(" · "));
+  if(cat==="npcs") return esc([x.role, x.gender ? String(x.gender).toLowerCase() : "", x.align ? (ALIGN_ABBR[x.align]||x.align) : ""].filter(Boolean).join(" · "));
   return esc([x.kind, x.rarity&&x.rarity!=="Mundane"?x.rarity:"", x.value, itemStatLine(x)].filter(Boolean).join(" · "));
 }
 /* a person's character sheet, laid out like a player character's, every part optional and folded away */
@@ -7287,6 +7287,7 @@ function npcSheet(x, a, t, ta){
   return sec("sheet", "Character sheet", `
       <div class="pcrow"><div class="field" style="flex:1"><label>Species</label>${sheetPick(`${a} data-f="species"`, GEN_SPECIES, x.species)}</div>
         <div class="field" style="flex:1"><label>Class</label>${sheetPick(`${a} data-f="cls"`, sheetClasses(), x.cls)}</div>${t("level","Level",.6)}</div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Gender</label>${sheetPick(`${a} data-f="gender"`, ["Man","Woman"], x.gender)}</div><div class="field" style="flex:2"></div></div>
       <div class="pcrow"><div class="field" style="flex:1"><label>CR <i>(for XP)</i></label><select ${a} data-f="cr"><option value="">—</option>${CR_LIST.map(c=>`<option value="${c}" ${hasCr&&+x.cr===c?"selected":""}>${crLabel(c)}</option>`).join("")}</select></div>
         ${t("ac","AC",.7)}${t("hpMax","HP",.7)}${t("speed","Speed",.8,"30")}</div>
       <div class="pcrow">${t("init","Init",.7,"+0")}${t("pp","Passive Perception",1.3)}${t("dc","Spell DC",.8)}${t("satk","Spell attack",.9,"+5")}</div>`,
@@ -7464,7 +7465,7 @@ const FB_FIELDS = {
   loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes","soldAt"],
   shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes"],
   factions:["name","align","wants","how","hidden","notes"],
-  npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","cls","level","ac","hpMax","speed","init",
+  npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","gender","cls","level","ac","hpMax","speed","init",
     "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells","pkind"],
   spells:["name","lv","school","time","range","comp","dur","conc","rit","cls","save","atk","dmg","dtype","desc","hi","notes"] };
 function fieldBookIn(text, quiet){                  // quiet: the inbox — no message, just the counts back
@@ -7665,7 +7666,7 @@ $("#pane-library").addEventListener("change", e=>{
   if(!cat||!k) return;
   const x = libFind(cat, t.dataset.id); if(!x) return;
   /* Other… in a sheet's dropdown: type the new one */
-  if(t.tagName==="SELECT" && t.value==="__other"){ const v = prompt(k==="species" ? "Their species:" : k==="cls" ? "Their class:" : k==="time" ? "Casting time:" : "Type it:", x[k]||""); if(v!=null && v.trim()) x[k] = v.trim(); saveParty(); renderLibList(); return; }
+  if(t.tagName==="SELECT" && t.value==="__other"){ const v = prompt(k==="species" ? "Their species:" : k==="gender" ? "Their gender:" : k==="cls" ? "Their class:" : k==="time" ? "Casting time:" : "Type it:", x[k]||""); if(v!=null && v.trim()) x[k] = v.trim(); saveParty(); renderLibList(); return; }
   if(t.type==="checkbox") x[k] = t.checked;
   else if(t.tagName==="SELECT"){
     if(k.startsWith("atk.")){ const [, j, f] = k.split("."), q = (x.attacks||[])[+j]; if(q){ q[f] = t.value; saveParty(); } return; }
@@ -8162,6 +8163,7 @@ function bringInBlock(st){
       <div class="field" style="flex:1.3"><label>Class</label><select class="bi-f" data-bi="role">${roleOptions(b.role)}</select></div></div>
     <div class="pcrow"><div class="field" style="flex:1"><label>Species</label><select class="bi-f" data-bi="species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===b.species?"selected":""}>${s}</option>`).join("")}</select></div>
       <div class="field" style="flex:1"><label>Alignment</label><select class="bi-f" data-bi="align"><option value="">Any that fits</option>${ALIGNMENTS.map(x=>`<option ${x===b.align?"selected":""}>${x}</option>`).join("")}</select></div></div>
+    <div class="pcrow">${genderSelect(`class="bi-f" data-bi="gender"`, b.gender)}</div>
     <div class="pcrow">${side}<button class="btn" data-fa="biroll">${g?"Reroll":"Roll someone"}</button></div>
     ${g ? `<div class="rollres sheetres">${personSheet(g, `bring:${g.person.id}`, false)}
       <button class="btn wide" data-fa="biadd" style="margin-top:6px">Bring ${esc(g.person.name)} in${b.side==="ally"?" on the party's side":""} — saved to the library</button></div>` : ""}`;
@@ -8457,7 +8459,7 @@ function wireFight(n, st){
     }
     else if(a==="biroll"){
       const b = bringRoll, keep = genOpts; openInv.add("fight:bringin");
-      genOpts = { ...genOpts, level:b.level || st.level || partyAvgLevel(), disp:b.side==="ally" ? "ally" : b.side==="neutral" ? "neutral" : "enemy", type:"Humanoid", role:b.role, species:b.species, align:b.align };
+      genOpts = { ...genOpts, level:b.level || st.level || partyAvgLevel(), disp:b.side==="ally" ? "ally" : b.side==="neutral" ? "neutral" : "enemy", type:"Humanoid", role:b.role, species:b.species, gender:b.gender || "", align:b.align };
       try{ b.res = genPerson({ type:"Humanoid" }); } finally{ genOpts = keep; }
     }
     else if(a==="biadd" && bringRoll.res){
@@ -11844,7 +11846,7 @@ function adderResults(n){
    class, alignment, species) in place of the Roll tab's, just for the roll */
 function adderGen(n, fn, over){
   const a = adder, keep = genOpts;
-  genOpts = { ...genOpts, level:adderLevel(n), disp:a.disp, type:a.type, role:a.role, species:a.species, align:a.align, diff:a.diff || "mod", xp:a.xp || 0, kind:a.pkind || "", ...(over||{}) };
+  genOpts = { ...genOpts, level:adderLevel(n), disp:a.disp, type:a.type, role:a.role, species:a.species, gender:a.gender || "", align:a.align, diff:a.diff || "mod", xp:a.xp || 0, kind:a.pkind || "", ...(over||{}) };
   try{ return fn(); } finally{ genOpts = keep; }
 }
 function adderRoll(n){
@@ -11876,7 +11878,8 @@ function adderRoll(n){
       ${humanoid && !a.pkind ? `<div class="field" style="flex:1.2"><label>Class</label><select data-adf="role">${roleOptions(a.role)}</select></div>` : ""}</div>
     ${humanoid ? `<div class="field"><label>Kind of person</label><select data-adf="pkind">${kindOptions(a.pkind||"")}</select></div>` : ""}
     ${humanoid ? `<div class="field"><label>Alignment</label><select data-adf="align"><option value="">Any — one that fits the attitude</option>${ALIGNMENTS.map(x=>`<option ${x===a.align?"selected":""}>${x}</option>`).join("")}</select></div>
-      <div class="field"><label>Species</label><select data-adf="species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===a.species?"selected":""}>${s}</option>`).join("")}</select></div>` : ""}`;
+      <div class="field"><label>Species</label><select data-adf="species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===a.species?"selected":""}>${s}</option>`).join("")}</select></div>
+      ${genderSelect(`data-adf="gender"`, a.gender)}` : ""}`;
   if(a.kind==="npcs"){
     const g = a.res && a.res.kind==="person" ? a.res : null;
     return fields + `<button class="btn wide" data-adact="rollperson">${g?"Reroll":"Someone to meet"}</button>
@@ -11963,19 +11966,28 @@ function adderRoll(n){
     else if(f==="table"){ adder.table = t.value; adder.pick = null; }
     else if(f==="pick") adder.pick = t.value;
     else if(f==="type"){ adder.type = t.value; if(t.value && t.value!=="Humanoid"){ adder.role = ""; adder.species = ""; } }
-    else if(["disp","role","align","species","pkind"].includes(f)) adder[f] = t.value;
+    else if(["disp","role","align","species","pkind","gender"].includes(f)) adder[f] = t.value;
     redraw();
   });
 })();
 
 /* ── someone to meet: tables of my own, for colour ── */
 /* names kept clear of the campaign's own people (no Bram, Pell, Dario, Nico, Salazar, Vance…) */
-const GEN_FIRST = ["Marco","Lucia","Tomas","Ines","Rafa","Bianca","Teodor","Sofia","Emilio","Carmen","Davi","Ysolde","Orsino","Paloma","Benedek",
-  "Ada","Bertil","Cass","Dorian","Esme","Fen","Gil","Hollis","Ivo","Juno","Kit","Lark","Mira","Nell","Oskar","Perrin","Quill","Rosa","Sable","Tamsin","Uri","Vesna","Wren","Yara","Zev",
-  "Alba","Amadeo","Anouk","Ansel","Arlo","Bastian","Beatriz","Brisa","Calla","Cato","Celeste","Cormac","Dalia","Delphine","Dmitri",
-  "Edda","Elio","Enzo","Fabien","Faye","Flora","Gaspard","Greer","Hale","Hester","Ilsa","Isidro","Jessa","Joaquin","Kasimir",
-  "Leda","Lior","Lorca","Lucan","Maren","Mateo","Nadia","Noor","Odile","Otto","Petra","Pim","Rhea","Rio","Rocco",
-  "Ronan","Salome","Silas","Soren","Talia","Thea","Tobin","Ulla","Vale","Vito","Wilhelmina","Xander","Yusuf","Zara","Brannoc"];
+/* first names: a man's, a woman's, and ones that suit either (GEN_FIRST is all of them, for creatures and anything else) */
+const GEN_FIRST_MAN = ["Marco","Tomas","Rafa","Teodor","Emilio","Davi","Orsino","Benedek","Bertil","Dorian","Gil","Ivo","Oskar","Perrin","Uri","Zev",
+  "Amadeo","Ansel","Arlo","Bastian","Cato","Cormac","Dmitri","Elio","Enzo","Fabien","Gaspard","Isidro","Joaquin","Kasimir","Lucan","Mateo","Otto","Rocco",
+  "Ronan","Silas","Soren","Tobin","Vito","Xander","Yusuf","Brannoc","Hale","Lorca","Aurelio","Caspian","Evander","Florian","Ignatz","Leandro","Matthias","Osric","Cyprian"];
+const GEN_FIRST_WOMAN = ["Lucia","Ines","Bianca","Sofia","Carmen","Ysolde","Paloma","Ada","Esme","Juno","Mira","Nell","Rosa","Tamsin","Vesna","Yara",
+  "Alba","Anouk","Beatriz","Brisa","Calla","Celeste","Dalia","Delphine","Edda","Faye","Flora","Greer","Hester","Ilsa","Jessa","Leda","Maren","Nadia","Noor",
+  "Odile","Petra","Rhea","Salome","Talia","Thea","Ulla","Wilhelmina","Zara","Aurelia","Clementine","Elowen","Giada","Imogen","Liesl","Ottilie","Svea","Valentina","Zinnia"];
+const GEN_FIRST_ANY = ["Cass","Fen","Hollis","Kit","Lark","Quill","Sable","Wren","Vale","Rio","Pim","Lior"];
+const GEN_FIRST = [...GEN_FIRST_MAN, ...GEN_FIRST_WOMAN, ...GEN_FIRST_ANY];
+/* man or woman: the names that suit, and nothing that doesn't (a beard on a woman) */
+const GENDER_WORD = { man:"Man", woman:"Woman" };
+const genderFirst = sex => sex==="woman" ? [...GEN_FIRST_WOMAN, ...GEN_FIRST_ANY] : sex==="man" ? [...GEN_FIRST_MAN, ...GEN_FIRST_ANY] : GEN_FIRST;
+const fitsGender = (text, sex) => sex!=="woman" || !/beard/i.test(String(text||""));
+const fitList = (list, sex) => list ? list.filter(t=>fitsGender(t, sex)) : list;
+const genderSelect = (attrs, cur) => `<div class="field" style="flex:1"><label>Man or woman</label><select ${attrs}>${[["","Either"],["man","Man"],["woman","Woman"]].map(([v, l])=>`<option value="${v}" ${(cur||"")===v?"selected":""}>${l}</option>`).join("")}</select></div>`;
 const GEN_FAMILY = ["Corrado","Vela","Ruiz","Moretti","Santos","Delacroix","Brandt","Varga","Castell","Amaro","Lisboa","Pereira","Rossi","Duarte","Fennick",
   "Ashgrove","Blackwater","Coldharbor","Driftwood","Embergate","Farrow","Gullhaven","Holloway","Ironside","Keel","Larkspur","Marrow","Netherby","Oakshade","Penrose","Quarry","Saltmarsh","Tidewell","Underhill","Wexley",
   "Albarran","Anselmi","Ashby","Barrow","Bellmare","Benevento","Blackfin","Cabral","Carrow","Castellan","Coldwell","Coral","Corvino","Crane","Dellamar",
@@ -12494,7 +12506,7 @@ function shopOpen(n, tid){
 function shopRerollKeeper(n, o){
   const S = n.shop, T = shopTpl(S && S.tpl); if(!T) return; o = o || {};
   const old = libNpcById(S.keeper), surname = p => String((p||{}).name||"").replace(/"[^"]*"/g, "").trim().split(/\s+/).slice(-1)[0] || "";
-  const p = personToLibrary(genPerson({ kind:o.kind || T.keeper, level:o.level || Math.max(1, partyAvgLevel()), disp:o.disp || "neutral", type:"Humanoid", species:o.species || "", align:o.align || "", role:"" }));
+  const p = personToLibrary(genPerson({ kind:o.kind || T.keeper, level:o.level || Math.max(1, partyAvgLevel()), disp:o.disp || "neutral", type:"Humanoid", species:o.species || "", gender:o.gender || "", align:o.align || "", role:"" }));
   p.where = placeLabel(n); p.shopRolled = true;
   n.npcs = (n.npcs||[]).filter(id=>id!==S.keeper); n.npcs.unshift(p.id);
   if(old && old.shopRolled && surname(old) && n.name === `${surname(old)}'s ${T.label}`) n.name = `${surname(p)}'s ${T.label}`;     // only a name the shop gave itself
@@ -12645,6 +12657,7 @@ function shopBlock(n){
         <div class="field"><label>Kind of person</label><select data-shoproll="kind">${kindOptions(kk).replace('<option value="">Anyone (by class)</option>', "")}</select></div>
         <div class="pcrow"><div class="field" style="flex:1"><label>Species</label><select data-shoproll="species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===r.species?"selected":""}>${s}</option>`).join("")}</select></div>
           <div class="field" style="flex:1.2"><label>Alignment</label><select data-shoproll="align"><option value="">Any that fits</option>${ALIGNMENTS.map(x=>`<option ${x===r.align?"selected":""}>${x}</option>`).join("")}</select></div></div>
+        <div class="pcrow">${genderSelect(`data-shoproll="gender"`, r.gender)}</div>
         <button class="btn wide" data-shopb="rekeepgo">Roll a new keeper</button></div>`; })() : ""}
     ${keep ? (()=>{ const k = `shopkeep:${keep.id}`, row = (l, v) => v ? `<div class="sbl"><b>${l}</b> ${esc(v)}</div>` : "";
       const sheet = [keep.ac ? `AC ${keep.ac}` : "", keep.hpMax ? `HP ${keep.hpMax}` : "", keep.pp ? `PP ${keep.pp}` : "", ...(keep.attacks||[]).filter(a=>a && a.name).map(a=>`${a.name} ${a.hit||""} ${a.dmg||""}`.trim())].filter(Boolean).join(" · ");
@@ -12693,7 +12706,7 @@ document.addEventListener("click", e=>{
     const st = siteOf(n); st.items = (st.items||[]).filter(t=>!(n.shop.items||[]).includes(t)); (n.shop.items||[]).forEach(t=>forgetItem(st, t)); delete n.shop; touch(); }
   shopRedraw();
 });
-let genOpts = { level:null, disp:"", type:"Humanoid", role:"", kind:"", species:"", align:"", diff:"mod", xp:0 }, genResult = null;
+let genOpts = { level:null, disp:"", type:"Humanoid", role:"", kind:"", species:"", gender:"", align:"", diff:"mod", xp:0 }, genResult = null;
 /* an encounter's XP: the party's 2024 budget at the difficulty picked (Low, Moderate, High), or exactly the XP asked for */
 const DIFF_KEYS = [["lo","Low"],["mod","Moderate"],["hi","High"]];
 function encBudget(lv, diff, xp){
@@ -12720,14 +12733,15 @@ function genPerson(over){
   /* an encounter's share of the XP budget: pick from the strongest that fit it, so the group adds up */
   const best = pool.length ? Math.max(...pool.map(f=>f.xp)) : 0, strong = o.maxXp ? pool.filter(f=>f.xp >= best/2) : [];
   const sb = pickOne(strong.length ? strong : near.length ? near : pool.length ? pool : [all.slice().sort((a,b)=>a.cr-b.cr)[0] || SRD_FOES.find(f=>f.name==="Commoner")]);
-  const nick = Math.random()<.25 ? ` "${pickOne(GEN_NICK)}"` : "";
+  const sex = o.gender==="man" || o.gender==="woman" ? o.gender : (Math.random() < .5 ? "man" : "woman");
+  const nick = Math.random()<.25 ? ` "${pickOne(fitList(GEN_NICK, sex))}"` : "";
   /* like a player choosing how to play: fresh spells for a caster, their own weapons for anyone who fights with them */
   /* a casting class gets that class's spells and slots for their level (2024 tables); any other caster keeps its stat block's levels */
   const cast = CASTING[cls] ? classCaster(sb, cls, lv) : isCaster(sb) ? randomizeSpells(sb, "") : null, arms = randomizeWeapons(cast ? cast.sb : sb);
   const g = { kind:"person", disp, level:lv, roleChoice:o.role||"", align:o.align || rollAlignment(disp),
-    name:`${pickOne(GEN_FIRST)}${nick} ${pickOne(GEN_FAMILY)}`, species:o.species || pickOne(GEN_SPECIES), role:cls, group:groupOfClass(cls),
+    name:`${pickOne(genderFirst(sex))}${nick} ${pickOne(GEN_FAMILY)}`, gender:sex, species:o.species || pickOne(GEN_SPECIES), role:cls, group:groupOfClass(cls),
     foe:sb.id, hp:rollDiceExpr(sb.hd) || foeMaxHp(sb), hd:sb.hd || "", statBlock:arms.sb, spells:cast ? cast.spells : [], spellClass:cast ? cast.cls : "",
-    cast:cast && cast.slots ? cast : null, swaps:arms.swaps, look:kindPick(K && K.look, GEN_LOOK), voice:kindPick(K && K.voice, GEN_VOICE), wants:kindPick(K && K.wants, GEN_WANTS[disp], disp==="enemy" ? .75 : .9), secret:kindPick(K && K.secret, GEN_SECRET, .85), backstory:genBackstory(),
+    cast:cast && cast.slots ? cast : null, swaps:arms.swaps, look:kindPick(fitList(K && K.look, sex), fitList(GEN_LOOK, sex)), voice:kindPick(K && K.voice, GEN_VOICE), wants:kindPick(K && K.wants, GEN_WANTS[disp], disp==="enemy" ? .75 : .9), secret:kindPick(K && K.secret, GEN_SECRET, .85), backstory:genBackstory(),
     ...(K ? { pkind:o.kind, occupation:K.label, knows:pickOne(K.knows||[""]), carries:(K.carries||[]).slice(), wealth:K.wealth } : {}) };
   g.person = buildPerson(g);
   return g;
@@ -12763,7 +12777,7 @@ function buildPerson(g){
   const sb = foeById(g.foe);
   const p = Object.assign(sb ? personFromCreature(g.foe) : blankLib("npcs"), {
     name:g.name, role:`${{enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]} · ${g.species} ${String(g.occupation||g.role||"").toLowerCase()}`.trim(),
-    species:g.species, cls:g.role||"", where:"", align:g.align||"", look:g.look, voice:g.voice, wants:g.wants, knows:g.knows||"", ...(g.pkind ? { pkind:g.pkind } : {}), backstory:g.backstory||"", fightsAs:g.foe||"" });
+    species:g.species, cls:g.role||"", where:"", align:g.align||"", ...(g.gender ? { gender:GENDER_WORD[g.gender] || g.gender } : {}), look:g.look, voice:g.voice, wants:g.wants, knows:g.knows||"", ...(g.pkind ? { pkind:g.pkind } : {}), backstory:g.backstory||"", fightsAs:g.foe||"" });
   if(sb){
     p.cr = sb.cr; p.skills = sb.sk || "";
     if(g.hp){ p.hpMax = String(g.hp); p.hp = String(g.hp); }
@@ -12859,7 +12873,7 @@ function personSheet(g, key, compact, controls){
   const invBody = (kit.length ? kit.map(kitRow).join("") : `<p class="empty-note" style="font-size:11px;margin:0">Nothing worth noting.</p>`) + row("Purse", esc(purseTxt || "empty"));
   return `<div class="pcard npc rolled">
     <div class="pchead"><span class="pcname ro">${esc(p.name)}</span><span class="pclv"><span class="npctag">NPC</span></span></div>
-    <div class="pcsum mono"><b>${esc([p.species, String(g.occupation||g.role||"").toLowerCase()].filter(Boolean).join(" "))}</b> · ${sum}</div>
+    <div class="pcsum mono"><b>${esc([p.species, String(g.occupation||g.role||"").toLowerCase()].filter(Boolean).join(" "))}</b>${p.gender ? ` · ${esc(String(p.gender).toLowerCase())}` : ""} · ${sum}</div>
     ${controls||""}
     ${sec("who", "Who they are", `${row("Attitude", esc({enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[g.disp]) + ` <small>— ${esc(DISP_LINE[g.disp])}</small>`)}
       ${row("Does", esc(g.occupation||""))}${row("Alignment", esc(p.align||""))}${row("Look", esc(p.look))}${row("Voice", esc(p.voice))}${row("Wants", esc(p.wants))}${row("Secret", esc(g.secret))}${row("Knows", esc(p.knows||""))}${row("Purse", COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", "))}
@@ -12937,6 +12951,7 @@ function renderRoll(){
     ${genOpts.type && genOpts.type!=="Humanoid" ? `<div class="field"><label>Which ${esc(genOpts.type.toLowerCase())}</label><select id="gn-foe">${creatureOptions(genOpts.type, genOpts.foe)}</select></div>` : ""}
     <div class="field"><label>Alignment</label><select id="gn-align"><option value="">Any — one that fits the attitude</option>${ALIGNMENTS.map(a=>`<option ${a===genOpts.align?"selected":""}>${a}</option>`).join("")}</select></div>
     ${genOpts.type==="Humanoid"?`<div class="field"><label>Species</label><select id="gn-species"><option value="">Any</option>${GEN_SPECIES.map(s=>`<option ${s===genOpts.species?"selected":""}>${s}</option>`).join("")}</select></div>`:""}
+    ${genOpts.type==="Humanoid" ? genderSelect(`id="gn-gender"`, genOpts.gender) : ""}
     ${encXpFields(genOpts.diff, genOpts.xp, lvl, "data-gnx")}
     <div class="pcrow">
       <button class="btn" style="flex:1" data-ract="person" title="Someone to meet: a person (Humanoid or Any), or a named creature of the Type picked">Someone to meet</button>
@@ -13312,6 +13327,7 @@ $("#pane-roll").addEventListener("change", e=>{
   if(t.dataset.crowdk!=null && genResult && genResult.kind==="crowd"){ const g = genResult, k = +t.dataset.crowdk;
     g.people[k] = genPerson({ level:g.level, disp:g.disp, maxXp:crowdRoom(g, k), role:t.value }); renderRoll(); return; }
   if(t.id==="gn-species"){ genOpts.species = t.value; return; }
+  if(t.id==="gn-gender"){ genOpts.gender = t.value; return; }
   if(t.id==="gn-align"){ genOpts.align = t.value; return; }
   if(t.id==="gn-level"){ genOpts.level = clampLv(t.value); return; }
   if(t.dataset.ractAdd){

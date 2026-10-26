@@ -1,0 +1,12 @@
+man: 60 rolled, names off-list 0, beards 3, kept 60
+woman: 60 rolled, names off-list 0, beards 0, kept 60
+either: 100 rolled, men about half
+lists: men 53, women 54, either 12, all 119, no repeats true
+Roll tab picker: Either/Man/Woman
+picked: genOpts.gender woman
+Roll tab roll is a woman, card says true
+library: gender Woman, summary "Potential ally · Aasimar ranger · woman · LN"
+Field Book back with Man: Man
+cleared on the phone: undefined
+FB_FIELDS has gender: true
+Library sheet Gender field: —/Man/Woman/Other… =
