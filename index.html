@@ -209,6 +209,9 @@
   #tabs button:hover{color:var(--ink-soft)}
   #tabs button.on{color:var(--lead);border-bottom-color:var(--lead)}
   .pane{padding:14px 14px 40px;overflow-y:auto;min-height:0;overflow-anchor:none}   /* redraws keep their own place (see keepPaneScroll) */
+  .pane, #pscreen{overflow-x:hidden;overflow-wrap:anywhere}   /* never sideways: long lines wrap and stack instead */
+  .pane input, .pane select, .pane textarea, #pscreen input, #pscreen select, #pscreen textarea{max-width:100%;min-width:0;box-sizing:border-box}
+  .pane .pcrow, #pscreen .pcrow{flex-wrap:wrap}
   .pane[hidden]{display:none}
   /* ── table mode: DM mode on a laptop. The session on the left (the script; the notes and the log), the map in the
      middle, the card and the Action box on the right, the other tabs in the ☰ drawer. Each pair of boxes has a bar
@@ -665,8 +668,8 @@
   /* ── the fight tracker (DM mode) ── */
   .fighthead{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin:0 0 6px}
   /* a calm place: who's here, and the way into a fight */
-  .calmrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:5px 7px;border-bottom:1px solid var(--rule-soft);cursor:pointer;font-size:13px}
-  .calmrow small{font-family:var(--mono);font-size:10px;color:var(--ink-soft);white-space:nowrap}
+  .calmrow{display:block;padding:5px 7px;border-bottom:1px solid var(--rule-soft);cursor:pointer;font-size:13px;line-height:1.3}
+  .calmrow small{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-soft);white-space:normal}   /* the name, then what they are underneath */
   .calmrow.sel{background:var(--paper-deep)}
   .btn.calmgo{background:var(--lead);border-color:var(--lead);color:#fff;font-size:13px;padding:10px;margin:6px 0 4px}
   .btn.calmgo:hover{background:#8f2a19;color:#fff}
@@ -789,9 +792,15 @@
   .cdbar .cd-read{font-family:var(--mono);font-size:12px;white-space:nowrap}
   .cdbar.low{border-color:#9b1c14} .cdbar.low .cd-read{color:#9b1c14;font-weight:bold}
   .cd-ps-big{font-size:22px;text-align:center;margin:2px 0 6px}
-  .cd-bell{display:grid;grid-template-columns:auto auto 1fr auto;gap:3px;align-items:center;margin:0 0 6px}
-  .cd-bell input{min-width:0;font-size:11.5px}
-  .cd-bell .cd-note{grid-column:2 / 5;font-size:11px;color:var(--ink-soft)}
+  /* a bell, stacked: [rung] [when] [×] on top, then what they see, your note and who it takes, each on its own line */
+  .cd-bell{display:grid;grid-template-columns:auto 1fr auto;gap:3px;align-items:center;margin:0 0 8px;padding-bottom:6px;border-bottom:1px dotted var(--rule-soft)}
+  .cd-bell input, .cd-bell select{min-width:0;font-size:11.5px;width:100%;box-sizing:border-box}
+  .cd-bell > label:first-child{grid-column:1;grid-row:1}
+  .cd-bell [data-cdb="at"]{grid-column:2;grid-row:1;width:100%!important}
+  .cd-bell .fdel{grid-column:3;grid-row:1}
+  .cd-bell [data-cdb="label"]{grid-column:1 / 4;grid-row:2}
+  .cd-bell .cd-note{grid-column:1 / 4;grid-row:3;font-size:11px;color:var(--ink-soft);resize:vertical;font-family:inherit}
+  .cd-bell label.mini{grid-column:1 / 4;grid-row:4}
   .cd-bell.rung > input{opacity:.6}
   #cdbanner{position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:70;display:flex;flex-direction:column;gap:6px;width:min(520px,90vw);pointer-events:none}
   #cdbanner .cdb{pointer-events:auto;background:#2a2016;color:#f3ead2;border:2px solid #b08a3e;border-radius:6px;padding:8px 34px 8px 12px;position:relative;box-shadow:0 6px 24px rgba(0,0,0,.35);font-family:var(--serif)}
@@ -11487,13 +11496,19 @@ function wireBmapPanel(el, n, c){
   if(bn) bn.onchange = ()=>{ ownBmap(n).name = bn.value; touch(); renderBattle(); };
   const md = el.querySelector('[data-invfor="battle:map"]'); if(md) md.ontoggle = ()=>{ if(md.open) openInv.add("battle:map"); else openInv.delete("battle:map"); };
 }
-function renderBattlePanel(){ return keepPaneScroll("pane-inspect", renderBattlePanelNow); }
+var lastCardSel = null;                                  // whose card was last shown: a new pick scrolls the panel to it
+function renderBattlePanel(){
+  const r = keepPaneScroll("pane-inspect", renderBattlePanelNow);
+  if(battleSel && battleSel!==lastCardSel){ const card = document.querySelector("#pane-inspect .bt-sel"); if(card && card.textContent.trim()) scrollInPane(card, "start", true); }
+  lastCardSel = battleSel; return r;
+}
 /* the top of the panel while it's calm: who's here, and the button that starts the battle */
 function calmTop(n, st, c, all){
   const by = bystanders(c), foes = all.filter(t=>t.side==="enemy" && !(t.x.max && t.x.hp<=0));
   const row = (id, label, tag) => `<div class="calmrow${battleSel===id?" sel":""}" data-bsel="${esc(id)}"><span>${esc(label)}</span><small>${tag}</small></div>`;
   return `<p class="eyebrow">Here · ${esc(placeLabel(n))}</p>
     <div class="fighthead"><span>Calm, not fighting</span><span>${all.length + by.length} here</span></div>
+    <!--selcard-->
     ${togetherBlock()}
     ${xpDueBlock(st)}
     <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
@@ -11563,7 +11578,8 @@ function renderBattlePanelNow(){
   /* anyone on the map can be taken off it again (Delete does the same) */
   if(by || (selT && selT.kind==="foe") || (selT && selT.person)) h += `<button class="btn wide danger" data-bremove="${esc(battleSel)}" style="margin-top:4px" title="Takes them off the map${selT && selT.kind==="foe" ? " and out of the fight" : " and out of this place"} (Delete key). Someone who ran away is Fled instead.">Remove from here</button>`;
   if(battleSel && danceOf(c, battleSel)) h += `<button class="btn wide" data-dance="one" data-id="${esc(battleSel)}" style="margin-top:4px">♪ Stop dancing${danceOf(c, battleSel).length>1?" (and their partner)":""}</button>`;
-  h = h.slice(0, selAt) + `<div class="bt-sel">` + h.slice(selAt) + `</div>`;
+  { const card = h.slice(selAt), box = `<div class="bt-sel">${card}</div>`; h = h.slice(0, selAt);       // the picked one's card: at the top of a calm room, else here
+    h = card.trim() && h.includes("<!--selcard-->") ? h.replace("<!--selcard-->", box) : h + box; }
   if(!calm) h += stageBlock(st);
   h += bringInBlock(st);
   h += danceBlock(c);
@@ -14380,11 +14396,11 @@ function cdSection(){
     <label class="check" style="margin:2px 0 6px" title="A bell tolls on this computer when one comes due, three times at zero"><input type="checkbox" data-cdf="sound" ${c.sound!==false?"checked":""}> Toll a bell out loud</label>
     <p class="mini" style="margin:6px 0 2px">Bells: ${c.gameShow && cdHasGame(c) ? "the in-game time" : "minutes after the start"}, what they see, your note</p>
     ${bells.map(b=>`<div class="cd-bell${b.rung?" rung":""}"><label title="Ticked once it has rung. Untick it to ring again when its time comes."><input type="checkbox" data-cdb="rung" data-id="${b.id}" ${b.rung?"checked":""}></label><input data-cdb="at" data-id="${b.id}" class="mono" value="${cdBellShow(c, b)}" style="width:${c.gameShow && cdHasGame(c) ? 70 : 46}px" title="${c.gameShow && cdHasGame(c) ? "The in-game time it rings, like 10:30 pm (or minutes after the start, like 42)" : "Minutes after the start"}"><input data-cdb="label" data-id="${b.id}" value="${esc(b.label||"")}" placeholder="What they see" title="Shown big on their screen for a few seconds"><button class="fdel" data-cd="bdel" data-id="${b.id}" title="Remove this bell">×</button>
-      <input data-cdb="note" data-id="${b.id}" class="cd-note" value="${esc(b.note||"")}" placeholder="Your note (only you see it)" title="On your screen when it rings">
+      <textarea data-cdb="note" data-id="${b.id}" class="cd-note" rows="2" placeholder="Your note (only you see it)" title="On your screen when it rings">${esc(b.note||"")}</textarea>
       <label class="mini" style="display:flex;gap:4px;align-items:center;margin:2px 0 0" title="When it rings, one of the dancers in that room, picked at random, stops and drops to the floor (Unconscious); your banner names who">Takes a dancer from <select data-cdb="take" data-id="${b.id}" style="flex:1;min-width:0"><option value="">no one</option>${takeRooms().map(([v, l])=>`<option value="${esc(v)}" ${b.take===v?"selected":""}>${esc(l)}</option>`).join("")}</select></label></div>`).join("") || `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No bells yet.</p>`}
     <button class="btn wide" data-cd="badd" title="A new bell, after the last one">+ Add a bell</button>
     <div class="pcrow" style="align-items:center;margin-top:6px"><label class="mini" style="flex:1">At zero</label><input data-cdf="doneLabel" value="${esc(c.doneLabel||"")}" placeholder="Time's up" style="flex:2" title="What they see when it runs out"></div>
-    <input data-cdf="doneNote" value="${esc(c.doneNote||"")}" placeholder="Your note at zero (only you see it)" style="width:100%;box-sizing:border-box" title="On your screen when it runs out">` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">A real clock counting down on their screen, with bells that ring at set times: for a race against time.</p>`}
+    <textarea data-cdf="doneNote" rows="2" placeholder="Your note at zero (only you see it)" style="width:100%;box-sizing:border-box;resize:vertical" title="On your screen when it runs out">${esc(c.doneNote||"")}</textarea>` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">A real clock counting down on their screen, with bells that ring at set times: for a race against time.</p>`}
   </details>`;
 }
 function wireCountdown(){

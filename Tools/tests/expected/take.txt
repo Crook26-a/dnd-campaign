@@ -6,4 +6,6 @@ take button true
 taken by hand: fallen 2
 wake button: Wake the fallen (2)
 woken: fallen 0, anyone Unconscious false
+card above the list: true, right panel sideways false
 bell editor: h/ball of no one / The Ballroom
+players' screen panel sideways false, note wraps TEXTAREA
