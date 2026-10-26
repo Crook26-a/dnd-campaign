@@ -19,6 +19,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
  const drag = async (tokId, x, y, shift) => { const t = document.querySelector(`#bsvg [data-tok="${tokId}"]`); if(!t) throw new Error('no token ' + tokId);
    const p0 = bnode().site.combat.pos[tokId], a = sqClient(p0.x, p0.y), b = sqClient(x, y), o = { bubbles:true, pointerId:1, button:0, shiftKey:!!shift };
    t.dispatchEvent(new PointerEvent('pointerdown', { ...o, ...a })); await wait(10);
+   out.push("  held, not moved yet: paused " + document.getElementById("bsvg").classList.contains("dragging"));
    document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, clientX:(a.clientX+b.clientX)/2, clientY:(a.clientY+b.clientY)/2 })); await wait(10);
    out.push('  dragging class while moving: ' + document.getElementById('bsvg').classList.contains('dragging'));
    document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, ...b })); await wait(10);

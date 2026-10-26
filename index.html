@@ -824,8 +824,8 @@
   body.player.pv-splitting #pvcd.small .cd-g,body.player.pv-splitting #pvcd.small .cd-n{font-size:min(3vh,32px)} body.player.pv-splitting #pvcd.small.both .cd-n{font-size:min(2vh,22px)}
   body.player{margin:0;background:#111;overflow:hidden}
   /* dancing tokens: a couple turns round its middle (.dance), each one kept upright (.dance-up) */
-  .dance{animation:dance-turn 7s steps(70) infinite} .dance-up{animation:dance-up 7s steps(70) infinite}   /* ten steps a second: far less redrawing than a smooth turn */
-  #bsvg.dragging .dance, #bsvg.dragging .dance-up{animation-play-state:paused}   /* still while a token is dragged */
+  .dance{animation:dance-turn 7s linear infinite} .dance-up{animation:dance-up 7s linear infinite}
+  #bsvg.dragging .dance, #bsvg.dragging .dance-up{animation-play-state:paused}   /* still while a token is held */
   .rsrow.follow{outline:2px solid #a8752c;outline-offset:1px;background:rgba(216,180,90,.18);transition:background .6s}
   @keyframes dance-turn{to{transform:rotate(360deg)}} @keyframes dance-up{to{transform:rotate(-360deg)}}
   body.player > *:not(#pview):not(#pvtip):not(#pvcd):not(#pvbell){display:none!important}
@@ -10884,6 +10884,7 @@ $("#bsvg").addEventListener("pointerdown", e=>{
   }
   bdrag = tok ? { tok:tok.dataset.tok, sx:e.clientX, sy:e.clientY, moved:false, fixed:lineup, from }
               : { pan:true, sx:e.clientX, sy:e.clientY, vb:{...bview} };
+  if(tok) $("#bsvg").classList.add("dragging");                 // the dancers hold still while a token is held
 });
 /* turning a piece while painting: R with the pointer over it, or a double-click on it */
 function turnPieceAt(s){ const n = bnode(); if(!n || !s || !rotatePiece(n, s)) return; touch(); renderBattle(); flash(`${(BTILES[pieceAt(n, s)]||{}).name || "Piece"} turned.`); }
