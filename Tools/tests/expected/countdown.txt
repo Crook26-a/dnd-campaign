@@ -1,14 +1,14 @@
 bar hidden before true
 set up: total 3600 left 3600 bells 0:The first bell, 30:The second bell
 panel: A COUNTDOWN ON THEIR SCREEN Use a countdown 1:00:00 · paused
-running true, bar ⏳ 59:59 ⏸, bell 1 rung true, bell 2 rung false, banner: 🔔 The first bell Guest one sleeps ×
+running true, bar ⏳ about 1:00:00 ⏸, bell 1 rung true, bell 2 rung false, banner: 🔔 The first bell Guest one sleeps ×
 31 min later: bell 2 rung true, banners 1
 paused: running false, left about 29 min, bar ⏳ 28:58 · paused ▶
 +5 min: left 300 s more
 for the TV: {"title":"","endsAt":null,"left":34}
 at zero: done true, left 0, running false, bar ⏳ 0:00 · up ▶, last banner: 🔔 The second bell ×
 reset: left 3600, bells rung 0, done false
-TV: hidden false, Before the last bell 0:45, low true, last true
+TV: hidden false, Before the last bell about 0:45, low true, last true
 TV paused: 25:00 paused, low false
 TV bell: true The third bell
 in-game: start 1290 rate 2.500 at zero 12:00 am, bar ⏳ 1:00:00 · 🕰 9:30 pm · paused ▶
@@ -16,11 +16,11 @@ rate 1: at zero 10:30 pm
 length 1:00: rate 2.500, bells 12min=10:00 pm, 36min=11:00 pm
 length 1:45: rate 1.429, bells 21min=10:00 pm, 63min=11:00 pm, ends 12:00 am
 finish by, not started: true
-started: length about 49 min, bells 10min=10:00 pm, 30min=11:00 pm, story now 9:30 pm, end line true
-10 min in, then -5: story before 10:00 pm after 10:00 pm, length about 44, bells 10min=10:01 pm, 27min=11:00 pm, at zero 12:00 am
+started: length about 50 min true, bells 10min=10:00 pm, 30min=11:00 pm, story now 9:30 pm, end line true
+10 min in, then -5: story before 10:00 pm after 10:00 pm, length about 45 true, bells still to ring 11:00 pm, at zero 12:00 am
 payload: real up game true story now 10:00 pm
 TV both, counting up: Until midnight 10:07 pm 15:00 paused, both true
 TV in-game only: 10:07 pm paused, both false
 TV real only: 45:00 paused
 TV off: hidden true
-log: The countdown started: 1:00:00 to go / The countdown's bell: The first bell / The countdown's bell: The second bell / The countdown started: 33:58 to go / The countdown ran out: Time's up / The countdown started: 49:13 to go / The countdown's bell: The first bell
+log: The countdown started: 1:00:00 to go / The countdown's bell: The first bell / The countdown's bell: The second bell / The countdown started: 33:58 to go / The countdown ran out: Time's up / The countdown started: about 50 min to go / The countdown's bell: The first bell

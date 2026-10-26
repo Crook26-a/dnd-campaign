@@ -804,8 +804,17 @@
   @keyframes cdpulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}50%{box-shadow:0 0 4vh 1vh rgba(192,57,43,.7)}}
   #pvbell{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:8;pointer-events:none;opacity:0;transition:opacity .8s}
   #pvbell.on{opacity:1}
+  #pvbell.small div{font-size:min(4.2vh,46px);padding:2vh 3vw;border-width:2px}
   #pvbell div{background:rgba(10,8,6,.97);color:#f3ead2;font:min(7vh,72px)/1.2 Georgia,serif;padding:4vh 5vw;border:3px solid #b08a3e;border-radius:14px;max-width:80vw;text-align:center}
-  body.player.cd-on #pv-order{top:auto;bottom:10px}
+  body.player.cd-big #pv-order{top:auto;bottom:10px}
+  /* the small clock (the default): a quiet box in the top-right corner */
+  #pvcd.small{top:1.2vh;right:1.2vw;left:auto;transform:none;padding:.5vh .9vw .6vh;min-width:0;border-width:1px;border-radius:8px;background:rgba(20,16,10,.62);text-align:right}
+  #pvcd.small .cd-t{font-size:min(1.6vh,15px)} #pvcd.small .cd-s{font-size:min(1.5vh,14px)}
+  #pvcd.small .cd-g{font-size:min(4vh,42px)} #pvcd.small .cd-n{font-size:min(4vh,42px)}
+  #pvcd.small.both .cd-g{font-size:min(3.6vh,38px)} #pvcd.small.both .cd-n{font-size:min(2.4vh,26px)}
+  #pvcd.small.low{background:rgba(70,10,8,.7)} #pvcd.small.last{animation:cdpulse-s 1.8s ease-in-out infinite}
+  @keyframes cdpulse-s{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}50%{box-shadow:0 0 1.2vh .3vh rgba(192,57,43,.55)}}
+  body.player.pv-splitting #pvcd.small .cd-g,body.player.pv-splitting #pvcd.small .cd-n{font-size:min(3vh,32px)} body.player.pv-splitting #pvcd.small.both .cd-n{font-size:min(2vh,22px)}
   body.player{margin:0;background:#111;overflow:hidden}
   body.player > *:not(#pview):not(#pvtip):not(#pvcd):not(#pvbell){display:none!important}
   #pview{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#111}
@@ -13913,7 +13922,7 @@ function cdSave(){ markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = set
 function cdForPlayers(){
   const c = cdGet(); if(!c || !c.on || c.show===false) return null;
   return { title:c.title||"", endsAt:c.endsAt||null, left:cdLeft(c), total:+c.total||0, done:c.done ? (c.doneLabel||"Time's up") : "",
-           real:cdReal(c), game:!!c.gameShow && cdHasGame(c), gameStart:cdHasGame(c) ? (c.gameBase ? c.gameBase.at - cdRate(c)*c.gameBase.from/60 : +c.gameStart||0) : 0, gameRate:cdHasGame(c) ? cdRate(c) : 1 };   // one straight line for the TV: start + rate × minutes run
+           size:c.size==="large" ? "large" : "small", real:cdReal(c), game:!!c.gameShow && cdHasGame(c), gameStart:cdHasGame(c) ? (c.gameBase ? c.gameBase.at - cdRate(c)*c.gameBase.from/60 : +c.gameStart||0) : 0, gameRate:cdHasGame(c) ? cdRate(c) : 1 };   // one straight line for the TV: start + rate × minutes run
 }
 function sendCountdown(){ if(playersUp()) try{ playerWin.postMessage({ ordinate:"countdown", cd:cdForPlayers() }, "*"); }catch(err){} }
 
@@ -13997,6 +14006,7 @@ function cdSection(){
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Length</label><input data-cdf="total" class="mono" value="${cdHm(c.total)}" style="width:64px" title="How long the countdown runs in real time: hours and minutes, like 1:45. The bells still to ring keep their place in the story."><small>h:mm</small></div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="The real time you need it to end by. Pressing Start (or carrying on after a pause) fits the length so it ends then.">Or finish by</label><input data-cdf="finishBy" value="${c.finishBy!=null ? cdGameClock(c.finishBy) : ""}" placeholder="e.g. 9:00 pm" style="width:84px" title="A real clock time, like 9:00 pm. Leave it empty to use the length as it is."><small>real time</small></div>
     <label class="check" style="margin:2px 0" title="Uncheck to keep it on your screen only"><input type="checkbox" data-cdf="show" ${c.show!==false?"checked":""}> Show it on the players' screen</label>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">On their screen</label><select data-cdf="size" style="flex:2" title="How much of their screen the clock takes">${[["small","Small, in the corner"],["large","Large, top centre"]].map(([v, l])=>`<option value="${v}" ${(c.size==="large"?"large":"small")===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Real time</label><select data-cdf="realShow" style="flex:2" title="What the real clock shows on their screen. Your top bar always shows the time left.">${[["down","Counting down (time left)"],["up","Counting up (time used)"],["off","Hidden"]].map(([v, l])=>`<option value="${v}" ${cdReal(c)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <label class="check" style="margin:2px 0" title="The time in the story, on their screen above the real clock (and in your top bar)"><input type="checkbox" data-cdf="gameShow" ${c.gameShow?"checked":""}> Show the in-game time</label>
     ${c.gameShow ? `<div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Starts at</label><input data-cdf="gameStart" value="${cdGameClock(c.gameStart)}" style="width:84px" title="The in-game time when the countdown starts, like 9:30 pm or 21:30"></div>
@@ -14067,7 +14077,8 @@ function cdPlayerWire(){
   const bell = document.createElement("div"); bell.id = "pvbell"; document.body.appendChild(bell);
   let cd = null, bellT = null;
   const draw = () => {
-    box.hidden = !cd; document.body.classList.toggle("cd-on", !!cd); if(!cd) return;
+    box.hidden = !cd; document.body.classList.toggle("cd-on", !!cd); document.body.classList.toggle("cd-big", !!cd && cd.size==="large"); if(!cd) return;
+    box.classList.toggle("small", cd.size!=="large");
     const s = cd.endsAt ? Math.max(0, (cd.endsAt - Date.now())/1000) : Math.max(0, +cd.left||0);
     box.querySelector(".cd-t").textContent = cd.title || ""; box.querySelector(".cd-t").hidden = !cd.title;
     const used = Math.max(0, (+cd.total||0) - s), real = cd.real || "down", g = box.querySelector(".cd-g"), n = box.querySelector(".cd-n");
@@ -14080,7 +14091,7 @@ function cdPlayerWire(){
   window.addEventListener("message", e=>{
     const d = e.data; if(!d) return;
     if(d.ordinate==="countdown" || (d.ordinate==="scene" && "countdown" in d)){ cd = d.ordinate==="countdown" ? d.cd : d.countdown; draw(); }
-    else if(d.ordinate==="cd-bell"){ bell.innerHTML = `<div>${esc(d.label||"")}</div>`; bell.classList.add("on"); clearTimeout(bellT); bellT = setTimeout(()=>bell.classList.remove("on"), d.ms||6000); }
+    else if(d.ordinate==="cd-bell"){ bell.classList.toggle("small", !cd || cd.size!=="large"); bell.innerHTML = `<div>${esc(d.label||"")}</div>`; bell.classList.add("on"); clearTimeout(bellT); bellT = setTimeout(()=>bell.classList.remove("on"), d.ms||6000); }
   });
   setInterval(draw, 250);
 }

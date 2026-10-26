@@ -11,7 +11,7 @@
   out.push('set up: total ' + c.total + ' left ' + c.left + ' bells ' + c.bells.map(b=>b.at + ':' + b.label).join(', '));
   out.push('panel: ' + txt(ps.querySelector('.cdsec')).slice(0, 60));
   ps.querySelector('[data-cd="go"]').click(); await wait(1300);
-  out.push('running ' + cdRunning(c) + ', bar ' + txt(bar) + ', bell 1 rung ' + c.bells[0].rung + ', bell 2 rung ' + c.bells[1].rung + ', banner: ' + txt(document.getElementById('cdbanner')));
+  out.push('running ' + cdRunning(c) + ', bar ' + txt(bar).replace(/59:59|1:00:00/, 'about 1:00:00') + ', bell 1 rung ' + c.bells[0].rung + ', bell 2 rung ' + c.bells[1].rung + ', banner: ' + txt(document.getElementById('cdbanner')));
   c.endsAt -= 31*60000; await wait(1200);
   out.push('31 min later: bell 2 rung ' + c.bells[1].rung + ', banners ' + document.querySelectorAll('#cdbanner .cdb').length);
   bar.querySelector('.cd-go').click(); await wait(50); const lp = c.left;
@@ -23,7 +23,7 @@
   ps.querySelector('[data-cd="reset"]').click(); await wait(30); out.push('reset: left ' + c.left + ', bells rung ' + c.bells.filter(b=>b.rung).length + ', done ' + !!c.done);
   /* the TV side, fed by hand */
   cdPlayerWire(); window.postMessage({ ordinate:'countdown', cd:{ title:'Before the last bell', endsAt:Date.now() + 45000, left:45, done:'' } }, '*'); await wait(400);
-  const pv = document.getElementById('pvcd'); out.push('TV: hidden ' + pv.hidden + ', ' + txt(pv) + ', low ' + pv.classList.contains('low') + ', last ' + pv.classList.contains('last'));
+  const pv = document.getElementById('pvcd'); out.push('TV: hidden ' + pv.hidden + ', ' + txt(pv).replace(/0:4[45]\b/, 'about 0:45') +', low ' + pv.classList.contains('low') + ', last ' + pv.classList.contains('last'));
   window.postMessage({ ordinate:'countdown', cd:{ title:'', endsAt:null, left:1500, done:'' } }, '*'); await wait(400); out.push('TV paused: ' + txt(pv) + ', low ' + pv.classList.contains('low'));
   window.postMessage({ ordinate:'cd-bell', label:'The third bell', ms:500 }, '*'); await wait(200); out.push('TV bell: ' + document.getElementById('pvbell').classList.contains('on') + ' ' + txt(document.getElementById('pvbell')));
   /* what their screen shows: the in-game time (start + minutes per real minute, or worked out from the time at zero), real time up / down / hidden */
@@ -42,10 +42,10 @@
   const soon = new Date(Date.now() + 50*60000); chg('[data-cdf="finishBy"]', soon.getHours() + ':' + String(soon.getMinutes()).padStart(2,'0')); await wait(30);
   out.push('finish by, not started: ' + /^Press Start and it fits/.test(document.getElementById('cd-ps-end').textContent));
   ps.querySelector('[data-cd="go"]').click(); await wait(60);
-  out.push('started: length about ' + Math.round(c.total/60) + ' min, bells ' + bells() + ', story now ' + cdGameNow(c) + ', end line ' + /^Ends at/.test(document.getElementById('cd-ps-end').textContent));
+  out.push('started: length about 50 min ' + (Math.abs(c.total/60 - 50) < 1.5) + ', bells ' + bells() + ', story now ' + cdGameNow(c) + ', end line ' + /^Ends at/.test(document.getElementById('cd-ps-end').textContent));
   c.endsAt -= 10*60000; await wait(1200); const now1 = cdGameNow(c);
   ps.querySelector('[data-cd="add"][data-m="-5"]').click(); await wait(60);
-  out.push('10 min in, then -5: story before ' + now1 + ' after ' + cdGameNow(c) + ', length about ' + Math.round(c.total/60) + ', bells ' + bells() + ', at zero ' + cdGameClock(Math.round(cdGameMin(c, c.total))));
+  out.push('10 min in, then -5: story before ' + now1 + ' after ' + cdGameNow(c) + ', length about 45 ' + (Math.abs(c.total/60 - 45) < 1.5) + ', bells still to ring ' + c.bells.filter(b=>!b.rung).map(b=>cdBellShow(c, b)).join(', ') + ', at zero ' + cdGameClock(Math.round(cdGameMin(c, c.total))));
   ps.querySelector('[data-cd="go"]').click(); await wait(30); delete c.finishBy;
   chg('[data-cdf="realShow"]', 'up'); await wait(30); const p2 = cdForPlayers(); out.push('payload: real ' + p2.real + ' game ' + p2.game + ' story now ' + cdGameClock(p2.gameStart + p2.gameRate*((p2.total - p2.left)/60)));
   window.postMessage({ ordinate:'countdown', cd:{ title:'Until midnight', endsAt:null, left:2700, total:3600, done:'', real:'up', game:true, gameStart:1290, gameRate:2.5 } }, '*'); await wait(400);
@@ -55,7 +55,7 @@
   window.postMessage({ ordinate:'countdown', cd:{ title:'', endsAt:null, left:2700, total:3600, done:'', real:'down', game:false } }, '*'); await wait(400);
   out.push('TV real only: ' + txt(pv));
   window.postMessage({ ordinate:'countdown', cd:null }, '*'); await wait(400); out.push('TV off: hidden ' + pv.hidden);
-  out.push('log: ' + gameLogList().filter(l=>l.kind==='clock').map(l=>l.text).join(' / '));
+  out.push('log: ' + gameLogList().filter(l=>l.kind==='clock').map(l=>l.text.replace(/started: 4\d:\d\d to go/, 'started: about 50 min to go')).join(' / '));
  }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
  document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');
 },1500);</script>
