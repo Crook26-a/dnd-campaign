@@ -10575,8 +10575,8 @@ $("#bt-back").onclick = ()=>closeBattle();
 /* ══════════════════════════════════════════════════════════════
    DANCING — people on a battle map who dance: c.dance = [[idA, idB], [idC]] on the place's
    fight (calm or not). A couple turns slowly round the middle of their two squares, one alone
-   turns on the spot. Only the drawing moves: their squares (c.pos) stay where they are, so
-   moving, reach and sight work as ever. Same on the players' screen; the ♪ is the DM's only.
+   turns on the spot. Only the drawing moves (bar partners stepping together when they pair up),
+   so moving, reach and sight work as ever. Pairing can follow gender (dancePair). Same on the players' screen; the ♪ is the DM's only.
    ══════════════════════════════════════════════════════════════ */
 const DANCE_TURN = 7;                                      // seconds for a couple to go once round (matches the CSS)
 var danceOpen = false;
@@ -10586,14 +10586,45 @@ function stopDance(c, id){
   const n0 = c.dance.length; c.dance = c.dance.filter(p=>!p.includes(id));
   const changed = c.dance.length !== n0; if(!c.dance.length) delete c.dance; return changed;
 }
-/* pair the ones picked, each with the nearest one left (within 4 squares); an odd one out dances alone */
-function startDance(c, ids){
+/* who partners whom: "any" (the nearest), "mw" (a man and a woman) or "same" (the same gender). A token's
+   gender is its person's (library sheet: p:<id> people, npc:<id> fight entries) or a party member's own; anything
+   else, or a gender the sheet doesn't give, is unknown, and unknown partners anyone once the matches are made */
+var dancePair = (()=>{ try{ return localStorage.getItem("ordinate-dancepair") || "any"; }catch(err){ return "any"; } })();
+const DANCE_PAIRS = [["any","Anyone nearby"],["mw","A man and a woman"],["same","Same gender"]];
+function danceGender(c, id){
+  let g = "";
+  if(String(id).startsWith("p:")){ const p = libNpcById(String(id).slice(2)); g = p && p.gender || ""; }
+  else { const t = combatants(c).find(x=>x.id===id);
+    if(t && t.kind==="pc") g = (t.p && t.p.gender) || "";
+    else if(t && t.x && String(t.x.foe||"").startsWith("npc:")){ const p = libNpcById(String(t.x.foe).slice(4)); g = p && p.gender || ""; } }
+  g = String(g).trim().toLowerCase();
+  return /^(man|male|m)$/.test(g) ? "m" : /^(woman|female|f|w)$/.test(g) ? "w" : g;
+}
+/* pair the ones picked by the rule, each with the nearest one left; leftovers pair with each other if the rule lets
+   them (unknown with anyone), else dance alone. A new couple more than a square apart steps together: the second
+   moves onto the nearest free square beside the first (the one time dancing changes squares, c.pos) */
+function startDance(c, ids, mode){
+  mode = mode || dancePair;
   ids = [...new Set(ids)].filter(id=>c.pos && c.pos[id]); if(!ids.length) return [];
   for(const id of ids) stopDance(c, id);
+  const gen = {}; for(const id of ids) gen[id] = mode==="any" ? "" : danceGender(c, id);
+  const rule = (a, b) => mode==="mw" ? (gen[a]==="m" && gen[b]==="w") || (gen[a]==="w" && gen[b]==="m") : mode==="same" ? gen[a]===gen[b] : true;
+  const known = id => !!gen[id] && (mode!=="mw" || gen[id]==="m" || gen[id]==="w");
+  const dist = (a, b) => { const pa = c.pos[a], pb = c.pos[b]; return Math.hypot(pa.x-pb.x, pa.y-pb.y); };
   const left = ids.slice(), out = [];
-  while(left.length){ const a = left.shift(), pa = c.pos[a]; let best = -1, bd = Infinity;
-    left.forEach((b, k)=>{ const pb = c.pos[b], d = Math.hypot(pa.x-pb.x, pa.y-pb.y); if(d < bd){ bd = d; best = k; } });
-    out.push(best >= 0 && bd <= 4 ? [a, left.splice(best, 1)[0]] : [a]); }
+  const pairUp = (canA, ok) => { for(const a of left.slice()){ if(!left.includes(a) || !canA(a)) continue;
+      let best = null, bd = Infinity; for(const b of left) if(b!==a && ok(a, b)){ const d = dist(a, b); if(d < bd){ bd = d; best = b; } }
+      if(best){ left.splice(left.indexOf(a), 1); left.splice(left.indexOf(best), 1); out.push([a, best]); } } };
+  if(mode==="any") pairUp(()=>true, ()=>true);
+  else { pairUp(known, (a, b)=>known(b) && rule(a, b));                       // the matches the rule asks for
+         pairUp(()=>true, (a, b)=>!known(a) || !known(b)); }                  // then unknowns with whoever's left
+  for(const a of left) out.push([a]);
+  const n = bnode();
+  for(const p of out) if(p.length > 1){ const pa = c.pos[p[0]], pb = c.pos[p[1]];
+    if(Math.max(Math.abs(pa.x-pb.x), Math.abs(pa.y-pb.y)) > 1 && n && n.site && n.site.combat===c){
+      const near = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]].map(([dx, dy])=>({ x:pa.x+dx, y:pa.y+dy }))
+        .sort((u, v)=>Math.hypot(u.x-pb.x, u.y-pb.y) - Math.hypot(v.x-pb.x, v.y-pb.y));        // the free square beside them nearest to where the partner stands
+      for(const q of near){ const s = freeSquareIn(n, q.x, q.y, p[1]); if(s.x===q.x && s.y===q.y){ c.pos[p[1]] = { x:q.x, y:q.y }; break; } } } }
   c.dance = [...(c.dance||[]), ...out]; return out;
 }
 /* a token's insides, turned: round the couple's middle, kept upright, at the same point in the turn however often it's redrawn */
@@ -10618,7 +10649,8 @@ function danceBlock(c){
   if(!on.length) return "";
   const nameOf = id => (on.find(x=>x.id===id)||{}).name || "someone", pairs = c.dance || [];
   return `<details class="pcsec dancesec"${danceOpen?" open":""}><summary>Dancing${pairs.length ? ` · ${pairs.length} ${pairs.length>1?"couples":"couple"}` : ""}</summary>
-    <p class="empty-note" style="font-size:11px;margin:4px 0">Tick who dances, then Dance together: each pairs with the nearest one ticked (an odd one out dances alone). Only how they're drawn moves, on both screens; their squares stay put. Dragging a dancer stops their couple.</p>
+    <p class="empty-note" style="font-size:11px;margin:4px 0">Tick who dances, then Dance together: each pairs with the nearest one ticked that the pairing allows (anyone left over dances alone). Partners more than a square apart step together; after that only how they're drawn moves, on both screens. Dragging a dancer stops their couple.</p>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="Gender comes from each person's sheet; anyone without one partners anyone">Pairs</label><select data-dancepair style="flex:2">${DANCE_PAIRS.map(([v, l])=>`<option value="${v}" ${dancePair===v?"selected":""}>${l}</option>`).join("")}</select></div>
     ${on.map(x=>{ const pr = danceOf(c, x.id), w = pr ? (pr.length>1 ? `♪ with ${esc(nameOf(pr.find(y=>y!==x.id)))}` : "♪ alone") : "";
       return `<label class="check" style="margin:1px 0"><input type="checkbox" data-dpick="${esc(x.id)}"> ${esc(x.name)}${x.party?" <small>(party)</small>":""}${w?` <small style="color:#6b2a6b">${w}</small>`:""}</label>`; }).join("")}
     <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-dance="pair">Dance together</button><button class="btn" style="flex:1" data-dance="all" title="Every token on this map that isn't in the party">Everyone not in the party</button></div>
@@ -10638,6 +10670,7 @@ function wireDance(el, c){
     else if(a==="one"){ stopDance(c, b.dataset.id); flash("They stop dancing."); }
     touch(); renderBattle(); renderBattlePanel();
   });
+  const dp = el.querySelector("[data-dancepair]"); if(dp) dp.onchange = ()=>{ dancePair = dp.value; try{ localStorage.setItem("ordinate-dancepair", dancePair); }catch(err){} };
   const ds = el.querySelector(".dancesec"); if(ds) ds.addEventListener("toggle", ()=>{ danceOpen = ds.open; });
 }
 function tokenText(t){

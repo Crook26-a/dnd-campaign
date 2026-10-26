@@ -1,5 +1,5 @@
 panel has Dancing: true, people listed 5
-paired: [["p:n1","p:n2"]], squares kept {"x":4,"y":3}{"x":6,"y":3}
+paired: [["p:n1","p:n2"]], Ed stepped beside Dora {"x":4,"y":3}{"x":5,"y":3}
 DM map: turning groups 2, notes 2, panel says Dancing · 1 couple
 TV: turning groups 2, notes 0
 turning round their middle: they moved true, middle stayed true, apart the same true
@@ -8,3 +8,5 @@ everyone not in the party: [["p:n1","p:n2"],["p:n3"]], Anna dancing false
 card: ♪ Stop dancing
 after Stop on Fay: [["p:n1","p:n2"]]
 stop all: null, turning groups 0
+a man and a woman: W+M, W+M, W+M, ?, remembered mw, Ivo stepped beside Hana true (was 3 squares away)
+same gender: W+W, M+M, W+?, M, every couple matches or has an unknown true

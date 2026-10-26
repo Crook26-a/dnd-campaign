@@ -29,7 +29,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   el.querySelector('.dancesec').open = true;
   ['p:n1', 'p:n2'].forEach(id=>{ el.querySelector(`[data-dpick="${id}"]`).click(); });
   el.querySelector('[data-dance="pair"]').click(); await wait(80);
-  out.push('paired: ' + JSON.stringify(c.dance) + ', squares kept ' + JSON.stringify(c.pos['p:n1']) + JSON.stringify(c.pos['p:n2']));
+  out.push('paired: ' + JSON.stringify(c.dance) + ', Ed stepped beside Dora ' + JSON.stringify(c.pos['p:n1']) + JSON.stringify(c.pos['p:n2']));
   const dm = document.getElementById('bsvg').innerHTML;
   out.push('DM map: turning groups ' + document.querySelectorAll('#bsvg .dance').length + ', notes ' + (dm.match(/♪/g)||[]).length + ', panel says ' + txt(el.querySelector('.dancesec summary')));
   const sc = playerMapScene(); out.push('TV: turning groups ' + ((sc.svg||'').match(/class="dance"/g)||[]).length + ', notes ' + ((sc.svg||'').match(/♪/g)||[]).length);
@@ -44,6 +44,23 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('card: ' + txt(one)); one.click(); await wait(60); out.push('after Stop on Fay: ' + JSON.stringify(c.dance||null));
   document.querySelector('#pane-inspect [data-dance="stop"]').click(); await wait(60);
   out.push('stop all: ' + JSON.stringify(c.dance||null) + ', turning groups ' + document.querySelectorAll('#bsvg .dance').length);
+  /* pairing by gender: a man and a woman, then the same gender; someone with no gender on their sheet partners anyone */
+  const L = root.library.npcs; L.find(p=>p.id==='n1').gender = 'Woman'; L.find(p=>p.id==='n2').gender = 'Man'; L.find(p=>p.id==='n3').gender = 'Woman';
+  L.push({ id:'n4', name:'Gil Gray', gender:'Man' }, { id:'n5', name:'Hana Hart', gender:'Woman' }, { id:'n6', name:'Ivo Ink', gender:'Man' }, { id:'n7', name:'Jo Jay' });
+  bnode().npcs.push('n4', 'n5', 'n6', 'n7'); renderBattle(); renderBattlePanel(); await wait(60);
+  const put = { 'p:n1':[2,2], 'p:n2':[3,2], 'p:n3':[9,4], 'p:n4':[8,4], 'p:n5':[5,5], 'p:n6':[2,5], 'p:n7':[10,2] };
+  for(const [id, [x, y]] of Object.entries(put)) c.pos[id] = { x, y };
+  const gw = id => ({ n1:'W', n2:'M', n3:'W', n4:'M', n5:'W', n6:'M', n7:'?' })[id.slice(2)];
+  const show = () => (c.dance||[]).map(p=>p.map(gw).join('+')).join(', ');
+  const sel = document.querySelector('#pane-inspect [data-dancepair]'); sel.value = 'mw'; sel.dispatchEvent(new Event('change', { bubbles:true }));
+  document.querySelector('#pane-inspect [data-dance="all"]').click(); await wait(80);
+  const ivo = c.pos['p:n6'], hana = c.pos['p:n5'];
+  out.push('a man and a woman: ' + show() + ', remembered ' + dancePair + ', Ivo stepped beside Hana ' + (Math.max(Math.abs(ivo.x-hana.x), Math.abs(ivo.y-hana.y)) <= 1) + ' (was 3 squares away)');
+  document.querySelector('#pane-inspect [data-dance="stop"]').click(); await wait(40);
+  const sel2 = document.querySelector('#pane-inspect [data-dancepair]'); sel2.value = 'same'; sel2.dispatchEvent(new Event('change', { bubbles:true }));
+  document.querySelector('#pane-inspect [data-dance="all"]').click(); await wait(80);
+  out.push('same gender: ' + show() + ', every couple matches or has an unknown ' + (c.dance||[]).every(p=>p.length<2 || gw(p[0])===gw(p[1]) || gw(p[0])==='?' || gw(p[1])==='?'));
+  dancePair = 'any'; try{ localStorage.removeItem('ordinate-dancepair'); }catch(err){}
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
  document.title = 'RES ' + out.join(' || ');
 }, 900);
