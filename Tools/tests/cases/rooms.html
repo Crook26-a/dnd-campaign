@@ -1,0 +1,69 @@
+// uses: nothing
+<script>
+/* room to room: ways out on a battle map, the party splitting between rooms (and floors), the DM's strip of rooms, the
+   players' screen split, the Build panel. Two floors, each its own plan: a hall and a library downstairs, a landing up */
+const __ROOMS = { format:"ordinate-survey-v1", title:"Test House", ppm:10, unit:"mi", party:3,
+  nodes:[{ id:"f1", name:"Test House", kind:"town", x:0, y:0 }, { id:"f2", name:"Upstairs", kind:"town", x:60, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }, { id:"pc", name:"Cole Cedar", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb","pc"], at:{ map:"f1", node:"hall" } }],
+  plans:{
+    f1:{ format:"ordinate-plan-v1", of:"f1", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+      { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:12, d:8, bmap:{ name:"The Hall", rows:["############","#..........#","#.U........#","#..........D","#..........#","#..........#","#..........#","############"],
+        start:{ party:[[3,4],[4,4],[5,4]], enemy:[] }, exits:[{ x:11, y:3, to:"library", at:[1,3] }, { x:2, y:2, to:"f2/landing", at:[3,2], label:"Upstairs" }] } },
+      { id:"library", name:"The Library", kind:"archive", x:180, y:100, w:10, d:8, bmap:{ name:"The Library", rows:["##########","#SSSS....#","#........#","D........#","#........#","#..T.....#","#........#","##########"],
+        start:{ party:[[2,3]], enemy:[] }, exits:[{ x:0, y:3, to:"hall" }] } } ] },
+    f2:{ format:"ordinate-plan-v1", of:"f2", title:"Upstairs", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+      { id:"landing", name:"The Landing", kind:"house", x:100, y:100, w:8, d:6, bmap:{ name:"The Landing", rows:["########","#......#","#.U....#","#......#","#......#","########"],
+        start:{ party:[[3,3]], enemy:[] }, exits:[{ x:2, y:2, to:"f1/hall", at:[3,2] }] } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const where = () => groupsOf().map(g=>g.members.join('+') + '@' + g.at.map + '/' + g.at.node).join(', ');
+ const view = () => (planOf||'survey') + '/' + (bnode() ? bnode().id : '-');
+ /* a real drag with the pointer: from a token onto a square */
+ const sqClient = (x, y) => { const r = document.getElementById('bsvg').getBoundingClientRect(), b = bview, s = Math.max(b.w/r.width, b.h/r.height);
+   return { clientX: r.left + (r.width - b.w/s)/2 + ((x+.5)*BS - b.x)/s, clientY: r.top + (r.height - b.h/s)/2 + ((y+.5)*BS - b.y)/s }; };
+ const drag = async (tokId, x, y, shift) => { const t = document.querySelector(`#bsvg [data-tok="${tokId}"]`); if(!t) throw new Error('no token ' + tokId);
+   const c = n => n.site.combat, p0 = c(bnode()).pos[tokId], a = sqClient(p0.x, p0.y), b = sqClient(x, y), o = { bubbles:true, pointerId:1, button:0, shiftKey:!!shift };
+   t.dispatchEvent(new PointerEvent('pointerdown', { ...o, ...a })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, clientX:(a.clientX+b.clientX)/2, clientY:(a.clientY+b.clientY)/2 })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, ...b })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointerup', { ...o, ...b })); await wait(80); };
+ try{
+  loadJSONNow(JSON.stringify(__ROOMS)); await wait(300); setDmMode(true); await wait(50);
+  enterPlan('f1'); await wait(50); openBattle(doc.nodes.find(x=>x.id==='hall')); await wait(80);
+  out.push('open: ' + view() + ', marks ' + document.querySelectorAll('#bsvg [data-exit]').length + ' (' + [...document.querySelectorAll('#bsvg .bexit text')].map(t=>t.textContent).join(', ') + '), rooms strip hidden ' + document.getElementById('bt-rooms').hidden);
+  /* Anna walks into the library: the party splits, the DM stays (two are left in the hall), the TV splits two ways */
+  await drag('pa', 11, 3);
+  const lib = plans.f1.nodes.find(x=>x.id==='library');
+  out.push('Anna through the door: ' + where() + ' | view ' + view() + ' | in the library at ' + JSON.stringify(lib.site.combat.pos.pa) + ' | hall has ' + combatants(bnode().site.combat).map(t=>t.id).join(','));
+  out.push('strip: ' + txt(document.getElementById('bt-rooms')));
+  let sc = playerMapScene(); out.push('TV: ' + sc.kind + ' ' + (sc.panes||[]).map(p=>p.name + ' [' + p.who + '] ' + (p.svg.length > 500)).join(' | '));
+  /* Bram, Shift: everyone in the hall goes up the stairs to the other floor; the hall is empty, so the DM's view follows */
+  await drag('pb', 2, 2, true);
+  out.push('Bram and Cole upstairs: ' + where() + ' | view ' + view() + ' | landing pos ' + JSON.stringify(bnode().site.combat.pos));
+  sc = playerMapScene(); out.push('TV: ' + sc.kind + ' ' + (sc.panes||[]).map(p=>p.name + ' [' + p.who + ']').join(' | '));
+  /* the marker's popup on the landing: Cole goes back down on his own; three rooms now */
+  document.querySelector('#bsvg [data-exit="0"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles:true, pointerId:1, button:0 })); await wait(30);
+  const pop = document.getElementById('bt-pop'); out.push('popup: ' + txt(pop));
+  pop.querySelector('[data-exgo="pc"]').click(); await wait(80);
+  out.push('Cole down: ' + where() + ' | view ' + view() + ' | hall pos of Cole ' + JSON.stringify(plans.f1.nodes.find(x=>x.id==='hall').site.combat.pos.pc));
+  sc = playerMapScene(); out.push('TV: ' + sc.kind + ' ' + (sc.panes||[]).length + ' panes: ' + (sc.panes||[]).map(p=>p.name).join(', '));
+  out.push('strip: ' + txt(document.getElementById('bt-rooms')));
+  /* the strip: a click looks into the library (nobody moves) */
+  document.querySelector('#bt-rooms [data-room="f1|library"]').click(); await wait(80);
+  out.push('looked in: view ' + view() + ' | ' + where());
+  /* a fight in the library: Anna walks out on her own turn, which passes on; the fight carries on without her */
+  const c = bnode().site.combat; addToFight(c, 'srd:skeleton', false); beginBattle(bnode().site); const all = combatants(c); all.forEach((t, k)=>c.init[t.id] = 20 - k); c.turn = 'pa'; renderBattle(); await wait(30);
+  await drag('pa', 0, 3);
+  out.push('Anna leaves the fight: turn ' + (c.turn && c.turn!=='pa' ? 'passed on' : c.turn) + ', in the fight ' + combatants(c).map(t=>t.kind).join(',') + ' | ' + where() + ' | view ' + view());
+  /* Build: Edit the inside lists the ways out */
+  setDmMode(false); await wait(30); enterPlan('f1'); await wait(30); openInterior(doc.nodes.find(x=>x.id==='hall')); await wait(50);
+  const ins = document.getElementById('pane-inspect'), sels = [...ins.querySelectorAll('[data-exto]')];
+  out.push('Build: ' + sels.map(s=>s.closest('.exrow').querySelector('b').textContent + ' -> ' + s.options[s.selectedIndex].text).join(', ') + ' | arrive ' + [...ins.querySelectorAll('[data-exat]')].map(i=>i.value).join(','));
+  ins.querySelector('[data-exadd]').click(); await wait(30);
+  const sq = sqClient(6, 7); document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointerdown', { bubbles:true, pointerId:1, button:0, ...sq })); await wait(50);
+  const s2 = document.getElementById('pane-inspect').querySelectorAll('[data-exto]'); s2[2].value = 'f2/landing'; s2[2].dispatchEvent(new Event('change')); await wait(30);
+  out.push('added: ' + JSON.stringify(doc.nodes.find(x=>x.id==='hall').bmap.exits[2]));
+ }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');
+},1500);</script>
+</body>

@@ -813,6 +813,24 @@
   #pv-order .o{padding:3px 10px;border-radius:14px;background:rgba(255,255,255,.08);white-space:nowrap}
   #pv-order .o.party{color:#bfe0d8}
   #pv-order .o.now{background:#e2a53a;color:#1d150a;font-weight:bold;box-shadow:0 0 12px rgba(226,165,58,.8)}
+  /* the players' screen split between rooms: two side by side, three or four in a grid (the first of three takes the left half) */
+  .pv-split{position:fixed;inset:0;display:grid;gap:4px;background:#111;grid-template-columns:1fr 1fr;grid-template-rows:1fr}
+  .pv-split.n3,.pv-split.n4{grid-template-rows:1fr 1fr} .pv-split.n3 .pv-pane:first-child{grid-row:span 2}
+  .pv-pane{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;background:#111}
+  .pv-ph{flex:0 0 auto;font:18px Georgia,serif;color:#f3ead2;background:rgba(20,16,10,.92);padding:4px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pv-ph span{font-size:14px;color:#bfe0d8;margin-left:6px}
+  .pv-split.n2 .pv-pane:nth-child(2) .pv-ph,.pv-split.n3 .pv-pane:nth-child(2) .pv-ph,.pv-split.n4 .pv-pane:nth-child(2) .pv-ph{text-align:right}
+  .pv-psvg{flex:1;width:100%;min-height:0;display:block}
+  .pv-porder{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:5px;align-items:center;max-width:96%;background:rgba(20,16,10,.8);color:#f3ead2;padding:5px 10px;border-radius:8px;font:14px Georgia,serif;z-index:2}
+  .pv-porder .rd{font:11px monospace;letter-spacing:.12em;text-transform:uppercase;color:#d8c49a;margin-right:4px}
+  .pv-porder .o{padding:2px 8px;border-radius:12px;background:rgba(255,255,255,.08);white-space:nowrap} .pv-porder .o.party{color:#bfe0d8}
+  .pv-porder .o.now{background:#e2a53a;color:#1d150a;font-weight:bold;box-shadow:0 0 10px rgba(226,165,58,.8)}
+  body.player.pv-splitting #pvcd{padding:.4vh 1.4vw .6vh;min-width:0} body.player.pv-splitting #pvcd .cd-n{font-size:min(6vh,64px)} body.player.pv-splitting #pvcd .cd-t,body.player.pv-splitting #pvcd .cd-s{font-size:min(1.8vh,16px)}
+  /* the DM's battle map: the rooms the party is in */
+  #bt-rooms{display:flex;gap:4px;align-items:center;padding:4px 8px;background:#eef3ef;border-bottom:1px solid var(--rule);overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
+  #bt-rooms[hidden]{display:none} #bt-rooms .rt-l{font:10.5px var(--mono);color:var(--ink-soft);margin-right:2px;flex:0 0 auto}
+  #bt-rooms .rt{flex:0 0 auto;border:1px solid var(--rule);background:var(--paper-lit);border-radius:3px;padding:2px 8px;font:12px var(--sans);cursor:pointer;color:var(--ink)}
+  #bt-rooms .rt.on{border-color:#2f5d6b;box-shadow:inset 0 -3px 0 #2f5d6b;font-weight:600} #bt-rooms .rt-i{font:10.5px var(--mono);color:#2f6170;margin-left:3px}
   body.player .turnring{animation:turnpulse 1.4s ease-in-out infinite}
   @keyframes turnpulse{0%,100%{stroke-width:4;opacity:1}50%{stroke-width:9;opacity:.55}}
   .pv-img{max-width:100vw;max-height:100vh;object-fit:contain;display:block}
@@ -1958,6 +1976,7 @@ function playersOrder(){
 /* what the players see of the map: a copy of the drawing, with the DM's things taken out */
 function playerMapScene(){
   if(battleOf){
+    const split = splitScene(); if(split) return split;      /* the party in two to four rooms: a pane each */
     const g = renderBattle(true);
     return { kind:"svg", viewBox:`${-BS/2} ${-BS/2} ${(BW+1)*BS} ${(BH+1)*BS}`, svg:g, bg:"#d6c49c", order:playersOrder() };
   }
@@ -2046,6 +2065,7 @@ function playerMode(){
   window.addEventListener("message", e=>{
     const d = e.data; if(!d || d.ordinate!=="scene") return;
     if(url){ URL.revokeObjectURL(url); url = null; }
+    document.body.classList.toggle("pv-splitting", d.kind==="split");
     /* this screen's own shape: the view is widened (or heightened) to fill it, then held inside the edge of the sea */
     let vbox = d.viewBox;
     if(d.kind==="svg" && d.bounds){ let [x, y, w, h] = String(d.viewBox).split(/\s+/).map(Number); const A = (v.clientWidth||innerWidth) / Math.max(1, v.clientHeight||innerHeight), B = d.bounds;
@@ -2058,6 +2078,8 @@ function playerMode(){
       + (d.rose ? `<div class="pv-rose">${d.rose}</div>` : "")
       + (d.weather ? `<div class="pv-weather">${d.weather}</div>` : "")
       + (d.order ? `<div id="pv-order"><span class="rd">Round ${d.order.round}</span>${d.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${esc(o.label)}</span>`).join("")}</div>` : "");
+    else if(d.kind==="split") v.innerHTML = `<div class="pv-split n${d.panes.length}">${d.panes.map(p=>`<div class="pv-pane"><div class="pv-ph"><b>${esc(p.name)}</b>${p.who ? ` <span>${esc(p.who)}</span>` : ""}</div><svg class="pv-psvg" viewBox="${p.viewBox}" preserveAspectRatio="xMidYMid meet" style="background:${d.bg}">${p.svg}</svg>`
+      + (p.order ? `<div class="pv-porder"><span class="rd">Round ${p.order.round}</span>${p.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${esc(o.label)}</span>`).join("")}</div>` : "") + `</div>`).join("")}</div>`;
     else if(d.kind==="picture" && d.blob){ url = URL.createObjectURL(d.blob); v.innerHTML = `<img class="pv-img" src="${url}" alt="">`; }
     else if(d.kind==="board") v.innerHTML = `<div class="pv-board">${d.html}</div>`;
     else v.innerHTML = "";
@@ -3558,7 +3580,7 @@ function presentChars(c){
   const here = (doc.nodes||[]).find(n=>n.site && n.site.combat===c); if(!here) return all;
   const map = planOf || "survey", aboard = planOf && sailsAbout(root.nodes.find(x=>x.id===planOf));
   const there = groupsOf().filter(g=>(g.at.map===map && g.at.node===here.id) || (aboard && g.at.map==="survey" && g.at.node===planOf && here===deckOf(doc)));
-  if(!there.length) return all;
+  if(!there.length) return groupsOf().length > 1 ? [] : all;     /* split up: nobody here is nobody (walked out, or in other rooms) */
   const ids = new Set(there.flatMap(g=>g.members)); return all.filter(p=>ids.has(p.id));
 }
 /* the Where tab */
@@ -10303,7 +10325,7 @@ function combatants(c){
   const foes = c.list.map((x,i)=>({ kind:"foe", side:x.ally?"party":x.neutral?"neutral":"enemy", id:x.id, i, x, label:x.label, init:c.init[x.id], fled:!!x.fled }));
   const chars = presentChars(c);                  // the party members at this place (everyone, if none of them is)
   const pcs = [...chars.map((p,i)=>({ kind:"pc", side:"party", id:p.id, i, p, label:(p.name||`Character ${i+1}`) + (shapeForm(p) ? ` (${shapeForm(p).name})` : ""), init:c.init[p.id], fled:!!(c.fled&&c.fled[p.id]) })),
-    ...companions().map(p=>{
+    ...companions().filter(p=>{ const b = bondOf(p); return !b || !memberIds().includes(b.to) || chars.some(q=>q.id===b.to); }).map(p=>{
       const id = "n:"+p.id, b = bondOf(p);
       /* a mount (or anyone set to) goes right after its owner, on the owner's initiative */
       const shared = b && (b.turn||bondTurnDefault(b.kind))==="share" && chars.some(q=>q.id===b.to) ? b.to : null;
@@ -10386,6 +10408,7 @@ function renderBattle(players){
   const c = furnish ? EDIT_STAGE : n.site.combat, bm = useBmap(n); if(!furnish) placeTokens(c);
   if(!players) syncUpBtn();
   if(!players) renderTurnStrip();
+  if(!players) renderRoomTabs();
   if(!players) $("#bt-title").textContent = furnish ? `Inside ${placeLabel(n)} · ${bm.name||"its map"} · furnishing${bpaint?" (painting)":""}` : `${placeLabel(n)} · ${calmOf(c) ? "calm" : `round ${c.round}`}${bm.rows?` · ${bm.name||"this place's map"}`:""}${bpaint?" · painting":""}`;
   const svgB = $("#bsvg"), b = bview;
   if(!players) svgB.setAttribute("viewBox", `${b.x} ${b.y} ${b.w} ${b.h}`);
@@ -10413,6 +10436,7 @@ function renderBattle(players){
     for(const l of ((n.site||{}).lights||[])) if(!l.on && !(players && sight.shade[l.y*BW+l.x] <= 0)) g += `<g class="blight" data-light="${l.id}" transform="translate(${l.x*BS+BS/2} ${l.y*BS+BS/2})" style="cursor:pointer"><title>${esc((LIGHT_KINDS[l.kind]||{}).name||"Light")} — ${l.lit?"lit":"out"}</title>${lightIcon(l, l.lit)}</g>`;
     if(!players && bpaint==="text") g += labelBoxes(n);     // the labels, outlined while the Text piece is picked
     if(!players) g += spotMarks(n, bm);              // what the DM has put in the containers (never on the players' screen)
+    if(!players) g += exitMarks(n);                  // the ways out of here (the players see just the door)
   }
   const big = lineup ? 1.5 : 1;
   for(const t of furnish ? [] : combatants(c)){
@@ -10480,6 +10504,10 @@ $("#bsvg").addEventListener("pointerdown", e=>{
   /* moving the map, whatever is picked: the middle button, Space held down, or the hand */
   if(e.button===1 || ((spaceDown || bhand) && e.button===0)){ e.preventDefault(); bdrag = { pan:true, sx:e.clientX, sy:e.clientY, vb:{...bview} }; $("#bsvg").classList.add("panning"); return; }
   const n = bnode(), lineup = n && n.site && n.site.combat && n.site.combat.layout==="lineup";
+  /* a way out: click its marker; Build is picking a square for a new one */
+  if(exitPick && n && editingInside() && e.button===0 && !tok){ const p = bpoint(e); bdrag = null; addExitAt(n, Math.floor(p.x/BS), Math.floor(p.y/BS)); return; }
+  const exEl = e.target.closest("[data-exit]");
+  if(exEl && n && e.button===0 && !bpaint){ bdrag = null; showExitPop(n, +exEl.dataset.exit); return; }
   /* a light on the floor: drag it to move it, click it to put it out or light it, right-click to take it away */
   const lt = e.target.closest("[data-light]");
   if(lt && n && e.button===2){ const st = siteOf(n), l = (st.lights||[]).find(x=>x.id===lt.dataset.light); bdrag = null;
@@ -10617,7 +10645,7 @@ const bend = e=>{
       if(t && t.door) return doorClick(n, s);
       battleSpot = t && (t.box || t.notice) ? s : null; renderBattle(); renderBattlePanel(); } return; }
   if(d.tok){
-    if(d.moved && !d.fixed){ touch(); askOpportunity(d.tok, d.from); }
+    if(d.moved && !d.fixed){ touch(); if(exitDrop(d.tok, e.shiftKey)) return; askOpportunity(d.tok, d.from); }
     else { battleSel = battleSel===d.tok ? null : d.tok; renderBattle(); renderPane(true); }
   }
 };
@@ -11080,11 +11108,12 @@ ${!(n.bmap && Array.isArray(n.bmap.rows)) ? layoutPicker("ed-layout", n, bmapKey
     ${spotPanel(n)}
     ${plannedPanel(n)}
     ${bmapPanel(n)}
+    ${exitsPanel(n)}
     <p class="eyebrow spaced">Light</p>${lightRow(n)}
     ${placeLockBlock(n)}
     <button class="btn wide" id="ed-done" style="margin-top:10px">Done</button>`;
-  wireSpotPanel(el, n); wireLightRow(el, n); wireBmapPanel(el, n, null); wirePlaceLock(el, n, renderEditPanel); wirePlanned(el, n);
-  $("#ed-done").onclick = ()=>{ bpaint = null; closeBattle(); };
+  wireSpotPanel(el, n); wireLightRow(el, n); wireBmapPanel(el, n, null); wirePlaceLock(el, n, renderEditPanel); wirePlanned(el, n); wireExitsPanel(el, n);
+  $("#ed-done").onclick = ()=>{ bpaint = null; exitPick = null; closeBattle(); };
   const elg = $("#ed-layout-go"); if(elg) elg.onclick = ()=>{ const v = ($("#ed-layout-pick")||{}).value; if(!v){ flash("Pick a layout first."); return; }
     if(applyLayout(n, v)){ useBmap(n); fitBview(); touch(); renderBattle(); renderEditPanel(); flash("Layout in: paint over it as you like."); } };
 }
@@ -13969,6 +13998,201 @@ function cdPlayerWire(){
     else if(d.ordinate==="cd-bell"){ bell.innerHTML = `<div>${esc(d.label||"")}</div>`; bell.classList.add("on"); clearTimeout(bellT); bellT = setTimeout(()=>bell.classList.remove("on"), d.ms||6000); }
   });
   setInterval(draw, 250);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ROOM TO ROOM — a place's battle map can have ways out (bmap.exits: [{ x, y, to:"<map>/<place>" or "<place>",
+   at:[x,y], label }]): a door, stairs or the map's edge that leads into another place's map, on this map or another
+   one (stairs up to the next floor, which is its own plan). Drag a party member onto one (Shift: everyone in the
+   room with them) and they walk through: on their own there, or into the group already in there (root.groups),
+   standing on the arrival square. The DM's battle map gets a strip of the rooms the party is in; while the party is
+   in two to four rooms the players' screen splits, each room drawn from the eyes of the members in it.
+   ══════════════════════════════════════════════════════════════ */
+const SPLIT_MAX = 4;                                       // the most rooms the players' screen splits into
+var exitPick = null;                                       // Build: the next click on the map puts a way out on that square
+const exitsOf = n => (n && n.bmap && Array.isArray(n.bmap.exits)) ? n.bmap.exits : [];
+const exitAt = (n, x, y) => exitsOf(n).find(e=>e.x===x && e.y===y) || null;
+const mapDoc = map => map==="survey" ? root : (plans[map] || null);
+function roomNode(map, id){ const d = mapDoc(map); return d ? (d.nodes||[]).find(x=>x.id===id) || null : null; }
+/* where a way out leads: { map, id, n }, or null if it leads nowhere (yet) */
+function exitTarget(ex, fromMap){
+  const s = String((ex && ex.to) || ""); if(!s) return null;
+  const k = s.indexOf("/"), map = k<0 ? fromMap : s.slice(0, k), id = k<0 ? s : s.slice(k+1), n = roomNode(map, id);
+  return n ? { map, id, n } : null;
+}
+const exitLabel = (ex, fromMap) => { const t = exitTarget(ex, fromMap); return (ex && ex.label) || (t ? placeLabel(t.n) : "Nowhere yet"); };
+/* the party members standing in a room (by their group's place) */
+const membersIn = (map, id) => groupsOf().filter(g=>sameAt(g.at, { map, node:id })).flatMap(g=>g.members);
+/* the rooms the party is in: places they're at whose map is open (calm or fighting), in the party's own order */
+function partyRooms(){
+  const out = [];
+  for(const g of groupsOf()){ const a = g.at; if(!a || !a.node) continue;
+    const n = roomNode(a.map, a.node); if(!n || !n.site || !n.site.combat) continue;
+    let r = out.find(o=>o.map===a.map && o.id===a.node);
+    if(!r){ r = { map:a.map, id:a.node, n, members:[], at:0 }; out.push(r); }
+    r.members.push(...g.members); r.at = Math.max(r.at, g.movedAt||0); }
+  return out;
+}
+/* the nearest square someone can stand on in a place's map (not a wall, water, crates, a pillar…) */
+function freeSquareIn(n, x, y, skipId){
+  const m = bmapOf(n), c = n.site && n.site.combat;
+  const taken = new Set(Object.entries((c && c.pos) || {}).filter(([k])=>k!==skipId).map(([, p])=>p.x+","+p.y));
+  const ok = (a, b) => a>=0 && b>=0 && a<m.w && b<m.h && !taken.has(a+","+b) && (!m.rows || !/[~#CKMrbOmwE|]/.test(m.rows[b][a]));
+  x = Math.max(0, Math.min(m.w-1, Math.round(x))); y = Math.max(0, Math.min(m.h-1, Math.round(y)));
+  for(let r=0; r<Math.max(m.w, m.h); r++) for(let dy=-r; dy<=r; dy++) for(let dx=-r; dx<=r; dx++)
+    if(Math.max(Math.abs(dx), Math.abs(dy))===r && ok(x+dx, y+dy)) return { x:x+dx, y:y+dy };
+  return { x, y };
+}
+/* where someone coming through stands: the way out's arrival square; else on the way back; else where the party starts */
+function arrivalIn(t, ex, fromMap, fromId){
+  if(ex && Array.isArray(ex.at) && ex.at.length===2) return { x:+ex.at[0], y:+ex.at[1] };
+  const back = exitsOf(t.n).find(e=>{ const b = exitTarget(e, t.map); return !!b && b.map===fromMap && b.id===fromId; });
+  if(back) return { x:back.x, y:back.y };
+  const m = bmapOf(t.n), s = m.start && m.start.party && m.start.party[0];
+  return s ? { x:s[0], y:s[1] } : { x:Math.floor(m.w/2), y:Math.floor(m.h/2) };
+}
+/* party members walk through a way out of the room on screen (from) */
+function walkThrough(ids, ex, from){
+  const here = planOf || "survey", t = exitTarget(ex, here);
+  if(!t){ flash("That way out doesn't lead anywhere yet: set where it goes under Ways out (Edit the inside, in Build)."); return false; }
+  if(t.map===here && t.id===from.id) return false;
+  const all = memberIds(); ids = ids.filter(id=>all.includes(id)); if(!ids.length) return false;
+  /* walking out of a fight: off its map and out of its turn order (if it was their turn, it passes to the next) */
+  const c = from.site && from.site.combat;
+  if(c){
+    if(!calmOf(c) && ids.includes(c.turn)){
+      const order = combatants(c).filter(x=>!(x.kind==="foe" && x.x.max!=null && x.x.hp<=0) && !x.fled), k = order.findIndex(x=>x.id===c.turn);
+      let next = null; for(let j=1; j<=order.length; j++){ const q = order[(k+j) % order.length]; if(!ids.includes(q.id)){ if(k+j >= order.length) newRound(c); next = q; break; } }
+      c.turn = next ? next.id : null; if(next && c.reacted) delete c.reacted[next.id]; battleSel = null;
+    }
+    if(c.pos) for(const id of ids) delete c.pos[id];
+  }
+  const dest = { map:t.map, node:t.id };
+  for(const id of ids) moveMember(id, dest);
+  const g = groupsOf().find(x=>sameAt(x.at, dest)); if(g) g.movedAt = Date.now();
+  /* in there: the place's map opens calm (its planned enemies on their squares) and they stand by the door */
+  const st2 = siteOf(t.n); if(!st2.combat) startFight(st2);
+  const c2 = st2.combat; c2.pos = c2.pos || {};
+  const a = arrivalIn(t, ex, here, from.id);
+  for(const id of ids){ delete c2.pos[id]; c2.pos[id] = freeSquareIn(t.n, a.x, a.y, id); }
+  if(t.map!==here) markDirty(t.map==="survey" ? K_SURVEY : K_PLAN(t.map));
+  partyMoved(`${ids.map(memberName).join(", ")}: ${placeLabel(t.n)}.`);
+  touch();
+  /* the DM's view goes with them only when nobody is left behind */
+  if(!membersIn(here, from.id).length) goRoom(t.map, t.id);
+  else { renderBattle(); renderBattlePanel(); }
+  return true;
+}
+/* the DM's view to a room's battle map, on whichever map it's in (nobody moves) */
+function goRoom(map, id){
+  const here = planOf || "survey";
+  if(battleOf) closeBattle(true);
+  if(map!==here){ if(map==="survey") leavePlan(); else enterPlan(map); }
+  const n = (doc.nodes||[]).find(x=>x.id===id);
+  if(!n){ render(); renderPane(true); return; }
+  openBattle(n);
+}
+/* a token let go on a way out: through it they go (Shift: everyone in the room with them) */
+function exitDrop(tokId, everyone){
+  const n = bnode(), c = n && n.site && n.site.combat, p = c && c.pos && c.pos[tokId];
+  if(!p || editingInside()) return false;
+  const ex = exitAt(n, p.x, p.y); if(!ex || !memberIds().includes(tokId)) return false;
+  const here = planOf || "survey", inRoom = membersIn(here, n.id);
+  return walkThrough(everyone ? [tokId, ...inRoom.filter(id=>id!==tokId)] : [tokId], ex, n);
+}
+/* a click on a way out's marker: where it goes, who can go, and a look in there */
+function showExitPop(n, i){
+  const here = planOf || "survey", ex = exitsOf(n)[i]; if(!ex) return;
+  const t = exitTarget(ex, here), furnish = editingInside(), inRoom = membersIn(here, n.id), who = furnish ? [] : (inRoom.length ? inRoom : memberIds());
+  const pop = $("#bt-pop");
+  pop.innerHTML = `<p><b>→ ${esc(exitLabel(ex, here))}</b> <small>(${esc(sqName(ex.x, ex.y))})</small>${t ? "" : `<br>It doesn't lead anywhere yet: pick where under Ways out, in Edit the inside.`}</p>
+    ${t && who.length ? `<div class="pcrow">${who.map(id=>`<button class="btn" data-exgo="${esc(id)}">${esc(memberName(id))} goes through</button>`).join("")}</div>` : ""}
+    <div class="pcrow">${t && who.length>1 ? `<button class="btn" data-exgo="*">Everyone ${inRoom.length ? "in here " : ""}goes through</button>` : ""}${t && !furnish ? `<button class="btn" data-exview="1" title="Your view only: nobody moves, the players' screen doesn't change">Look in there</button>` : ""}<button class="btn" data-exgo="">Close</button></div>`;
+  pop.hidden = false;
+  pop.querySelectorAll("[data-exgo]").forEach(b=>b.onclick = ()=>{ pop.hidden = true; const v = b.dataset.exgo; if(v) walkThrough(v==="*" ? who : [v], ex, n); });
+  const vb = pop.querySelector("[data-exview]"); if(vb) vb.onclick = ()=>{ pop.hidden = true; goRoom(t.map, t.id); };
+}
+/* the ways out on the DM's battle map: a small arrow pointing out, with where it goes */
+function exitMarks(n){
+  const here = planOf || "survey"; let g = "";
+  exitsOf(n).forEach((ex, i)=>{ if(ex.x==null || ex.y==null || ex.x>=BW || ex.y>=BH) return;
+    const d = [[ex.x, -1, 0], [BW-1-ex.x, 1, 0], [ex.y, 0, -1], [BH-1-ex.y, 0, 1]].sort((a, b)=>a[0]-b[0])[0], dx = d[1], dy = d[2];
+    const cx = ex.x*BS + BS/2 + dx*BS*.3, cy = ex.y*BS + BS/2 + dy*BS*.3, ang = Math.atan2(dy, dx)*180/Math.PI, t = exitTarget(ex, here), lab = exitLabel(ex, here);
+    g += `<g class="bexit" data-exit="${i}" transform="translate(${cx} ${cy})" style="cursor:pointer"><title>${esc(t ? `To ${lab}` : "A way out that leads nowhere yet")}: drag someone onto this square to walk them through (hold Shift: everyone in here with them), or click for more</title>
+      <circle r="9" fill="${t ? "#2f5d6b" : "#8a7a62"}" stroke="#fff8e6" stroke-width="2"/><path d="M-4 0 H4 M1 -3 L4 0 L1 3" transform="rotate(${ang})" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="${dx*13}" y="${dy*15 + (dy===0 ? 4 : dy>0 ? 6 : 0)}" text-anchor="${dx>0 ? "start" : dx<0 ? "end" : "middle"}" font-family="var(--serif)" font-size="11" fill="#1d3c45" stroke="#fff8e6" stroke-width="3" paint-order="stroke" style="pointer-events:none">${esc(lab)}</text></g>`; });
+  return g;
+}
+/* the strip above the DM's battle map: every room the party is in, with their initials; click to look in there */
+document.querySelector("#battle .bt-head").insertAdjacentHTML("afterend", `<div id="bt-rooms" hidden></div>`);
+function renderRoomTabs(){
+  const el = $("#bt-rooms"); if(!el) return;
+  const n = bnode(), here = planOf || "survey", rooms = (!n || editingInside()) ? [] : partyRooms();
+  const onIt = r => !!n && r.map===here && r.id===n.id;
+  if(!rooms.length || (rooms.length===1 && onIt(rooms[0]))){ el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = `<span class="rt-l">The party is in</span>` + rooms.map(r=>`<button class="rt${onIt(r) ? " on" : ""}" data-room="${esc(r.map)}|${esc(r.id)}" title="${esc(r.members.map(memberName).join(", "))}${onIt(r) ? " (on your screen)" : ": click to look in there (nobody moves)"}">${esc(placeLabel(r.n))} <span class="rt-i">${esc(r.members.map(id=>(memberName(id).trim()[0]||"?").toUpperCase()).join(""))}</span></button>`).join("")
+    + (rooms.length > SPLIT_MAX ? `<span class="rt-l" title="The players' screen splits at most ${SPLIT_MAX} ways">TV: the ${SPLIT_MAX} with the latest comings and goings</span>` : "");
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("#bt-rooms [data-room]"); if(!b) return;
+  const k = b.dataset.room.indexOf("|"); goRoom(b.dataset.room.slice(0, k), b.dataset.room.slice(k+1)); });
+/* draw a room's battle map as if it were the one open (for the players' screen), then put everything back */
+function withRoom(map, id, fn){
+  const keep = { doc, planOf, battleOf, BW, BH, battleSel };
+  try{
+    const d = mapDoc(map), n = d && (d.nodes||[]).find(x=>x.id===id); if(!n || !n.site || !n.site.combat) return null;
+    doc = d; planOf = map==="survey" ? null : map; battleOf = { doc:d, nodeId:id }; battleSel = null; useBmap(n);
+    return fn(n);
+  } finally { doc = keep.doc; planOf = keep.planOf; battleOf = keep.battleOf; BW = keep.BW; BH = keep.BH; battleSel = keep.battleSel; }
+}
+/* the players' screen while the party is in two to four rooms: one pane each (past four, the latest comings and goings) */
+function splitScene(){
+  if(!battleOf || editingInside()) return null;
+  const all = partyRooms(); if(all.length < 2) return null;
+  const top = new Set(all.slice().sort((a, b)=>b.at-a.at).slice(0, SPLIT_MAX).map(r=>r.map+"/"+r.id));
+  const panes = all.filter(r=>top.has(r.map+"/"+r.id)).map(r=>withRoom(r.map, r.id, n=>({ name:placeLabel(n),
+    who:r.members.map(id=>memberName(id).split(" ")[0]).join(", "), viewBox:`${-BS/2} ${-BS/2} ${(BW+1)*BS} ${(BH+1)*BS}`,
+    svg:renderBattle(true), order:playersOrder() }))).filter(Boolean);
+  return panes.length >= 2 ? { kind:"split", panes, bg:"#d6c49c" } : null;
+}
+/* Build: the ways out of a place, in Edit the inside */
+function allRoomOptions(sel){
+  const opt = (map, n) => `<option value="${esc(map)}/${esc(n.id)}" ${sel===`${map}/${n.id}` ? "selected" : ""}>${esc(placeLabel(n))}</option>`;
+  let h = `<option value="">— nowhere yet —</option>`;
+  const surv = (root.nodes||[]).filter(n=>n.bmap);
+  if(surv.length) h += `<optgroup label="${esc(root.title||"The survey")}">${surv.map(n=>opt("survey", n)).join("")}</optgroup>`;
+  for(const k of Object.keys(plans)){ const host = root.nodes.find(x=>x.id===k), ns = (plans[k].nodes||[]).filter(n=>n.bmap || n.name); if(!host || !ns.length) continue;
+    h += `<optgroup label="${esc(host.name||k)}">${ns.map(n=>opt(k, n)).join("")}</optgroup>`; }
+  return h;
+}
+function parseSq(s){ const m = /^\s*([A-Za-z]+)\s*(\d+)\s*$/.exec(String(s||"")); if(!m) return null;
+  let x = 0; for(const ch of m[1].toUpperCase()) x = x*26 + (ch.charCodeAt(0) - 64); return [x-1, +m[2] - 1]; }
+function exitsPanel(n){
+  const here = planOf || "survey", xs = exitsOf(n);
+  return `<p class="eyebrow spaced">Ways out</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">A door, stairs or the map's edge that leads into another place's map, on this map or another one (stairs up to the next floor). At the table, drag someone onto it and they walk through.</p>
+    ${xs.map((ex, i)=>{ const t = exitTarget(ex, here); return `<div class="exrow" style="border-top:1px dotted var(--rule);padding:5px 0">
+      <div class="pcrow" style="align-items:center"><b class="mono" title="The square it's on">${esc(sqName(ex.x, ex.y))}</b> → <select data-exto="${i}" style="flex:1;min-width:0" title="Where it leads">${allRoomOptions(t ? `${t.map}/${t.id}` : "")}</select><button class="btn" data-exdel="${i}" title="Take this way out away">×</button></div>
+      <div class="pcrow" style="align-items:center"><label class="mini" style="margin:0">Arrive on</label><input data-exat="${i}" class="mono" size="5" value="${ex.at && ex.at.length===2 ? esc(sqName(ex.at[0], ex.at[1])) : ""}" placeholder="auto" title="The square they arrive on in that place's map, like C4. Blank: on its way back here, or where the party starts">
+      <label class="mini" style="margin:0">Called</label><input data-exlab="${i}" value="${esc(ex.label||"")}" placeholder="${esc(t ? placeLabel(t.n) : "")}" style="flex:1;min-width:0" title="What its marker says on your map (blank: the place's name)"></div></div>`; }).join("")}
+    <button class="btn wide" data-exadd="1">${exitPick ? "Click its square on the map… (click here to stop)" : "+ A way out: then click its square on the map"}</button>`;
+}
+function wireExitsPanel(el, n){
+  const xs = () => { const b = n.bmap && Array.isArray(n.bmap.rows) ? n.bmap : ownBmap(n); b.exits = Array.isArray(b.exits) ? b.exits : []; return b.exits; };
+  const re = () => { touch(); renderBattle(); renderEditPanel(); };
+  el.querySelectorAll("[data-exto]").forEach(s=>s.onchange = ()=>{ const ex = xs()[+s.dataset.exto]; if(!ex) return; ex.to = s.value; re(); });
+  el.querySelectorAll("[data-exat]").forEach(s=>s.onchange = ()=>{ const ex = xs()[+s.dataset.exat]; if(!ex) return; const q = parseSq(s.value);
+    if(q) ex.at = q; else { delete ex.at; if(s.value.trim()) flash("A square like C4: the letters across, then the number down."); } re(); });
+  el.querySelectorAll("[data-exlab]").forEach(s=>s.onchange = ()=>{ const ex = xs()[+s.dataset.exlab]; if(!ex) return; if(s.value.trim()) ex.label = s.value.trim(); else delete ex.label; re(); });
+  el.querySelectorAll("[data-exdel]").forEach(b=>b.onclick = ()=>{ xs().splice(+b.dataset.exdel, 1); re(); });
+  const add = el.querySelector("[data-exadd]"); if(add) add.onclick = ()=>{ exitPick = !exitPick; if(exitPick) bpaint = null; renderBattle(); renderEditPanel();
+    flash(exitPick ? "Click the square on the map: a door, stairs or the edge." : "Stopped."); };
+}
+function addExitAt(n, x, y){
+  exitPick = null; if(x<0 || y<0 || x>=BW || y>=BH){ renderEditPanel(); return; }
+  const b = n.bmap && Array.isArray(n.bmap.rows) ? n.bmap : ownBmap(n); b.exits = Array.isArray(b.exits) ? b.exits : [];
+  if(b.exits.some(e=>e.x===x && e.y===y)){ flash("There's a way out on that square already."); renderEditPanel(); return; }
+  b.exits.push({ x, y, to:"" }); touch(); renderBattle(); renderEditPanel(); flash(`A way out on ${sqName(x, y)}: now pick where it leads.`);
 }
 
 function gameLog(kind, text){
