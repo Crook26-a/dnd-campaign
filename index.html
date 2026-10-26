@@ -775,8 +775,36 @@
   @media (max-width:860px){ #pscreen{right:8px} }
   .ps-h{display:flex;align-items:center;justify-content:space-between;font-family:var(--serif);font-size:14px;margin-bottom:6px}
   .ps-st{font-size:11.5px;margin:0 0 6px;color:var(--ink-soft)}.ps-st.on{color:var(--r1)}
+  /* the countdown: a readout beside the world clock, its setup in the Players' screen panel, the bell banners, and big on the TV */
+  .cdbar{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--rule);border-radius:3px;padding:1px 3px;margin-right:10px;background:var(--paper)}
+  .cdbar[hidden]{display:none}
+  .cdbar button{background:none;border:0;cursor:pointer;padding:2px 4px;color:var(--ink);margin:0}
+  .cdbar .cd-read{font-family:var(--mono);font-size:12px;white-space:nowrap}
+  .cdbar.low{border-color:#9b1c14} .cdbar.low .cd-read{color:#9b1c14;font-weight:bold}
+  .cd-ps-big{font-size:22px;text-align:center;margin:2px 0 6px}
+  .cd-bell{display:grid;grid-template-columns:auto auto 1fr auto;gap:3px;align-items:center;margin:0 0 6px}
+  .cd-bell input{min-width:0;font-size:11.5px}
+  .cd-bell .cd-note{grid-column:2 / 5;font-size:11px;color:var(--ink-soft)}
+  .cd-bell.rung > input{opacity:.6}
+  #cdbanner{position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:70;display:flex;flex-direction:column;gap:6px;width:min(520px,90vw);pointer-events:none}
+  #cdbanner .cdb{pointer-events:auto;background:#2a2016;color:#f3ead2;border:2px solid #b08a3e;border-radius:6px;padding:8px 34px 8px 12px;position:relative;box-shadow:0 6px 24px rgba(0,0,0,.35);font-family:var(--serif)}
+  #cdbanner .cdb.done{border-color:#b3261e;background:#3a0e0a}
+  #cdbanner .cdb b{font-size:16px} #cdbanner .cdb p{margin:4px 0 0;font-size:12.5px;color:#e6d8b6}
+  #cdbanner .cdb button{position:absolute;top:4px;right:6px;background:none;border:0;color:#f3ead2;font-size:18px;cursor:pointer}
+  #pvcd{position:fixed;top:1.5vh;left:50%;transform:translateX(-50%);z-index:6;text-align:center;background:rgba(20,16,10,.84);color:#f3ead2;border:2px solid #6d5c43;border-radius:12px;padding:.8vh 2.6vw 1.2vh;font-family:Georgia,serif;pointer-events:none;min-width:16vw}
+  #pvcd[hidden],#pvcd [hidden]{display:none}
+  #pvcd .cd-t{font-size:min(2.8vh,26px);letter-spacing:.06em;color:#d8c49a}
+  #pvcd .cd-n{font:bold min(11vh,120px)/1.05 Consolas,"Courier New",monospace;font-variant-numeric:tabular-nums}
+  #pvcd .cd-s{font-size:min(2.6vh,24px);color:#d8c49a;letter-spacing:.12em}
+  #pvcd.low{background:rgba(92,8,6,.9);border-color:#c0392b} #pvcd.low .cd-n{color:#ffe1dc}
+  #pvcd.last{animation:cdpulse 1.8s ease-in-out infinite}
+  @keyframes cdpulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}50%{box-shadow:0 0 4vh 1vh rgba(192,57,43,.7)}}
+  #pvbell{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:8;pointer-events:none;opacity:0;transition:opacity .8s}
+  #pvbell.on{opacity:1}
+  #pvbell div{background:rgba(10,8,6,.97);color:#f3ead2;font:min(7vh,72px)/1.2 Georgia,serif;padding:4vh 5vw;border:3px solid #b08a3e;border-radius:14px;max-width:80vw;text-align:center}
+  body.player.cd-on #pv-order{top:auto;bottom:10px}
   body.player{margin:0;background:#111;overflow:hidden}
-  body.player > *:not(#pview):not(#pvtip){display:none!important}
+  body.player > *:not(#pview):not(#pvtip):not(#pvcd):not(#pvbell){display:none!important}
   #pview{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#111}
   .pv-svg{width:100vw;height:100vh;display:block}
   /* the players' screen in a fight: the turn order across the top, whose turn it is lit; that token's ring pulses */
@@ -1912,6 +1940,7 @@ function sendPlayers(now){
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
       else msg = playerMapScene();
       if(msg && msg.kind==="svg" && typeof playersWeather==="function") msg.weather = playersWeather();
+      if(msg) msg.countdown = cdForPlayers();          // the countdown rides along with whatever they're shown
       playerWin.postMessage({ ordinate:"scene", ...msg }, "*");
     }catch(err){}
   }, now ? 0 : 120);
@@ -2008,6 +2037,7 @@ function playerMode(){
   document.title = "Players' screen";
   const v = document.createElement("div"); v.id = "pview"; document.body.appendChild(v);
   v.innerHTML = `<div class="pv-wait">Waiting for the DM's map…<br><small>Open this from the DM's "Players' screen" button.</small></div>`;
+  cdPlayerWire();
   const tip = document.createElement("div"); tip.id = "pvtip"; tip.textContent = "Double-click for full screen"; document.body.appendChild(tip);
   setTimeout(()=>tip.classList.add("gone"), 6000);
   let url = null;
@@ -2078,6 +2108,7 @@ function renderPScreen(){
     ${picList().length ? picList().map(p=>`<div class="adrow"><span>${esc(p.name||"Picture")}${picRowTag(p)}</span>${showBtn("picture", playerShow.kind==="picture"&&playerShow.id===p.id?"Showing":"Show", p.id)}<button class="fdel" data-ps="del" data-id="${p.id}" title="Remove">×</button></div>`).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${picSess() && picView==="session" && P.length ? `None for ${esc(sessShort(picSess()))} yet. Add one below, or pick some from All.` : "None yet."}</p>`}
     <button class="btn wide" data-ps="add" style="margin-top:6px">Add a picture…</button><input type="file" id="ps-file" accept="image/*" multiple hidden>
+    ${cdSection()}
     <p class="grouplab" style="margin-top:10px">Leaderboards</p>
     <div class="adrow"><span>Who's leading<br><small>${leaderScope==="session" ? "this session" : "the whole campaign"} (change it in the Party tab)</small></span>${showBtn("leaders", playerShow.kind==="leaders" ? "Showing" : "Show")}</div>
     <div class="adrow"><span>Who is where<br><small>levels and XP, how close each is</small></span>${showBtn("standing", playerShow.kind==="standing" ? "Showing" : "Show")}</div>
@@ -2954,7 +2985,7 @@ function rateToday(s){
 }
 const dayFactor = s => 24 / Math.max(1, Math.min(24, +s.sailHours || 24));   // hours of the world per hour under sail
 function courseMiles(s){ let a = (s.course && s.course.tp) || { x:s.x, y:s.y }, d = 0;    /* from where she truly is, not where her wandering puts her */ for(const p of (s.course && s.course.pts) || []){ d += Math.hypot(p.x-a.x, p.y-a.y); a = p; } return d / (root.ppm||10); }
-/* ── ships keep to the sea (Joseph, 2026-10-16: the Sallowmay sailed from Dunmarrow straight across the island). "Sail
+/* ── ships keep to the sea (Joseph, 2026-10-16: the party's ship sailed from one port straight across an island). "Sail
    to" works the course out round the land: the islands drawn on the chart are laid on a grid about a mile to the square,
    with a mile's clearance off every shore, and the way is the shortest across the grid (A*), pulled tight into a few
    waypoints. A port that sits inland of the drawn coast steps out to the nearest open water first. The waypoints are
@@ -13760,6 +13791,186 @@ document.addEventListener("change", e=>{
   saveParty(); syncWeather();
 });
 
+/* ══════════════════════════════════════════════════════════════
+   A COUNTDOWN ON THE PLAYERS' SCREEN
+   For an escape-room evening: a real clock (the wall's time, not the
+   world's) counting down big on the TV, with bells at set minutes after
+   the start. root.countdown = { on, title, total, left, endsAt, show,
+   sound, bells:[{ id, at, label, note, rung }], doneLabel, doneNote, done }.
+   Running, endsAt is when it reaches zero (so it carries on through a
+   reload); paused or not started, left is the seconds to go. A bell's `at`
+   is minutes after the start (elapsed = total - left), its label is what
+   the players see, its note is the DM's alone. Bells are data, so a map
+   file can set them up. Saved when its state changes, never on a tick.
+   ══════════════════════════════════════════════════════════════ */
+const cdGet = () => (typeof root!=="undefined" && root && root.countdown && typeof root.countdown==="object") ? root.countdown : null;
+function cdOf(){
+  const c = root.countdown = cdGet() || { on:false, title:"", total:3600, left:3600, endsAt:null, show:true, sound:true, bells:[], doneLabel:"Time's up", doneNote:"" };
+  if(!Array.isArray(c.bells)) c.bells = [];
+  if(!(+c.total > 0)) c.total = 3600;
+  if(c.left==null) c.left = c.total;
+  return c;
+}
+const cdRunning = c => !!(c && c.endsAt);
+const cdLeft = c => !c ? 0 : c.endsAt ? Math.max(0, (c.endsAt - Date.now())/1000) : Math.max(0, +c.left||0);
+const cdElapsedMin = c => ((+c.total||0) - cdLeft(c)) / 60;
+function cdClock(s){ s = Math.max(0, Math.ceil(s)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}` : `${m}:${String(x).padStart(2,"0")}`; }
+const cdHm = s => { s = Math.round(+s||0); return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}`; };
+function cdSave(){ markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700); }
+/* what the TV gets: enough to count down by itself between messages */
+function cdForPlayers(){
+  const c = cdGet(); if(!c || !c.on || c.show===false) return null;
+  return { title:c.title||"", endsAt:c.endsAt||null, left:cdLeft(c), done:c.done ? (c.doneLabel||"Time's up") : "" };
+}
+function sendCountdown(){ if(playersUp()) try{ playerWin.postMessage({ ordinate:"countdown", cd:cdForPlayers() }, "*"); }catch(err){} }
+
+/* a struck bell, made in the browser: a low hum, the strike note, a minor third, a fifth, the octave and two
+   upper partials, each fading at its own rate; one toll every 2.6 seconds */
+var cdAudio = null;
+function cdAudioOn(){ try{ cdAudio = cdAudio || new (window.AudioContext||window.webkitAudioContext)(); if(cdAudio.state==="suspended") cdAudio.resume(); }catch(err){} return cdAudio; }
+function cdToll(times){
+  const c = cdGet(); if(c && c.sound===false) return;
+  const A = cdAudioOn(); if(!A) return;
+  try{
+    const t0 = A.currentTime + .05, strike = 220;
+    for(let k=0; k<times; k++){ const t = t0 + k*2.6, out = A.createGain(); out.gain.value = .55; out.connect(A.destination);
+      for(const [r, g, d] of [[.5,.5,6.5],[1,.9,4.5],[1.19,.45,3.2],[1.5,.35,2.6],[2,.4,2.3],[2.74,.22,1.6],[3.76,.14,1.1]]){
+        const o = A.createOscillator(), v = A.createGain(); o.type = "sine"; o.frequency.value = strike*r;
+        v.gain.setValueAtTime(.0001, t); v.gain.exponentialRampToValueAtTime(g*.32, t+.012); v.gain.exponentialRampToValueAtTime(.0001, t+d);
+        o.connect(v); v.connect(out); o.start(t); o.stop(t+d+.1); } }
+  }catch(err){}
+}
+/* bells that come due go one after another: the toll, the label big on the TV, a banner for the DM with the note */
+var cdQueue = [], cdBusy = false, cdBanners = [];
+function cdRing(item){ cdQueue.push(item); if(!cdBusy) cdNext(); }
+function cdNext(){
+  const it = cdQueue.shift(); if(!it){ cdBusy = false; return; }
+  cdBusy = true; cdToll(it.tolls||1);
+  if(playersUp() && it.label && (cdGet()||{}).show!==false) try{ playerWin.postMessage({ ordinate:"cd-bell", label:it.label, ms:it.done ? 10000 : 6000 }, "*"); }catch(err){}
+  cdBanners.push({ id:uid("cdb"), label:it.label, note:it.note, done:!!it.done }); cdBannerDraw();
+  setTimeout(cdNext, it.done ? 9000 : 6500);
+}
+function cdBannerDraw(){
+  let el = document.getElementById("cdbanner");
+  if(!el){ el = document.createElement("div"); el.id = "cdbanner"; document.body.appendChild(el); }
+  el.innerHTML = cdBanners.map(b=>`<div class="cdb${b.done?" done":""}"><b>${b.done?"⏰":"🔔"} ${esc(b.label||(b.done?"Time's up":"A bell"))}</b>${b.note?`<p>${esc(b.note)}</p>`:""}<button data-cdx="${b.id}" title="Put this away">×</button></div>`).join("");
+}
+document.addEventListener("click", e=>{ const x = e.target.closest && e.target.closest("[data-cdx]"); if(!x) return; cdBanners = cdBanners.filter(b=>b.id!==x.dataset.cdx); cdBannerDraw(); });
+
+/* once a second: the readouts, and any bell that has come due */
+function cdTick(){
+  const c = cdGet(); cdReadouts();
+  if(!c || !c.on || !c.endsAt) return;
+  const el = cdElapsedMin(c); let changed = false;
+  for(const b of c.bells.slice().sort((a, b)=>(+a.at||0)-(+b.at||0)))
+    if(!b.rung && el >= (+b.at||0) && (+b.at||0) < (+c.total||0)/60){ b.rung = true; changed = true; cdRing({ label:b.label, note:b.note, tolls:1 });
+      gameLog("clock", `The countdown's bell: ${b.label || `${b.at} minutes in`}`); }
+  if(cdLeft(c) <= 0){ c.endsAt = null; c.left = 0; c.done = true; changed = true;
+    cdRing({ label:c.doneLabel || "Time's up", note:c.doneNote, tolls:3, done:true }); gameLog("clock", `The countdown ran out: ${c.doneLabel || "time's up"}`); }
+  if(changed){ cdSave(); sendCountdown(); cdReadouts(); renderPScreen(); }
+}
+function cdReadouts(){
+  const c = cdGet(), on = !!(c && c.on), s = cdLeft(c), run = cdRunning(c);
+  const bar = document.getElementById("cdBar");
+  if(bar){ bar.hidden = !on;
+    if(on){ bar.classList.toggle("low", s < 600 && !c.done); bar.querySelector(".cd-read").textContent = "⏳ " + cdClock(s) + (run ? "" : c.done ? " · up" : " · paused");
+      const g = bar.querySelector(".cd-go"); g.textContent = run ? "⏸" : "▶"; g.title = run ? "Pause the countdown" : (c.done || s<=0 ? "Start it over from the top" : "Start the countdown (or carry on)"); } }
+  const ps = document.getElementById("cd-ps-left"); if(ps && c) ps.textContent = cdClock(s) + (run ? "" : c.done ? " · time's up" : " · paused");
+}
+/* the controls */
+function cdStart(){ const c = cdOf(); cdAudioOn();
+  if(c.done || cdLeft(c) <= 0) cdReset(true);
+  c.on = true; c.endsAt = Date.now() + cdLeft(c)*1000; delete c.done;
+  gameLog("clock", `The countdown started: ${cdClock(cdLeft(c))} to go`); }
+function cdPause(){ const c = cdOf(); c.left = cdLeft(c); c.endsAt = null; }
+function cdReset(quiet){ const c = cdOf(); c.endsAt = null; c.left = +c.total||0; delete c.done; c.bells.forEach(b=>{ b.rung = false; }); if(!quiet) cdBanners = [], cdBannerDraw(); }
+function cdAdd(min){ const c = cdOf();
+  if(c.endsAt) c.endsAt = Math.max(Date.now(), c.endsAt + min*60000); else c.left = Math.max(0, cdLeft(c) + min*60);
+  if(min > 0 && c.done){ delete c.done; } }
+function cdChanged(){ cdSave(); sendCountdown(); cdReadouts(); renderPScreen(); }
+var cdSecOpen = false;
+function cdSection(){
+  const c = cdGet() || { on:false, title:"", total:3600, show:true, sound:true, bells:[] }, run = cdRunning(c);
+  const bells = (c.bells||[]).slice().sort((a, b)=>(+a.at||0)-(+b.at||0));
+  return `<details class="cdsec" ${cdSecOpen?"open":""}><summary class="grouplab" style="cursor:pointer;margin-top:10px">A countdown on their screen</summary>
+    <label class="check" style="margin:4px 0" title="A real clock, counting down on the TV and in your top bar"><input type="checkbox" data-cdf="on" ${c.on?"checked":""}> Use a countdown</label>
+    ${c.on ? `<div class="cd-ps-big"><span id="cd-ps-left" class="mono">${cdClock(cdLeft(c))}${run?"":c.done?" · time's up":" · paused"}</span></div>
+    <div class="pcrow"><button class="btn" style="flex:1.3" data-cd="go" title="${run?"Pause it: the clock stops on both screens":"Start it, or carry on from where it stopped"}">${run?"⏸ Pause":"▶ Start"}</button><button class="btn" style="flex:1" data-cd="reset" title="Back to the full length, every bell unrung">↺ Reset</button></div>
+    <div class="pcrow" title="Add or take away time they have left. The bells move with it: they ring by how long the clock has run.">${[-5,-1,1,5].map(m=>`<button class="btn" style="flex:1" data-cd="add" data-m="${m}">${m>0?"+":"−"}${Math.abs(m)} min</button>`).join("")}</div>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Title</label><input data-cdf="title" value="${esc(c.title||"")}" placeholder="e.g. Before the last bell" style="flex:2" title="Small, above the clock on their screen"></div>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Length</label><input data-cdf="total" class="mono" value="${cdHm(c.total)}" style="width:64px" title="Hours and minutes, like 2:30. Changing it before the start sets the clock to it."><small>h:mm</small></div>
+    <label class="check" style="margin:2px 0" title="Uncheck to keep it on your screen only"><input type="checkbox" data-cdf="show" ${c.show!==false?"checked":""}> Show it on the players' screen</label>
+    <label class="check" style="margin:2px 0 6px" title="A bell tolls on this computer when one comes due, three times at zero"><input type="checkbox" data-cdf="sound" ${c.sound!==false?"checked":""}> Toll a bell out loud</label>
+    <p class="mini" style="margin:6px 0 2px">Bells: minutes after the start, what they see, your note</p>
+    ${bells.map(b=>`<div class="cd-bell${b.rung?" rung":""}"><label title="Ticked once it has rung. Untick it to ring again when its time comes."><input type="checkbox" data-cdb="rung" data-id="${b.id}" ${b.rung?"checked":""}></label><input data-cdb="at" data-id="${b.id}" class="mono" type="number" min="0" step="1" value="${+b.at||0}" style="width:46px" title="Minutes after the start"><input data-cdb="label" data-id="${b.id}" value="${esc(b.label||"")}" placeholder="What they see" title="Shown big on their screen for a few seconds"><button class="fdel" data-cd="bdel" data-id="${b.id}" title="Remove this bell">×</button>
+      <input data-cdb="note" data-id="${b.id}" class="cd-note" value="${esc(b.note||"")}" placeholder="Your note (only you see it)" title="On your screen when it rings"></div>`).join("") || `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No bells yet.</p>`}
+    <button class="btn wide" data-cd="badd" title="A new bell, after the last one">+ Add a bell</button>
+    <div class="pcrow" style="align-items:center;margin-top:6px"><label class="mini" style="flex:1">At zero</label><input data-cdf="doneLabel" value="${esc(c.doneLabel||"")}" placeholder="Time's up" style="flex:2" title="What they see when it runs out"></div>
+    <input data-cdf="doneNote" value="${esc(c.doneNote||"")}" placeholder="Your note at zero (only you see it)" style="width:100%;box-sizing:border-box" title="On your screen when it runs out">` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">A real clock counting down on their screen, with bells that ring at set times: for a race against time.</p>`}
+  </details>`;
+}
+function wireCountdown(){
+  const wc = document.querySelector(".worldclock");
+  if(wc) wc.insertAdjacentHTML("afterend", `<span id="cdBar" class="cdbar" hidden><button class="cd-read" title="The countdown on their screen. Click to set it up (Players' screen panel)."></button><button class="cd-go"></button></span>`);
+  const bar = document.getElementById("cdBar");
+  if(bar){
+    bar.querySelector(".cd-read").onclick = ()=>{ const el = document.getElementById("pscreen"); cdSecOpen = true; el.hidden = false; renderPScreen();
+      const s = el.querySelector(".cdsec"); if(s) s.scrollIntoView({ block:"nearest" }); };
+    bar.querySelector(".cd-go").onclick = ()=>{ if(cdRunning(cdGet())) cdPause(); else cdStart(); cdChanged(); };
+  }
+  const ps = document.getElementById("pscreen");
+  ps.addEventListener("toggle", e=>{ if(e.target.classList && e.target.classList.contains("cdsec")) cdSecOpen = e.target.open; }, true);
+  ps.addEventListener("click", e=>{
+    const b = e.target.closest("[data-cd]"); if(!b) return;
+    const c = cdOf(), a = b.dataset.cd;
+    if(a==="go"){ if(cdRunning(c)) cdPause(); else cdStart(); }
+    else if(a==="reset"){ if(cdRunning(c) && !confirm("Reset the countdown to the full length? Every bell rings again.")) return; cdReset(); }
+    else if(a==="add") cdAdd(+b.dataset.m||0);
+    else if(a==="badd"){ const last = c.bells.reduce((m, x)=>Math.max(m, +x.at||0), 0); c.bells.push({ id:uid("bell"), at:Math.min(Math.round((+c.total||0)/60), last + 30), label:"", note:"", rung:false }); }
+    else if(a==="bdel"){ c.bells = c.bells.filter(x=>x.id!==b.dataset.id); }
+    else return;
+    cdChanged();
+  });
+  ps.addEventListener("change", e=>{
+    const t = e.target, f = t.dataset.cdf, k = t.dataset.cdb; if(!f && !k) return;
+    const c = cdOf();
+    if(f==="on"){ c.on = t.checked; if(!c.on){ cdPause(); cdBanners = []; cdBannerDraw(); } }
+    else if(f==="show" || f==="sound"){ c[f] = t.checked; if(f==="sound" && t.checked) cdAudioOn(); }
+    else if(f==="total"){ const m = String(t.value).trim().match(/^(\d+)(?::(\d{1,2}))?$/); if(!m){ flash("Write the length as h:mm, like 2:30."); renderPScreen(); return; }
+      const secs = (m[2]!=null ? (+m[1])*3600 + (+m[2])*60 : (+m[1])*60), fresh = !c.endsAt && Math.round(cdLeft(c))===Math.round(+c.total||0);
+      c.total = Math.max(60, secs); if(fresh) c.left = c.total; }
+    else if(f) c[f] = t.value;
+    else { const bell = c.bells.find(x=>x.id===t.dataset.id); if(!bell) return;
+      if(k==="rung") bell.rung = t.checked; else if(k==="at") bell.at = Math.max(0, Math.round(+t.value||0)); else bell[k] = t.value; }
+    cdSave(); sendCountdown(); cdReadouts();
+    if(f==="on" || f==="total" || k==="at" || k==="rung") renderPScreen();
+  });
+  /* a browser only lets sound start after a click: the first one wakes the bell up (a clock left running over a reload) */
+  document.addEventListener("pointerdown", ()=>{ const c = cdGet(); if(c && c.on && c.sound!==false) cdAudioOn(); }, { once:true });
+  setInterval(cdTick, 1000); cdReadouts();
+}
+/* the players' side: the clock top-centre, counting down by itself between messages; a bell's words big for a moment */
+function cdPlayerWire(){
+  const box = document.createElement("div"); box.id = "pvcd"; box.hidden = true; box.innerHTML = `<div class="cd-t"></div><div class="cd-n"></div><div class="cd-s"></div>`; document.body.appendChild(box);
+  const bell = document.createElement("div"); bell.id = "pvbell"; document.body.appendChild(bell);
+  let cd = null, bellT = null;
+  const draw = () => {
+    box.hidden = !cd; document.body.classList.toggle("cd-on", !!cd); if(!cd) return;
+    const s = cd.endsAt ? Math.max(0, (cd.endsAt - Date.now())/1000) : Math.max(0, +cd.left||0);
+    box.querySelector(".cd-t").textContent = cd.title || ""; box.querySelector(".cd-t").hidden = !cd.title;
+    box.querySelector(".cd-n").textContent = cdClock(s);
+    const sub = cd.done || (!cd.endsAt ? "paused" : ""); box.querySelector(".cd-s").textContent = sub; box.querySelector(".cd-s").hidden = !sub;
+    box.classList.toggle("low", s < 600); box.classList.toggle("last", !!cd.endsAt && s > 0 && s < 60);
+  };
+  window.addEventListener("message", e=>{
+    const d = e.data; if(!d) return;
+    if(d.ordinate==="countdown" || (d.ordinate==="scene" && "countdown" in d)){ cd = d.ordinate==="countdown" ? d.cd : d.countdown; draw(); }
+    else if(d.ordinate==="cd-bell"){ bell.innerHTML = `<div>${esc(d.label||"")}</div>`; bell.classList.add("on"); clearTimeout(bellT); bellT = setTimeout(()=>bell.classList.remove("on"), d.ms||6000); }
+  });
+  setInterval(draw, 250);
+}
+
 function gameLog(kind, text){
   if(!root || !text) return;
   const L = gameLogList(), s = String(text).trim().replace(/\.$/, ""), last = L[L.length-1], now = new Date();
@@ -16638,7 +16849,7 @@ function logTableAction(){
 }
 async function boot(){
   if(location.hash==="#player"){ playerMode(); return; }      // the players' screen: just the picture the DM sends
-  wirePScreen(); wireTimeBar(); wireTable();
+  wirePScreen(); wireTimeBar(); wireCountdown(); wireTable();
   buildRail(); syncTabs();
   let loaded = null;
   const wasMigrated = (()=>{ try{ return localStorage.getItem(MIGKEY)==="1"; }catch(err){ return false; } })();

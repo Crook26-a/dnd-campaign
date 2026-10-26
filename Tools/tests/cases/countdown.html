@@ -1,0 +1,34 @@
+// uses: nothing
+<script>setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ try{
+  const bar = document.getElementById('cdBar'); out.push('bar hidden before ' + (bar && bar.hidden));
+  /* set it up from the Players' screen panel */
+  const ps = document.getElementById('pscreen'); ps.hidden = false; cdSecOpen = true; renderPScreen();
+  const on = ps.querySelector('[data-cdf="on"]'); on.checked = true; on.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  const tot = ps.querySelector('[data-cdf="total"]'); tot.value = '1:00'; tot.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  ps.querySelector('[data-cd="badd"]').click(); await wait(20); ps.querySelector('[data-cd="badd"]').click(); await wait(20);
+  const c = root.countdown; c.bells[0].at = 0; c.bells[0].label = 'The first bell'; c.bells[0].note = 'Guest one sleeps'; c.bells[1].label = 'The second bell'; c.bells[1].at = 30; renderPScreen();
+  out.push('set up: total ' + c.total + ' left ' + c.left + ' bells ' + c.bells.map(b=>b.at + ':' + b.label).join(', '));
+  out.push('panel: ' + txt(ps.querySelector('.cdsec')).slice(0, 60));
+  ps.querySelector('[data-cd="go"]').click(); await wait(1300);
+  out.push('running ' + cdRunning(c) + ', bar ' + txt(bar) + ', bell 1 rung ' + c.bells[0].rung + ', bell 2 rung ' + c.bells[1].rung + ', banner: ' + txt(document.getElementById('cdbanner')));
+  c.endsAt -= 31*60000; await wait(1200);
+  out.push('31 min later: bell 2 rung ' + c.bells[1].rung + ', banners ' + document.querySelectorAll('#cdbanner .cdb').length);
+  bar.querySelector('.cd-go').click(); await wait(50); const lp = c.left;
+  out.push('paused: running ' + cdRunning(c) + ', left about ' + Math.round(lp/60) + ' min, bar ' + txt(bar));
+  ps.querySelector('[data-cd="add"][data-m="5"]').click(); await wait(30); out.push('+5 min: left ' + Math.round(c.left - lp) + ' s more');
+  const pay = cdForPlayers(); out.push('for the TV: ' + JSON.stringify({ title:pay.title, endsAt:pay.endsAt, left:Math.round(pay.left/60) }));
+  ps.querySelector('[data-cd="go"]').click(); await wait(30); c.endsAt = Date.now() + 400; await wait(8000);
+  out.push('at zero: done ' + !!c.done + ', left ' + c.left + ', running ' + cdRunning(c) + ', bar ' + txt(bar) + ', last banner: ' + txt([...document.querySelectorAll('#cdbanner .cdb')].pop()));
+  ps.querySelector('[data-cd="reset"]').click(); await wait(30); out.push('reset: left ' + c.left + ', bells rung ' + c.bells.filter(b=>b.rung).length + ', done ' + !!c.done);
+  /* the TV side, fed by hand */
+  cdPlayerWire(); window.postMessage({ ordinate:'countdown', cd:{ title:'Before the last bell', endsAt:Date.now() + 45000, left:45, done:'' } }, '*'); await wait(400);
+  const pv = document.getElementById('pvcd'); out.push('TV: hidden ' + pv.hidden + ', ' + txt(pv) + ', low ' + pv.classList.contains('low') + ', last ' + pv.classList.contains('last'));
+  window.postMessage({ ordinate:'countdown', cd:{ title:'', endsAt:null, left:1500, done:'' } }, '*'); await wait(400); out.push('TV paused: ' + txt(pv) + ', low ' + pv.classList.contains('low'));
+  window.postMessage({ ordinate:'cd-bell', label:'The third bell', ms:500 }, '*'); await wait(200); out.push('TV bell: ' + document.getElementById('pvbell').classList.contains('on') + ' ' + txt(document.getElementById('pvbell')));
+  window.postMessage({ ordinate:'countdown', cd:null }, '*'); await wait(400); out.push('TV off: hidden ' + pv.hidden);
+  out.push('log: ' + gameLogList().filter(l=>l.kind==='clock').map(l=>l.text).join(' / '));
+ }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');
+},1500);</script>
+</body>
