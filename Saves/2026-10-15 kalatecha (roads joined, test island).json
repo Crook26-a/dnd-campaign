@@ -48467,8 +48467,22 @@
                                                                                            ]
                                                                                        ]
                                                                          },
-                                                               "notes":  "His cabin, roomier inside than it looks from the deck: his bed under the stern windows, a side table and wardrobe, charts on the shelves, the desk with the ship\u0027s log on it, a small table for two, a sea chest. Three lamps. The ship\u0027s log is in the desk (DC 15); a sealed scallop shell is under the bed (DC 20)."
-                                                           }
+                                                               "notes":  "His cabin, roomier inside than it looks from the deck: his bed under the stern windows, a side table and wardrobe, charts on the shelves, the desk with the ship\u0027s log on it, a small table for two, a sea chest. Three lamps. The ship\u0027s log is in the desk (DC 15); a sealed scallop shell is under the bed (DC 20).",
+                                                               "exits":  [
+                                                                             {
+                                                                                 "x":  10,
+                                                                                 "y":  4,
+                                                                                 "to":  "sdeck",
+                                                                                 "at":  [
+                                                                                            9,
+                                                                                            5
+                                                                                        ],
+                                                                                 "label":  "Out onto the deck",
+                                                                                 "kind":  "door"
+                                                                             }
+                                                                         ]
+                                                           },
+                                                  "floor":  "md"
                                               },
                                               {
                                                   "id":  "shold",
@@ -48482,7 +48496,7 @@
 
                                                                },
                                                   "notes":  "Down the ladder through the hatch: the crew\u0027s hammocks, the galley (brick and bronze, no iron) and the hold. The masts run down through it to the keel.",
-                                                  "x":  -25,
+                                                  "x":  0,
                                                   "y":  0,
                                                   "w":  6,
                                                   "d":  4,
@@ -48575,7 +48589,31 @@
                                                                                            ]
                                                                                        ]
                                                                          },
-                                                               "notes":  "Below decks: the crew\u0027s hammocks, the galley (brick and bronze, no iron) with its table, the hold with crates, barrels and sacks, and the masts running down to the keel. No daylight reaches here: four lamps swing from the beams."
+                                                               "notes":  "Below decks: the crew\u0027s hammocks, the galley (brick and bronze, no iron) with its table, the hold with crates, barrels and sacks, and the masts running down to the keel. No daylight reaches here: four lamps swing from the beams.",
+                                                               "exits":  [
+                                                                             {
+                                                                                 "x":  8,
+                                                                                 "y":  3,
+                                                                                 "to":  "sdeck",
+                                                                                 "at":  [
+                                                                                            10,
+                                                                                            6
+                                                                                        ],
+                                                                                 "label":  "Up the ladder to the deck",
+                                                                                 "kind":  "ladder"
+                                                                             },
+                                                                             {
+                                                                                 "x":  8,
+                                                                                 "y":  4,
+                                                                                 "to":  "sdeck",
+                                                                                 "at":  [
+                                                                                            10,
+                                                                                            7
+                                                                                        ],
+                                                                                 "label":  "Up the ladder to the deck",
+                                                                                 "kind":  "ladder"
+                                                                             }
+                                                                         ]
                                                            },
                                                   "site":  {
                                                                "kind":  "",
@@ -48639,7 +48677,8 @@
 
                                                                                        }
                                                                           }
-                                                           }
+                                                           },
+                                                  "floor":  "bd"
                                               },
                                               {
                                                   "id":  "sdeck",
@@ -48770,7 +48809,64 @@
                                                                                            ]
                                                                                        ]
                                                                          },
-                                                               "notes":  "The Sallowmay\u0027s main deck, scrubbed white, every fitting bronze. Lamps hang by the cabin door, at both masts, at the bow and by the hatch; the cabin door leads to the captain\u0027s quarters, the hatch down below decks."
+                                                               "notes":  "The Sallowmay\u0027s main deck, scrubbed white, every fitting bronze. Lamps hang by the cabin door, at both masts, at the bow and by the hatch; the cabin door leads to the captain\u0027s quarters, the hatch down below decks.",
+                                                               "exits":  [
+                                                                             {
+                                                                                 "x":  8,
+                                                                                 "y":  5,
+                                                                                 "to":  "squarters",
+                                                                                 "at":  [
+                                                                                            8,
+                                                                                            4
+                                                                                        ],
+                                                                                 "label":  "Into the captain\u0027s quarters",
+                                                                                 "kind":  "door"
+                                                                             },
+                                                                             {
+                                                                                 "x":  11,
+                                                                                 "y":  6,
+                                                                                 "to":  "shold",
+                                                                                 "at":  [
+                                                                                            9,
+                                                                                            3
+                                                                                        ],
+                                                                                 "label":  "Down the ladder, below decks",
+                                                                                 "kind":  "ladder"
+                                                                             },
+                                                                             {
+                                                                                 "x":  12,
+                                                                                 "y":  6,
+                                                                                 "to":  "shold",
+                                                                                 "at":  [
+                                                                                            9,
+                                                                                            3
+                                                                                        ],
+                                                                                 "label":  "Down the ladder, below decks",
+                                                                                 "kind":  "ladder"
+                                                                             },
+                                                                             {
+                                                                                 "x":  11,
+                                                                                 "y":  7,
+                                                                                 "to":  "shold",
+                                                                                 "at":  [
+                                                                                            9,
+                                                                                            4
+                                                                                        ],
+                                                                                 "label":  "Down the ladder, below decks",
+                                                                                 "kind":  "ladder"
+                                                                             },
+                                                                             {
+                                                                                 "x":  12,
+                                                                                 "y":  7,
+                                                                                 "to":  "shold",
+                                                                                 "at":  [
+                                                                                            9,
+                                                                                            4
+                                                                                        ],
+                                                                                 "label":  "Down the ladder, below decks",
+                                                                                 "kind":  "ladder"
+                                                                             }
+                                                                         ]
                                                            },
                                                   "site":  {
                                                                "kind":  "",
@@ -48862,7 +48958,8 @@
                                                                "lampsOut":  {
 
                                                                             }
-                                                           }
+                                                           },
+                                                  "floor":  "md"
                                               }
                                           ],
                                 "roads":  [
@@ -48935,12 +49032,66 @@
                                                                    "x":  -85,
                                                                    "y":  25
                                                                }
-                                                           ]
+                                                           ],
+                                                   "floor":  "md"
+                                               },
+                                               {
+                                                   "id":  "sbelowhull",
+                                                   "kind":  "dock",
+                                                   "closed":  true,
+                                                   "straight":  true,
+                                                   "name":  "The Sallowmay: below decks",
+                                                   "side":  1,
+                                                   "impassable":  false,
+                                                   "notes":  "",
+                                                   "pts":  [
+                                                               {
+                                                                   "x":  -85,
+                                                                   "y":  -25
+                                                               },
+                                                               {
+                                                                   "x":  45,
+                                                                   "y":  -25
+                                                               },
+                                                               {
+                                                                   "x":  75,
+                                                                   "y":  -10
+                                                               },
+                                                               {
+                                                                   "x":  85,
+                                                                   "y":  0
+                                                               },
+                                                               {
+                                                                   "x":  75,
+                                                                   "y":  10
+                                                               },
+                                                               {
+                                                                   "x":  45,
+                                                                   "y":  25
+                                                               },
+                                                               {
+                                                                   "x":  -85,
+                                                                   "y":  25
+                                                               }
+                                                           ],
+                                                   "floor":  "bd"
                                                }
                                            ],
                                 "sited":  {
 
-                                          }
+                                          },
+                                "floors":  [
+                                               {
+                                                   "id":  "md",
+                                                   "name":  "Main deck",
+                                                   "z":  0
+                                               },
+                                               {
+                                                   "id":  "bd",
+                                                   "name":  "Below decks",
+                                                   "z":  -1
+                                               }
+                                           ]
                             },
                   "thesk":  {
                                 "format":  "ordinate-plan-v1",
