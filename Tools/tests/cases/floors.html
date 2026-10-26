@@ -48,6 +48,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   pop.querySelector('[data-fall="pa"]').click(); await wait(40);
   const pa = root.roster.find(p=>p.id==='pa'); out.push('rolled: Anna hp ' + pa.hp + ' (from 30, 2d6: ' + (30 - pa.hp >= 2 && 30 - pa.hp <= 12) + '), prone ' + pa.conds.includes('Prone') + ', prompt hidden ' + pop.hidden);
   closeBattle(); await wait(60); out.push('closed: floor ' + curFloor() + ', drawn ' + drawn());
+  document.querySelector('#floorbar [data-floor="fg"]').click(); await wait(40); showPlace('h/loft'); await wait(60); out.push('pin to the loft from the ground floor: floor ' + curFloor()); showPlace('h/loft'); await wait(20);
   setDmMode(false); await wait(40); document.querySelector('#floorbar [data-floor="fg"]').click(); await wait(40);
   select('node', 'shed'); renderInspect(); await wait(40);
   const pick = document.querySelector('#pane-inspect select[data-floorpick]'); out.push('shed picker: ' + (pick && pick.value));

@@ -9,6 +9,7 @@ drop popup: → The Hall (Drop (one way down), H5) A fall of 20 ft. Falling (SRD
 Anna drops: pb@loft, pa@hall, view loft, fall prompt true: A fall of 20 ft Falling (SRD 5.2): 2d6 Bludgeoning damage at the end of the fall
 rolled: Anna hp 20 (from 30, 2d6: true), prone true, prompt hidden true
 closed: floor fu, drawn loft,loft | shapes sup | faint 1
+pin to the loft from the ground floor: floor fu
 shed picker: fg
 shed moved: fu, floor on view fu, drawn shed,loft,shed,loft | shapes sup | faint 1
 cellar added: Ground floor 0, Upstairs 1, Cellar -1, on view Cellar, bar Upstairs / Ground floor / *Cellar / *✎ Floors

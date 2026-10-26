@@ -16160,6 +16160,7 @@ function showPlace(ref){
   if(r.plan){ if(planOf!==r.plan) enterPlan(r.plan); } else if(planOf) leavePlan();
   if(pane!==keep){ pane = keep; syncTabs(); renderPane(true); }
   const n = doc.nodes.find(x=>x.id===r.node); if(!n){ flash("That place isn't on this map."); return; }
+  floorFollow(n);                                          // a building's room on another floor: go to that floor
   const b = svg.getBoundingClientRect();
   view.tx = b.width/2 - n.x*view.k; view.ty = b.height/2 - n.y*view.k; applyTransform();
   mapMark = { plan:r.plan, node:r.node };
