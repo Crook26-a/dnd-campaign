@@ -796,6 +796,9 @@
   #pvcd .cd-t{font-size:min(2.8vh,26px);letter-spacing:.06em;color:#d8c49a}
   #pvcd .cd-n{font:bold min(11vh,120px)/1.05 Consolas,"Courier New",monospace;font-variant-numeric:tabular-nums}
   #pvcd .cd-s{font-size:min(2.6vh,24px);color:#d8c49a;letter-spacing:.12em}
+  #pvcd .cd-g{font:bold min(10vh,108px)/1.05 Georgia,serif;letter-spacing:.02em}
+  #pvcd.both .cd-g{font-size:min(8vh,88px)} #pvcd.both .cd-n{font-size:min(5.5vh,60px);color:#d8c49a}
+  body.player.pv-splitting #pvcd .cd-g{font-size:min(5vh,54px)} body.player.pv-splitting #pvcd.both .cd-n{font-size:min(3.6vh,40px)}
   #pvcd.low{background:rgba(92,8,6,.9);border-color:#c0392b} #pvcd.low .cd-n{color:#ffe1dc}
   #pvcd.last{animation:cdpulse 1.8s ease-in-out infinite}
   @keyframes cdpulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}50%{box-shadow:0 0 4vh 1vh rgba(192,57,43,.7)}}
@@ -13831,6 +13834,10 @@ document.addEventListener("change", e=>{
    is minutes after the start (elapsed = total - left), its label is what
    the players see, its note is the DM's alone. Bells are data, so a map
    file can set them up. Saved when its state changes, never on a tick.
+   What their screen shows: realShow "down" (time left, the default), "up"
+   (time used) or "off"; gameShow puts the in-game time on it too, from
+   gameStart (minutes after midnight) at gameRate in-game minutes per real
+   minute (1 = the same pace; or type the time it should reach at zero).
    ══════════════════════════════════════════════════════════════ */
 const cdGet = () => (typeof root!=="undefined" && root && root.countdown && typeof root.countdown==="object") ? root.countdown : null;
 function cdOf(){
@@ -13846,11 +13853,24 @@ const cdElapsedMin = c => ((+c.total||0) - cdLeft(c)) / 60;
 function cdClock(s){ s = Math.max(0, Math.ceil(s)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
   return h ? `${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}` : `${m}:${String(x).padStart(2,"0")}`; }
 const cdHm = s => { s = Math.round(+s||0); return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}`; };
+const cdReal = c => (c && (c.realShow==="up" || c.realShow==="off")) ? c.realShow : "down";
+const cdHasGame = c => !!(c && c.gameStart!=null);
+/* the in-game time, in minutes after midnight, once the clock has run elapsedS seconds */
+const cdGameMin = (c, elapsedS) => (+c.gameStart||0) + (c.gameRate!=null ? +c.gameRate : 1) * Math.max(0, elapsedS)/60;
+function cdGameClock(min){ min = Math.floor((((+min||0) % 1440) + 1440) % 1440); const h = Math.floor(min/60), m = min%60;
+  return `${(h%12)||12}:${String(m).padStart(2,"0")} ${h<12?"am":"pm"}`; }
+/* "9:30 pm", "9pm", "21:30" → minutes after midnight, or null */
+function cdParseTime(v){ const m = String(v||"").trim().toLowerCase().replace(/\./g,"").match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/); if(!m) return null;
+  let h = +m[1]; const mi = +(m[2]||0), ap = m[3]; if(h>23 || mi>59) return null;
+  if(ap){ if(h>12 || h===0) return null; h = h%12 + (ap[0]==="p" ? 12 : 0); }
+  return h*60 + mi; }
+const cdGameNow = c => cdGameClock(cdGameMin(c, (+c.total||0) - cdLeft(c)));
 function cdSave(){ markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700); }
 /* what the TV gets: enough to count down by itself between messages */
 function cdForPlayers(){
   const c = cdGet(); if(!c || !c.on || c.show===false) return null;
-  return { title:c.title||"", endsAt:c.endsAt||null, left:cdLeft(c), done:c.done ? (c.doneLabel||"Time's up") : "" };
+  return { title:c.title||"", endsAt:c.endsAt||null, left:cdLeft(c), total:+c.total||0, done:c.done ? (c.doneLabel||"Time's up") : "",
+           real:cdReal(c), game:!!c.gameShow && cdHasGame(c), gameStart:+c.gameStart||0, gameRate:c.gameRate!=null ? +c.gameRate : 1 };
 }
 function sendCountdown(){ if(playersUp()) try{ playerWin.postMessage({ ordinate:"countdown", cd:cdForPlayers() }, "*"); }catch(err){} }
 
@@ -13903,9 +13923,9 @@ function cdReadouts(){
   const c = cdGet(), on = !!(c && c.on), s = cdLeft(c), run = cdRunning(c);
   const bar = document.getElementById("cdBar");
   if(bar){ bar.hidden = !on;
-    if(on){ bar.classList.toggle("low", s < 600 && !c.done); bar.querySelector(".cd-read").textContent = "⏳ " + cdClock(s) + (run ? "" : c.done ? " · up" : " · paused");
+    if(on){ bar.classList.toggle("low", s < 600 && !c.done); bar.querySelector(".cd-read").textContent = "⏳ " + cdClock(s) + (cdHasGame(c) ? " · 🕰 " + cdGameNow(c) : "") + (run ? "" : c.done ? " · up" : " · paused");
       const g = bar.querySelector(".cd-go"); g.textContent = run ? "⏸" : "▶"; g.title = run ? "Pause the countdown" : (c.done || s<=0 ? "Start it over from the top" : "Start the countdown (or carry on)"); } }
-  const ps = document.getElementById("cd-ps-left"); if(ps && c) ps.textContent = cdClock(s) + (run ? "" : c.done ? " · time's up" : " · paused");
+  const ps = document.getElementById("cd-ps-left"); if(ps && c) ps.textContent = cdClock(s) + (cdHasGame(c) ? " · " + cdGameNow(c) : "") + (run ? "" : c.done ? " · time's up" : " · paused");
 }
 /* the controls */
 function cdStart(){ const c = cdOf(); cdAudioOn();
@@ -13930,6 +13950,11 @@ function cdSection(){
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Title</label><input data-cdf="title" value="${esc(c.title||"")}" placeholder="e.g. Before the last bell" style="flex:2" title="Small, above the clock on their screen"></div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Length</label><input data-cdf="total" class="mono" value="${cdHm(c.total)}" style="width:64px" title="Hours and minutes, like 2:30. Changing it before the start sets the clock to it."><small>h:mm</small></div>
     <label class="check" style="margin:2px 0" title="Uncheck to keep it on your screen only"><input type="checkbox" data-cdf="show" ${c.show!==false?"checked":""}> Show it on the players' screen</label>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Real time</label><select data-cdf="realShow" style="flex:2" title="What the real clock shows on their screen. Your top bar always shows the time left.">${[["down","Counting down (time left)"],["up","Counting up (time used)"],["off","Hidden"]].map(([v, l])=>`<option value="${v}" ${cdReal(c)===v?"selected":""}>${l}</option>`).join("")}</select></div>
+    <label class="check" style="margin:2px 0" title="The time in the story, on their screen above the real clock (and in your top bar)"><input type="checkbox" data-cdf="gameShow" ${c.gameShow?"checked":""}> Show the in-game time</label>
+    ${c.gameShow ? `<div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Starts at</label><input data-cdf="gameStart" value="${cdGameClock(c.gameStart)}" style="width:84px" title="The in-game time when the countdown starts, like 9:30 pm or 21:30"></div>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="How many minutes pass in the story for each real minute. 1 = the same pace; 2 = twice as fast.">In-game minutes per real minute</label><input data-cdf="gameRate" class="mono" type="number" min="0" step="0.01" value="${Math.round((c.gameRate!=null ? +c.gameRate : 1)*100)/100}" style="width:64px"></div>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">At zero it's</label><input data-cdf="gameEnd" value="${cdGameClock(cdGameMin(c, +c.total||0))}" style="width:84px" title="The in-game time when the countdown runs out. Type a time here and the minutes per real minute are worked out to reach it."></div>` : ""}
     <label class="check" style="margin:2px 0 6px" title="A bell tolls on this computer when one comes due, three times at zero"><input type="checkbox" data-cdf="sound" ${c.sound!==false?"checked":""}> Toll a bell out loud</label>
     <p class="mini" style="margin:6px 0 2px">Bells: minutes after the start, what they see, your note</p>
     ${bells.map(b=>`<div class="cd-bell${b.rung?" rung":""}"><label title="Ticked once it has rung. Untick it to ring again when its time comes."><input type="checkbox" data-cdb="rung" data-id="${b.id}" ${b.rung?"checked":""}></label><input data-cdb="at" data-id="${b.id}" class="mono" type="number" min="0" step="1" value="${+b.at||0}" style="width:46px" title="Minutes after the start"><input data-cdb="label" data-id="${b.id}" value="${esc(b.label||"")}" placeholder="What they see" title="Shown big on their screen for a few seconds"><button class="fdel" data-cd="bdel" data-id="${b.id}" title="Remove this bell">×</button>
@@ -13966,6 +13991,11 @@ function wireCountdown(){
     const c = cdOf();
     if(f==="on"){ c.on = t.checked; if(!c.on){ cdPause(); cdBanners = []; cdBannerDraw(); } }
     else if(f==="show" || f==="sound"){ c[f] = t.checked; if(f==="sound" && t.checked) cdAudioOn(); }
+    else if(f==="gameShow"){ c.gameShow = t.checked; if(c.gameShow && c.gameStart==null){ c.gameStart = 20*60; c.gameRate = 1; } }
+    else if(f==="gameStart" || f==="gameEnd"){ const v = cdParseTime(t.value); if(v==null){ flash("Write a time like 9:30 pm or 21:30."); renderPScreen(); return; }
+      if(f==="gameStart") c.gameStart = v;
+      else { let span = v - (+c.gameStart||0); if(span <= 0) span += 1440; c.gameRate = Math.round(span / ((+c.total||60)/60) * 10000)/10000; } }
+    else if(f==="gameRate") c.gameRate = Math.max(0, +t.value||0);
     else if(f==="total"){ const m = String(t.value).trim().match(/^(\d+)(?::(\d{1,2}))?$/); if(!m){ flash("Write the length as h:mm, like 2:30."); renderPScreen(); return; }
       const secs = (m[2]!=null ? (+m[1])*3600 + (+m[2])*60 : (+m[1])*60), fresh = !c.endsAt && Math.round(cdLeft(c))===Math.round(+c.total||0);
       c.total = Math.max(60, secs); if(fresh) c.left = c.total; }
@@ -13973,7 +14003,7 @@ function wireCountdown(){
     else { const bell = c.bells.find(x=>x.id===t.dataset.id); if(!bell) return;
       if(k==="rung") bell.rung = t.checked; else if(k==="at") bell.at = Math.max(0, Math.round(+t.value||0)); else bell[k] = t.value; }
     cdSave(); sendCountdown(); cdReadouts();
-    if(f==="on" || f==="total" || k==="at" || k==="rung") renderPScreen();
+    if(f==="on" || f==="total" || k==="at" || k==="rung" || /^game/.test(f||"")) renderPScreen();
   });
   /* a browser only lets sound start after a click: the first one wakes the bell up (a clock left running over a reload) */
   document.addEventListener("pointerdown", ()=>{ const c = cdGet(); if(c && c.on && c.sound!==false) cdAudioOn(); }, { once:true });
@@ -13981,14 +14011,17 @@ function wireCountdown(){
 }
 /* the players' side: the clock top-centre, counting down by itself between messages; a bell's words big for a moment */
 function cdPlayerWire(){
-  const box = document.createElement("div"); box.id = "pvcd"; box.hidden = true; box.innerHTML = `<div class="cd-t"></div><div class="cd-n"></div><div class="cd-s"></div>`; document.body.appendChild(box);
+  const box = document.createElement("div"); box.id = "pvcd"; box.hidden = true; box.innerHTML = `<div class="cd-t"></div><div class="cd-g"></div><div class="cd-n"></div><div class="cd-s"></div>`; document.body.appendChild(box);
   const bell = document.createElement("div"); bell.id = "pvbell"; document.body.appendChild(bell);
   let cd = null, bellT = null;
   const draw = () => {
     box.hidden = !cd; document.body.classList.toggle("cd-on", !!cd); if(!cd) return;
     const s = cd.endsAt ? Math.max(0, (cd.endsAt - Date.now())/1000) : Math.max(0, +cd.left||0);
     box.querySelector(".cd-t").textContent = cd.title || ""; box.querySelector(".cd-t").hidden = !cd.title;
-    box.querySelector(".cd-n").textContent = cdClock(s);
+    const used = Math.max(0, (+cd.total||0) - s), real = cd.real || "down", g = box.querySelector(".cd-g"), n = box.querySelector(".cd-n");
+    g.hidden = !cd.game; if(cd.game) g.textContent = cdGameClock(cdGameMin(cd, used));
+    n.hidden = real==="off"; n.textContent = real==="up" ? cdClock(used) : cdClock(s);
+    box.classList.toggle("both", !!cd.game && real!=="off");
     const sub = cd.done || (!cd.endsAt ? "paused" : ""); box.querySelector(".cd-s").textContent = sub; box.querySelector(".cd-s").hidden = !sub;
     box.classList.toggle("low", s < 600); box.classList.toggle("last", !!cd.endsAt && s > 0 && s < 60);
   };

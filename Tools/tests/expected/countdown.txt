@@ -1,7 +1,7 @@
 bar hidden before true
 set up: total 3600 left 3600 bells 0:The first bell, 30:The second bell
 panel: A COUNTDOWN ON THEIR SCREEN Use a countdown 1:00:00 · paused
-running true, bar ⏳ 1:00:00 ⏸, bell 1 rung true, bell 2 rung false, banner: 🔔 The first bell Guest one sleeps ×
+running true, bar ⏳ 59:59 ⏸, bell 1 rung true, bell 2 rung false, banner: 🔔 The first bell Guest one sleeps ×
 31 min later: bell 2 rung true, banners 1
 paused: running false, left about 29 min, bar ⏳ 28:58 · paused ▶
 +5 min: left 300 s more
@@ -11,5 +11,11 @@ reset: left 3600, bells rung 0, done false
 TV: hidden false, Before the last bell 0:45, low true, last true
 TV paused: 25:00 paused, low false
 TV bell: true The third bell
+in-game: start 1290 rate 2.5 at zero 12:00 am, bar ⏳ 1:00:00 · 🕰 9:30 pm · paused ▶
+rate 1: at zero 10:30 pm
+payload: real up game true start 1290 rate 1
+TV both, counting up: Until midnight 10:07 pm 15:00 paused, both true
+TV in-game only: 10:07 pm paused, both false
+TV real only: 45:00 paused
 TV off: hidden true
 log: The countdown started: 1:00:00 to go / The countdown's bell: The first bell / The countdown's bell: The second bell / The countdown started: 33:58 to go / The countdown ran out: Time's up
