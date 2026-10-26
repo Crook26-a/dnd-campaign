@@ -2058,6 +2058,7 @@ const playersUp = () => !!(playerWin && !playerWin.closed);
 async function pictureBlob(id){ try{ return await idbGet(K_FILE(id)); }catch(err){ return null; } }
 function sendPlayers(now){
   if(!playersUp() || typeof root==="undefined" || !root) return;
+  markVisits();
   if(!now && (playerShow.kind!=="map" || playerFrozen)) return;
   if(editingInside()) return;                     // furnishing a place is the DM's own business
   /* at most every 120 ms: a change waits for the send already on its way, so a ship under sail (the map
@@ -2096,6 +2097,19 @@ function playersOrder(){
   return list.length ? { round:c.round, list } : null;
 }
 /* what the players see of the map: a copy of the drawing, with the DM's things taken out */
+/* a room's name kept off the players' screen until the party has been in (n.nameHidden; root.visited["plan/node"]) */
+const visitKey = (map, id) => `${map}/${id}`;
+function placeVisited(map, n){ return !!(root.visited && root.visited[visitKey(map, n.id)]) || groupsOf().some(g=>g.at && g.at.map===map && g.at.node===n.id); }
+function markVisits(){                                     // wherever a group stands now counts as been-in, for good
+  let got = false; root.visited = root.visited || {};
+  for(const g of groupsOf()){ const a = g.at; if(!a || !a.map || a.map==="survey" || !a.node) continue; const k = visitKey(a.map, a.node); if(!root.visited[k]){ root.visited[k] = true; got = true; } }
+  if(got) markDirty(K_SURVEY);
+}
+function nameHideBlock(n){
+  const map = planOf; if(!map) return "";
+  return `<label class="check" style="margin:-4px 0 4px" title="The players see the room's outline but not its name until the party has been in"><input type="checkbox" data-pshide="name" ${n.nameHidden?"checked":""}> Name hidden until they've been in</label>`
+    + (n.nameHidden ? `<label class="check" style="margin:-2px 0 8px 18px" title="Tick to show its name on their screen now; untick to hide it again"><input type="checkbox" data-pshide="seen" ${placeVisited(map, n)?"checked":""}> They've been in</label>` : "");
+}
 function playerMapScene(){
   if(battleOf){
     const split = splitScene(); if(split) return split;      /* the party in two to four rooms: a pane each */
@@ -2111,6 +2125,9 @@ function playerMapScene(){
   const hid = new Set((doc.nodes||[]).filter(n=>n.hidden || (charting && !n.charted && !n.route && !inSight(n.x, n.y)) || (isRival(n) && !rivalInView(n))).map(n=>n.id));
   const cg = copy.querySelector("#gChart"); if(cg) cg.innerHTML = (charting ? chartFog(true) : "") + (!planOf ? seaMonsters(true) + wakeLines(true) + routeLines(true) + trailLines(true) : "");
   copy.querySelectorAll("[data-pn]").forEach(e=>{ if(hid.has(e.getAttribute("data-pn"))) e.remove(); else e.removeAttribute("opacity"); });
+  if(planOf){ const un = new Set((doc.nodes||[]).filter(n=>n.nameHidden && !placeVisited(planOf, n)).map(n=>n.id));
+    copy.querySelectorAll("[data-pn]").forEach(e=>{ if(un.has(e.getAttribute("data-pn"))) e.querySelectorAll("text.nodename, title").forEach(t=>t.remove()); });
+    copy.querySelectorAll("[data-node]").forEach(e=>{ if(un.has(e.getAttribute("data-node"))) e.querySelectorAll("title").forEach(t=>t.remove()); }); }
   copy.querySelectorAll("[data-pr]").forEach(e=>{ if(!(hid.has(e.getAttribute("data-pa")) || hid.has(e.getAttribute("data-pb")))) return;
     /* a road into country they haven't seen: gone, unless it shows its first few miles from a place they know */
     const r = (doc.roads||[]).find(x=>x.id===e.getAttribute("data-pr")), rv = r && r.reveal, near = rv && (rv.from===r.from || rv.from===r.to) && !hid.has(rv.from);
@@ -2311,6 +2328,10 @@ function wirePScreen(){
   /* a place or a drawn feature kept off the players' screen (dimmed on yours) */
   document.getElementById("pane-inspect").addEventListener("change", e=>{
     const t = e.target.closest("[data-pshide]"); if(!t) return;
+    if(t.dataset.pshide==="name" || t.dataset.pshide==="seen"){ const nd = selNode(); if(!nd || !planOf) return;
+      if(t.dataset.pshide==="name"){ if(t.checked) nd.nameHidden = true; else delete nd.nameHidden; }
+      else { root.visited = root.visited || {}; if(t.checked) root.visited[visitKey(planOf, nd.id)] = true; else delete root.visited[visitKey(planOf, nd.id)]; markDirty(K_SURVEY); }
+      touch(); renderPane(true); sendPlayers(true); return; }
     const o = t.dataset.pshide==="shape" ? shapeById(sel && sel.id) : selNode(); if(!o) return;
     if(t.checked) o.hidden = true; else delete o.hidden;
     touch(); renderPScreen();
@@ -9691,7 +9712,8 @@ function bmapSvg(m, st, players){                    // st: the place — which 
     if(rot) g = g.slice(0, g0) + `<g transform="rotate(${rot} ${c} ${cy})">` + g.slice(g0) + "</g>";     // a piece turned a quarter, a half or three quarters
     if(hid && !players) g = g.slice(0, g0) + `<g opacity=".42">${g.slice(g0)}</g><rect x="${X+2}" y="${Y+2}" width="${BS-4}" height="${BS-4}" fill="none" stroke="#a8752c" stroke-width="1.6" stroke-dasharray="4 3" style="pointer-events:none"><title>Hidden from the players until found (DC ${pieceDc(st, `${x},${y}`)})</title></rect>`;
   }
-  for(const [x, y, text] of (m.labels||[])) g += `<text x="${x*BS+BS/2}" y="${y*BS+BS/2}" text-anchor="middle" font-family="var(--serif)" font-style="italic" font-size="13" fill="#3a2e1e" opacity=".8" style="pointer-events:none">${esc(text)}</text>`;
+  for(const [x, y, text, dm] of (m.labels||[])){ if(dm && players) continue;          // a "dm" label is the DM's note: never on their screen
+    g += `<text x="${x*BS+BS/2}" y="${y*BS+BS/2}" text-anchor="middle" font-family="var(--serif)" font-style="italic" font-size="13" fill="${dm ? "#6b2a6b" : "#3a2e1e"}" opacity="${dm ? ".9" : ".8"}" style="pointer-events:none">${dm ? "◆ " : ""}${esc(text)}${dm ? `<title>Only you see this label</title>` : ""}</text>`; }
   return g;
 }
 /* the map's size rules the board: tokens stay on it, the view fits it */
@@ -10429,13 +10451,15 @@ function labelAt(n, p){
 }
 const labelSpot = p => [Math.round((p.x/BS - .5)*20)/20, Math.round((p.y/BS - .5)*20)/20];
 function addLabel(n, p){
-  const t = (prompt("Label text:", "") || "").trim(); if(!t) return false;
-  const b = ownBmap(n); (b.labels = b.labels || []).push([...labelSpot(p), t]); return true;
+  const t = (prompt("Label text (start it with dm: to keep it off the players' screen):", "") || "").trim(); if(!t) return false;
+  const dm = /^dm:/i.test(t), words = t.replace(/^dm:\s*/i, ""); if(!words) return false;
+  const b = ownBmap(n); (b.labels = b.labels || []).push(dm ? [...labelSpot(p), words, "dm"] : [...labelSpot(p), words]); return true;
 }
 function editLabel(n, i){
   const b = ownBmap(n), l = b.labels[i]; if(!l) return false;
-  const t = prompt("Label text (empty it to delete the label):", l[2]); if(t===null) return false;
-  if(t.trim()) l[2] = t.trim(); else b.labels.splice(i, 1);
+  const t = prompt("Label text (empty it to delete the label; start it with dm: to keep it off the players' screen):", (l[3] ? "dm: " : "") + l[2]); if(t===null) return false;
+  const dm = /^dm:/i.test(t.trim()), words = t.trim().replace(/^dm:\s*/i, "");
+  if(words){ l[2] = words; if(dm) l[3] = "dm"; else l.length = 3; } else b.labels.splice(i, 1);
   return true;
 }
 function labelBoxes(n){
@@ -11484,7 +11508,7 @@ function renderPlayNow(){
   const people = (n.npcs||[]).map(libNpcById).filter(Boolean);
   let h = `${planBackBar()}<p class="eyebrow">${esc((KINDS[n.kind]||{label:""}).label)}${reg?` · ${esc(reg.name)}`:""}</p>
     <p class="playname">${esc(placeLabel(n))}</p>
-    <label class="check" style="margin:-2px 0 8px" title="Leave it off the players' screen until they find it"><input type="checkbox" data-pshide="node" ${n.hidden?"checked":""}> Hidden from the players' screen</label>${chartFlags(n)}
+    <label class="check" style="margin:-2px 0 8px" title="Leave it off the players' screen until they find it"><input type="checkbox" data-pshide="node" ${n.hidden?"checked":""}> Hidden from the players' screen</label>${nameHideBlock(n)}${chartFlags(n)}
     ${n.notes?`<p class="playnotes">${esc(n.notes)}</p>`:""}
     ${!planOf&&hasPlan(n.id)?`<button class="btn wide" id="pl-plan">Enter this place</button>`:""}
     ${isBerth(n) ? berthBlock(n, "pl") : n.link&&hasPlan(n.link)?`<button class="btn wide" id="pl-link">Enter ${esc((root.nodes.find(x=>x.id===n.link)||{}).name||"this place")}</button>`:""}
