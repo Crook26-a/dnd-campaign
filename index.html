@@ -7464,19 +7464,33 @@ function stdMatches(q){
    shaped like this library's entries; bringing it in adds new ones and updates any already here (same id). A person's
    "Fights as" can come as a stat block's name, matched here to your foes or the SRD's. ── */
 const FB_FIELDS = {
-  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes","soldAt"],
-  shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes"],
-  factions:["name","align","wants","how","hidden","notes"],
+  /* every category also has "campaign": which campaign the phone meant it for */
+  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes","soldAt","campaign"],
+  shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes","campaign"],
+  factions:["name","align","wants","how","hidden","notes","campaign"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","gender","known","cls","level","ac","hpMax","speed","init",
-    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells","pkind"],
-  spells:["name","lv","school","time","range","comp","dur","conc","rit","cls","save","atk","dmg","dtype","desc","hi","notes"] };
+    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells","pkind","campaign"],
+  spells:["name","lv","school","time","range","comp","dur","conc","rit","cls","save","atk","dmg","dtype","desc","hi","notes","campaign"] };
+/* this copy of the app's campaign, as the Field Book knows it: root.campaign if it's been set, else the map's title */
+const campName = () => String((root && (root.campaign || root.title)) || "").trim();
+const sameCampaign = (a, b) => String(a||"").trim().toLowerCase()===String(b||"").trim().toLowerCase();
+const forOtherCampaign = x => !!(x && x.campaign && campName() && !sameCampaign(x.campaign, campName()));
+document.addEventListener("change", e=>{ const t = e.target; if(!t.matches || !t.matches("[data-fbcamp]")) return;
+  const v = String(t.value||"").trim(); if(v && v!==String(root.title||"").trim()) root.campaign = v; else delete root.campaign;
+  saveParty(); flash(`The Field Book will send things here for "${campName()}".`); });
 function fieldBookIn(text, quiet){                  // quiet: the inbox — no message, just the counts back
   let o; try{ o = JSON.parse(text); }catch(err){ flash("That isn't a Field Book file."); return; }
   if(!o || (!Array.isArray(o.loot) && !Array.isArray(o.npcs) && !Array.isArray(o.spells) && !Array.isArray(o.shops) && !Array.isArray(o.factions))){ flash("No items or people in that file."); return; }
   const L = lib(), unmatched = [];
   let added = 0, updated = 0;
+  /* things the phone marked for another campaign: the inbox leaves them for that campaign's copy; bringing a file in by hand asks */
+  const others = { loot:[], npcs:[], spells:[], shops:[], factions:[] }; let nOther = 0, nMine = 0;
+  for(const cat of Object.keys(others)) for(const raw of (o[cat]||[])){ if(!raw || !String(raw.name||"").trim()) continue; if(forOtherCampaign(raw)){ others[cat].push(raw); nOther++; } else nMine++; }
+  const theirs = [...new Set(Object.values(others).flat().map(x=>String(x.campaign).trim()))].join(", ");
+  const takeOthers = nOther && !quiet ? confirm(`${nOther} of these ${nOther===1 ? "is" : "are"} marked for another campaign (${theirs}), not "${campName()}". Bring ${nOther===1 ? "it" : "them"} in here too?`) : false;
   for(const cat of ["loot","npcs","spells","shops","factions"]) for(const raw of (o[cat]||[])){
     if(!raw || typeof raw!=="object" || !String(raw.name||"").trim()) continue;
+    if(forOtherCampaign(raw) && !takeOthers) continue;
     const x = JSON.parse(JSON.stringify(raw)); if(!x.id) x.id = uid(cat==="loot" ? "ll" : cat==="spells" ? "lsp" : cat==="shops" ? "lsh" : cat==="factions" ? "lfa" : "ln");
     /* a faction's standing is the table's: the phone can start one off, never overwrite it */
     if(cat==="factions"){ if(L.factions.some(y=>y.id===x.id)){ delete x.standing; delete x.slog; } else { x.standing = Math.max(-10, Math.min(10, Math.round(+x.standing || 0))); delete x.slog; } } if(cat==="spells"){ x.lv = +x.lv || 0; spellTidy(x); }
@@ -7491,9 +7505,10 @@ function fieldBookIn(text, quiet){                  // quiet: the inbox — no m
     else { L[cat].unshift(x); added++; }
   }
   saveParty(); renderLibrary();
-  if(quiet) return { added, updated, unmatched };
-  if(!added && !updated){ flash("Nothing to bring in from that file."); return; }
-  flash(`From the Field Book: ${added} new, ${updated} updated.${unmatched.length ? ` No stat block called ${unmatched.join(", ")}: set Fights as on their page.` : ""}`);
+  if(quiet) return { added, updated, unmatched, others, nOther, nMine };
+  const left = nOther && !takeOthers ? ` ${nOther} for ${theirs} left out.` : "";
+  if(!added && !updated){ flash("Nothing to bring in from that file." + left); return; }
+  flash(`From the Field Book: ${added} new, ${updated} updated.${left}${unmatched.length ? ` No stat block called ${unmatched.join(", ")}: set Fights as on their page.` : ""}`);
 }
 /* ── the Field Book inbox: a folder the phone saves into (Google Drive's "Field Book inbox", synced to this computer by
    Google Drive for desktop). Picked once; then Field Book files that land there come into the Library by themselves —
@@ -7527,6 +7542,9 @@ async function checkFbInbox(quiet, ask){
       let text, o; try{ text = await (await h.getFile()).text(); o = JSON.parse(text); }catch(err){ continue; }
       if(!o || o.format!=="ordinate-fieldbook" || o.app==="Ordinate Survey") continue;       // only what the phone sent
       const r = fieldBookIn(text, true); if(!r) continue;
+      if(r.nOther && !r.nMine) continue;                 // all for another campaign: it waits here for that one's copy of the app
+      if(r.nOther) try{ const rest = { ...o, ...r.others }, nm = k.replace(/\.(json|txt)$/i, "") + " (other campaigns).txt";
+        const fh = await dir.getFileHandle(nm, { create:true }), w = await fh.createWritable(); await w.write(JSON.stringify(rest)); await w.close(); }catch(err){}
       sum.files++; sum.added += r.added; sum.updated += r.updated; sum.unmatched.push(...r.unmatched);
       try{ const done = await dir.getDirectoryHandle("Brought in", { create:true }), fh = await done.getFileHandle(k, { create:true });
         const w = await fh.createWritable(); await w.write(text); await w.close(); await dir.removeEntry(k); }catch(err){}
@@ -7543,9 +7561,10 @@ setInterval(()=>{ if(fbDir && !fbAsk && document.visibilityState==="visible") ch
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && fbDir && !fbAsk) checkFbInbox(true); });
 function fieldBookOut(){
   const L = lib(), d = new Date(), p = n => String(n).padStart(2,"0");
-  const pack = { format:"ordinate-fieldbook", version:1, app:"Ordinate Survey", exported:d.toISOString(),
+  const pack = { format:"ordinate-fieldbook", version:1, app:"Ordinate Survey", exported:d.toISOString(), campaign:campName(),
     loot:JSON.parse(JSON.stringify(L.loot.filter(x=>!x.shopGood))), npcs:JSON.parse(JSON.stringify(L.npcs)), spells:JSON.parse(JSON.stringify(L.spells||[])), shops:JSON.parse(JSON.stringify(L.shops||[])), factions:JSON.parse(JSON.stringify(L.factions||[])) };
   if(!pack.loot.length && !pack.npcs.length && !pack.spells.length){ flash("No items or people of your own to send yet."); return; }
+  if(campName()) for(const cat of ["loot","npcs","spells","shops","factions"]) for(const x of pack[cat]) if(!x.campaign) x.campaign = campName();
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(pack)], { type:"application/json" }));
   a.download = `field-book-from-the-survey-${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}.json`;
   document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
@@ -7624,6 +7643,7 @@ function renderLibrary(){
       <button class="btn" style="flex:1" data-libact="fbout" title="A file of your library's items and people for Field Book (its Send tab → Bring a file in), to work on them on your phone">Send to the Field Book</button></div>
     ${typeof window.showDirectoryPicker==="function" ? `<div class="pcrow" style="margin:-4px 0 8px;align-items:center"><small style="flex:1;min-width:0">${fbDir ? `Inbox: <b>${esc(fbDir.name)}</b>${fbAsk ? " · needs a click to reopen" : " · brings in new files by itself"}` : "No inbox yet: pick the folder your phone saves Field Book files into (your Google Drive one)."}</small>
       <button class="btn" data-libact="fbpick">${fbDir ? "Change" : "Choose the inbox…"}</button>${fbDir ? `<button class="btn" data-libact="fbcheck">Check now</button>` : ""}</div>` : ""}
+    <div class="pcrow" style="margin:-4px 0 8px;align-items:center" title="The name the Field Book uses for this campaign. Things marked for another campaign on the phone stay out of this one; things with no campaign come into any."><small style="flex:1;min-width:0">Field Book campaign</small><input data-fbcamp value="${esc(campName())}" placeholder="This campaign's name" style="flex:1.5;min-width:0"></div>
     <div class="libtabs">${LIB_CATS.map(([k,l])=>`<button data-libtab="${k}" class="${k===libTab?"on":""}">${l} <small>${k==="spells"?(L.spells||[]).length+SRD_SPELLS.length:L[k].length}</small></button>`).join("")}</div>
     <div class="pcrow"><div class="field" style="flex:1;margin-bottom:8px"><input id="lib-q" type="text" placeholder="Search ${LIB_CATS.find(c=>c[0]===libTab)[1].toLowerCase()}…" value="${esc(libQuery)}"></div>
       <button class="btn" data-libact="new" style="height:31px">+ New</button></div>

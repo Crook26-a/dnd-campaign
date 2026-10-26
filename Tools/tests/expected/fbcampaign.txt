@@ -1,0 +1,7 @@
+campaign name: Camp Alder
+inbox: added 2, mine 2, other 2, left for the other: Birch box, Birch baker
+library loot: Plain cup, Alder lamp [camp alder] | people: none
+by hand, declined: 2 items
+library box shows: Camp Alder
+renamed: root.campaign Camp Birch, name Camp Birch
+now Birch: added 2, other 1, people Birch baker

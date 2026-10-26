@@ -1,0 +1,25 @@
+// uses: nothing
+<script>
+/* Field Book entries carry a campaign: this copy of the app brings in its own and the unmarked ones, and leaves another
+   campaign's out (asked when brought in by hand: the test's confirm says no) */
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
+ try{
+  loadJSONNow(JSON.stringify({ format:"ordinate-survey-v1", title:"Camp Alder", ppm:10, unit:"mi", nodes:[], roads:[], shapes:[] })); await wait(200);
+  out.push('campaign name: ' + campName());
+  const file = JSON.stringify({ format:"ordinate-fieldbook", version:16, app:"Field Book",
+    loot:[{ id:"ll_fb1", name:"Alder lamp", campaign:"camp alder" }, { id:"ll_fb2", name:"Birch box", campaign:"Camp Birch" }, { id:"ll_fb3", name:"Plain cup" }],
+    npcs:[{ id:"ln_fb1", name:"Birch baker", campaign:"Camp Birch" }] });
+  const r = fieldBookIn(file, true);
+  out.push('inbox: added ' + r.added + ', mine ' + r.nMine + ', other ' + r.nOther + ', left for the other: ' + [...r.others.loot, ...r.others.npcs].map(x=>x.name).join(', '));
+  out.push('library loot: ' + lib().loot.map(x=>x.name + (x.campaign ? ' [' + x.campaign + ']' : '')).join(', ') + ' | people: ' + (lib().npcs.map(x=>x.name).join(', ') || 'none'));
+  fieldBookIn(file, false); await wait(30); out.push('by hand, declined: ' + lib().loot.length + ' items');
+  /* the Library row renames the campaign for the Field Book */
+  pane = 'library'; syncTabs(); renderLibrary(); await wait(30);
+  const box = document.querySelector('[data-fbcamp]'); out.push('library box shows: ' + (box && box.value));
+  box.value = 'Camp Birch'; box.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  out.push('renamed: root.campaign ' + root.campaign + ', name ' + campName());
+  const r2 = fieldBookIn(file, true); out.push('now Birch: added ' + r2.added + ', other ' + r2.nOther + ', people ' + lib().npcs.map(x=>x.name).join(', '));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
