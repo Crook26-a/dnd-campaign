@@ -466,6 +466,13 @@
   #zoomers button:hover{border-color:var(--ink-soft);color:var(--ink)}
   #zoomers button:active{background:var(--paper-deep)}
   #zoomers button:disabled{opacity:.34;cursor:default}
+  #floorbar{position:absolute;left:12px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;z-index:5;max-width:220px}
+  #floorbar[hidden]{display:none}
+  #floorbar .fl{font:11px var(--sans);letter-spacing:.02em;padding:6px 10px;text-align:left;background:var(--paper-lit);color:var(--ink-soft);border:1px solid var(--rule);border-radius:3px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  #floorbar .fl:hover{border-color:var(--ink-soft);color:var(--ink)}
+  #floorbar .fl.on{background:var(--ink);color:var(--paper-lit);border-color:var(--ink)}
+  #floorbar .fl-ed{margin-top:6px;font-size:10.5px}
+  #floorbar .fl-box{background:var(--paper);border:1px solid var(--rule);border-radius:3px;padding:7px;width:200px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
   #zoomers #zUndo,#zoomers #zRedo{color:var(--lead)}
   #zoomers .fit{font-size:10px;letter-spacing:.06em}
 
@@ -1856,6 +1863,107 @@ function syncParty(){
 }
 const surveyDoc = () => root;
 
+/* ══════════════════════════════════════════════════════════════
+   FLOORS — a plan can be a building of several storeys: plan.floors [{ id, name, z }] (z 0 = the ground floor,
+   negative below it, positive above), and each of its places and drawn features carries `floor` (none = the
+   ground floor). The plan shows one floor at a time, with the floor below faint under it on the DM's screen
+   (.floorghost, never sent to the TV); a stack of floor buttons beside the map (#floorbar) moves between them
+   (PgUp / PgDn too), and opening a place's map moves the view to that place's floor (floorFollow). The floor
+   on view is remembered per plan for the session (floorNow), not in the survey. Build: new places and features
+   go on the floor on view; "Floors" in the bar adds, renames and removes them. A plan without floors, or with
+   one, is drawn as ever.
+   ══════════════════════════════════════════════════════════════ */
+var floorNow = {}, floorEdit = false, floorBarHtml = "";
+const floorsOf = d => (d && Array.isArray(d.floors) && d.floors.length) ? d.floors : null;
+const floorsSorted = d => (floorsOf(d)||[]).slice().sort((a, b)=>(+b.z||0)-(+a.z||0));      // the top floor first
+function groundFloor(d){ const f = floorsOf(d); if(!f) return null;
+  return (f.find(x=>(+x.z||0)===0) || f.slice().sort((a, b)=>Math.abs(+a.z||0)-Math.abs(+b.z||0))[0]).id; }
+function floorOfItem(d, it){ const f = floorsOf(d); if(!f) return null; return it && it.floor && f.some(x=>x.id===it.floor) ? it.floor : groundFloor(d); }
+function curFloor(){
+  if(!planOf) return null; const f = floorsOf(doc); if(!f) return null;
+  const k = floorNow[planOf]; return k && f.some(x=>x.id===k) ? k : groundFloor(doc);
+}
+const onFloor = it => !planOf || !floorsOf(doc) || floorOfItem(doc, it)===curFloor();
+const floorName = (d, id) => { const f = (floorsOf(d)||[]).find(x=>x.id===id); return f ? (f.name || "A floor") : ""; };
+const manyFloors = d => (floorsOf(d)||[]).length > 1;
+function setFloor(id, quiet){
+  if(!planOf || !floorsOf(doc)) return;
+  floorNow[planOf] = id;
+  if(sel && ((sel.kind==="node" && !onFloor(nodeById(sel.id))) || (sel.kind==="shape" && !onFloor(shapeById(sel.id))))) sel = null;
+  if(quiet) return;
+  render(); renderCrumb(); renderPane(true); sendPlayers();
+}
+/* opening a place's map: the plan's view goes to that place's floor */
+function floorFollow(n){ if(planOf && floorsOf(doc) && n && (doc.nodes||[]).includes(n)) floorNow[planOf] = floorOfItem(doc, n); }
+/* the floor below the one on view, faint, so the rooms above can be lined up with it (the DM's screen only) */
+function floorGhost(){
+  if(!planOf || !manyFloors(doc)) return "";
+  const fl = floorsOf(doc), cur = fl.find(f=>f.id===curFloor()) || {}, below = fl.filter(f=>(+f.z||0) < (+cur.z||0)).sort((a, b)=>(+b.z||0)-(+a.z||0))[0];
+  if(!below) return "";
+  const inv = 1/view.k, ppm = doc.ppm||8, dash = `stroke-dasharray="${k1(4*inv)} ${k1(3*inv)}"`; let s = "";
+  for(const sh of doc.shapes||[]) if(floorOfItem(doc, sh)===below.id && (sh.pts||[]).length > 1)
+    s += `<path d="${pathOf(sh.pts, sh.closed, sh.straight)}" fill="none" stroke="#5a4a32" stroke-width="${1.2*inv}" ${dash}/>`;
+  for(const n of doc.nodes||[]) if(floorOfItem(doc, n)===below.id && hasFootprint(n)){ const f = footprintOf(n), w = f.w*ppm, d = f.d*ppm;
+    s += `<rect transform="translate(${n.x} ${n.y}) rotate(${f.rot||0})" x="${-w/2}" y="${-d/2}" width="${w}" height="${d}" fill="#5a4a32" fill-opacity=".07" stroke="#5a4a32" stroke-width="${1.2*inv}" ${dash}/>`; }
+  return s ? `<g class="floorghost" opacity=".5" pointer-events="none">${s}</g>` : "";
+}
+/* the floor buttons beside the map: the top floor on top, the one on view lit; in Build, the floors editor */
+function renderFloorBar(){
+  const el = document.getElementById("floorbar"); if(!el) return;
+  const fl = planOf ? floorsOf(doc) : null, build = !dmMode;
+  let h = "";
+  if(planOf && (build || manyFloors(doc))){
+    const cur = curFloor();
+    if(manyFloors(doc)) h += floorsSorted(doc).map(f=>`<button class="fl${f.id===cur ? " on" : ""}" data-floor="${esc(f.id)}" title="${esc(f.name||"A floor")}${f.id===cur ? " (on view)" : ": look at this floor (PgUp / PgDn)"}">${esc(f.name||"A floor")}</button>`).join("");
+    if(build) h += `<button class="fl fl-ed${floorEdit ? " on" : ""}" data-flooredit="1" title="Add a floor above or below, rename or take one away">${manyFloors(doc) ? "✎ Floors" : "+ Floors"}</button>`;
+    if(build && floorEdit) h += floorEditor(fl);
+  }
+  if(h===floorBarHtml && !el.hidden===!!h) return;              // unchanged: leave it (and whatever's being typed) alone
+  floorBarHtml = h; el.innerHTML = h; el.hidden = !h;
+}
+function floorEditor(fl){
+  const used = id => (doc.nodes||[]).some(n=>floorOfItem(doc, n)===id) || (doc.shapes||[]).some(s=>floorOfItem(doc, s)===id);
+  return `<div class="fl-box">${fl ? floorsSorted(doc).map(f=>`<div class="pcrow" style="align-items:center;margin:0 0 4px"><input data-floorname="${esc(f.id)}" value="${esc(f.name||"")}" placeholder="A floor" style="flex:1;min-width:0" title="Its name">${fl.length > 1 ? `<button class="btn" data-floordel="${esc(f.id)}" ${used(f.id) ? `disabled title="Empty it first: move or remove what's on it"` : `title="Take this floor away"`}>×</button>` : ""}</div>`).join("")
+    : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">One floor so far. Add one above or below, and what's drawn here now becomes the ground floor.</p>`}
+    <div class="pcrow"><button class="btn" data-flooradd="up" style="flex:1" title="A new storey on top">+ Above</button><button class="btn" data-flooradd="down" style="flex:1" title="A new storey underneath: a cellar">+ Below</button></div></div>`;
+}
+function addFloor(dir){
+  if(!floorsOf(doc)) doc.floors = [{ id:uid("fl"), name:"Ground floor", z:0 }];
+  const zs = doc.floors.map(f=>+f.z||0), z = dir==="up" ? Math.max(...zs) + 1 : Math.min(...zs) - 1;
+  const name = z > 0 ? (z===1 ? "First floor" : `Floor ${z}`) : (z===-1 ? "Cellar" : `Cellar ${-z}`);
+  const f = { id:uid("fl"), name, z }; doc.floors.push(f);
+  touch(); setFloor(f.id); flash(`${name} added: you're looking at it. Draw its rooms over the faint outline of the floor below.`);
+}
+function wireFloorBar(){
+  const field = document.getElementById("field"); if(!field || document.getElementById("floorbar")) return;
+  field.insertAdjacentHTML("beforeend", `<div id="floorbar" hidden></div>`);
+  const el = document.getElementById("floorbar");
+  el.addEventListener("click", e=>{
+    const b = e.target.closest("button"); if(!b) return;
+    if(b.dataset.floor){ setFloor(b.dataset.floor); renderFloorBar(); }
+    else if(b.dataset.flooredit){ floorEdit = !floorEdit; renderFloorBar(); }
+    else if(b.dataset.flooradd) addFloor(b.dataset.flooradd);
+    else if(b.dataset.floordel){ const id = b.dataset.floordel; doc.floors = doc.floors.filter(f=>f.id!==id);
+      if(floorNow[planOf]===id) delete floorNow[planOf]; touch(); setFloor(curFloor()); }
+  });
+  el.addEventListener("change", e=>{ const t = e.target; if(!t.dataset.floorname) return;
+    const f = (floorsOf(doc)||[]).find(x=>x.id===t.dataset.floorname); if(!f) return; f.name = t.value.trim() || f.name; touch(); renderCrumb(); floorBarHtml = ""; renderFloorBar(); });
+  document.addEventListener("keydown", e=>{
+    if(!planOf || !manyFloors(doc) || battleOf || (e.key!=="PageUp" && e.key!=="PageDown")) return;
+    if(e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    const f = floorsSorted(doc), k = f.findIndex(x=>x.id===curFloor()), j = e.key==="PageUp" ? k-1 : k+1;
+    if(j>=0 && j<f.length){ e.preventDefault(); setFloor(f[j].id); renderFloorBar(); }
+  });
+  /* a place's or a feature's floor, picked in its panel: the view goes with it */
+  document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.floorpick || !planOf || !sel) return;
+    const it = sel.kind==="node" ? nodeById(sel.id) : sel.kind==="shape" ? shapeById(sel.id) : null; if(!it) return;
+    it.floor = t.value; touch(); floorNow[planOf] = t.value; render(); renderCrumb(); renderPane(true); sendPlayers(); });
+}
+function floorPick(it){
+  if(!planOf || !floorsOf(doc)) return "";
+  return `<div class="field"><label>Floor</label><select data-floorpick="1" title="The storey it's on: the plan shows one floor at a time">${floorsSorted(doc).map(f=>`<option value="${esc(f.id)}" ${floorOfItem(doc, it)===f.id ? "selected" : ""}>${esc(f.name||"A floor")}</option>`).join("")}</select></div>`;
+}
+
 function enterPlan(nodeId){
   if(planOf === nodeId) return;                  // already standing in it
   if(planOf && !root.nodes.some(x=>x.id===nodeId)) return;
@@ -1864,6 +1972,7 @@ function enterPlan(nodeId){
   if(!plans[nodeId]) plans[nodeId] = blankPlan(n);
   planReturn = { view:{...view}, sel, tool, drawKind };
   setDoc(normaliseDoc(plans[nodeId]));
+  if(floorsOf(doc)) floorNow[nodeId] = groundFloor(doc);      // a building opens on its ground floor
   doc.title = n.name || doc.title;
   sel = null; rule = null; draft = null; editing = null; connectFrom = null; formDrag = null;
   tool = "select"; drawKind = "block";
@@ -1922,6 +2031,7 @@ function renderBarLabels(){
 }
 function renderCrumb(){
   renderBarLabels();
+  renderFloorBar();
   const el = $("#crumb");
   if(!planOf){ el.innerHTML = ""; el.hidden = true; return; }
   el.hidden = false;
@@ -1929,7 +2039,7 @@ function renderCrumb(){
   const from = cameFrom();
   el.innerHTML = `<button id="crumbUp" title="Back out to the survey">${esc(outer.title||"The survey")}</button>`
     + (from ? `<span class="sep">›</span><button id="crumbFrom" title="Back to ${esc(from.name)}">${esc(from.name)}</button>` : "")
-    + `<span class="sep">›</span><span class="here">${esc(doc.title||"plan")}</span>`;
+    + `<span class="sep">›</span><span class="here">${esc(doc.title||"plan")}</span>` + (manyFloors(doc) ? `<span class="sep">›</span><span class="here">${esc(floorName(doc, curFloor()))}</span>` : "");
   $("#crumbUp").onclick = ()=>{ planFrom = null; leavePlan(); };
   const cf = $("#crumbFrom"); if(cf) cf.onclick = goBackFrom;
 }
@@ -1995,6 +2105,7 @@ function playerMapScene(){
   const copy = svg.cloneNode(true), w = copy.querySelector("#world");
   if(w) w.removeAttribute("transform");
   const gone = sel => copy.querySelectorAll(sel).forEach(e=>e.remove());
+  gone(".floorghost");                                // the faint floor below is the DM's alone
   /* on the sea chart, with the chart on: only places in sight, charted ones, and the fog over the rest */
   const charting = !planOf && chartOn();
   const hid = new Set((doc.nodes||[]).filter(n=>n.hidden || (charting && !n.charted && !n.route && !inSight(n.x, n.y)) || (isRival(n) && !rivalInView(n))).map(n=>n.id));
@@ -3520,7 +3631,7 @@ function groupPosHere(g){
     if(p.map==="survey"){ const n = p.node && root.nodes.find(x=>x.id===p.node); return n ? { x:n.x, y:n.y, on:n } : p.x!=null ? { x:p.x, y:p.y } : null; }
     const host = root.nodes.find(x=>x.id===p.map); return host ? { x:host.x, y:host.y, on:host } : null;
   }
-  if(p.map===here){ const n = p.node && doc.nodes.find(x=>x.id===p.node); if(n) return { x:n.x, y:n.y, on:n }; if(p.x!=null) return { x:p.x, y:p.y };
+  if(p.map===here){ const n = p.node && doc.nodes.find(x=>x.id===p.node); if(n && !onFloor(n)) return null; if(n) return { x:n.x, y:n.y, on:n }; if(p.x!=null) return { x:p.x, y:p.y };
     const pier = doc.nodes.find(x=>berthShip(x)) || doc.nodes[0]; return pier ? { x:pier.x, y:pier.y, on:pier } : null; }
   if(p.map==="survey" && p.node===here){ const d = deckOf(doc); return d ? { x:d.x, y:d.y, on:d } : null; }   // aboard, with her map open: on deck
   /* aboard a ship that's in port here: at her berth in town */
@@ -4343,7 +4454,8 @@ const BUILT_DENSITY = { none:{ label:"None (no houses)", reach:0, front:0, house
   town:{ label:"Town", reach:55, front:1, house:.74, garden:.23 },
   city:{ label:"City (packed)", reach:70, front:1, house:.9, garden:.08 } };
 function townFill(){
-  const ppm = doc.ppm || 5, g = 2*ppm, shapes = doc.shapes || [], nodes = doc.nodes || [];
+  if(floorsOf(doc) && curFloor()!==groundFloor(doc)) return "";
+  const ppm = doc.ppm || 5, g = 2*ppm, shapes = (doc.shapes || []).filter(onFloor), nodes = (doc.nodes || []).filter(onFloor);
   const key = JSON.stringify(doc.roofs||"") + (doc.density||"") + (doc.regions||[]).map(r=>r.id + (r.density||"")).join(",") + shapes.map(q=>q.id + q.kind + ptsKey(q.pts||[]) + (q.w||"")).join("|") + "#" + nodes.map(q=>q.id + q.kind + Math.round(q.x) + "," + Math.round(q.y) + (q.w||"") + (q.d||"") + (q.rot||"")).join("|");
   if(townFillCache.key===key) return townFillCache.svg;
   const done = svg => { townFillCache = { key, svg }; return svg; };
@@ -4556,6 +4668,7 @@ function render(){
   const labelBlock = [];                              // where drawn names sit, so places' names keep clear of them
   for(const sh of (doc.shapes||[])){
     if(!sh.pts || sh.pts.length<2) continue;
+    if(!onFloor(sh)) continue;                       // on another floor of the building
     const s0 = s.length;                              // each feature in its own group, so the players' screen can leave one out
     const kd = SHAPE_KINDS[sh.kind]||SHAPE_KINDS.water;
     const on = sel&&sel.kind==="shape"&&sel.id===sh.id;
@@ -4679,13 +4792,14 @@ function render(){
     s = s.slice(0, s0) + `<g data-ps="${sh.id}"${sh.hidden?' opacity=".45"':""}>` + s.slice(s0) + `</g>`;
   }
   if(planOf) s += townFill();                        // the rest of the town, built up along its streets
-  gShapes.innerHTML = s;
+  gShapes.innerHTML = floorGhost() + s;
 
   /* roads */
   s = "";
   for(const r of doc.roads){
     const a = nodeById(r.from), b = nodeById(r.to);
     if(!a||!b) continue;
+    if(!onFloor(a) || !onFloor(b)) continue;
     const s0 = s.length;
     const hex = regionHex(r.region||b.region||a.region);
     const on = sel&&sel.kind==="road"&&sel.id===r.id;
@@ -4709,6 +4823,7 @@ function render(){
   const labels = [], glyphBoxes = [], J = root.journey, partyIds = new Set(groupsOf().flatMap(g=>{ const p = g.at||{}; return [p.node, p.map]; }).filter(Boolean));
   const rankOf = n => (sel && sel.kind==="node" && sel.id===n.id) || partyIds.has(n.id) || (J && J.to===n.id) ? 10 : n.route ? 6 : planOf ? 3 : (LABEL_RANK[n.kind] ?? 2) - (n.hidden ? .5 : 0);
   for(const n of doc.nodes){
+    if(!onFloor(n)) continue;
     const kd = KINDS[n.kind]||KINDS.stone, hex = regionHex(n.region);
     const on = sel&&sel.kind==="node"&&sel.id===n.id;
 
@@ -4801,6 +4916,7 @@ function render(){
   if(gChart) gChart.innerHTML = (!planOf && chartOn() && chartEdgeOn() ? chartFog(false) : "") + (!planOf ? seaMonsters(false) + wakeLines(false) + routeLines(false) + trailLines(false) : "");
   if(!planOf) ov += courseOverlay(inv);           // ships' planned courses (the players don't see them)
   const gParty = svg.querySelector("#gParty"); if(gParty) gParty.innerHTML = partyMarker(inv);   // the party's token (the players see it)
+  renderFloorBar();
   /* while the chart brush is on, say so on the map, with a way out */
   let bb = document.getElementById("brushbar");
   if(!bb){ document.getElementById("field").insertAdjacentHTML("beforeend", `<div id="brushbar" hidden></div>`); bb = document.getElementById("brushbar");
@@ -6008,10 +6124,12 @@ function commitPlacement(kind, name){
    MUTATIONS
    ══════════════════════════════════════════════════════════════ */
 function newNode(kind,x,y,near){
-  return { id:uid("n"), name:"", kind,
+  const n = { id:uid("n"), name:"", kind,
            region: near?near.region:doc.regions[0].id, level: near?near.level:1,
            origin:false, seat:false, services:{...KINDS[kind].services}, notes:"",
            x:Math.round(x), y:Math.round(y) };
+  if(planOf && floorsOf(doc)) n.floor = curFloor();           // on the floor on view
+  return n;
 }
 function placeNode(kind,x,y){
   const near = doc.nodes.length ? doc.nodes.reduce((a,b)=>Math.hypot(b.x-x,b.y-y)<Math.hypot(a.x-x,a.y-y)?b:a) : null;
@@ -6128,6 +6246,7 @@ function finishDraft(closed){
                side:1, impassable: !!kd.barrier, notes:"", straight:drawStraight, pts:draft.pts };
   if(kd.river){ sh.w0 = 1.6; sh.w1 = 5.5; }
   doc.shapes = doc.shapes||[];
+  if(planOf && floorsOf(doc)) sh.floor = curFloor();
   doc.shapes.push(sh);
   draft = null;
   select("shape", sh.id);
@@ -10396,6 +10515,7 @@ function bystanders(c){
   return (n.npcs||[]).filter(id=>!inFight.has(id) && libNpcById(id)).map(id=>({ id:"p:"+id, pid:id, kind:"by", p:libNpcById(id) }));
 }
 function openBattle(n){
+  floorFollow(n);
   const st = siteOf(n); if(!st.combat) startFight(st);
   battleOf = { doc, nodeId:n.id }; battleSel = null; battleSpot = null;
   useBmap(n); placeTokens(st.combat); fitBview();
@@ -11105,6 +11225,7 @@ function fightSummary(n, c){
 const EDIT_STAGE = { round:0, list:[], pos:{}, init:{}, see:"plain", layout:"map" };
 const editingInside = () => !!(battleOf && battleOf.edit);
 function openInterior(n){
+  floorFollow(n);
   battleOf = { doc, nodeId:n.id, edit:true }; battleSel = null; battleSpot = null;
   openInv.add("battle:map");
   useBmap(n); fitBview();
@@ -14099,7 +14220,7 @@ function cdPlayerWire(){
 /* ══════════════════════════════════════════════════════════════
    ROOM TO ROOM — a place's battle map can have ways out (bmap.exits: [{ x, y, to:"<map>/<place>" or "<place>",
    at:[x,y], label }]): a door, stairs or the map's edge that leads into another place's map, on this map or another
-   one (stairs up to the next floor, which is its own plan). Drag a party member onto one (Shift: everyone in the
+   one (stairs, a ladder, a drop or a jump to another floor of the same building: see FLOORS). Drag a party member onto one (Shift: everyone in the
    room with them) and they walk through: on their own there, or into the group already in there (root.groups),
    standing on the arrival square. The DM's battle map gets a strip of the rooms the party is in; while the party is
    in two to four rooms the players' screen splits, each room drawn from the eyes of the members in it.
@@ -14117,6 +14238,39 @@ function exitTarget(ex, fromMap){
   return n ? { map, id, n } : null;
 }
 const exitLabel = (ex, fromMap) => { const t = exitTarget(ex, fromMap); return (ex && ex.label) || (t ? placeLabel(t.n) : "Nowhere yet"); };
+/* what kind of way out (ex.kind): a door or opening, stairs, a ladder, or a drop / jump down (one way, ex.fall feet) */
+const EXIT_KINDS = { door:"Door or way through", stairs:"Stairs", ladder:"Ladder", drop:"Drop (one way down)", jump:"Jump (one way)" };
+const exitKind = ex => (ex && EXIT_KINDS[ex.kind]) ? ex.kind : "door";
+const fallDice = ft => Math.min(20, Math.floor((+ft||0)/10));
+/* the rules, as the 2024 Rules Glossary (SRD 5.2) words them: checked on D&D Beyond's free rules, 2026-10-26 */
+const RULE_CLIMB = "Climbing (SRD 5.2): each foot of movement costs 1 extra foot (2 extra feet in Difficult Terrain), unless you use a Climb Speed. A slippery surface or one with few handholds might need a DC 15 Strength (Athletics) check (the DM's option).";
+const RULE_FALL = n => `Falling (SRD 5.2): ${n ? `${n}d6` : "no"} Bludgeoning damage at the end of the fall (1d6 per 10 feet, up to 20d6); they land Prone unless they take no damage from it.`;
+function exitRuleLine(ex){
+  const k = exitKind(ex);
+  if(k==="ladder") return RULE_CLIMB;
+  if((k==="drop" || k==="jump") && +ex.fall > 0) return `A fall of ${+ex.fall} ft. ` + RULE_FALL(fallDice(ex.fall));
+  return "";
+}
+/* after a drop or a jump: the DM rolls each one's fall, or lets them off (Feather Fall, a good landing) */
+function fallPrompt(ids, ex){
+  const n = fallDice(ex.fall), pop = $("#bt-pop"); if(!n || !pop) return;
+  const left = new Set(ids.filter(id=>(root.roster||[]).some(p=>p.id===id)));
+  const draw = () => {
+    if(!left.size){ pop.hidden = true; return; }
+    pop.innerHTML = `<p><b>A fall of ${+ex.fall} ft</b><br><small>${esc(RULE_FALL(n))}</small></p>
+      ${[...left].map(id=>`<div class="pcrow" style="align-items:center"><span style="flex:1">${esc(memberName(id))}</span><button class="btn" data-fall="${esc(id)}" title="Roll ${n}d6 and take it off their hit points">Roll ${n}d6</button><button class="btn" data-nofall="${esc(id)}" title="Feather Fall, a Climb Speed, a good landing: no damage">No damage</button></div>`).join("")}
+      <div class="pcrow"><button class="btn" data-fallclose="1">Close</button></div>`;
+    pop.hidden = false;
+    pop.querySelectorAll("[data-fall]").forEach(b=>b.onclick = ()=>{ const p = (root.roster||[]).find(q=>q.id===b.dataset.fall); left.delete(b.dataset.fall); if(!p) return draw();
+      const dmg = rollDiceExpr(`${n}d6`) || 0; partyDoing("A fall", p); damagePc(p, dmg);
+      if(dmg > 0 && !p.conds.includes("Prone")) p.conds.push("Prone");
+      saveParty(); gameLog("move", `${memberName(p.id)} fell ${+ex.fall} ft: ${dmg} Bludgeoning damage (${n}d6)${dmg > 0 ? ", and lands Prone" : ""}.`);
+      flash(`${memberName(p.id)}: ${dmg} damage from the fall.`); renderBattle(); renderBattlePanel(); draw(); });
+    pop.querySelectorAll("[data-nofall]").forEach(b=>b.onclick = ()=>{ left.delete(b.dataset.nofall); gameLog("move", `${memberName(b.dataset.nofall)} came down ${+ex.fall} ft without a scratch.`); draw(); });
+    const c = pop.querySelector("[data-fallclose]"); if(c) c.onclick = ()=>{ left.clear(); pop.hidden = true; };
+  };
+  draw();
+}
 /* the party members standing in a room (by their group's place) */
 const membersIn = (map, id) => groupsOf().filter(g=>sameAt(g.at, { map, node:id })).flatMap(g=>g.members);
 /* the rooms the party is in: places they're at whose map is open (calm or fighting), in the party's own order */
@@ -14177,6 +14331,7 @@ function walkThrough(ids, ex, from){
   /* the DM's view goes with them only when nobody is left behind */
   if(!membersIn(here, from.id).length) goRoom(t.map, t.id);
   else { renderBattle(); renderBattlePanel(); }
+  if((exitKind(ex)==="drop" || exitKind(ex)==="jump") && fallDice(ex.fall) > 0) fallPrompt(ids, ex);
   return true;
 }
 /* the DM's view to a room's battle map, on whichever map it's in (nobody moves) */
@@ -14201,7 +14356,8 @@ function showExitPop(n, i){
   const here = planOf || "survey", ex = exitsOf(n)[i]; if(!ex) return;
   const t = exitTarget(ex, here), furnish = editingInside(), inRoom = membersIn(here, n.id), who = furnish ? [] : (inRoom.length ? inRoom : memberIds());
   const pop = $("#bt-pop");
-  pop.innerHTML = `<p><b>→ ${esc(exitLabel(ex, here))}</b> <small>(${esc(sqName(ex.x, ex.y))})</small>${t ? "" : `<br>It doesn't lead anywhere yet: pick where under Ways out, in Edit the inside.`}</p>
+  const rule = exitRuleLine(ex);
+  pop.innerHTML = `<p><b>→ ${esc(exitLabel(ex, here))}</b> <small>(${exitKind(ex)!=="door" ? esc(EXIT_KINDS[exitKind(ex)]) + ", " : ""}${esc(sqName(ex.x, ex.y))})</small>${t ? "" : `<br>It doesn't lead anywhere yet: pick where under Ways out, in Edit the inside.`}${rule ? `<br><small>${esc(rule)}</small>` : ""}</p>
     ${t && who.length ? `<div class="pcrow">${who.map(id=>`<button class="btn" data-exgo="${esc(id)}">${esc(memberName(id))} goes through</button>`).join("")}</div>` : ""}
     <div class="pcrow">${t && who.length>1 ? `<button class="btn" data-exgo="*">Everyone ${inRoom.length ? "in here " : ""}goes through</button>` : ""}${t && !furnish ? `<button class="btn" data-exview="1" title="Your view only: nobody moves, the players' screen doesn't change">Look in there</button>` : ""}<button class="btn" data-exgo="">Close</button></div>`;
   pop.hidden = false;
@@ -14214,8 +14370,14 @@ function exitMarks(n){
   exitsOf(n).forEach((ex, i)=>{ if(ex.x==null || ex.y==null || ex.x>=BW || ex.y>=BH) return;
     const d = [[ex.x, -1, 0], [BW-1-ex.x, 1, 0], [ex.y, 0, -1], [BH-1-ex.y, 0, 1]].sort((a, b)=>a[0]-b[0])[0], dx = d[1], dy = d[2];
     const cx = ex.x*BS + BS/2 + dx*BS*.3, cy = ex.y*BS + BS/2 + dy*BS*.3, ang = Math.atan2(dy, dx)*180/Math.PI, t = exitTarget(ex, here), lab = exitLabel(ex, here);
-    g += `<g class="bexit" data-exit="${i}" transform="translate(${cx} ${cy})" style="cursor:pointer"><title>${esc(t ? `To ${lab}` : "A way out that leads nowhere yet")}: drag someone onto this square to walk them through (hold Shift: everyone in here with them), or click for more</title>
-      <circle r="9" fill="${t ? "#2f5d6b" : "#8a7a62"}" stroke="#fff8e6" stroke-width="2"/><path d="M-4 0 H4 M1 -3 L4 0 L1 3" transform="rotate(${ang})" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    const k = exitKind(ex), down = k==="drop" || k==="jump";
+    const glyph = k==="stairs" ? `<path d="M-5 4 H-2 V1 H1 V-2 H4 V-5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/>`
+      : k==="ladder" ? `<path d="M-3 -5 V5 M3 -5 V5 M-3 -2.5 H3 M-3 0.5 H3 M-3 3.5 H3" fill="none" stroke="#fff" stroke-width="1.5"/>`
+      : k==="drop" ? `<path d="M0 -5 V4 M-3.5 1 L0 4.5 L3.5 1" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
+      : k==="jump" ? `<path d="M-5 3 Q-2 -6 3 -1 M0.5 -2.5 L3.5 -0.5 L3 -4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`
+      : `<path d="M-4 0 H4 M1 -3 L4 0 L1 3" transform="rotate(${ang})" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+    g += `<g class="bexit" data-exit="${i}" data-exkind="${k}" transform="translate(${cx} ${cy})" style="cursor:pointer"><title>${esc(EXIT_KINDS[k])}${t ? ` to ${esc(lab)}` : ": leads nowhere yet"}${down && +ex.fall > 0 ? ` (a fall of ${+ex.fall} ft)` : ""}: drag someone onto this square to send them through (hold Shift: everyone in here with them), or click for more</title>
+      <circle r="9" fill="${!t ? "#8a7a62" : down ? "#8a3b2a" : "#2f5d6b"}" stroke="#fff8e6" stroke-width="2"/>${glyph}
       <text x="${dx*13}" y="${dy*15 + (dy===0 ? 4 : dy>0 ? 6 : 0)}" text-anchor="${dx>0 ? "start" : dx<0 ? "end" : "middle"}" font-family="var(--serif)" font-size="11" fill="#1d3c45" stroke="#fff8e6" stroke-width="3" paint-order="stroke" style="pointer-events:none">${esc(lab)}</text></g>`; });
   return g;
 }
@@ -14266,11 +14428,13 @@ function parseSq(s){ const m = /^\s*([A-Za-z]+)\s*(\d+)\s*$/.exec(String(s||""))
 function exitsPanel(n){
   const here = planOf || "survey", xs = exitsOf(n);
   return `<p class="eyebrow spaced">Ways out</p>
-    <p class="empty-note" style="font-size:11px;margin:0 0 6px">A door, stairs or the map's edge that leads into another place's map, on this map or another one (stairs up to the next floor). At the table, drag someone onto it and they walk through.</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">A door, stairs, a ladder, a drop or a jump, or the map's edge, that leads into another place's map: on this floor, another floor of the building, or another map. At the table, drag someone onto it and they go through.</p>
     ${xs.map((ex, i)=>{ const t = exitTarget(ex, here); return `<div class="exrow" style="border-top:1px dotted var(--rule);padding:5px 0">
       <div class="pcrow" style="align-items:center"><b class="mono" title="The square it's on">${esc(sqName(ex.x, ex.y))}</b> → <select data-exto="${i}" style="flex:1;min-width:0" title="Where it leads">${allRoomOptions(t ? `${t.map}/${t.id}` : "")}</select><button class="btn" data-exdel="${i}" title="Take this way out away">×</button></div>
       <div class="pcrow" style="align-items:center"><label class="mini" style="margin:0">Arrive on</label><input data-exat="${i}" class="mono" size="5" value="${ex.at && ex.at.length===2 ? esc(sqName(ex.at[0], ex.at[1])) : ""}" placeholder="auto" title="The square they arrive on in that place's map, like C4. Blank: on its way back here, or where the party starts">
-      <label class="mini" style="margin:0">Called</label><input data-exlab="${i}" value="${esc(ex.label||"")}" placeholder="${esc(t ? placeLabel(t.n) : "")}" style="flex:1;min-width:0" title="What its marker says on your map (blank: the place's name)"></div></div>`; }).join("")}
+      <label class="mini" style="margin:0">Called</label><input data-exlab="${i}" value="${esc(ex.label||"")}" placeholder="${esc(t ? placeLabel(t.n) : "")}" style="flex:1;min-width:0" title="What its marker says on your map (blank: the place's name)"></div>
+      <div class="pcrow" style="align-items:center"><label class="mini" style="margin:0">It's</label><select data-exkind="${i}" style="flex:1;min-width:0" title="Stairs and ladders go both ways (give the room up there its own way back); a drop or a jump is one way down">${Object.entries(EXIT_KINDS).map(([k, l])=>`<option value="${k}" ${exitKind(ex)===k ? "selected" : ""}>${l}</option>`).join("")}</select>
+      ${exitKind(ex)==="drop" || exitKind(ex)==="jump" ? `<label class="mini" style="margin:0">Fall</label><input data-exfall="${i}" class="mono" type="number" min="0" step="5" value="${+ex.fall||0}" style="width:52px" title="How far they fall, in feet: 1d6 Bludgeoning per 10 feet (SRD 5.2), rolled when they go through"><small>ft</small>` : ""}</div></div>`; }).join("")}
     <button class="btn wide" data-exadd="1">${exitPick ? "Click its square on the map… (click here to stop)" : "+ A way out: then click its square on the map"}</button>`;
 }
 function wireExitsPanel(el, n){
@@ -14281,6 +14445,9 @@ function wireExitsPanel(el, n){
     if(q) ex.at = q; else { delete ex.at; if(s.value.trim()) flash("A square like C4: the letters across, then the number down."); } re(); });
   el.querySelectorAll("[data-exlab]").forEach(s=>s.onchange = ()=>{ const ex = xs()[+s.dataset.exlab]; if(!ex) return; if(s.value.trim()) ex.label = s.value.trim(); else delete ex.label; re(); });
   el.querySelectorAll("[data-exdel]").forEach(b=>b.onclick = ()=>{ xs().splice(+b.dataset.exdel, 1); re(); });
+  el.querySelectorAll("select[data-exkind]").forEach(s=>s.onchange = ()=>{ const ex = xs()[+s.dataset.exkind]; if(!ex) return; if(s.value==="door") delete ex.kind; else ex.kind = s.value;
+    if((s.value==="drop" || s.value==="jump") && ex.fall==null) ex.fall = 10; re(); });
+  el.querySelectorAll("[data-exfall]").forEach(s=>s.onchange = ()=>{ const ex = xs()[+s.dataset.exfall]; if(!ex) return; ex.fall = Math.max(0, Math.round(+s.value||0)); re(); });
   const add = el.querySelector("[data-exadd]"); if(add) add.onclick = ()=>{ exitPick = !exitPick; if(exitPick) bpaint = null; renderBattle(); renderEditPanel();
     flash(exitPick ? "Click the square on the map: a door, stairs or the edge." : "Stopped."); };
 }
@@ -15024,6 +15191,7 @@ function commitForm(a, b, square){
                straight: FORMS[drawForm].straight === true, pts };
   if(kd.river){ sh.w0 = 1.6; sh.w1 = 5.5; }
   doc.shapes = doc.shapes || [];
+  if(planOf && floorsOf(doc)) sh.floor = curFloor();
   doc.shapes.push(sh);
   noteLaid(()=>{ doc.shapes = doc.shapes.filter(x=>x.id!==sh.id); });
   select("shape", sh.id);
@@ -15446,6 +15614,7 @@ function renderInspectInner(){
       <div class="field"><label>Name</label><input id="s-name" type="text" value="${esc(sh.name)}" placeholder="unnamed"></div>
       ${sh.sea && (sh.labels||[]).length ? `<p class="eyebrow spaced">Its names on the chart</p>${sh.labels.map((L, i)=>`<div class="pcrow" style="align-items:center"><input type="text" data-sealabname="${i}" value="${esc(L.name||"")}" style="flex:1;min-width:0"><label class="check" style="margin:0" title="Off the players' screen until the crew sails within ${+L.reveal||300} miles of it"><input type="checkbox" data-sealabhid="${i}" ${L.hidden?"checked":""}> Hidden</label></div>`).join("")}<p class="empty-note" style="font-size:10.5px;margin:2px 0 8px">Each basin's name, where it stands on the chart. A hidden one turns up on the players' screen when the crew sails into it.</p>` : ""}
       <div class="field"><label>Kind</label><select id="s-kind">${SHAPE_KEYS.map(k=>`<option value="${k}" ${k===sh.kind?"selected":""}>${SHAPE_KINDS[k].label}</option>`).join("")}</select></div>
+      ${floorPick(sh)}
       ${kd.alwaysOpen?"":`<label class="check"><input id="s-closed" type="checkbox" ${sh.closed?"checked":""}> Closed outline</label>`}
       <label class="check" style="margin-top:6px"><input id="s-straight" type="checkbox" ${sh.straight?"checked":""}> Straight lines between points</label>
       <label class="check" style="margin-top:6px"><input id="s-imp" type="checkbox" ${sh.impassable?"checked":""}> Roads can't cross this</label>
@@ -15532,6 +15701,7 @@ function renderInspectInner(){
           <div class="field"><label>Region</label><select id="f-region">${regionOptions(n.region)}</select></div>
           <div class="field"><label>Level</label><input id="f-level" class="mono" type="number" min="1" max="5" value="${n.level||1}"></div>
         </div>
+        ${floorPick(n)}
         ${placeFactionPick(n)}
         ${planOf?"":`
         <label class="check"><input id="f-origin" type="checkbox" ${n.origin?"checked":""}> Home port: the crew's chart starts here, and road miles are counted from here</label>
@@ -17169,7 +17339,7 @@ function logTableAction(){
 }
 async function boot(){
   if(location.hash==="#player"){ playerMode(); return; }      // the players' screen: just the picture the DM sends
-  wirePScreen(); wireTimeBar(); wireCountdown(); wireTable();
+  wirePScreen(); wireTimeBar(); wireCountdown(); wireTable(); wireFloorBar();
   buildRail(); syncTabs();
   let loaded = null;
   const wasMigrated = (()=>{ try{ return localStorage.getItem(MIGKEY)==="1"; }catch(err){ return false; } })();

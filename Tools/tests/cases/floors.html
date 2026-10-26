@@ -1,0 +1,63 @@
+// uses: nothing
+<script>
+/* floors: a building of two storeys in one plan. The floor buttons show one floor at a time (the one below faint, not
+   on the TV); stairs up move a member and the view's floor; a drop down offers the fall (SRD 5.2: 1d6 per 10 ft) and
+   takes it off their hit points; Build's floor picker moves a place; the floors editor adds a cellar */
+const __FL = { format:"ordinate-survey-v1", title:"Test Hall", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test Hall", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test Hall", ppm:5, unit:"yd", roads:[],
+    floors:[{ id:"fg", name:"Ground floor", z:0 }, { id:"fu", name:"Upstairs", z:1 }],
+    shapes:[{ id:"sup", kind:"wall", closed:true, straight:true, name:"Upper walls", floor:"fu", pts:[{x:0,y:0},{x:200,y:0},{x:200,y:120},{x:0,y:120}] }],
+    nodes:[
+      { id:"hall", name:"The Hall", kind:"hall", x:100, y:60, w:12, d:8, floor:"fg", bmap:{ name:"The Hall", rows:["##########","#........#","#.U......#","#........#","#........#","##########"],
+        start:{ party:[[4,3],[5,3]], enemy:[] }, exits:[{ x:2, y:2, to:"loft", at:[2,3], kind:"stairs" }] } },
+      { id:"shed", name:"The Shed", kind:"house", x:40, y:20, w:4, d:4 },
+      { id:"loft", name:"The Loft", kind:"house", x:100, y:60, w:12, d:8, floor:"fu", bmap:{ name:"The Loft", rows:["##########","#........#","#.U......#","#........#","#......l.#","##########"],
+        start:{ party:[[3,3]], enemy:[] }, exits:[{ x:2, y:2, to:"hall", at:[2,3], kind:"stairs" }, { x:7, y:4, to:"hall", at:[6,3], kind:"drop", fall:20 }] } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const drawn = () => [...document.querySelectorAll('#gNodes [data-pn]')].map(e=>e.getAttribute('data-pn')).join(',') + ' | shapes ' + [...document.querySelectorAll('#gShapes [data-ps]')].map(e=>e.getAttribute('data-ps')).join(',') + ' | faint ' + document.querySelectorAll('#gShapes .floorghost').length;
+ const bar = () => [...document.querySelectorAll('#floorbar .fl')].map(b=>(b.classList.contains('on') ? '*' : '') + b.textContent).join(' / ');
+ const where = () => groupsOf().map(g=>g.members.join('+') + '@' + g.at.node).join(', ');
+ const sqClient = (x, y) => { const r = document.getElementById('bsvg').getBoundingClientRect(), b = bview, s = Math.max(b.w/r.width, b.h/r.height);
+   return { clientX: r.left + (r.width - b.w/s)/2 + ((x+.5)*BS - b.x)/s, clientY: r.top + (r.height - b.h/s)/2 + ((y+.5)*BS - b.y)/s }; };
+ const drag = async (tokId, x, y) => { const t = document.querySelector(`#bsvg [data-tok="${tokId}"]`); if(!t) throw new Error('no token ' + tokId);
+   const p0 = bnode().site.combat.pos[tokId], a = sqClient(p0.x, p0.y), b = sqClient(x, y), o = { bubbles:true, pointerId:1, button:0 };
+   t.dispatchEvent(new PointerEvent('pointerdown', { ...o, ...a })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, clientX:(a.clientX+b.clientX)/2, clientY:(a.clientY+b.clientY)/2 })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, ...b })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointerup', { ...o, ...b })); await wait(80); };
+ try{
+  loadJSONNow(JSON.stringify(__FL)); await wait(300); setDmMode(true); await wait(50);
+  enterPlan('h'); await wait(80);
+  out.push('in: floor ' + curFloor() + ', bar ' + bar() + ', crumb ' + txt(document.getElementById('crumb')) + ', drawn ' + drawn());
+  document.querySelector('#floorbar [data-floor="fu"]').click(); await wait(60);
+  out.push('upstairs: bar ' + bar() + ', crumb ' + txt(document.getElementById('crumb')) + ', drawn ' + drawn());
+  const sc = playerMapScene(); out.push('TV has the faint floor: ' + /floorghost/.test(sc.svg || '') + ', TV has the loft: ' + /data-pn="loft"/.test(sc.svg || ''));
+  document.querySelector('#floorbar [data-floor="fg"]').click(); await wait(60);
+  openBattle(doc.nodes.find(x=>x.id==='hall')); await wait(100);
+  const mk = document.querySelector('#bsvg [data-exit="0"]'); out.push('hall: exit marker ' + (mk && mk.getAttribute('data-exkind')));
+  await drag('pa', 2, 2); out.push('Anna up the stairs: ' + where() + ', view ' + bnode().id + ', floor ' + curFloor());
+  await drag('pb', 2, 2); out.push('Bram up too: ' + where() + ', view ' + bnode().id + ', floor ' + curFloor());
+  const mk2 = document.querySelector('#bsvg [data-exit="1"]'); out.push('loft: drop marker ' + (mk2 && mk2.getAttribute('data-exkind')));
+  showExitPop(bnode(), 1); await wait(40); out.push('drop popup: ' + txt(document.getElementById('bt-pop')).slice(0, 160));
+  document.querySelector('#bt-pop [data-exgo=""]') && document.querySelector('#bt-pop [data-exgo=""]').click(); await wait(20);
+  await drag('pa', 7, 4); const pop = document.getElementById('bt-pop');
+  out.push('Anna drops: ' + where() + ', view ' + bnode().id + ', fall prompt ' + !pop.hidden + ': ' + txt(pop).slice(0, 80));
+  pop.querySelector('[data-fall="pa"]').click(); await wait(40);
+  const pa = root.roster.find(p=>p.id==='pa'); out.push('rolled: Anna hp ' + pa.hp + ' (from 30, 2d6: ' + (30 - pa.hp >= 2 && 30 - pa.hp <= 12) + '), prone ' + pa.conds.includes('Prone') + ', prompt hidden ' + pop.hidden);
+  closeBattle(); await wait(60); out.push('closed: floor ' + curFloor() + ', drawn ' + drawn());
+  setDmMode(false); await wait(40); document.querySelector('#floorbar [data-floor="fg"]').click(); await wait(40);
+  select('node', 'shed'); renderInspect(); await wait(40);
+  const pick = document.querySelector('#pane-inspect select[data-floorpick]'); out.push('shed picker: ' + (pick && pick.value));
+  pick.value = 'fu'; pick.dispatchEvent(new Event('change', { bubbles:true })); await wait(60);
+  out.push('shed moved: ' + plans.h.nodes.find(x=>x.id==='shed').floor + ', floor on view ' + curFloor() + ', drawn ' + drawn());
+  document.querySelector('#floorbar [data-flooredit]').click(); await wait(30); document.querySelector('#floorbar [data-flooradd="down"]').click(); await wait(60);
+  out.push('cellar added: ' + plans.h.floors.map(f=>f.name + ' ' + f.z).join(', ') + ', on view ' + floorName(doc, curFloor()) + ', bar ' + bar());
+  placeNode('house', 60, 60); await wait(40); out.push('new place goes on: ' + floorName(doc, doc.nodes[doc.nodes.length-1].floor));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ if(window.__ERR && __ERR.length) out.push('page errors: ' + __ERR.join(' / '));
+ const h = document.createElement('h1'); h.id = 'RES'; h.textContent = out.join(' || '); document.body.appendChild(h);
+}, 900);
+</script>
