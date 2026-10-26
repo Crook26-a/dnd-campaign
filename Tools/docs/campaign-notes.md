@@ -176,7 +176,8 @@ Lantern Rock is a jagged, barren island about 240 yards across: bare stone and s
 | [[place:klantern/lmarigold|Wreck of the Marigold]] | Stripped bare. Her cargo is in the Undaunted's hold. | None |
 | [[place:klantern/lsentry|Sentry's Perch]] (hidden) | A wrecker watches the reef. If he rings his bell, the cove is warned. | 1 wrecker |
 | [[place:klantern/lcove|Wreckers' Cove]] (hidden) | The pirates' camp in a sea cave under the north cliffs. The captured sailors are in a barred pen. The strongbox is in the queen's nook (Perception DC 15 to find). | 3 wreckers, 1 bruiser |
-| [[place:klantern/llight|The Lighthouse]] | The base of the tower and its narrow spiral stair, held by wreckers. They come at the crew a few at a time. | 4 wreckers, 1 bruiser (Low) |
+| [[place:klantern/llight|The Lighthouse]] | Ground floor: the base of the tower. The narrow spiral stair winds up the west wall round the stone core; its top step leads up to the landing. | 2 wreckers (Low) |
+| [[place:klantern/llanding|The Landing]] | Halfway up: slit windows over the sea, and racks and a barrel with nothing in them. No oil, no wick, no keeper's cot: the first clue that the light isn't a lamp. The stair climbs on from the south side. | 2 wreckers, 1 bruiser (Low) |
 | [[place:klantern/llamp|The Lantern Room]] | The top of the tower: Raven Heartgrove and Hargrove-Vance haggling over the caged firebird, the gallery high over the sea. Hargrove-Vance slips away rather than fight. | Raven Heartgrove, 2 wreckers, 1 bruiser (Low) |
 
 The Wreckers' Stair, a hidden way cut in the rock from the lighthouse crag down to the cove, is hidden from the players too. Finding it takes Wisdom (Perception) DC 15, or the stowaway can show them.
