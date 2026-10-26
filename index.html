@@ -11492,12 +11492,18 @@ function renderBattlePanelNow(){
     <p class="grouplab" style="margin-top:10px">Log</p>
     ${log.length ? `<div class="actlog">${log.slice(0,40).map(e=>`<div class="le"><span class="mono">R${e.round}</span> ${esc(e.text)}</div>`).join("")}</div>
       <button class="btn wide" data-ba="undo" style="margin-top:4px">Undo last action</button>` : `<p class="empty-note" style="margin:0 0 6px">Nothing logged yet.</p>`}`;
+  /* who a person is, at a glance, on the card from clicking them: what you need to play them (their Library page has the rest) */
+  const personBrief = p => { if(!p) return "";
+    const rows = [["Looks", p.look], ["Voice", p.voice], ["Wants", p.wants], ["Knows", p.knows], ["Carries", p.carries], ["Notes", p.notes]].filter(([, v])=>String(v||"").trim());
+    const sub = [p.gender, p.species, p.align].filter(Boolean).join(" · ");
+    return rows.length || sub ? `<div class="pbrief" style="font-size:12px;line-height:1.4;margin:2px 0 8px">${sub ? `<p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc(sub)}</p>` : ""}${rows.map(([k, v])=>`<p style="margin:0 0 4px"><b>${k}:</b> ${esc(v)}</p>`).join("")}</div>` : ""; };
   const selAt = h.length;                         // the selected one's card: first in table mode
   if(selT){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;
     h += `<div class="pcrow" style="align-items:center;margin-top:10px"><p class="grouplab" style="margin:0;flex:1">${esc(selT.label)}</p><button class="pcbig" data-bigsheet="${sheetKey}" title="Their whole sheet, big">Big sheet</button></div>`;
     h += stealthRow(c, selT);
     if(selT.kind==="foe") h += knownTick(tokPerson(selT));
+    if(selT.kind==="foe" && tokPerson(selT)) h += personBrief(tokPerson(selT));
     h += `<button class="btn wide" data-breact="${selT.id}" style="margin-bottom:6px">⚡ ${esc(selT.label)} takes a reaction${reactedThisRound(c,selT.id)?" (already used one this round)":""}</button>`;
     h += selT.kind==="foe" ? enemyCard(selT.x, selT.i, "", true)
       : pcTracker(selT.p, selT.i) + `<button class="btn wide" data-ba="pcfled" data-id="${selT.id}" style="margin:-4px 0 6px">${selT.fled?"Back in the fight":"Mark as fled"}</button>` + partyUndoBtn();
@@ -11506,6 +11512,7 @@ function renderBattlePanelNow(){
   const by = !selT && battleSel && String(battleSel).startsWith("p:") ? libNpcById(battleSel.slice(2)) : null;
   if(by) h += `<div class="pcrow" style="align-items:center;margin-top:10px"><p class="grouplab" style="margin:0;flex:1">${esc(by.name)}</p><button class="pcbig" data-bigsheet="npc:${by.id}" title="Their whole sheet, big">Big sheet</button></div>
     <p class="empty-note" style="font-size:11px;margin:0 0 6px">${esc(by.role||"")}${by.role?" · ":""}here, not in the turn order.</p>
+    ${personBrief(by)}
     ${knownTick(by)}
     <button class="btn wide" data-bystand="neutral" title="In the turn order as themselves: neither for nor against the party">Into the turn order, neutral</button>
     ${npcFightId(by) ? `<div class="pcrow"><button class="btn" style="flex:1" data-bystand="enemy">Into the fight, against the party</button><button class="btn" style="flex:1" data-bystand="ally">On the party's side</button></div>`
