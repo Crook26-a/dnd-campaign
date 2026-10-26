@@ -1,5 +1,8 @@
 on the plan, party in the front room: TV names The Front Room, The Plain Shed
 front room map: TV has "a dusty rug" true, TV has the dm label false, DM sees it true
+people the party knows: TV names Xavier true, Wanda false, eyes on the DM map 1
+Wanda's card has the tick true
+ticked: Wanda known true, TV names Wanda true
 after walking in: TV names The Front Room, The Secret Study, The Plain Shed, visited h/front,h/study
 panel shows the boxes: true true
 untick been-in (party in the shed): TV names The Front Room, The Plain Shed

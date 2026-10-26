@@ -5,10 +5,11 @@
 const __NM = { format:"ordinate-survey-v1", title:"Names Test", ppm:10, unit:"mi", party:2,
   nodes:[{ id:"h", name:"Test Hall", kind:"town", x:0, y:0 }], roads:[], shapes:[],
   roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  library:{ foes:[], loot:[], npcs:[{ id:"n1", name:"Wanda Vale", role:"guest" }, { id:"n2", name:"Xavier Yule", role:"guest", known:true }] },
   groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"front" } }],
   plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test Hall", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
-    { id:"front", name:"The Front Room", kind:"hall", x:100, y:100, w:12, d:8, nameHidden:true, bmap:{ name:"The Front Room",
-      rows:["##########","#........#","#........D","#........#","##########"], labels:[[2,1,"a dusty rug"],[8,2,"the secret study","dm"]],
+    { id:"front", name:"The Front Room", kind:"hall", x:100, y:100, w:12, d:8, nameHidden:true, npcs:["n1","n2"], bmap:{ name:"The Front Room",
+      rows:["##########","#i......i#","#........D","#i......i#","##########"], labels:[[2,1,"a dusty rug"],[8,2,"the secret study","dm"]],
       start:{ party:[[2,2],[3,2]], enemy:[] }, exits:[{ x:9, y:2, to:"study", at:[1,2] }] } },
     { id:"study", name:"The Secret Study", kind:"archive", x:170, y:100, w:10, d:8, nameHidden:true, bmap:{ name:"The Secret Study",
       rows:["########","D......#","D......#","########"], start:{ party:[[1,1]], enemy:[] }, exits:[{ x:0, y:1, to:"front", at:[8,2] }] } },
@@ -30,6 +31,12 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   openBattle(doc.nodes.find(x=>x.id==='front')); await wait(100);
   const sc = playerMapScene(), dmSvg = document.getElementById('bsvg').innerHTML;
   out.push('front room map: TV has "a dusty rug" ' + (sc.svg||'').includes('a dusty rug') + ', TV has the dm label ' + (sc.svg||'').includes('the secret study') + ', DM sees it ' + dmSvg.includes('the secret study'));
+  const sc2 = playerMapScene().svg || "", dmEyes = (document.getElementById("bsvg").innerHTML.match(/👁/g)||[]).length;
+  out.push("people the party knows: TV names Xavier " + />Xavier Yule</.test(sc2) + ", Wanda " + />Wanda Vale</.test(sc2) + ", eyes on the DM map " + dmEyes);
+  battleSel = "p:n1"; renderBattlePanel(); await wait(30); const tick = document.querySelector("#pane-inspect [data-known=\"n1\"]");
+  out.push("Wanda's card has the tick " + !!tick); tick.click(); await wait(60);
+  out.push("ticked: Wanda known " + !!libNpcById("n1").known + ", TV names Wanda " + />Wanda Vale</.test(playerMapScene().svg||""));
+  battleSel = null; renderBattlePanel();
   await drag('pa', 9, 2, true); await wait(100); closeBattle(true); await wait(60); markVisits();
   out.push('after walking in: TV names ' + tvNames() + ', visited ' + Object.keys(root.visited||{}).sort().join(','));
   /* the panel: untick "They've been in", then the name setting itself */
