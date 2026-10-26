@@ -8,5 +8,6 @@ Roll tab roll is a woman, card says true
 library: gender Woman, summary "Potential ally · Aasimar ranger · woman · LN"
 Field Book back with Man: Man
 cleared on the phone: undefined
+known out and back true, cleared on the phone undefined
 FB_FIELDS has gender: true
 Library sheet Gender field: —/Man/Woman/Other… =

@@ -26,6 +26,11 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   fieldBookIn(JSON.stringify(pack), true); out.push('Field Book back with Man: ' + libNpcById(p.id).gender);
   const pack2 = { format:"ordinate-fieldbook", version:1, npcs:[(()=>{ const q = { ...libNpcById(p.id) }; delete q.gender; return q; })()] };
   fieldBookIn(JSON.stringify(pack2), true); out.push('cleared on the phone: ' + JSON.stringify(libNpcById(p.id).gender));
+  /* "the party knows their name" goes out and back too, and clears like any other field */
+  libNpcById(p.id).known = true; const pk = JSON.parse(JSON.stringify({ format:"ordinate-fieldbook", version:1, npcs:[{ ...libNpcById(p.id) }] }));
+  fieldBookIn(JSON.stringify(pk), true); const kept = libNpcById(p.id).known;
+  const pk2 = { format:"ordinate-fieldbook", version:1, npcs:[(()=>{ const q = { ...libNpcById(p.id) }; delete q.known; return q; })()] };
+  fieldBookIn(JSON.stringify(pk2), true); out.push('known out and back ' + kept + ', cleared on the phone ' + JSON.stringify(libNpcById(p.id).known));
   out.push('FB_FIELDS has gender: ' + FB_FIELDS.npcs.includes('gender'));
   openLib('npcs', p.id); await wait(120); const gf = document.querySelector('[data-f="gender"]'); out.push('Library sheet Gender field: ' + (gf ? [...gf.options].map(o=>o.textContent).join('/') + ' = ' + gf.value : 'none'));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
