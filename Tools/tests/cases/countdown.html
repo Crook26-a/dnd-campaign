@@ -29,9 +29,25 @@
   /* what their screen shows: the in-game time (start + minutes per real minute, or worked out from the time at zero), real time up / down / hidden */
   const chg = (sel, v) => { const el = ps.querySelector(sel); if(el.type==='checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new Event('change', { bubbles:true })); };
   chg('[data-cdf="gameShow"]', true); await wait(30); chg('[data-cdf="gameStart"]', '9:30 pm'); await wait(30); chg('[data-cdf="gameEnd"]', '12:00 am'); await wait(30);
-  out.push('in-game: start ' + c.gameStart + ' rate ' + c.gameRate + ' at zero ' + ps.querySelector('[data-cdf="gameEnd"]').value + ', bar ' + txt(bar));
+  out.push('in-game: start ' + c.gameStart + ' rate ' + cdRate(c).toFixed(3) + ' at zero ' + ps.querySelector('[data-cdf="gameEnd"]').value + ', bar ' + txt(bar));
   chg('[data-cdf="gameRate"]', '1'); await wait(30); out.push('rate 1: at zero ' + ps.querySelector('[data-cdf="gameEnd"]').value);
-  chg('[data-cdf="realShow"]', 'up'); await wait(30); const p2 = cdForPlayers(); out.push('payload: real ' + p2.real + ' game ' + p2.game + ' start ' + p2.gameStart + ' rate ' + p2.gameRate);
+  /* fitting the time you have: the story's start and end stay, the bells keep their story times */
+  chg('[data-cdf="gameStart"]', '9:30 pm'); await wait(30); chg('[data-cdf="gameEnd"]', '12:00 am'); await wait(30);
+  const bellIn = i => ps.querySelectorAll('[data-cdb="at"]')[i];
+  const setBell = async (i, v) => { const el = bellIn(i); el.value = v; el.dispatchEvent(new Event('change', { bubbles:true })); await wait(30); };
+  await setBell(0, '10:00 pm'); await setBell(1, '11:00 pm');
+  const bells = () => c.bells.slice().sort((a, b)=>a.at-b.at).map(b=>Math.round(b.at) + 'min=' + cdBellShow(c, b)).join(', ');
+  out.push('length 1:00: rate ' + cdRate(c).toFixed(3) + ', bells ' + bells());
+  chg('[data-cdf="total"]', '1:45'); await wait(30); out.push('length 1:45: rate ' + cdRate(c).toFixed(3) + ', bells ' + bells() + ', ends ' + ps.querySelector('[data-cdf="gameEnd"]').value);
+  const soon = new Date(Date.now() + 50*60000); chg('[data-cdf="finishBy"]', soon.getHours() + ':' + String(soon.getMinutes()).padStart(2,'0')); await wait(30);
+  out.push('finish by, not started: ' + /^Press Start and it fits/.test(document.getElementById('cd-ps-end').textContent));
+  ps.querySelector('[data-cd="go"]').click(); await wait(60);
+  out.push('started: length about ' + Math.round(c.total/60) + ' min, bells ' + bells() + ', story now ' + cdGameNow(c) + ', end line ' + /^Ends at/.test(document.getElementById('cd-ps-end').textContent));
+  c.endsAt -= 10*60000; await wait(1200); const now1 = cdGameNow(c);
+  ps.querySelector('[data-cd="add"][data-m="-5"]').click(); await wait(60);
+  out.push('10 min in, then -5: story before ' + now1 + ' after ' + cdGameNow(c) + ', length about ' + Math.round(c.total/60) + ', bells ' + bells() + ', at zero ' + cdGameClock(Math.round(cdGameMin(c, c.total))));
+  ps.querySelector('[data-cd="go"]').click(); await wait(30); delete c.finishBy;
+  chg('[data-cdf="realShow"]', 'up'); await wait(30); const p2 = cdForPlayers(); out.push('payload: real ' + p2.real + ' game ' + p2.game + ' story now ' + cdGameClock(p2.gameStart + p2.gameRate*((p2.total - p2.left)/60)));
   window.postMessage({ ordinate:'countdown', cd:{ title:'Until midnight', endsAt:null, left:2700, total:3600, done:'', real:'up', game:true, gameStart:1290, gameRate:2.5 } }, '*'); await wait(400);
   out.push('TV both, counting up: ' + txt(pv) + ', both ' + pv.classList.contains('both'));
   window.postMessage({ ordinate:'countdown', cd:{ title:'', endsAt:null, left:2700, total:3600, done:'', real:'off', game:true, gameStart:1290, gameRate:2.5 } }, '*'); await wait(400);

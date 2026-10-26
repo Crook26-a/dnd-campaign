@@ -13836,8 +13836,13 @@ document.addEventListener("change", e=>{
    file can set them up. Saved when its state changes, never on a tick.
    What their screen shows: realShow "down" (time left, the default), "up"
    (time used) or "off"; gameShow puts the in-game time on it too, from
-   gameStart (minutes after midnight) at gameRate in-game minutes per real
-   minute (1 = the same pace; or type the time it should reach at zero).
+   gameStart to gameEnd (minutes after midnight): the story's clock covers
+   that span over the real length, so its pace (in-game minutes per real
+   minute) follows from the length. finishBy (a wall-clock ms) fits the
+   length, when Start is pressed, to end then. Changing the length (by hand,
+   finishBy, or the +/- buttons) goes through cdRetime: the story's time now
+   stays put (gameBase {from: elapsed s, at: in-game min}) and the bells not
+   yet rung keep their place in the story (their real minutes stretch).
    ══════════════════════════════════════════════════════════════ */
 const cdGet = () => (typeof root!=="undefined" && root && root.countdown && typeof root.countdown==="object") ? root.countdown : null;
 function cdOf(){
@@ -13855,8 +13860,46 @@ function cdClock(s){ s = Math.max(0, Math.ceil(s)); const h = Math.floor(s/3600)
 const cdHm = s => { s = Math.round(+s||0); return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}`; };
 const cdReal = c => (c && (c.realShow==="up" || c.realShow==="off")) ? c.realShow : "down";
 const cdHasGame = c => !!(c && c.gameStart!=null);
+const cdSpan = (a, b) => { let s = (+b||0) - (+a||0); while(s <= 0) s += 1440; return s; };   // minutes from a to b, past midnight if need be
+/* the story's pace: in-game minutes per real minute, from where it was last re-based to the end time at zero */
+function cdRate(c){
+  if(c.gameEnd==null) return c.gameRate!=null ? +c.gameRate : 1;
+  const b = c.gameBase || { from:0, at:+c.gameStart||0 }, realMin = ((+c.total||0) - b.from)/60;
+  return realMin > 0 ? cdSpan(b.at, c.gameEnd)/realMin : 0;
+}
 /* the in-game time, in minutes after midnight, once the clock has run elapsedS seconds */
-const cdGameMin = (c, elapsedS) => (+c.gameStart||0) + (c.gameRate!=null ? +c.gameRate : 1) * Math.max(0, elapsedS)/60;
+function cdGameMin(c, elapsedS){ const b = c.gameBase || { from:0, at:+c.gameStart||0 };
+  return b.at + cdRate(c) * Math.max(0, elapsedS - b.from)/60; }
+/* a new real length: the story's time now stays, the bells still to ring keep their place in the story */
+function cdRetime(c, newTotal){
+  const T = +c.total||0, e = Math.max(0, T - cdLeft(c));
+  newTotal = Math.max(e + 60, Math.round(+newTotal||0));
+  if(cdHasGame(c) && e > 0) c.gameBase = { from:e, at:cdGameMin(c, e) };
+  const remOld = T - e, remNew = newTotal - e;
+  if(remOld > 0) for(const b of c.bells){ const a = (+b.at||0)*60; if(!b.rung && a >= e) b.at = Math.round((e + (a - e)*remNew/remOld)/60*100)/100; }
+  c.total = newTotal; if(c.endsAt) c.endsAt = Date.now() + remNew*1000; else c.left = remNew;
+}
+const cdWall = ms => new Date(ms).toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }).toLowerCase();
+/* "finish by" as a wall-clock moment: today, or tomorrow if that's already past */
+function cdWallAt(min){ const d = new Date(); d.setHours(Math.floor(min/60), min%60, 0, 0); if(d.getTime() <= Date.now()) d.setDate(d.getDate()+1); return d.getTime(); }
+/* the DM's line under the big readout: when it will end in real time */
+function cdEndLine(c){
+  if(c.done) return "";
+  if(c.endsAt) return `Ends at ${cdWall(c.endsAt)}` + (c.finishBy!=null ? ` (finish by ${cdGameClock(c.finishBy)})` : "");
+  if(c.finishBy!=null){ const to = cdWallAt(+c.finishBy), e = (+c.total||0) - cdLeft(c);
+    return `Press Start and it fits to end at ${cdGameClock(c.finishBy)}: ${cdClock(Math.max(0, (to - Date.now())/1000))} from now` + (e > 0 ? " (what's left of it)" : ""); }
+  return `Started now, it would end at ${cdWall(Date.now() + cdLeft(c)*1000)}`;
+}
+/* a bell's time as the panel shows it: the story's time if that's on, else minutes after the start */
+const cdBellShow = (c, b) => c.gameShow && cdHasGame(c) ? cdGameClock(Math.round(cdGameMin(c, (+b.at||0)*60))) : String(Math.round((+b.at||0)*100)/100);
+function cdBellAt(c, v){                                       // what was typed → minutes after the start, or null
+  v = String(v||"").trim();
+  if(c.gameShow && cdHasGame(c) && /[:apm]/i.test(v)){ const g = cdParseTime(v); if(g==null) return null;
+    const b = c.gameBase || { from:0, at:+c.gameStart||0 }, r = cdRate(c); if(!(r > 0)) return null;
+    let d = g - b.at; while(d < 0) d += 1440;                  // story minutes after the re-base point (the same minute counts as now)
+    return Math.round((b.from/60 + d/r)*100)/100; }
+  return /^\d+(\.\d+)?$/.test(v) ? +v : null;
+}
 function cdGameClock(min){ min = Math.floor((((+min||0) % 1440) + 1440) % 1440); const h = Math.floor(min/60), m = min%60;
   return `${(h%12)||12}:${String(m).padStart(2,"0")} ${h<12?"am":"pm"}`; }
 /* "9:30 pm", "9pm", "21:30" → minutes after midnight, or null */
@@ -13870,7 +13913,7 @@ function cdSave(){ markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = set
 function cdForPlayers(){
   const c = cdGet(); if(!c || !c.on || c.show===false) return null;
   return { title:c.title||"", endsAt:c.endsAt||null, left:cdLeft(c), total:+c.total||0, done:c.done ? (c.doneLabel||"Time's up") : "",
-           real:cdReal(c), game:!!c.gameShow && cdHasGame(c), gameStart:+c.gameStart||0, gameRate:c.gameRate!=null ? +c.gameRate : 1 };
+           real:cdReal(c), game:!!c.gameShow && cdHasGame(c), gameStart:cdHasGame(c) ? (c.gameBase ? c.gameBase.at - cdRate(c)*c.gameBase.from/60 : +c.gameStart||0) : 0, gameRate:cdHasGame(c) ? cdRate(c) : 1 };   // one straight line for the TV: start + rate × minutes run
 }
 function sendCountdown(){ if(playersUp()) try{ playerWin.postMessage({ ordinate:"countdown", cd:cdForPlayers() }, "*"); }catch(err){} }
 
@@ -13926,16 +13969,18 @@ function cdReadouts(){
     if(on){ bar.classList.toggle("low", s < 600 && !c.done); bar.querySelector(".cd-read").textContent = "⏳ " + cdClock(s) + (cdHasGame(c) ? " · 🕰 " + cdGameNow(c) : "") + (run ? "" : c.done ? " · up" : " · paused");
       const g = bar.querySelector(".cd-go"); g.textContent = run ? "⏸" : "▶"; g.title = run ? "Pause the countdown" : (c.done || s<=0 ? "Start it over from the top" : "Start the countdown (or carry on)"); } }
   const ps = document.getElementById("cd-ps-left"); if(ps && c) ps.textContent = cdClock(s) + (cdHasGame(c) ? " · " + cdGameNow(c) : "") + (run ? "" : c.done ? " · time's up" : " · paused");
+  const pe = document.getElementById("cd-ps-end"); if(pe && c) pe.textContent = cdEndLine(c);
 }
 /* the controls */
 function cdStart(){ const c = cdOf(); cdAudioOn();
   if(c.done || cdLeft(c) <= 0) cdReset(true);
+  if(c.finishBy!=null){ const to = cdWallAt(+c.finishBy), e = (+c.total||0) - cdLeft(c); cdRetime(c, e + (to - Date.now())/1000); }
   c.on = true; c.endsAt = Date.now() + cdLeft(c)*1000; delete c.done;
   gameLog("clock", `The countdown started: ${cdClock(cdLeft(c))} to go`); }
 function cdPause(){ const c = cdOf(); c.left = cdLeft(c); c.endsAt = null; }
-function cdReset(quiet){ const c = cdOf(); c.endsAt = null; c.left = +c.total||0; delete c.done; c.bells.forEach(b=>{ b.rung = false; }); if(!quiet) cdBanners = [], cdBannerDraw(); }
+function cdReset(quiet){ const c = cdOf(); c.endsAt = null; c.left = +c.total||0; delete c.done; delete c.gameBase; c.bells.forEach(b=>{ b.rung = false; }); if(+c.planned > 0 && +c.planned !== +c.total) cdRetime(c, +c.planned); if(!quiet) cdBanners = [], cdBannerDraw(); }
 function cdAdd(min){ const c = cdOf();
-  if(c.endsAt) c.endsAt = Math.max(Date.now(), c.endsAt + min*60000); else c.left = Math.max(0, cdLeft(c) + min*60);
+  cdRetime(c, (+c.total||0) + min*60);
   if(min > 0 && c.done){ delete c.done; } }
 function cdChanged(){ cdSave(); sendCountdown(); cdReadouts(); renderPScreen(); }
 var cdSecOpen = false;
@@ -13945,19 +13990,21 @@ function cdSection(){
   return `<details class="cdsec" ${cdSecOpen?"open":""}><summary class="grouplab" style="cursor:pointer;margin-top:10px">A countdown on their screen</summary>
     <label class="check" style="margin:4px 0" title="A real clock, counting down on the TV and in your top bar"><input type="checkbox" data-cdf="on" ${c.on?"checked":""}> Use a countdown</label>
     ${c.on ? `<div class="cd-ps-big"><span id="cd-ps-left" class="mono">${cdClock(cdLeft(c))}${run?"":c.done?" · time's up":" · paused"}</span></div>
-    <div class="pcrow"><button class="btn" style="flex:1.3" data-cd="go" title="${run?"Pause it: the clock stops on both screens":"Start it, or carry on from where it stopped"}">${run?"⏸ Pause":"▶ Start"}</button><button class="btn" style="flex:1" data-cd="reset" title="Back to the full length, every bell unrung">↺ Reset</button></div>
-    <div class="pcrow" title="Add or take away time they have left. The bells move with it: they ring by how long the clock has run.">${[-5,-1,1,5].map(m=>`<button class="btn" style="flex:1" data-cd="add" data-m="${m}">${m>0?"+":"−"}${Math.abs(m)} min</button>`).join("")}</div>
+    <p class="mini" id="cd-ps-end" style="text-align:center;margin:-4px 0 6px">${esc(cdEndLine(c))}</p>
+    <div class="pcrow"><button class="btn" style="flex:1.3" data-cd="go" title="${run?"Pause it: the clock stops on both screens":"Start it, or carry on from where it stopped"}">${run?"⏸ Pause":"▶ Start"}</button><button class="btn" style="flex:1" data-cd="reset" title="Back to the length you set, every bell unrung">↺ Reset</button></div>
+    <div class="pcrow" title="Add or take away real time they have left. The story's clock keeps its end time (it runs a little slower or faster), and the bells still to ring keep their place in the story.">${[-5,-1,1,5].map(m=>`<button class="btn" style="flex:1" data-cd="add" data-m="${m}">${m>0?"+":"−"}${Math.abs(m)} min</button>`).join("")}</div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Title</label><input data-cdf="title" value="${esc(c.title||"")}" placeholder="e.g. Before the last bell" style="flex:2" title="Small, above the clock on their screen"></div>
-    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Length</label><input data-cdf="total" class="mono" value="${cdHm(c.total)}" style="width:64px" title="Hours and minutes, like 2:30. Changing it before the start sets the clock to it."><small>h:mm</small></div>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Length</label><input data-cdf="total" class="mono" value="${cdHm(c.total)}" style="width:64px" title="How long the countdown runs in real time: hours and minutes, like 1:45. The bells still to ring keep their place in the story."><small>h:mm</small></div>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="The real time you need it to end by. Pressing Start (or carrying on after a pause) fits the length so it ends then.">Or finish by</label><input data-cdf="finishBy" value="${c.finishBy!=null ? cdGameClock(c.finishBy) : ""}" placeholder="e.g. 9:00 pm" style="width:84px" title="A real clock time, like 9:00 pm. Leave it empty to use the length as it is."><small>real time</small></div>
     <label class="check" style="margin:2px 0" title="Uncheck to keep it on your screen only"><input type="checkbox" data-cdf="show" ${c.show!==false?"checked":""}> Show it on the players' screen</label>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Real time</label><select data-cdf="realShow" style="flex:2" title="What the real clock shows on their screen. Your top bar always shows the time left.">${[["down","Counting down (time left)"],["up","Counting up (time used)"],["off","Hidden"]].map(([v, l])=>`<option value="${v}" ${cdReal(c)===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <label class="check" style="margin:2px 0" title="The time in the story, on their screen above the real clock (and in your top bar)"><input type="checkbox" data-cdf="gameShow" ${c.gameShow?"checked":""}> Show the in-game time</label>
     ${c.gameShow ? `<div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Starts at</label><input data-cdf="gameStart" value="${cdGameClock(c.gameStart)}" style="width:84px" title="The in-game time when the countdown starts, like 9:30 pm or 21:30"></div>
-    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="How many minutes pass in the story for each real minute. 1 = the same pace; 2 = twice as fast.">In-game minutes per real minute</label><input data-cdf="gameRate" class="mono" type="number" min="0" step="0.01" value="${Math.round((c.gameRate!=null ? +c.gameRate : 1)*100)/100}" style="width:64px"></div>
-    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">At zero it's</label><input data-cdf="gameEnd" value="${cdGameClock(cdGameMin(c, +c.total||0))}" style="width:84px" title="The in-game time when the countdown runs out. Type a time here and the minutes per real minute are worked out to reach it."></div>` : ""}
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="How many minutes pass in the story for each real minute. 1 = the same pace; 2 = twice as fast.">In-game minutes per real minute</label><input data-cdf="gameRate" class="mono" type="number" min="0" step="0.01" value="${Math.round(cdRate(c)*100)/100}" style="width:64px" title="Worked out from the start and end times and the length. Type a pace instead and the end time moves to match."></div>
+    <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Ends at (at zero)</label><input data-cdf="gameEnd" value="${cdGameClock(c.gameEnd!=null ? c.gameEnd : Math.round(cdGameMin(c, +c.total||0)))}" style="width:84px" title="The in-game time when the countdown runs out. It stays put when the real length changes: the pace changes instead."></div>` : ""}
     <label class="check" style="margin:2px 0 6px" title="A bell tolls on this computer when one comes due, three times at zero"><input type="checkbox" data-cdf="sound" ${c.sound!==false?"checked":""}> Toll a bell out loud</label>
-    <p class="mini" style="margin:6px 0 2px">Bells: minutes after the start, what they see, your note</p>
-    ${bells.map(b=>`<div class="cd-bell${b.rung?" rung":""}"><label title="Ticked once it has rung. Untick it to ring again when its time comes."><input type="checkbox" data-cdb="rung" data-id="${b.id}" ${b.rung?"checked":""}></label><input data-cdb="at" data-id="${b.id}" class="mono" type="number" min="0" step="1" value="${+b.at||0}" style="width:46px" title="Minutes after the start"><input data-cdb="label" data-id="${b.id}" value="${esc(b.label||"")}" placeholder="What they see" title="Shown big on their screen for a few seconds"><button class="fdel" data-cd="bdel" data-id="${b.id}" title="Remove this bell">×</button>
+    <p class="mini" style="margin:6px 0 2px">Bells: ${c.gameShow && cdHasGame(c) ? "the in-game time" : "minutes after the start"}, what they see, your note</p>
+    ${bells.map(b=>`<div class="cd-bell${b.rung?" rung":""}"><label title="Ticked once it has rung. Untick it to ring again when its time comes."><input type="checkbox" data-cdb="rung" data-id="${b.id}" ${b.rung?"checked":""}></label><input data-cdb="at" data-id="${b.id}" class="mono" value="${cdBellShow(c, b)}" style="width:${c.gameShow && cdHasGame(c) ? 70 : 46}px" title="${c.gameShow && cdHasGame(c) ? "The in-game time it rings, like 10:30 pm (or minutes after the start, like 42)" : "Minutes after the start"}"><input data-cdb="label" data-id="${b.id}" value="${esc(b.label||"")}" placeholder="What they see" title="Shown big on their screen for a few seconds"><button class="fdel" data-cd="bdel" data-id="${b.id}" title="Remove this bell">×</button>
       <input data-cdb="note" data-id="${b.id}" class="cd-note" value="${esc(b.note||"")}" placeholder="Your note (only you see it)" title="On your screen when it rings"></div>`).join("") || `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No bells yet.</p>`}
     <button class="btn wide" data-cd="badd" title="A new bell, after the last one">+ Add a bell</button>
     <div class="pcrow" style="align-items:center;margin-top:6px"><label class="mini" style="flex:1">At zero</label><input data-cdf="doneLabel" value="${esc(c.doneLabel||"")}" placeholder="Time's up" style="flex:2" title="What they see when it runs out"></div>
@@ -13991,19 +14038,24 @@ function wireCountdown(){
     const c = cdOf();
     if(f==="on"){ c.on = t.checked; if(!c.on){ cdPause(); cdBanners = []; cdBannerDraw(); } }
     else if(f==="show" || f==="sound"){ c[f] = t.checked; if(f==="sound" && t.checked) cdAudioOn(); }
-    else if(f==="gameShow"){ c.gameShow = t.checked; if(c.gameShow && c.gameStart==null){ c.gameStart = 20*60; c.gameRate = 1; } }
-    else if(f==="gameStart" || f==="gameEnd"){ const v = cdParseTime(t.value); if(v==null){ flash("Write a time like 9:30 pm or 21:30."); renderPScreen(); return; }
-      if(f==="gameStart") c.gameStart = v;
-      else { let span = v - (+c.gameStart||0); if(span <= 0) span += 1440; c.gameRate = Math.round(span / ((+c.total||60)/60) * 10000)/10000; } }
-    else if(f==="gameRate") c.gameRate = Math.max(0, +t.value||0);
+    else if(f==="gameShow"){ c.gameShow = t.checked; if(c.gameShow && c.gameStart==null){ c.gameStart = 20*60; c.gameEnd = (20*60 + Math.round((+c.total||0)/60)) % 1440; } }
+    else if(f==="gameStart" || f==="gameEnd" || f==="finishBy"){
+      if(f==="finishBy" && !String(t.value).trim()){ delete c.finishBy; }
+      else { const v = cdParseTime(t.value); if(v==null){ flash("Write a time like 9:30 pm or 21:30."); renderPScreen(); return; }
+        if(f==="gameStart"){ if(c.gameEnd==null) c.gameEnd = Math.round(cdGameMin(c, +c.total||0)) % 1440; c.gameStart = v; delete c.gameBase; }
+        else if(f==="gameEnd") c.gameEnd = v;
+        else { c.finishBy = v;                                    // running: fit what's left now; otherwise when Start is pressed
+          if(c.endsAt){ const e = (+c.total||0) - cdLeft(c); cdRetime(c, e + (cdWallAt(v) - Date.now())/1000); } } } }
+    else if(f==="gameRate"){ const r = Math.max(0, +t.value||0), b = c.gameBase || { from:0, at:+c.gameStart||0 };
+      c.gameEnd = Math.round(b.at + r*((+c.total||0) - b.from)/60) % 1440; }
     else if(f==="total"){ const m = String(t.value).trim().match(/^(\d+)(?::(\d{1,2}))?$/); if(!m){ flash("Write the length as h:mm, like 2:30."); renderPScreen(); return; }
-      const secs = (m[2]!=null ? (+m[1])*3600 + (+m[2])*60 : (+m[1])*60), fresh = !c.endsAt && Math.round(cdLeft(c))===Math.round(+c.total||0);
-      c.total = Math.max(60, secs); if(fresh) c.left = c.total; }
+      const secs = (m[2]!=null ? (+m[1])*3600 + (+m[2])*60 : (+m[1])*60);
+      delete c.finishBy; cdRetime(c, Math.max(60, secs)); if(!c.endsAt && !(+c.total - cdLeft(c) > 0)) c.planned = c.total; }
     else if(f) c[f] = t.value;
     else { const bell = c.bells.find(x=>x.id===t.dataset.id); if(!bell) return;
-      if(k==="rung") bell.rung = t.checked; else if(k==="at") bell.at = Math.max(0, Math.round(+t.value||0)); else bell[k] = t.value; }
+      if(k==="rung") bell.rung = t.checked; else if(k==="at"){ const a = cdBellAt(c, t.value); if(a==null){ flash(c.gameShow ? "Write a time like 10:30 pm, or minutes after the start." : "Write the minutes after the start."); renderPScreen(); return; } bell.at = Math.max(0, a); } else bell[k] = t.value; }
     cdSave(); sendCountdown(); cdReadouts();
-    if(f==="on" || f==="total" || k==="at" || k==="rung" || /^game/.test(f||"")) renderPScreen();
+    if(f==="on" || f==="total" || k==="at" || k==="rung" || f==="finishBy" || /^game/.test(f||"")) renderPScreen();
   });
   /* a browser only lets sound start after a click: the first one wakes the bell up (a clock left running over a reload) */
   document.addEventListener("pointerdown", ()=>{ const c = cdGet(); if(c && c.on && c.sound!==false) cdAudioOn(); }, { once:true });
