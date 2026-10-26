@@ -10671,7 +10671,9 @@ function takeDancer(ref){
   const party = new Set(combatants(c).filter(t=>t.side==="party").map(t=>t.id));
   const pool = c.dance.flat().filter(id=>!party.has(id)); if(!pool.length) return "No one was dancing there to take.";
   const id = pool[Math.floor(Math.random()*pool.length)];
+  const was = danceOf(c, id), partner = was && was.find(x=>x!==id);
   stopDance(c, id); (c.fallen = c.fallen || {})[id] = true;
+  if(partner) (c.dance = c.dance || []).push([partner]);       // their partner dances on alone
   let name = "Someone";
   if(String(id).startsWith("p:")){ const p = libNpcById(String(id).slice(2)); if(p){ name = p.name || name; p.conds = p.conds || []; if(!p.conds.includes("Unconscious")) p.conds.push("Unconscious"); markDirty(K_SURVEY); } }
   else { const t = combatants(c).find(x=>x.id===id); if(t){ name = t.label || name; if(t.x){ t.x.conds = t.x.conds || []; if(!t.x.conds.includes("Unconscious")) t.x.conds.push("Unconscious"); } } }
