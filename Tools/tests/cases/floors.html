@@ -29,7 +29,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
    document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, ...b })); await wait(10);
    document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointerup', { ...o, ...b })); await wait(80); };
  try{
-  loadJSONNow(JSON.stringify(__FL)); await wait(300); setDmMode(true); await wait(50);
+  loadJSONNow(JSON.stringify(__FL)); await wait(300); splitParty = true;   /* these check one member at a time going through (the default is now the whole room) */ setDmMode(true); await wait(50);
   enterPlan('h'); await wait(80);
   out.push('in: floor ' + curFloor() + ', bar ' + bar() + ', crumb ' + txt(document.getElementById('crumb')) + ', drawn ' + drawn());
   document.querySelector('#floorbar [data-floor="fu"]').click(); await wait(60);

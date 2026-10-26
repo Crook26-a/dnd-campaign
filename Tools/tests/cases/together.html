@@ -1,0 +1,43 @@
+// uses: nothing
+<script>
+/* the party sticks together through a door unless Split the party is ticked (Shift does the other), and the session
+   script goes to the part for the room they walk into */
+const __TG = { format:"ordinate-survey-v1", title:"Together Test", ppm:10, unit:"mi", party:3,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }, { id:"pc", name:"Cole Cedar", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb","pc"], at:{ map:"h", node:"hall" } }],
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:12, d:8, bmap:{ name:"The Hall", rows:["############","#..........#","#..........#","#..........D","#..........#","############"],
+      start:{ party:[[3,3],[4,3],[5,3]], enemy:[] }, exits:[{ x:11, y:3, to:"library", at:[1,3] }] } },
+    { id:"library", name:"The Library", kind:"archive", x:180, y:100, w:10, d:8, bmap:{ name:"The Library", rows:["##########","#........#","#........#","D........#","#........#","##########"],
+      start:{ party:[[2,3]], enemy:[] }, exits:[{ x:0, y:3, to:"hall", at:[10,3] }] } } ] } },
+  docs:[{ id:"d1", kind:"session", title:"Night", done:{}, md:"# Night\n\n## Arrival {5 min} {place: h/hall}\n\nThey arrive.\n\n## The library {place: h/library}\n\nBooks.\n\n## Back in the hall {place: h/hall}\n\nAgain.\n" }] };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const where = () => groupsOf().map(g=>g.members.join('+') + '@' + g.at.node).join(', ');
+ const sqClient = (x, y) => { const r = document.getElementById('bsvg').getBoundingClientRect(), b = bview, s = Math.max(b.w/r.width, b.h/r.height);
+   return { clientX: r.left + (r.width - b.w/s)/2 + ((x+.5)*BS - b.x)/s, clientY: r.top + (r.height - b.h/s)/2 + ((y+.5)*BS - b.y)/s }; };
+ const drag = async (tokId, x, y, shift) => { const t = document.querySelector(`#bsvg [data-tok="${tokId}"]`); if(!t) throw new Error('no token ' + tokId);
+   const p0 = bnode().site.combat.pos[tokId], a = sqClient(p0.x, p0.y), b = sqClient(x, y), o = { bubbles:true, pointerId:1, button:0, shiftKey:!!shift };
+   t.dispatchEvent(new PointerEvent('pointerdown', { ...o, ...a })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, clientX:(a.clientX+b.clientX)/2, clientY:(a.clientY+b.clientY)/2 })); await wait(10);
+   out.push('  dragging class while moving: ' + document.getElementById('bsvg').classList.contains('dragging'));
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, ...b })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointerup', { ...o, ...b })); await wait(100); };
+ try{
+  try{ localStorage.removeItem('ordinate-split'); }catch(err){} splitParty = false; scriptFollows = true;
+  loadJSONNow(JSON.stringify(__TG)); await wait(300); setDmMode(true); await wait(50);
+  pane = 'session'; syncTabs(); renderSession(); await wait(30);
+  enterPlan('h'); await wait(60); openBattle(doc.nodes.find(x=>x.id==='hall')); await wait(120);
+  out.push('boxes: split ' + !!document.querySelector('#pane-inspect [data-splitparty]') + ', follow ' + !!document.querySelector('#pane-inspect [data-scriptfollow]'));
+  await drag('pa', 11, 3);
+  out.push('Anna through the door (default): ' + where() + ', view ' + bnode().id + ', dragging class after ' + document.getElementById('bsvg').classList.contains('dragging'));
+  out.push('script lit: ' + txt(document.querySelector('#pane-session .rsrow.follow')));
+  await drag('pb', 0, 3, true); out.push('Bram back with Shift (just him): ' + where());
+  out.push('script lit: ' + txt(document.querySelector('#pane-session .rsrow.follow')));
+  const box = document.querySelector('#pane-inspect [data-splitparty]'); box.click(); await wait(40);
+  out.push('split ticked: ' + splitParty);
+  await drag('pa', 0, 3); out.push('Anna back (split): ' + where());
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

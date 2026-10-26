@@ -1,0 +1,10 @@
+boxes: split true, follow true
+dragging class while moving: true
+Anna through the door (default): pa+pb+pc@library, view library, dragging class after false
+script lit: The library 📍
+dragging class while moving: true
+Bram back with Shift (just him): pa+pc@library, pb@hall
+script lit: Arrival 5′ 📍
+split ticked: true
+dragging class while moving: true
+Anna back (split): pc@library, pb+pa@hall
