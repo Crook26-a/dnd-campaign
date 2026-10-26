@@ -9027,6 +9027,8 @@ const BTILES = {
   "t": { name:"Side table", fill:"#c9a56f", side:true, box:true },
   "n": { name:"Chair", fill:"#c9a56f", chair:true },
   "i": { name:"Lamp", fill:"#c9a56f", lamp:true, note:"Lit: bright light 15 ft, dim light 30 ft more (the SRD Lamp). Click it on the map to put it out or light it." },
+  "V": { name:"Chandelier (overhead)", fill:"#cfc6ad", chandelier:true, note:"Hangs overhead: walk under it. Lit: bright light 30 ft, dim light 30 ft more (no rule gives a chandelier's light: this app's own numbers). Click it on the map to put it out or light it." },
+  "y": { name:"Candelabrum", fill:"#cfc6ad", candles:true, note:"A tall stand of candles. Lit: bright light 10 ft, dim light 10 ft more (no rule gives it: a few SRD Candles together, this app's own numbers). Click it on the map to put it out or light it." },
   "X": { name:"Chest", fill:"#c9a56f", chest:true, box:true },
   "h": { name:"Hammock", fill:"#c9a56f", hammock:true, note:"Slung between the beams." },
   "L": { name:"Ladder", fill:"#c9a56f", ladder:true, note:"Up through the hatch to the deck." },
@@ -9212,7 +9214,7 @@ const BMAPS = {
 };
 const BMAP_ORDER = ["blank","docks","ship","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
 /* the paint tool's palette, in sets */
-const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiBkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
+const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiVyBkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
 /* inside a town, a building with no layout of its own gets its kind's default */
 const KIND_INTERIOR = { house:"hut", ruinlet:"hut", store:"shop", provision:"shop", apothecary:"shop", smith:"shop", healer:"shop",
   fence:"shop", office:"shop", trainer:"shop", archive:"shop", stall:"stall", tent:"tent", warehouse:"warehouse", tower:"tower", light:"tower", ship:"ship", stable:"shop_stables", coachhouse:"shop_stables" };
@@ -9652,6 +9654,16 @@ function bmapSvg(m, st, players){                    // st: the place — which 
     else if(t.lamp){ const lit = !(out && out[`${x},${y}`]);
       g += lit ? `<circle cx="${c}" cy="${cy}" r="${BS*.5}" fill="#ffd36b" opacity=".35"/><circle cx="${c}" cy="${cy}" r="${BS*.22}" fill="#c9a24a" stroke="#5e4b35" stroke-width="1.5"/><path d="M${c} ${cy-7} C${c+4} ${cy-2} ${c+3} ${cy+3} ${c} ${cy+3} C${c-3} ${cy+3} ${c-4} ${cy-2} ${c} ${cy-7}" fill="#ff9a2e"/>`
                : `<circle cx="${c}" cy="${cy}" r="${BS*.22}" fill="#8a8a80" stroke="#4a4a44" stroke-width="1.5"/><path d="M${c-4} ${cy-4} l8 8 M${c+4} ${cy-4} l-8 8" stroke="#4a4a44" stroke-width="1"/>`; }
+    else if(t.chandelier){ const lit = !(out && out[`${x},${y}`]);
+      g += (lit ? `<circle cx="${c}" cy="${cy}" r="${BS*.62}" fill="#fff0b8" opacity=".38"/>` : "")
+        + `<circle cx="${c}" cy="${cy}" r="${BS*.36}" fill="none" stroke="#a8752c" stroke-width="2"/><circle cx="${c}" cy="${cy}" r="${BS*.16}" fill="none" stroke="#a8752c" stroke-width="1.5"/>`
+        + [0,1,2,3,4,5,6,7].map(k=>{ const a = k*Math.PI/4, px = c+Math.cos(a)*BS*.36, py = cy+Math.sin(a)*BS*.36;
+            return `<path d="M${px} ${py-4} l3 4 -3 4 -3 -4z" fill="${lit ? "#e9e2ff" : "#9a98a8"}" stroke="#6b5a86" stroke-width=".7"/>`; }).join("")
+        + (lit ? `<circle cx="${c}" cy="${cy}" r="3" fill="#ffd36b"/>` : ""); }
+    else if(t.candles){ const lit = !(out && out[`${x},${y}`]);
+      g += (lit ? `<circle cx="${c}" cy="${cy}" r="${BS*.4}" fill="#ffd36b" opacity=".3"/>` : "")
+        + `<circle cx="${c}" cy="${cy+6}" r="5" fill="#8a6a3e" stroke="#3a2e1e"/><path d="M${c-9} ${cy} H${c+9} M${c} ${cy} V${cy+6}" stroke="#a8752c" stroke-width="2"/>`
+        + [-9,0,9].map(dx=>`<rect x="${c+dx-1.5}" y="${cy-8}" width="3" height="8" fill="#f3ead2" stroke="#8a7a5a" stroke-width=".5"/>` + (lit ? `<path d="M${c+dx} ${cy-14} c2 3 1 5 0 5 c-1 0 -2 -2 0 -5" fill="#ff9a2e"/>` : "")).join(""); }
     else if(t.chest) g += `<rect x="${X+5}" y="${Y+9}" width="${BS-10}" height="${BS-18}" rx="2" fill="#7b5a33" stroke="#3a2e1e" stroke-width="1.6"/><path d="M${X+5} ${Y+16} H${X+BS-5}" stroke="#3a2e1e" stroke-width="1.4"/><path d="M${X+11} ${Y+9} V${Y+BS-9} M${X+BS-11} ${Y+9} V${Y+BS-9}" stroke="#d9b45a" stroke-width="2"/><rect x="${c-3}" y="${Y+14}" width="6" height="6" fill="#d9b45a" stroke="#3a2e1e" stroke-width=".8"/>`;
     else if(t.hammock) g += `<path d="M${X+3} ${Y+6} Q${c} ${Y+BS-2} ${X+BS-3} ${Y+6}" fill="#e7dcc0" stroke="#5e4b35" stroke-width="1.5"/>`;
     else if(t.ladder) g += `<path d="M${X+10} ${Y+2} V${Y+BS-2} M${X+BS-10} ${Y+2} V${Y+BS-2} M${X+10} ${Y+10} H${X+BS-10} M${X+10} ${cy} H${X+BS-10} M${X+10} ${Y+BS-10} H${X+BS-10}" stroke="#5e4b35" stroke-width="2"/>`;
@@ -9713,8 +9725,10 @@ const LIGHT_KINDS = {
   lantern:{ name:"Hooded lantern", bright:30, dim:30, rule:"SRD Hooded Lantern: bright 30 ft, dim 30 ft more." },
   candle:{ name:"Candle", bright:5, dim:5, rule:"SRD Candle: bright 5 ft, dim 5 ft more." },
   light:{ name:"Light (the spell)", bright:20, dim:20, rule:"SRD Light: bright 20 ft, dim 20 ft more." }
+  ,chandelier:{ name:"Chandelier", bright:30, dim:30, rule:"No rule gives a chandelier's light. This app's own numbers: bright 30 ft, dim 30 ft more." }
+  ,candelabrum:{ name:"Candelabrum", bright:10, dim:10, rule:"No rule gives a candelabrum's light. This app's own numbers, a few Candles together: bright 10 ft, dim 10 ft more." }
 };
-const FIXTURE_LIGHT = { i:"lamp", p:"campfire" };          // lights painted into a map
+const FIXTURE_LIGHT = { i:"lamp", p:"campfire", V:"chandelier", y:"candelabrum" };          // lights painted into a map
 function opaqueAt(bm, st, x, y){
   if(!bm.rows || !bm.rows[y]) return false;
   const ch = bm.rows[y][x]; if(ch==null) return false;
@@ -10773,7 +10787,7 @@ const bend = e=>{
   /* a click on the floor (no drag) picks a container on the map: chest, barrel, crate, shelf, bed, desk… */
   if(d.pan && !bpaint && Math.hypot(e.clientX-d.sx, e.clientY-d.sy) < 5){ const n = bnode();
     if(n && (editingInside() || (n.site && n.site.combat && n.site.combat.layout!=="lineup"))){ const p = bpoint(e), s = { x:Math.floor(p.x/BS), y:Math.floor(p.y/BS) }, t = spotTile(bmapOf(n), s);
-      if(t && (t.lamp || t.fire)){ toggleLamp(n, s); return; }
+      if(t && (t.lamp || t.fire || t.chandelier || t.candles)){ toggleLamp(n, s); return; }
       if(t && t.door) return doorClick(n, s);
       battleSpot = t && (t.box || t.notice) ? s : null; renderBattle(); renderBattlePanel(); } return; }
   if(d.tok){
@@ -14367,6 +14381,8 @@ function showExitPop(n, i){
 /* the ways out on the DM's battle map: a small arrow pointing out, with where it goes */
 function exitMarks(n){
   const here = planOf || "survey"; let g = "";
+  /* a doorway two squares wide (or a stair four) is one way out: label only its first square */
+  const exs = exitsOf(n), quiet = exs.map((ex, i)=>exs.some((o, j)=>j < i && o.to===ex.to && (o.label||"")===(ex.label||"") && Math.abs(o.x-ex.x) <= 1 && Math.abs(o.y-ex.y) <= 1));
   exitsOf(n).forEach((ex, i)=>{ if(ex.x==null || ex.y==null || ex.x>=BW || ex.y>=BH) return;
     const d = [[ex.x, -1, 0], [BW-1-ex.x, 1, 0], [ex.y, 0, -1], [BH-1-ex.y, 0, 1]].sort((a, b)=>a[0]-b[0])[0], dx = d[1], dy = d[2];
     const cx = ex.x*BS + BS/2 + dx*BS*.3, cy = ex.y*BS + BS/2 + dy*BS*.3, ang = Math.atan2(dy, dx)*180/Math.PI, t = exitTarget(ex, here), lab = exitLabel(ex, here);
@@ -14378,7 +14394,7 @@ function exitMarks(n){
       : `<path d="M-4 0 H4 M1 -3 L4 0 L1 3" transform="rotate(${ang})" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
     g += `<g class="bexit" data-exit="${i}" data-exkind="${k}" transform="translate(${cx} ${cy})" style="cursor:pointer"><title>${esc(EXIT_KINDS[k])}${t ? ` to ${esc(lab)}` : ": leads nowhere yet"}${down && +ex.fall > 0 ? ` (a fall of ${+ex.fall} ft)` : ""}: drag someone onto this square to send them through (hold Shift: everyone in here with them), or click for more</title>
       <circle r="9" fill="${!t ? "#8a7a62" : down ? "#8a3b2a" : "#2f5d6b"}" stroke="#fff8e6" stroke-width="2"/>${glyph}
-      <text x="${dx*13}" y="${dy*15 + (dy===0 ? 4 : dy>0 ? 6 : 0)}" text-anchor="${dx>0 ? "start" : dx<0 ? "end" : "middle"}" font-family="var(--serif)" font-size="11" fill="#1d3c45" stroke="#fff8e6" stroke-width="3" paint-order="stroke" style="pointer-events:none">${esc(lab)}</text></g>`; });
+${quiet[i] ? "" : `      <text x="${dx*13}" y="${dy*15 + (dy===0 ? 4 : dy>0 ? 6 : 0)}" text-anchor="${dx>0 ? "start" : dx<0 ? "end" : "middle"}" font-family="var(--serif)" font-size="11" fill="#1d3c45" stroke="#fff8e6" stroke-width="3" paint-order="stroke" style="pointer-events:none">${esc(lab)}</text>`}</g>`; });
   return g;
 }
 /* the strip above the DM's battle map: every room the party is in, with their initials; click to look in there */

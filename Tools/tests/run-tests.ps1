@@ -81,6 +81,7 @@ function Build-Page($case) {
     else { [void]$page.Append('<script>const __MAP=null;const __SAVE=').Append($json).Append(';' + "`n") }
   }
   [void]$page.Append($body)
+  if ($kind -ne "nothing" -and $body -notmatch "</script>\s*$") { [void]$page.Append("`n</script>`n") }   # a map or save case is plain JS inside the open <script>: close it, or Edge never runs it
   $path = Join-Path $work ($case.BaseName + ".html")
   [IO.File]::WriteAllText($path, $page.ToString(), $utf8)
   return $path
