@@ -401,7 +401,6 @@
   .pzans{font-size:12.5px;margin:5px 0 3px;font-weight:600} .pzhow{font-size:12px} .pzhow p{margin:3px 0}
   .pzhint{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:2px 0} .pzhint.given{color:var(--ink-faint)} .pzhn{flex:0 0 14px;font-family:var(--mono)}
   .stgbox{border-left:3px solid var(--rule);padding:2px 0 2px 8px;margin:0 0 8px}
-  .whrow{display:flex;gap:4px;align-items:center;padding:3px 0;border-bottom:1px dotted var(--rule-soft);font-size:12.5px} .whrow small{display:block;color:var(--ink-faint);font-size:10.5px} .whrow.hid{background:rgba(217,180,90,.12)}
   .efline{border-left:3px solid var(--lead);padding:2px 0 2px 8px;margin:0 0 6px;font-size:12px} .efrow{margin:2px 0} .efrow .fdel{margin-left:4px}
   .efhint{font-style:italic;color:var(--ink-soft);margin:1px 0 0 8px}
   #saypop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:62;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
@@ -8375,6 +8374,70 @@ function placeSearchBox(st){
     <div class="pcrow">${rows.length>1?`<button class="btn" style="flex:1" data-psroll="all">Roll for everyone</button>`:""}<button class="btn" style="flex:1" data-psearch title="Everyone with a total searches; blank ones don't">Search</button></div>
     ${battleOf ? `<p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Each finds only what they can see from where they stand on the map. Dim light is Lightly Obscured: Disadvantage on Perception checks to see things there; darkness hides them from anyone without Darkvision or a light (2024 rules).</p>` : ""}</div>`;
 }
+/* ── Loot here: a place's coin, its items (what each is in, its square, how hard to find) and the search; the same block
+   on the place's card and beside its battle map. redraw puts back whichever is showing ── */
+function lootWhere(n, st, id){
+  const at = (st.where||{})[id]; if(!at) return "";
+  const [x, y] = at.split(",").map(Number), own = (st.spotNames||{})[at], t = spotTile(bmapOf(n), { x, y });
+  return ` <small>· ${own ? esc(own) : `in a ${esc(((t||{}).name||"container").toLowerCase())}`}, ${sqName(x, y)}</small>${battleOf ? ` <button class="btn small" data-wh="go" data-at="${esc(at)}" title="Pick it on the map">${sqName(x, y)}</button>` : ""}`;
+}
+function lootHere(n, st, reg){
+  const items = (st&&st.items)||[], pc = st&&st.loot ? (st.loot.purse ?? st.loot.coin) : 0, purse = PURSES.find(p=>p.cat===pc);
+  const left = !!(st && st.coins && purseGp(coinsOf(st.coins)));
+  const searched = st && (st.searches||[]).length, hidTag = dc => `<small class="ivst">${searched?"hidden":"not searched"} · DC ${dc}</small>`;
+  const who = partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")}</option>`).join("");
+  let h = `<p class="eyebrow spaced">Loot here</p>` + (st ? bodiesBlock(st) : "")
+    + (purse&&pc ? `<div class="sbl"><b>Coin</b> ${esc(purse.dice)} <small>(${esc(purse.name)})</small> ${coinShown(st) ? (+st.coinDc?`<small class="ivst found">found</small>`:"") : hidTag(+st.coinDc)}
+          <select class="pl-dc" id="pl-cdc" title="How hard the coins are to find">${dcOptions(st.coinDc)}</select></div>`
+        + (partySize()>1 && coinShown(st) ? `<button class="btn wide" id="pl-coins" style="margin:3px 0 6px">Roll it and split among the party</button>` : "") : "")
+    + (left ? `<div class="sbl"><b>Coin left here</b> ${COINS.filter(([k])=>st.coins[k]).map(([k])=>`${st.coins[k]} ${k}`).join(", ")}</div>`
+        + (partySize()>1 ? `<button class="btn wide" id="pl-coinsplit" style="margin:3px 0 6px">Split it among the party</button>` : "") : "")
+    + items.map((id,i)=>{ if(n.shop && (n.shop.items||[]).includes(id)) return "";        // for sale, listed under the shop
+        const x = libLootById(id), dc = itemDc(st,id), shown = itemShown(st,id);
+        return `<div class="librow${partySize()>1?" give":""}"><span><span class="libref" data-libopen="loot:${baseId(id)}">${x?esc(x.name):"<i>missing from the library</i>"}</span>${x&&lootLabel(x)?` <small>· ${esc(lootLabel(x))}</small>`:""}${lootWhere(n, st, id)}
+            ${shown ? (dc?`<small class="ivst found">found</small>`:"") : hidTag(dc)}${dc ? ` <button class="btn small${shown ? " on" : ""}" data-wh="found" data-id="${esc(id)}" title="${shown ? "Not found after all: hidden again" : "They found it"}">${shown ? "Found" : "Mark found"}</button>` : ""}
+            <select class="pl-dc" data-gi="${i}" title="How hard it is to find. Plain sight: the players can just take it.">${dcOptions(dc)}</select></span>
+          ${partySize()>1 ? (shown ? `<select class="giveto" data-gi="${i}" title="Hand it to a character"><option value="">Give to…</option>${who}</select>` : `<span class="ivst" style="text-align:center">not found</span>`) : ""}
+          <button class="fdel" data-plitemdel="${i}" title="Remove">×</button></div>`; }).join("")
+    + (st && searched ? `<div class="ivlog">Searched by ${st.searches.map(s=>`${esc(s.who)} <b>${s.roll}</b>`).join(", ")}</div>` : "")
+    + (st ? placeSearchBox(st) : "")
+    + (!items.length&&!(purse&&pc)&&!left&&!(st&&(st.bodies||[]).length) ? `<p class="empty-note" style="margin:0 0 6px">Nothing yet.</p>` : "")
+;
+  if(st){ const w = lootWorth(st, (reg&&reg.threat)||1); if(w.total) h += `<div class="worth"><div><b>${cpStr(w.total)}</b> here all told</div></div>`; }
+  return h;
+}
+function wireLootHere(el, n, st, redraw){
+  if(!st) return;
+  const pc = st.loot ? (st.loot.purse ?? st.loot.coin) : 0;
+  el.querySelectorAll("[data-plitemdel]").forEach(b=>b.onclick = ()=>{ const id = n.site.items.splice(+b.dataset.plitemdel,1)[0]; forgetItem(n.site, id); touch(); redraw(); });
+  /* handing loot over moves it from the place into that character's inventory */
+  /* a place's coin: roll the dice, share it out evenly, odd coins one at a time from the top */
+  const pcn = el.querySelector("#pl-coins");
+  if(pcn) pcn.onclick = ()=>{
+    const P = PURSES.find(p=>p.cat===pc), m = P && /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|ep|gp|pp)/.exec(P.dice); if(!m) return;
+    let total = 0; for(let k=0;k<+m[1];k++) total += 1 + Math.floor(Math.random()*+m[2]);
+    total *= +(m[3]||1);
+    const unit = m[4], pcs = partyRoster(), each = Math.floor(total/pcs.length), extra = total - each*pcs.length;
+    partyDoing(`Coin split (${total} ${unit})`);
+    pcs.forEach((p,k)=>{ const pu = purseOf(p); pu[unit] += each + (k<extra?1:0); });
+    delete n.site.loot.purse; delete n.site.loot.coin; delete n.site.coinDc; delete n.site.coinFound;
+    saveParty(); touch(); redraw();
+    flash(`Rolled ${total} ${unit}: ${each} each${extra?`, ${extra} odd coin${extra===1?"":"s"} to ${pcs.slice(0,extra).map(p=>p.name||"Character").join(", ")}`:""}.`);
+  };
+  /* hidden loot: set how hard each thing is to find, and search the place for it */
+  el.querySelectorAll(".pl-dc[data-gi]").forEach(s=>s.onchange = ()=>{ const id = st.items[+s.dataset.gi]; if(!id) return; setItemDc(st, id, +s.value||0); touch(); redraw(); });
+  const cdc = el.querySelector("#pl-cdc"); if(cdc) cdc.onchange = ()=>{ const v = +cdc.value||0; if(v) st.coinDc = v; else delete st.coinDc; delete st.coinFound; touch(); redraw(); };
+  const csp = el.querySelector("#pl-coinsplit");
+  if(csp) csp.onclick = ()=>{ partyDoing("Coin split"); const said = splitCoins(st.coins); delete st.coins; saveParty(); touch(); redraw(); flash(`${said} split among the party.`); };
+  el.querySelectorAll(".giveto").forEach(s=>s.onchange = ()=>{
+    const p = partyRoster().find(q=>q.id===s.value); if(!p) return;
+    const id = n.site.items.splice(+s.dataset.gi,1)[0]; if(!id) return; forgetItem(n.site, id);
+    partyDoing(`${(libLootById(id)||{}).name||"Item"} given`, p);
+    p.inv = Array.isArray(p.inv) ? p.inv : []; p.inv.push({ id:baseId(id), from:placeLabel(n), at:today() });
+    saveParty(); touch(); redraw();
+    flash(`${(libLootById(id)||{}).name||"Item"} goes to ${p.name||"them"}.`);
+  });
+}
 function wirePlaceSearch(el, n, after){
   const box = el.querySelector(".psbox"); if(!box) return;
   const w = box.querySelector(".ps-who"); if(w) w.onchange = ()=>{ psearch.who = w.value; after(); };
@@ -10546,34 +10609,15 @@ function toggleLamp(n, s){
    which square it's in, "x,y". Click a container (not while painting) to fill it, search it, hand out
    what's found. The players' screen never shows what's inside. ── */
 var battleSpot = null;                                   // { x, y } — the container picked on the battle map
-/* what's in this room, for the DM (Joseph, 2026-10-27): every item, where it is (the square and what it's in), whether
-   it's hidden and how hard to find, and whether it's been found; the coin too. Found toggles it by hand; the square
-   button picks it on the map (its container, if it's in one) */
-function whatsHere(n){
-  const st = n.site || {}, items = [...new Set(Array.isArray(st.items) ? st.items : [])], piles = Object.entries(st.coinsAt||{}), coin = placeCoin(st);
-  if(!items.length && !piles.length && !coin) return "";
-  const count = id => (st.items||[]).filter(q=>q===id).length;
-  const row = (id) => { const it = libLootById(id) || {}, at = (st.where||{})[id], dc = itemDc(st, id), shown = itemShown(st, id);
-    const [x, y] = at ? at.split(",").map(Number) : [];
-    const spot = at ? ((st.spotNames||{})[at] || "") : "";
-    return `<div class="whrow${shown ? "" : " hid"}"><span style="flex:1;min-width:0"><span class="libref" data-libopen="loot:${esc(baseId(id))}">${esc(it.name||id)}</span>${count(id)>1 ? ` ×${count(id)}` : ""}
-        <small>${at ? `${esc(spot ? spot + " · " : "")}${sqName(x, y)}` : "anywhere in the room"}${dc ? ` · hidden, DC ${dc}${shown ? " · found" : ""}` : " · in plain sight"}</small></span>
-      ${at ? `<button class="btn small" data-wh="go" data-at="${esc(at)}" title="Pick its square on the map">${sqName(x, y)}</button>` : ""}
-      ${dc ? `<button class="btn small${shown ? " on" : ""}" data-wh="found" data-id="${esc(id)}" title="${shown ? "Hide it again: not found yet" : "They found it"}">${shown ? "Found" : "Hidden"}</button>` : ""}</div>`; };
-  const hid = items.filter(id=>!itemShown(st, id)).length;
-  return `<details class="pcset whhere" data-invfor="whhere" ${openInv.has("whhere") || !openInv.has("whhere:shut") ? "open" : ""}><summary>What's in here <small>${items.length} item${items.length===1?"":"s"}${hid ? ` · ${hid} hidden` : ""}${coin || piles.length ? " · coin" : ""}</small></summary>
-    ${items.map(row).join("")}
-    ${coin ? `<div class="whrow${coinShown(st) ? "" : " hid"}"><span style="flex:1">Coin: ${esc(cpStr ? cpStr(coin) : String(coin))} <small>${+st.coinDc ? `hidden, DC ${st.coinDc}${coinShown(st) ? " · found" : ""}` : "in plain sight"}</small></span></div>` : ""}
-    ${piles.map(([k, p])=>{ const [x, y] = k.split(",").map(Number); return `<div class="whrow${pileShown(p) ? "" : " hid"}"><span style="flex:1">${esc(pileWord(p))} <small>${esc((st.spotNames||{})[k] ? st.spotNames[k] + " · " : "")}${sqName(x, y)}${+p.dc ? ` · hidden, DC ${p.dc}${pileShown(p) ? " · found" : ""}` : ""}</small></span><button class="btn small" data-wh="go" data-at="${k}">${sqName(x, y)}</button></div>`; }).join("")}</details>`;
-}
+/* Loot here's buttons (Joseph, 2026-10-27): an item's square, picked on the battle map; found by hand */
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-wh]"); if(!b) return;
-  const n = bnode(); if(!n) return; const st = n.site = n.site || {};
-  if(b.dataset.wh==="go"){ const [x, y] = b.dataset.at.split(",").map(Number); battleSpot = { x, y }; renderBattle(); renderBattlePanel(); return; }
+  const n = battleOf ? bnode() : (sel && sel.kind==="node" ? nodeById(sel.id) : null); if(!n) return; const st = n.site = n.site || {};
+  const redraw = () => { if(battleOf){ renderBattle(); renderBattlePanel(); } else renderPlay(); };
+  if(b.dataset.wh==="go"){ if(!battleOf) return; const [x, y] = b.dataset.at.split(",").map(Number); battleSpot = { x, y }; return redraw(); }
   if(b.dataset.wh==="found"){ const id = b.dataset.id; st.found = st.found || {};
     if(st.found[id]) delete st.found[id]; else { st.found[id] = true; gameLog("search", `Found ${(libLootById(id)||{}).name || id} at ${placeLabel(n)}`); }
-    touch(); renderBattle(); renderBattlePanel(); }
+    touch(); redraw(); }
 });
-document.addEventListener("toggle", e=>{ const d = e.target; if(!d.classList || !d.classList.contains("whhere")) return; if(d.open){ openInv.delete("whhere:shut"); } else openInv.add("whhere:shut"); }, true);
 const spotKey = s => `${s.x},${s.y}`;
 /* a square's name, as the players call it: letters across (A…Z, AA…), numbers down — "C7" */
 const colName = x => (x >= 26 ? colName(Math.floor(x/26) - 1) : "") + String.fromCharCode(65 + x%26);
@@ -11960,7 +12004,7 @@ function calmTop(n, st, c, all){
     <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
     <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p>
     ${n.shop ? `<div class="shopbattle">${shopBlock(n)}</div>` : ""}
-    ${lightRow(n)}${spotPanel(n)}${whatsHere(n)}${placeSearchBox(st)}
+    ${lightRow(n)}${spotPanel(n)}${lootHere(n, st, null)}
     <p class="grouplab">Who's here <small>click one, or their token</small></p>
     ${all.map(t=>row(t.id, t.label, t.side==="party" ? "party" : t.side==="enemy" ? (t.kind==="foe" && t.x.dormant ? "dormant" : "hostile") : t.side==="neutral" ? "neutral" : "")).join("")}
     ${by.map(b=>row(b.id, b.p.name||"Someone", b.p.role ? String(b.p.role).split(" · ")[0].toLowerCase() : "here")).join("")}`;
@@ -11980,8 +12024,7 @@ function renderBattlePanelNow(){
     ${wakeNextBtn(c)}
     ${lightRow(n)}
     ${spotPanel(n)}
-    ${whatsHere(n)}
-    ${placeSearchBox(st)}
+    ${lootHere(n, st, null)}
     <div class="pcrow bt-turnctl"><button class="btn" style="flex:1" data-ba="init">Roll initiative</button><button class="btn" style="flex:1" data-ba="next">Next turn</button></div>
     <div class="pcrow"><button class="btn" style="flex:1" data-ba="layout">${c.layout==="lineup"?"Show the battle map":"Show a simple lineup"}</button></div>
     <p class="grouplab">Turn order${Array.isArray(c.order)&&c.order.length?` <i>· arranged by hand</i>`:""}</p>
@@ -12038,7 +12081,7 @@ function renderBattlePanelNow(){
     : `<div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-fa="recharge">Roll recharges</button><button class="btn" style="flex:1" data-fa="end" title="Lays out the fallen to search, then it's calm again here">End the battle</button></div>
     <button class="btn wide" data-ba="back">Back to the map</button>`;
   el.innerHTML = h;
-  wireSpotPanel(el, n); wireLightRow(el, n); wireStealthRow(el, c); wireDance(el, c); wirePlaceSearch(el, n, ()=>{ renderBattle(); renderBattlePanel(); });
+  wireSpotPanel(el, n); wireLightRow(el, n); wireStealthRow(el, c); wireDance(el, c); wirePlaceSearch(el, n, ()=>{ renderBattle(); renderBattlePanel(); }); wireLootHere(el, n, n.site, ()=>{ renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-bremove]").forEach(b=>b.onclick = ()=>{ const nm = removeFromMap(c, n, b.dataset.bremove); if(!nm) return;
     touch(); renderBattle(); renderBattlePanel(); flash(`${nm} removed from here.`); });
   el.querySelectorAll("[data-bystand]").forEach(b=>b.onclick = ()=>{
@@ -12209,28 +12252,7 @@ function renderPlayNow(){
       <div class="pcrow"><select id="pl-bmap" style="flex:1;min-width:0" title="The ground a fight here happens on">${bmapChoices().map(([k, l])=>`<option value="${k}" ${k===key?"selected":""}>${esc(l)}</option>`).join("")}${key==="own"?`<option value="own" selected>${esc(m.name||"This place's own")}${n.bmap&&n.bmap.by?"":" (painted)"}</option>`:""}</select>
         <button class="btn" id="pl-bopen" title="Opens the map: everyone here, calm until you press Start the battle">${going?"Back to it":"Open it"}</button></div>`; }
 
-  const items = (st&&st.items)||[], pc = st&&st.loot ? (st.loot.purse ?? st.loot.coin) : 0, purse = PURSES.find(p=>p.cat===pc);
-  const left = !!(st && st.coins && purseGp(coinsOf(st.coins)));
-  const searched = st && (st.searches||[]).length, hidTag = dc => `<small class="ivst">${searched?"hidden":"not searched"} · DC ${dc}</small>`;
-  const who = partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")}</option>`).join("");
-  h += `<p class="eyebrow spaced">Loot here</p>` + (st ? bodiesBlock(st) : "")
-    + (purse&&pc ? `<div class="sbl"><b>Coin</b> ${esc(purse.dice)} <small>(${esc(purse.name)})</small> ${coinShown(st) ? (+st.coinDc?`<small class="ivst found">found</small>`:"") : hidTag(+st.coinDc)}
-          <select class="pl-dc" id="pl-cdc" title="How hard the coins are to find">${dcOptions(st.coinDc)}</select></div>`
-        + (partySize()>1 && coinShown(st) ? `<button class="btn wide" id="pl-coins" style="margin:3px 0 6px">Roll it and split among the party</button>` : "") : "")
-    + (left ? `<div class="sbl"><b>Coin left here</b> ${COINS.filter(([k])=>st.coins[k]).map(([k])=>`${st.coins[k]} ${k}`).join(", ")}</div>`
-        + (partySize()>1 ? `<button class="btn wide" id="pl-coinsplit" style="margin:3px 0 6px">Split it among the party</button>` : "") : "")
-    + items.map((id,i)=>{ if(n.shop && (n.shop.items||[]).includes(id)) return "";        // for sale, listed under the shop
-        const x = libLootById(id), dc = itemDc(st,id), shown = itemShown(st,id);
-        return `<div class="librow${partySize()>1?" give":""}"><span><span class="libref" data-libopen="loot:${baseId(id)}">${x?esc(x.name):"<i>missing from the library</i>"}</span>${x&&lootLabel(x)?` <small>· ${esc(lootLabel(x))}</small>`:""}${st.where&&st.where[id]?` <small>· in a ${esc((spotTile(bmapOf(n), { x:+st.where[id].split(",")[0], y:+st.where[id].split(",")[1] })||{name:"container"}).name.toLowerCase())} on its map</small>`:""}
-            ${shown ? (dc?`<small class="ivst found">found</small>`:"") : hidTag(dc)}
-            <select class="pl-dc" data-gi="${i}" title="How hard it is to find. Plain sight: the players can just take it.">${dcOptions(dc)}</select></span>
-          ${partySize()>1 ? (shown ? `<select class="giveto" data-gi="${i}" title="Hand it to a character"><option value="">Give to…</option>${who}</select>` : `<span class="ivst" style="text-align:center">not found</span>`) : ""}
-          <button class="fdel" data-plitemdel="${i}" title="Remove">×</button></div>`; }).join("")
-    + (st && searched ? `<div class="ivlog">Searched by ${st.searches.map(s=>`${esc(s.who)} <b>${s.roll}</b>`).join(", ")}</div>` : "")
-    + (st ? placeSearchBox(st) : "")
-    + (!items.length&&!(purse&&pc)&&!left&&!(st&&(st.bodies||[]).length) ? `<p class="empty-note" style="margin:0 0 6px">Nothing yet.</p>` : "")
-;
-  if(st){ const w = lootWorth(st, (reg&&reg.threat)||1); if(w.total) h += `<div class="worth"><div><b>${cpStr(w.total)}</b> here all told</div></div>`; }
+  h += lootHere(n, st, reg);
   h += adderBlock(n);
 
   h += `<div class="field" style="margin-top:12px"><label>Session notes</label>
@@ -12256,35 +12278,8 @@ function renderPlayNow(){
   const bop = $("#pl-bopen"); if(bop) bop.onclick = ()=>askEnter(n);
   if(st) wireFight(n, st);
   const aw = $("#pl-award"); if(aw) aw.onclick = ()=>{ awardXP(+aw.dataset.xp, "split", placeLabel(n)); pane = "party"; syncTabs(); renderPane(true); };
-  el.querySelectorAll("[data-plitemdel]").forEach(b=>b.onclick = ()=>{ const id = n.site.items.splice(+b.dataset.plitemdel,1)[0]; forgetItem(n.site, id); touch(); renderPlay(); });
-  /* handing loot over moves it from the place into that character's inventory */
-  /* a place's coin: roll the dice, share it out evenly, odd coins one at a time from the top */
-  const pcn = $("#pl-coins");
-  if(pcn) pcn.onclick = ()=>{
-    const P = PURSES.find(p=>p.cat===pc), m = P && /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|ep|gp|pp)/.exec(P.dice); if(!m) return;
-    let total = 0; for(let k=0;k<+m[1];k++) total += 1 + Math.floor(Math.random()*+m[2]);
-    total *= +(m[3]||1);
-    const unit = m[4], pcs = partyRoster(), each = Math.floor(total/pcs.length), extra = total - each*pcs.length;
-    partyDoing(`Coin split (${total} ${unit})`);
-    pcs.forEach((p,k)=>{ const pu = purseOf(p); pu[unit] += each + (k<extra?1:0); });
-    delete n.site.loot.purse; delete n.site.loot.coin; delete n.site.coinDc; delete n.site.coinFound;
-    saveParty(); touch(); renderPlay();
-    flash(`Rolled ${total} ${unit}: ${each} each${extra?`, ${extra} odd coin${extra===1?"":"s"} to ${pcs.slice(0,extra).map(p=>p.name||"Character").join(", ")}`:""}.`);
-  };
-  /* hidden loot: set how hard each thing is to find, and search the place for it */
-  el.querySelectorAll(".pl-dc[data-gi]").forEach(s=>s.onchange = ()=>{ const id = st.items[+s.dataset.gi]; if(!id) return; setItemDc(st, id, +s.value||0); touch(); renderPlay(); });
-  const cdc = $("#pl-cdc"); if(cdc) cdc.onchange = ()=>{ const v = +cdc.value||0; if(v) st.coinDc = v; else delete st.coinDc; delete st.coinFound; touch(); renderPlay(); };
+  wireLootHere(el, n, st, renderPlay);
   if(st) wirePlaceSearch(el, n, renderPlay);
-  const csp = $("#pl-coinsplit");
-  if(csp) csp.onclick = ()=>{ partyDoing("Coin split"); const said = splitCoins(st.coins); delete st.coins; saveParty(); touch(); renderPlay(); flash(`${said} split among the party.`); };
-  el.querySelectorAll(".giveto").forEach(s=>s.onchange = ()=>{
-    const p = partyRoster().find(q=>q.id===s.value); if(!p) return;
-    const id = n.site.items.splice(+s.dataset.gi,1)[0]; if(!id) return; forgetItem(n.site, id);
-    partyDoing(`${(libLootById(id)||{}).name||"Item"} given`, p);
-    p.inv = Array.isArray(p.inv) ? p.inv : []; p.inv.push({ id:baseId(id), from:placeLabel(n), at:today() });
-    saveParty(); touch(); renderPlay();
-    flash(`${(libLootById(id)||{}).name||"Item"} goes to ${p.name||"them"}.`);
-  });
   $("#pl-notes").oninput = e=>{ n.dmNotes = e.target.value; touch(); };
 }
 
