@@ -401,6 +401,7 @@
   .pzans{font-size:12.5px;margin:5px 0 3px;font-weight:600} .pzhow{font-size:12px} .pzhow p{margin:3px 0}
   .pzhint{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:2px 0} .pzhint.given{color:var(--ink-faint)} .pzhn{flex:0 0 14px;font-family:var(--mono)}
   .stgbox{border-left:3px solid var(--rule);padding:2px 0 2px 8px;margin:0 0 8px}
+  .efline{border-left:3px solid var(--lead);padding:2px 0 2px 8px;margin:0 0 6px;font-size:12px} .efrow{margin:2px 0} .efrow .fdel{margin-left:4px}
   #saypop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:62;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
   #pzpop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:61;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
   .pzread{font-family:var(--serif);font-size:14px;line-height:1.45} .pzread p{margin:4px 0} .pzfx{font-size:12px;margin:8px 0 0}
@@ -1534,7 +1535,7 @@ for(const x of SRD_LOOT){
           : /\(\+/.test(x.rarity) ? gps.map(v=>v.toLocaleString()).join(" / ")
           : `${Math.min(...gps).toLocaleString()}–${Math.max(...gps).toLocaleString()}`) + " gp";
 }
-const foeById = id => (typeof id==="string" && id.startsWith("npc:")) ? npcAsFoe(fightPerson(libNpcById(id.slice(4))))
+const foeById = id => (typeof id==="string" && id.startsWith("npc:")) ? (p=>withEffects(npcAsFoe(fightPerson(p)), p))(libNpcById(id.slice(4)))
   : BESTIARY.find(m => m.id === id) || libFoeById(id) || SRD_FOE_BY.get(id) || null;
 /* a person from the library who fights with their own sheet: read their sheet as a stat block,
    so a fight treats them like any foe — hit points, actions, initiative, saves, what they carry */
@@ -1576,9 +1577,16 @@ function npcAsFoe(p){
 const npcFightId = p0 => { const p = fightPerson(p0); return !p ? "" : p.fightsAs==="self" ? `npc:${p.id}` : (p.fightsAs||""); };
 /* who they are in a fight, at the stage they're at: the stage's own sheet, or the stat block it fights as, or as written */
 function fightPerson(p){
-  const s = typeof stageOf==="function" && stageOf(p); if(!s || !s.fightsAs) return p;
-  if(s.fightsAs==="sheet") return s.sheet ? { ...p, ...s.sheet, id:p.id, name:p.name, fightsAs:"self" } : p;
-  return { ...p, fightsAs:s.fightsAs, hpMax:"", statBlock:null };              // a stat block's own hit points, not theirs
+  if(!p) return p;
+  const s = typeof stageOf==="function" && stageOf(p);
+  if(s && s.fightsAs==="sheet") return s.sheet ? { ...p, ...s.sheet, id:p.id, name:p.name, fightsAs:"self" } : p;
+  /* a stat block (the stage's, or theirs once something has happened to them): read as their own, with none of their
+     own numbers showing through, so they're still themselves in the fight and their effects still count */
+  const as = s && s.fightsAs ? s.fightsAs : p.fightsAs && p.fightsAs!=="self" && effectsOf(p).length ? p.fightsAs : "";
+  const b = as && foeById(as); if(!b) return p;
+  const o = { ...p, fightsAs:"self", statBlock:JSON.parse(JSON.stringify(b)), cr:"", attacks:[] };
+  for(const k of ["ac","hpMax","hp","init","speed","str","dex","con","int","wis","cha","saves","senses","pp","defenses"]) o[k] = "";
+  return o;
 }
 /* XP by challenge rating */
 const CR_XP = { 0:10, 0.125:25, 0.25:50, 0.5:100, 1:200, 2:450, 3:700, 4:1100, 5:1800, 6:2300, 7:2900,
@@ -7386,6 +7394,7 @@ function libForm(cat, x){
       ${t("voice","Voice","1","Calls everyone \"minnow\"")}
       ${ta("wants","Wants")}${ta("knows","Knows")}
       ${draft ? "" : stagesBlock(x)}
+      ${draft ? "" : effectsBlock(x)}
       ${ta("backstory","Backstory","Where they're from, how they came to this, what they hope for…",3)}
       <div class="pcrow" style="align-items:center;margin:-4px 0 8px"><button class="btn" ${a} data-libact="rollstory" title="Roll a short backstory (it replaces what's there)">🎲 Roll a backstory</button>
         <label class="check" style="flex:1;margin:0" title="Nobody yet: Give them a name, on an enemy's card, can make them that enemy"><input ${a} data-f="spare" type="checkbox" ${x.spare?"checked":""}> A spare: nobody yet</label></div>
@@ -7734,6 +7743,106 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   else if(b.dataset.stg==="del"){ const s = p.stages.find(q=>q.id===b.dataset.sid); if(s && !confirm(`Remove the stage "${s.name||"unnamed"}"?`)) return;
     p.stages = p.stages.filter(q=>q.id!==b.dataset.sid); if(p.stageNow===b.dataset.sid) delete p.stageNow; }
   saveParty(); renderLibList(); });
+/* ── effects on a person (Joseph, 2026-10-27): things done to them that stack, whatever stage they're at (a ward broken
+   weakens the warlock who made it). Each changes ability modifiers, saves, every DC and attack roll in their actions,
+   and their maximum hit points (dice rolled once, when it lands), and can carry a rule of its own. In a fight their
+   stat block has them all, with a "Weakened" line saying what and why. p.effects: [{ id, name, from, abil:{ str…cha },
+   save:{ str…cha }, dc, atk, hp:"-1d6", hpRoll, rule }] ── */
+const ABN = { str:"Str", dex:"Dex", con:"Con", int:"Int", wis:"Wis", cha:"Cha" };
+const effectsOf = p => (p && Array.isArray(p.effects)) ? p.effects.filter(e=>e && e.on!==false) : [];
+const sgnN = n => (n>=0 ? "+" : "−") + Math.abs(n);
+const sgnT = n => (n>=0 ? "+" : "-") + Math.abs(n);           // in stat block text, as the SRD writes it
+function effectTotals(p){
+  const t = { abil:{}, save:{}, dc:0, atk:0, hp:0 };
+  for(const e of effectsOf(p)){ for(const k of ABK){ t.abil[k] = (t.abil[k]||0) + (+((e.abil||{})[k])||0); t.save[k] = (t.save[k]||0) + (+((e.save||{})[k])||0); }
+    t.dc += +e.dc||0; t.atk += +e.atk||0; t.hp += +e.hpRoll||0; }
+  return t;
+}
+/* what an effect does, in words */
+function effectWords(e){
+  const ab = ABK.filter(k=>+((e.abil||{})[k])), sv = ABK.filter(k=>+((e.save||{})[k])), out = [];
+  for(const k of ab) out.push(`${ABN[k]} modifier ${sgnN(+e.abil[k])}`);
+  const bySave = {}; for(const k of sv){ const v = sgnN(+e.save[k]); (bySave[v] = bySave[v] || []).push(ABN[k]); }
+  for(const [v, ks] of Object.entries(bySave)) out.push(`${ks.join(" and ")} saves ${v}`);
+  if(+e.dc) out.push(`DCs ${sgnN(+e.dc)}`); if(+e.atk) out.push(`attack rolls ${sgnN(+e.atk)}`);
+  if(+e.hpRoll) out.push(`max HP ${sgnN(+e.hpRoll)}${e.hp && /d/i.test(e.hp) ? ` (${String(e.hp).replace(/^[+-]/, "")})` : ""}`);
+  if(e.rule) out.push(e.rule);
+  return out.join("; ");
+}
+/* their stat block with everything done to them */
+function withEffects(f, p){
+  const E = effectsOf(p); if(!f || !E.length) return f;
+  const t = effectTotals(p), o = { ...f }, ab0 = Array.isArray(f.ab) ? f.ab : [];
+  o.ab = ABK.map((k, j)=>ab0[j]==null ? (t.abil[k] ? 10 + 2*t.abil[k] : ab0[j]) : +ab0[j] + 2*(t.abil[k]||0));
+  const listed = {}; String(f.sav||"").split(",").forEach(part=>{ const mm = /(Str|Dex|Con|Int|Wis|Cha)\w*\s*([+-]\s*\d+)/i.exec(part); if(mm) listed[mm[1].slice(0,3).toLowerCase()] = +mm[2].replace(/\s+/g,""); });
+  const sv = []; for(const k of ABK){ const d = (t.save[k]||0) + (t.abil[k]||0);
+    if(listed[k]!=null) sv.push(`${ABN[k]} ${sgnT(listed[k] + d)}`);
+    else if(t.save[k]) sv.push(`${ABN[k]} ${sgnT(modOf(o.ab[ABK.indexOf(k)]) + t.save[k])}`); }
+  o.sav = sv.join(", ");
+  if(t.dc || t.atk){
+    const fix = s => String(s||"").replace(/\bDC (\d+)/g, (a, n)=>`DC ${+n + t.dc}`).replace(/(Attack Roll:\s*)([+-]\d+)/gi, (a, l, n)=>l + sgnT(+n + t.atk))
+      .replace(/([+-]\d+)( to hit)/gi, (a, n, l)=>sgnT(+n + t.atk) + l).replace(/\b(attack )([+-]\d+)/gi, (a, l, n)=>l + sgnT(+n + t.atk));
+    const tx = v => !Array.isArray(v) ? v : v.length && typeof v[0]==="string" ? [v[0], fix(v[1])] : v.map(x=>Array.isArray(x) ? [x[0], fix(x[1])] : x);
+    for(const k of ["act","bon","rea","tr"]) if(o[k]) o[k] = tx(o[k]);
+  }
+  if(t.hp){ const h = foeMaxHp(f); if(h) o.hp = Math.max(1, h + t.hp); }
+  o.tr = [...pairs(o.tr), ["Weakened", E.map(e=>`${e.name||"An effect"}${e.from ? ` (${e.from})` : ""}: ${effectWords(e)}`).join(" · ")]];
+  return o;
+}
+/* the fights they're in now: their hit points follow a change to their maximum */
+function effectHpNow(p, d){
+  if(!d) return;
+  for(const [, nodes] of allMapNodes()) for(const n of nodes){ const c = n.site && n.site.combat; if(!c) continue;
+    for(const x of c.list||[]) if(x.npc===p.id && x.max!=null){ x.max = Math.max(1, x.max + d); x.hp = Math.max(0, Math.min(x.max, x.hp + Math.min(0, d))); } }
+}
+/* put one on them (from the Library, or a puzzle solved): its hit point dice rolled now */
+function addEffect(p, e0){
+  const e = { id:uid("ef"), on:true, ...JSON.parse(JSON.stringify(e0||{})) };
+  const h = String(e.hp||"").trim(), neg = /^-|^−/.test(h);
+  if(h){ const roll = /d/i.test(h) ? rollDiceExpr(h.replace(/^[+−-]/, "")) : Math.abs(parseInt(h.replace(/^[+−-]/, ""), 10) || 0); e.hpRoll = (neg ? -1 : 1) * (roll||0); }
+  (p.effects = Array.isArray(p.effects) ? p.effects : []).push(e);
+  effectHpNow(p, +e.hpRoll||0);
+  gameLog("note", `${p.name||"Someone"}: ${e.name||"an effect"}${e.from ? ` (${e.from})` : ""}: ${effectWords(e)}`);
+  saveParty(); return e;
+}
+function removeEffect(p, id){
+  const e = (p.effects||[]).find(x=>x.id===id); if(!e) return;
+  p.effects = p.effects.filter(x=>x!==e); effectHpNow(p, -(+e.hpRoll||0));
+  gameLog("note", `${p.name||"Someone"}: ${e.name||"an effect"} is gone`); saveParty();
+}
+/* on their card, at the table */
+function effectsLine(p, canRemove){
+  const E = effectsOf(p); if(!E.length) return "";
+  return `<div class="efline"><span class="mini">Weakened</span>${E.map(e=>`<div class="efrow"><b>${esc(e.name||"An effect")}</b>${e.from ? ` <small>${esc(e.from)}</small>` : ""}: ${esc(effectWords(e))}${canRemove ? ` <button class="fdel" data-ef="del" data-pid="${p.id}" data-eid="${e.id}" title="Take it off them">×</button>` : ""}</div>`).join("")}</div>`;
+}
+/* their Library page: what's on them, and a way to add one */
+function effectsBlock(x){
+  const E = Array.isArray(x.effects) ? x.effects : [], n = k => `<input type="number" data-efn="${k}" placeholder="0" style="width:100%">`;
+  return `<details class="pcset" data-invfor="effects:${x.id}" ${E.length || openInv.has("effects:"+x.id) ? "open" : ""}><summary>Effects on them <small>${E.length ? `${E.length}: ${esc(E.map(e=>e.name).join(", "))}` : "things done to them that stack"}</small></summary>
+    <p class="empty-note" style="font-size:11px;margin:2px 0 6px">A ward broken, a curse, an old wound: each changes their numbers in every fight, whatever stage they're at, until it's taken off. Hit point dice are rolled once, when it's put on.</p>
+    ${effectsLine(x, true)}
+    <details class="pcset efadd" data-pid="${x.id}"><summary>Add an effect</summary>
+      <div class="pcrow"><div class="field" style="flex:1.4"><label>Name</label><input type="text" data-efn="name" placeholder="The book burned"></div><div class="field" style="flex:1"><label>From</label><input type="text" data-efn="from" placeholder="Ward 1"></div></div>
+      <label class="grouplab" style="margin:0">Ability modifiers</label><div class="abil">${ABK.map(k=>`<div class="ab"><label>${ABN[k]}</label>${n("abil."+k)}</div>`).join("")}</div>
+      <label class="grouplab" style="margin:0">Saves</label><div class="abil">${ABK.map(k=>`<div class="ab"><label>${ABN[k]}</label>${n("save."+k)}</div>`).join("")}</div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>DCs</label>${n("dc")}</div><div class="field" style="flex:1"><label>Attack rolls</label>${n("atk")}</div><div class="field" style="flex:1.2"><label>Max HP</label><input type="text" data-efn="hp" placeholder="-1d6"></div></div>
+      <div class="field"><label>A rule of its own</label><textarea data-efn="rule" rows="2" placeholder="Loud noises deal 1 Psychic damage to them."></textarea></div>
+      <button class="btn wide on" data-ef="add" data-pid="${x.id}">Put it on them</button></details></details>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-ef]"); if(!b) return;
+  const p = libNpcById(b.dataset.pid); if(!p) return;
+  if(b.dataset.ef==="del"){ const ef = (p.effects||[]).find(x=>x.id===b.dataset.eid); if(!ef || !confirm(`Take "${ef.name||"this effect"}" off ${p.name||"them"}?`)) return; removeEffect(p, ef.id); }
+  else if(b.dataset.ef==="add"){
+    const box = b.closest(".efadd"), v = k => { const i = box.querySelector(`[data-efn="${k}"]`); return i ? i.value.trim() : ""; };
+    const ef = { name:v("name"), from:v("from"), abil:{}, save:{}, dc:+v("dc")||0, atk:+v("atk")||0, hp:v("hp"), rule:v("rule") };
+    for(const k of ABK){ if(+v("abil."+k)) ef.abil[k] = +v("abil."+k); if(+v("save."+k)) ef.save[k] = +v("save."+k); }
+    if(!ef.name){ flash("Give the effect a name first."); return; }
+    if(!effectWords({ ...ef, hpRoll:ef.hp ? 1 : 0 })){ flash("It doesn't change anything yet."); return; }
+    const done = addEffect(p, ef); openInv.add("effects:" + p.id);
+    flash(`${p.name||"They"}: ${done.name}${done.hpRoll ? `, max HP ${sgnN(done.hpRoll)}` : ""}.`);
+  }
+  if(pane==="library") renderLibList(); if(battleOf){ renderBattle(); renderBattlePanel(); } else if(pane!=="library") renderPane(true);
+});
 function renderLibrary(){
   refreshSpellList();
   const L = lib();
@@ -8472,7 +8581,7 @@ function addToFight(c, who, ally){
   if(who.startsWith("p:")){ npc = libNpcById(who.slice(2)); if(!npc) return null; fid = npcFightId(npc); label = npc.name || "Someone"; }
   const m = foeById(fid); if(!m) return null;
   if(!label){ const same = c.list.filter(y=>y.foe===fid).length; label = `${m.name}${same?` ${same+1}`:""}`; }
-  const max = (npc && numOr(fightPerson(npc).hpMax)) || foeMaxHp(m);           // a person keeps their own hit points (their stage's, if it has its own)
+  const max = (npc && m.npc ? foeMaxHp(m) : null) || (npc && numOr(npc.hpMax)) || foeMaxHp(m);   // a person keeps their own hit points (their stage's, less what's been done to them)
   const x = foeBelongings({ id:uid("fx"), foe:fid, label, hp:max, max, used:{}, spent:{}, conds:[], ally:!!ally, npc:npc?npc.id:undefined });
   c.list.push(x);
   return x;
@@ -11670,7 +11779,7 @@ function renderBattlePanelNow(){
   const personBrief = p0 => { if(!p0) return ""; const p = personNow(p0);
     const rows = [["Looks", p.look], ["Voice", p.voice], ["Wants", p.wants], ["Knows", p.knows], ["Carries", p.carries], ["Notes", p.notes]].filter(([, v])=>String(v||"").trim());
     const sub = [p.gender, p.species, p.align].filter(Boolean).join(" · ");
-    return rows.length || sub || stagePick(p0) ? `<div class="pbrief" style="font-size:12px;line-height:1.4;margin:2px 0 8px">${stagePick(p0)}${sub ? `<p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc(sub)}</p>` : ""}${rows.map(([k, v])=>`<p style="margin:0 0 4px"><b>${k}:</b> ${esc(v)}</p>`).join("")}</div>` : ""; };
+    return rows.length || sub || stagePick(p0) || effectsOf(p0).length ? `<div class="pbrief" style="font-size:12px;line-height:1.4;margin:2px 0 8px">${stagePick(p0)}${effectsLine(p0, true)}${sub ? `<p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc(sub)}</p>` : ""}${rows.map(([k, v])=>`<p style="margin:0 0 4px"><b>${k}:</b> ${esc(v)}</p>`).join("")}</div>` : ""; };
   const selAt = h.length;                         // the selected one's card: first in table mode
   if(selT){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;

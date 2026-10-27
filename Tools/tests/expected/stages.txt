@@ -8,7 +8,7 @@ its sheet on the page: ac box true, hp box true
 edited: stage ac 16 hp 44 · theirs still ac 12 hp 20
 in a fight at Before (as written): npc:ln_b hp 20 ac 12
 at After (its own sheet): npc:ln_b hp 44 ac 16
-at Midnight (as the Mage): srd:mage hp 81 ac 15, label Bertram
+at Midnight (as the Mage): npc:ln_b hp 81 ac 15, label Bertram
 arrival: stage s1, at hall true
 card: Stage As written Before After Midnight Looks: Grey gloves Voice: Correct Wants: For the party to go well Knows: Nothing he'll say
 switched on the card: s2 · Stage As written Before After Midnight Looks: Shaking Voice: Correct Wants: To get out alive Knows: Where the key is Notes: Won't fight

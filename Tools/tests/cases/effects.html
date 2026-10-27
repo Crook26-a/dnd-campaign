@@ -1,0 +1,51 @@
+// uses: nothing
+<script>
+/* effects on a person (p.effects): ability modifiers, saves, DCs, attack rolls and max HP (dice rolled once) that stack
+   in every fight, whatever stage; put on from the Library page, shown on their card, taken off again */
+const __EF = { format:"ordinate-survey-v1", title:"Effect Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
+  library:{ npcs:[{ id:"ln_c", name:"Lord Test", role:"The host", fightsAs:"srd:mage", npcs:[] }], foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, npcs:["ln_c"], site:{ light:"bright" }, bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ try{
+  loadJSONNow(JSON.stringify(__EF)); await wait(300); setDmMode(true); await wait(50);
+  const p = () => libNpcById('ln_c');
+  const sum = () => { const f = foeById(npcFightId(p())), sp = foeEntries(f).find(([n])=>/^Spellcasting/.test(n)), ab = foeEntries(f).find(([n])=>/^Arcane Burst/.test(n));
+    return `${npcFightId(p())}: hp ${f.hp}, Int ${f.ab[3]} Wis ${f.ab[4]} Cha ${f.ab[5]}, saves "${f.sav}", ${(/DC \d+/.exec(sp[1])||[])[0]}, burst ${(/Attack Roll: [+-]\d+/.exec(ab[1])||[])[0]}`; };
+  out.push('before: ' + sum());
+  /* the Library page */
+  openLib('npcs', 'ln_c'); await wait(60);
+  const add = async (fields) => { const box = document.querySelector('#pane-library .efadd'); box.open = true;
+    for(const [k, v] of Object.entries(fields)){ const i = box.querySelector(`[data-efn="${k}"]`); i.value = v; }
+    box.querySelector('[data-ef="add"]').click(); await wait(50); };
+  out.push('library section: ' + txt([...document.querySelectorAll('#pane-library details.pcset > summary')].find(s=>/Effects on them/.test(s.textContent))));
+  const hb = Math.random; Math.random = () => 0.5;            // 1d6 rolls a 4
+  await add({ name:'The book burned', from:'Ward 1', 'save.int':'-2', 'save.wis':'-2', hp:'-1d6' });
+  out.push('ward 1: ' + sum());
+  await add({ name:'The portraits hung', from:'Ward 3', 'abil.cha':'-1', dc:'-1', atk:'-1' });
+  out.push('ward 3: ' + sum());
+  await add({ name:'The song played', from:'Ward 2', hp:'-1d6', rule:'Loud noises deal 1 Psychic damage to him.' });
+  Math.random = hb;
+  out.push('ward 2: ' + sum());
+  out.push('weakened line: ' + foeEntries(foeById(npcFightId(p()))).find(([n])=>n==='Weakened')[1]);
+  out.push('library now: ' + txt(document.querySelector('#pane-library .efline')));
+  /* in a fight */
+  const fc = { list:[], pos:{} }; let x = addToFight(fc, 'p:ln_c'); out.push('joins a fight: max ' + x.max + ', hp ' + x.hp);
+  /* one more while a fight is going (it lives on a map) */
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(100);
+  const c = hall.site.combat; const y = addToFight(c, 'p:ln_c'); placeTokens(c); y.hp = 70;
+  const e4 = addEffect(p(), { name:'A curse', hp:'-10' }); out.push('mid-fight -10: max ' + y.max + ', hp ' + y.hp);
+  battleSel = y.id; renderBattlePanel(); await wait(40);
+  out.push('card: ' + txt(document.querySelector('#pane-inspect .efline')).slice(0, 220));
+  removeEffect(p(), e4.id); out.push('taken off: max ' + y.max + ', hp ' + y.hp + ', effects left ' + p().effects.length);
+  out.push('log: ' + gameLogList().slice(-2).map(e=>e.text).join(' / '));
+  /* a stage fighting as a stat block keeps the effects */
+  p().stages = [{ id:'s1', name:'Undying', fightsAs:'srd:lich' }]; setStage(p(), 's1', true);
+  const f2 = foeById(npcFightId(p())); out.push('as the Lich: ' + npcFightId(p()) + ', ' + f2.name + ', hp ' + f2.hp + ' (Lich ' + foeById('srd:lich').hp + '), weakened ' + !!foeEntries(f2).find(([n])=>n==='Weakened'));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

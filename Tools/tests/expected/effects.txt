@@ -1,0 +1,13 @@
+before: srd:mage: hp 81, Int 17 Wis 12 Cha 11, saves "Int +6, Wis +4", DC 14, burst Attack Roll: +6
+library section: Effects on them things done to them that stack
+ward 1: npc:ln_c: hp 77, Int 17 Wis 12 Cha 11, saves "Int +4, Wis +2", DC 14, burst Attack Roll: +6
+ward 3: npc:ln_c: hp 77, Int 17 Wis 12 Cha 9, saves "Int +4, Wis +2", DC 13, burst Attack Roll: +5
+ward 2: npc:ln_c: hp 73, Int 17 Wis 12 Cha 9, saves "Int +4, Wis +2", DC 13, burst Attack Roll: +5
+weakened line: The book burned (Ward 1): Int and Wis saves −2; max HP −4 (1d6) · The portraits hung (Ward 3): Cha modifier −1; DCs −1; attack rolls −1 · The song played (Ward 2): max HP −4 (1d6); Loud noises deal 1 Psychic damage to him.
+library now: Weakened The book burned Ward 1: Int and Wis saves −2; max HP −4 (1d6) × The portraits hung Ward 3: Cha modifier −1; DCs −1; attack rolls −1 × The song played Ward 2: max HP −4 (1d6); Loud noises deal 1 Psychic damage to him. ×
+joins a fight: max 73, hp 73
+mid-fight -10: max 63, hp 60
+card: Weakened The book burned Ward 1: Int and Wis saves −2; max HP −4 (1d6) × The portraits hung Ward 3: Cha modifier −1; DCs −1; attack rolls −1 × The song played Ward 2: max HP −4 (1d6); Loud noises deal 1 Psychic damage to
+taken off: max 73, hp 60, effects left 3
+log: Lord Test: A curse: max HP −10 / Lord Test: A curse is gone
+as the Lich: npc:ln_c, Lord Test, hp 307 (Lich 315), weakened true
