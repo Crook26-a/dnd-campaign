@@ -1,0 +1,84 @@
+// uses: nothing
+<script>
+/* puzzles in the Session tab (root.puzzles): the one where the party is opens by itself, hints are handed out in order,
+   Solved pops up what to read (and the goal's words after the last of a goal), and it can go on the players' screen.
+   Dormant creatures (a site foe's guise): the players see only what it looks like, it has no turn, and Wake it gives it
+   its token, a turn in a fight already going, and its words */
+const __PZ = { format:"ordinate-survey-v1", title:"Puzzle Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"music" } }],
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"music", name:"The Music Room", kind:"house", x:100, y:100, w:10, d:8, bmap:{ name:"The Music Room", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[] } } },
+    { id:"lib", name:"The Library", kind:"archive", x:180, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright",
+        foes:[{ id:"srd:animated-flying-sword", n:"2", guise:{ as:"a sword in a glass display case", icon:"†", wake:"The glass bursts and the sword comes on." } }] },
+      bmap:{ name:"The Library", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[[6,1],[7,1]] } } } ] } },
+  puzzles:[
+    { id:"pz1", name:"The harpsichord", place:"h/music", goal:"The shield", answer:"FACADE", how:"Play the notes.", hints:["Look at the page.", "Use the chart.", "F-A-C-A-D-E."], given:0, text:"The sigil cracks.", effect:"Ward 2 down." },
+    { id:"pz2", name:"The book", place:"h/lib", goal:"The shield", answer:"The untitled book", hints:[], given:0, text:"The fire sighs out." } ],
+  puzzleGoals:{ "The shield":{ text:"The shimmer round the chandelier is gone." } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ try{
+  loadJSONNow(JSON.stringify(__PZ)); await wait(300); setDmMode(true); await wait(50);
+  pane = 'session'; syncTabs(); renderSession(); await wait(30);
+  const ps = () => document.querySelector('#pane-session details[data-invfor="puzzles"]');
+  out.push('panel: open ' + ps().open + ' · ' + txt(ps().querySelector('summary')));
+  out.push('the one here (opened by itself): ' + txt(ps().querySelector('.pzrow.open')).slice(0, 200));
+  out.push('the other, closed: ' + txt([...ps().querySelectorAll('.pzrow')].find(r=>!r.classList.contains('open'))));
+  ps().querySelector('[data-pz="hint"]').click(); await wait(30);
+  out.push('after one hint: given ' + root.puzzles[0].given + ', next Give on hint ' + (1 + [...ps().querySelectorAll('.pzhint')].findIndex(h=>h.querySelector('[data-pz="hint"]'))) + ', logged "' + gameLogList().slice(-1)[0].text + '"');
+  ps().querySelector('[data-pz="solve"]').click(); await wait(40);
+  out.push('solved 1: pop ' + txt(document.getElementById('pzpop')) + ' | log "' + gameLogList().slice(-1)[0].text + '"');
+  document.querySelector('#pzpop [data-pz="tv"]').click(); await wait(30);
+  out.push('on the TV: ' + playerShow.kind + ' ' + pzTvHtml(playerShow.id).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  document.querySelector('#pzpop [data-pz="tvoff"]').click(); document.querySelector('#pzpop [data-pz="close"]').click(); await wait(30);
+  out.push('closed: pop ' + !!document.getElementById('pzpop') + ', TV ' + playerShow.kind + ' · panel ' + txt(ps().querySelector('summary')));
+  ps().querySelector('.pzrow:not(.done) .pzhead').click(); await wait(30);
+  ps().querySelector('[data-pz="solve"]').click(); await wait(40);
+  out.push('solved the last of the goal: ' + txt(document.getElementById('pzpop')));
+  out.push('  logged: ' + gameLogList().slice(-2).map(e=>e.text).join(' / '));
+  document.querySelector('#pzpop [data-pz="close"]').click();
+  /* undo */
+  const done = ps().querySelector('details.pcset'); done.open = true; done.querySelector('.pzhead').click(); await wait(30);
+  ps().querySelector('[data-pz="unsolve"]') && ps().querySelector('[data-pz="unsolve"]').click(); await wait(30);
+  out.push('after Undo: ' + txt(ps().querySelector('summary')));
+  /* a puzzle made in the app */
+  ps().querySelector('[data-pz="new"]').click(); await wait(30);
+  document.getElementById('pz-name').value = 'The portraits'; document.getElementById('pz-answer').value = 'Aldric first'; document.getElementById('pz-hints').value = 'Look at what they hold\nFollow it';
+  document.getElementById('pz-text').value = 'The eyes close.'; document.getElementById('pz-goal').value = 'The shield';
+  ps().querySelector('[data-pz="save"]').click(); await wait(30);
+  const np = root.puzzles.find(p=>p.name==='The portraits');
+  out.push('made in the app: ' + JSON.stringify({ answer:np.answer, hints:np.hints, goal:np.goal, place:np.place }) + ' · panel ' + txt(ps().querySelector('summary')));
+
+  /* dormant swords */
+  root.groups[0].at = { map:"h", node:"lib" };
+  enterPlan('h'); await wait(60); const lib = doc.nodes.find(x=>x.id==='lib'); openBattle(lib); await wait(150);
+  const c = lib.site.combat;
+  out.push('swords: ' + c.list.map(x=>x.label + (x.dormant ? ' dormant as ' + x.dormant.as : ' awake')).join(', '));
+  const tv = () => { const m = playerMapScene(); return JSON.stringify(m); };
+  out.push('players see: cases ' + (tv().match(/bdecor/g)||[]).length + ', sword tokens ' + c.list.filter(x=>tv().includes('data-tok=\\"' + x.id)).length);
+  out.push('DM sees: tokens ' + c.list.filter(x=>document.querySelector(`#bsvg [data-tok="${x.id}"]`)).length + ', marked dormant ' + (document.getElementById('bsvg').innerHTML.match(/>dormant</g)||[]).length);
+  beginBattle(lib.site); const all = combatants(c); for(const t of all) c.init[t.id] = 10; renderBattle(); renderBattlePanel(); await wait(40);
+  const order = []; c.turn = null; for(let k=0; k<3; k++){ nextTurn(c); order.push((all.find(t=>t.id===c.turn)||{}).label); }
+  out.push('turns while dormant: ' + order.join(', ') + ' · strip ' + txt(document.getElementById('bt-strip')).replace(/[⏭]/g, ''));
+  battleSel = c.list[0].id; renderBattlePanel(); await wait(30);
+  const wk = document.querySelector('#pane-inspect [data-wake="wake"]');
+  out.push('card: ' + (wk ? txt(wk.parentElement) : 'no Wake button'));
+  delete c.init[c.list[0].id]; wk.click(); await wait(60);
+  const x0 = c.list[0];
+  out.push('woke: dormant ' + !!x0.dormant + ', initiative ' + (c.init[x0.id]!=null) + ', on the TV ' + tv().includes('data-tok=\\"' + x0.id) + ', cases left ' + (tv().match(/bdecor/g)||[]).length + ', in the strip ' + txt(document.getElementById('bt-strip')).includes(x0.label));
+  out.push('  pop: ' + txt(document.getElementById('saypop')) + ' | log "' + gameLogList().slice(-1)[0].text + '"');
+  document.querySelector('#saypop [data-say="tv"]').click(); await wait(20);
+  out.push('  on the TV: ' + playerShow.kind + ' ' + sayTvHtml(playerShow).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  document.querySelector('#saypop [data-say="tvoff"]').click(); document.querySelector('#saypop [data-say="close"]').click();
+  /* the Build panel sets it up */
+  closeBattle(true); await wait(30); delete lib.site.combat; select('node', 'lib'); setDmMode(false); renderPane(true); await wait(40);
+  const g = document.querySelector('#pane-inspect [data-foeg="0"][data-g="as"]');
+  out.push('Build: dormant box ' + !!g + ', shows ' + (g && g.value));
+  if(g){ g.value = ''; g.dispatchEvent(new Event('input')); const w = document.querySelector('#pane-inspect [data-foeg="0"][data-g="wake"]'); w.value = ''; w.dispatchEvent(new Event('input'));
+    const ic = document.querySelector('#pane-inspect [data-foeg="0"][data-g="icon"]'); ic.value = ''; ic.dispatchEvent(new Event('input'));
+    out.push('  cleared: guise ' + JSON.stringify(lib.site.foes[0].guise)); }
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

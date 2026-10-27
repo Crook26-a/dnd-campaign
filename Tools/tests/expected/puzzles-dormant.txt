@@ -1,0 +1,21 @@
+panel: open true · Puzzles 2 to solve · 1 here
+the one here (opened by itself): The harpsichord they're here The Music Room · The shield 0/2 Answer FACADE Play the notes. HINTS 0 OF 3 GIVEN 1 Look at the page. Give 2 Use the chart. 3 F-A-C-A-D-E. Solved Edit
+the other, closed: The book The Library · The shield 0/2
+after one hint: given 1, next Give on hint 2, logged "Hint 1 for The harpsichord: Look at the page"
+solved 1: pop SOLVED: THE HARPSICHORD THE SHIELD 1 OF 2 The sigil cracks. What it changes Ward 2 down. Show on the players' screen Close | log "Solved The harpsichord (The shield: 1 of 2)"
+on the TV: puzzle The harpsichord The sigil cracks.
+closed: pop false, TV map · panel Puzzles 1 to solve
+solved the last of the goal: SOLVED: THE BOOK THE SHIELD 2 OF 2 The fire sighs out. THE SHIELD: DONE The shimmer round the chandelier is gone. Show on the players' screen Close
+logged: Solved The book (The shield: 2 of 2) / The shield: done
+after Undo: Puzzles 1 to solve · 1 here
+made in the app: {"answer":"Aldric first","hints":["Look at what they hold","Follow it"],"goal":"The shield","place":""} · panel Puzzles 2 to solve · 1 here
+swords: Animated Flying Sword 1 dormant as a sword in a glass display case, Animated Flying Sword 2 dormant as a sword in a glass display case
+players see: cases 2, sword tokens 0
+DM sees: tokens 2, marked dormant 2
+turns while dormant: Anna Ash, Bram Birch, Anna Ash · strip R1 Start 10 Anna ▶ 10 Bram ▶
+card: Dormant. The players see a sword in a glass display case. No turn until it wakes. Wake it
+woke: dormant false, initiative true, on the TV true, cases left 1, in the strip true
+pop: ANIMATED FLYING SWORD 1 WAKES The glass bursts and the sword comes on. Show on the players' screen Close | log "Animated Flying Sword 1 woke at The Library"
+on the TV: say Animated Flying Sword 1 wakes The glass bursts and the sword comes on.
+Build: dormant box true, shows a sword in a glass display case
+cleared: guise undefined
