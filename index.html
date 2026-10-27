@@ -3850,7 +3850,7 @@ document.addEventListener("click", e=>{
   if(kn){ const p = libNpcById(kn.dataset.wknown); if(!p) return; setKnown(p, !p.known); renderWhere(); flash(`${p.name||"They"}: the party ${p.known ? "knows" : "doesn't know"} their name.`); return; }
   const ks = e.target.closest("#pane-where [data-wkey]");
   if(ks){ const p = libNpcById(ks.dataset.wkey); if(!p) return; if(p.key) delete p.key; else p.key = true;
-    markDirty(K_SURVEY); touch(); renderWhere(); flash(`${p.name||"They"} ${p.key?"is a key character":"is a minor character"}.`); return; }
+    markDirty(K_SURVEY); touch(); renderWhere(); renderSession(); flash(`${p.name||"They"} ${p.key?"is a key character":"is a minor character"}.`); return; }
   const sp = e.target.closest("#pane-where [data-wsplit]");
   if(sp){ const gs = groupsOf(), act = activeGroup();
     if(sp.dataset.wsplit==="each"){ const each = []; for(const g of gs) for(const m of g.members) each.push({ id:uid("g"), members:[m], at:{ ...g.at } }); root.groups = each; flash("Everyone's on their own."); }
