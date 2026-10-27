@@ -1,0 +1,11 @@
+as written: {"look":"Grey gloves","wants":"A quiet night","knows":"Nothing he'll say"}
+library: Stages 2 · now: as written, stage boxes 2, picker true
+added a stage: {"id":"stgyruuv1","name":"Midnight","wants":"To be anywhere else"}
+switched on the page: now s2 · {"look":"Shaking","wants":"To get out alive","knows":"Where the key is","notes":"Won't fight","voice":"Correct"} · log "Bertram now: After"
+arrival: stage s1, at hall true
+card: Stage As written Before After Midnight Looks: Grey gloves Voice: Correct Wants: For the party to go well Knows: Nothing he'll say
+switched on the card: s2 · Stage As written Before After Midnight Looks: Shaking Voice: Correct Wants: To get out alive Knows: Where the key is Notes: Won't fight
+doors seal: stage s2, in the kitchen true, still in the hall false, on the kitchen map true
+a stage that isn't there: as written
+saved scene keeps stages: {"ln_b":"s1"}
+goal done: stage as written · log Out: done / Bertram now: as written

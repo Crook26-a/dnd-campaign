@@ -1,0 +1,55 @@
+// uses: nothing
+<script>
+/* a person's stages (p.stages, p.stageNow): written on their Library page, switched on their card, set by a scene
+   (s.stages, with s.move putting them somewhere), kept by Save as this scene, and set when a puzzle goal is done */
+const __ST = { format:"ordinate-survey-v1", title:"Stage Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
+  library:{ npcs:[{ id:"ln_b", name:"Bertram", role:"The butler", look:"Grey gloves", voice:"Correct", wants:"A quiet night", knows:"Nothing he'll say", fightsAs:"", npcs:[],
+      stages:[{ id:"s1", name:"Before", wants:"For the party to go well" }, { id:"s2", name:"After", look:"Shaking", wants:"To get out alive", knows:"Where the key is", notes:"Won't fight" }] }],
+    foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, npcs:["ln_b"], site:{ light:"bright" }, bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[] } } },
+    { id:"kit", name:"The Kitchen", kind:"house", x:180, y:100, w:10, d:8, site:{ light:"bright" }, bmap:{ name:"The Kitchen", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[] } } } ] } },
+  docs:[{ id:"d1", kind:"session", title:"Night", done:{}, md:"# Night\n\n## Arrival {place: h/hall}\n\nThey arrive.\n\n## The doors seal {place: h/hall}\n\nLocked in.\n",
+    setups:{ "arrival":{ at:{ map:"h", node:"hall" }, open:{ plan:"h", node:"hall", battle:true }, move:{ ln_b:"h/hall" }, stages:{ ln_b:"s1" } },
+             "the-doors-seal":{ at:{ map:"h", node:"hall" }, open:{ plan:"h", node:"kit", battle:true }, move:{ ln_b:"h/kit" }, stages:{ ln_b:"s2" } } } }],
+  puzzles:[{ id:"pz1", name:"The lock", place:"h/hall", goal:"Out", hints:[], given:0, text:"Click." }],
+  puzzleGoals:{ "Out":{ text:"The door opens.", stages:{ ln_b:"" } } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ try{
+  loadJSONNow(JSON.stringify(__ST)); await wait(300); setDmMode(true); await wait(50);
+  const p = () => libNpcById('ln_b');
+  out.push('as written: ' + JSON.stringify((({ look, wants, knows })=>({ look, wants, knows }))(personNow(p()))));
+  /* the Library page */
+  openLib('npcs', 'ln_b'); await wait(60);
+  const lp = document.getElementById('pane-library'), blk = [...lp.querySelectorAll('details.pcset')].find(d=>/Stages/.test(d.querySelector('summary').textContent));
+  out.push('library: ' + (blk ? txt(blk.querySelector('summary')) + ', stage boxes ' + blk.querySelectorAll('.stgbox').length + ', picker ' + !!blk.querySelector('[data-stagepick]') : 'no Stages section'));
+  blk.querySelector('[data-stg="add"]').click(); await wait(40);
+  const s3 = p().stages[2], nm = document.querySelector(`#pane-library [data-stgf="name"][data-sid="${s3.id}"]`), wt = document.querySelector(`#pane-library [data-stgf="wants"][data-sid="${s3.id}"]`);
+  nm.value = 'Midnight'; nm.dispatchEvent(new Event('input', { bubbles:true })); wt.value = 'To be anywhere else'; wt.dispatchEvent(new Event('input', { bubbles:true }));
+  out.push('added a stage: ' + JSON.stringify(p().stages[2]));
+  const pick = document.querySelector('#pane-library [data-stagepick]'); pick.value = 's2'; pick.dispatchEvent(new Event('change', { bubbles:true })); await wait(40);
+  out.push('switched on the page: now ' + p().stageNow + ' · ' + JSON.stringify((({ look, wants, knows, notes, voice })=>({ look, wants, knows, notes, voice }))(personNow(p()))) + ' · log "' + gameLogList().slice(-1)[0].text + '"');
+  /* scenes */
+  const d = root.docs[0];
+  setScene(d, 'arrival'); await wait(300);
+  out.push('arrival: stage ' + p().stageNow + ', at hall ' + (doc.nodes.find(n=>n.id==='hall').npcs||[]).includes('ln_b'));
+  battleSel = 'p:ln_b'; renderBattlePanel(); await wait(40);
+  const card = document.querySelector('#pane-inspect .pbrief');
+  out.push('  card: ' + txt(card).slice(0, 160));
+  const cp = card && card.querySelector('[data-stagepick]'); cp.value = 's2'; cp.dispatchEvent(new Event('change', { bubbles:true })); await wait(40);
+  out.push('  switched on the card: ' + p().stageNow + ' · ' + txt(document.querySelector('#pane-inspect .pbrief')).slice(0, 140));
+  setScene(d, 'the-doors-seal'); await wait(300);
+  out.push('doors seal: stage ' + p().stageNow + ', in the kitchen ' + (doc.nodes.find(n=>n.id==='kit').npcs||[]).includes('ln_b') + ', still in the hall ' + (doc.nodes.find(n=>n.id==='hall').npcs||[]).includes('ln_b') + ', on the kitchen map ' + !!(bnode().site.combat.pos||{})['p:ln_b']);
+  setStage(p(), 's3x'); out.push('a stage that isn\'t there: ' + (p().stageNow===undefined ? 'as written' : p().stageNow));
+  setStage(p(), 's1', true); captureScene(d, 'arrival'); out.push('saved scene keeps stages: ' + JSON.stringify(d.setups.arrival.stages));
+  /* a goal done */
+  setStage(p(), 's2', true); const pz = root.puzzles[0]; pane = 'session'; syncTabs(); renderSession(); await wait(30);
+  pzOpen.add('pz1'); renderSession(); document.querySelector('#pane-session [data-pz="solve"]').click(); await wait(40);
+  out.push('goal done: stage ' + (p().stageNow || 'as written') + ' · log ' + gameLogList().slice(-2).map(e=>e.text).join(' / '));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

@@ -400,6 +400,7 @@
   .pzhead{cursor:pointer} .pzhead small.thrties{display:block} .pznow{color:var(--lead);font-weight:600} .pzok{color:var(--ink-faint)}
   .pzans{font-size:12.5px;margin:5px 0 3px;font-weight:600} .pzhow{font-size:12px} .pzhow p{margin:3px 0}
   .pzhint{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:2px 0} .pzhint.given{color:var(--ink-faint)} .pzhn{flex:0 0 14px;font-family:var(--mono)}
+  .stgbox{border-left:3px solid var(--rule);padding:2px 0 2px 8px;margin:0 0 8px}
   #saypop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:62;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
   #pzpop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:61;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
   .pzread{font-family:var(--serif);font-size:14px;line-height:1.45} .pzread p{margin:4px 0} .pzfx{font-size:12px;margin:8px 0 0}
@@ -7376,6 +7377,7 @@ function libForm(cat, x){
       ${ta("look","Look","Big laugh, strong arms…")}
       ${t("voice","Voice","1","Calls everyone \"minnow\"")}
       ${ta("wants","Wants")}${ta("knows","Knows")}
+      ${draft ? "" : stagesBlock(x)}
       ${ta("backstory","Backstory","Where they're from, how they came to this, what they hope for…",3)}
       <div class="pcrow" style="align-items:center;margin:-4px 0 8px"><button class="btn" ${a} data-libact="rollstory" title="Roll a short backstory (it replaces what's there)">🎲 Roll a backstory</button>
         <label class="check" style="flex:1;margin:0" title="Nobody yet: Give them a name, on an enemy's card, can make them that enemy"><input ${a} data-f="spare" type="checkbox" ${x.spare?"checked":""}> A spare: nobody yet</label></div>
@@ -7655,6 +7657,45 @@ function renderLibList(){
   }
   box.innerHTML = h;
 }
+/* ── a person's stages (Joseph, 2026-10-27): the same person as the night goes on, the perfect butler and then the
+   terrified one. Each stage has its own look, voice, wants, knows and notes (blank keeps what's written on them); one
+   is theirs now (p.stageNow), switched from their card or set by a scene (s.stages). p.stages: [{ id, name, look,
+   voice, wants, knows, notes }] ── */
+const STAGE_FIELDS = [["look","Look"],["voice","Voice"],["wants","Wants"],["knows","Knows"],["notes","Notes"]];
+const stageOf = p => (p && Array.isArray(p.stages) && p.stageNow && p.stages.find(s=>s.id===p.stageNow)) || null;
+function personNow(p){ const s = stageOf(p); if(!s) return p; const o = { ...p }; for(const [k] of STAGE_FIELDS) if(String(s[k]||"").trim()) o[k] = s[k]; return o; }
+/* the stage they're in, to switch at the table */
+function stagePick(p){
+  if(!p || !Array.isArray(p.stages) || !p.stages.length) return "";
+  return `<div class="pcrow" style="align-items:center;margin:0 0 6px"><span class="mini" style="flex:0 0 auto">Stage</span><select data-stagepick="${p.id}" style="flex:1;min-width:0"><option value="">As written</option>${p.stages.map(s=>`<option value="${s.id}" ${s.id===p.stageNow?"selected":""}>${esc(s.name||"A stage")}</option>`).join("")}</select></div>`;
+}
+/* their Library page: the stages, to write */
+function stagesBlock(x){
+  const S = Array.isArray(x.stages) ? x.stages : [];
+  return `<details class="pcset" ${S.length?"open":""}><summary>Stages <small>${S.length ? `${S.length} · now: ${esc((stageOf(x)||{}).name || "as written")}` : "the same person as things change"}</small></summary>
+    <p class="empty-note" style="font-size:11px;margin:2px 0 6px">What they want, know and show at each point (before the doors seal, after). Blank keeps what's written above. Switch it on their card at the table, or let a scene set it.</p>
+    ${stagePick(x)}
+    ${S.map(s=>`<div class="stgbox"><div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1"><label>Stage</label><input type="text" data-stgf="name" data-pid="${x.id}" data-sid="${s.id}" value="${esc(s.name||"")}" placeholder="After the doors seal"></div><button class="fdel" data-stg="del" data-pid="${x.id}" data-sid="${s.id}" title="Remove this stage" style="margin-bottom:9px">×</button></div>
+      ${STAGE_FIELDS.map(([k, l])=>`<div class="field"><label>${l}</label><textarea data-stgf="${k}" data-pid="${x.id}" data-sid="${s.id}" rows="${k==="voice"?1:2}" placeholder="${esc(x[k] ? "As written: " + x[k] : "As written")}">${esc(s[k]||"")}</textarea></div>`).join("")}</div>`).join("")}
+    <button class="btn wide" data-stg="add" data-pid="${x.id}">+ A stage</button></details>`;
+}
+function setStage(p, sid, quiet){
+  if(sid && (p.stages||[]).some(s=>s.id===sid)) p.stageNow = sid; else delete p.stageNow;
+  if(quiet) return;
+  gameLog("talk", `${p.name||"Someone"} now: ${(stageOf(p)||{}).name || "as written"}`); saveParty();
+  if(pane==="library") renderLibList(); if(battleOf) renderBattlePanel(); else if(pane!=="library") renderPane(true);
+}
+document.addEventListener("input", e=>{ const t = e.target; if(!t.dataset || !t.dataset.stgf) return;
+  const p = libNpcById(t.dataset.pid), s = p && (p.stages||[]).find(q=>q.id===t.dataset.sid); if(!s) return;
+  s[t.dataset.stgf] = t.value; saveParty(); });
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || t.dataset.stagepick==null) return;
+  const p = libNpcById(t.dataset.stagepick); if(p) setStage(p, t.value); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-stg]"); if(!b) return;
+  const p = libNpcById(b.dataset.pid); if(!p) return; p.stages = Array.isArray(p.stages) ? p.stages : [];
+  if(b.dataset.stg==="add") p.stages.push({ id:uid("stg"), name:"" });
+  else if(b.dataset.stg==="del"){ const s = p.stages.find(q=>q.id===b.dataset.sid); if(s && !confirm(`Remove the stage "${s.name||"unnamed"}"?`)) return;
+    p.stages = p.stages.filter(q=>q.id!==b.dataset.sid); if(p.stageNow===b.dataset.sid) delete p.stageNow; }
+  saveParty(); renderLibList(); });
 function renderLibrary(){
   refreshSpellList();
   const L = lib();
@@ -8470,7 +8511,7 @@ function enemyCard(x, i, extra, open){
             <button class="btn wide" data-fa="nameroll" data-fi="${i}">🎲 Roll a name and a backstory</button>
             ${spares.length ? `<div class="pcrow" style="margin-top:4px"><select class="fc-spare" data-fi="${i}" style="flex:1;min-width:0">${spares.map(p=>`<option value="${p.id}">${esc(p.name||"Unnamed")}${p.backstory?` · ${esc(p.backstory.slice(0,40))}…`:""}</option>`).join("")}</select><button class="btn" data-fa="namespare" data-fi="${i}">Make them this one</button></div>`
               : `<p class="empty-note" style="font-size:11px;margin:4px 0 0">No spares yet. In the Library, tick "A spare: nobody yet" on a person you've written ahead.</p>`}</div>`; })() : ""}
-        ${x.npc && libNpcById(x.npc) ? (()=>{ const p = libNpcById(x.npc), bits = [["Look",p.look],["Wants",p.wants],["Knows",p.knows],["Backstory",p.backstory]].filter(b=>b[1]);
+        ${x.npc && libNpcById(x.npc) ? (()=>{ const p = personNow(libNpcById(x.npc)), bits = [["Look",p.look],["Wants",p.wants],["Knows",p.knows],["Backstory",p.backstory]].filter(b=>b[1]);
           return bits.length ? `<details class="fq-acts"${open?" open":""}><summary>Who they are</summary>${bits.map(([k,v])=>`<p class="sbp"><b>${k}.</b> ${esc(v)}</p>`).join("")}</details>` : ""; })() : ""}
         ${foeActionsBlock(m, open)}
         ${foeInvBlock(x, "f"+i, down)}
@@ -11588,10 +11629,10 @@ function renderBattlePanelNow(){
     ${log.length ? `<div class="actlog">${log.slice(0,40).map(e=>`<div class="le"><span class="mono">R${e.round}</span> ${esc(e.text)}</div>`).join("")}</div>
       <button class="btn wide" data-ba="undo" style="margin-top:4px">Undo last action</button>` : `<p class="empty-note" style="margin:0 0 6px">Nothing logged yet.</p>`}`;
   /* who a person is, at a glance, on the card from clicking them: what you need to play them (their Library page has the rest) */
-  const personBrief = p => { if(!p) return "";
+  const personBrief = p0 => { if(!p0) return ""; const p = personNow(p0);
     const rows = [["Looks", p.look], ["Voice", p.voice], ["Wants", p.wants], ["Knows", p.knows], ["Carries", p.carries], ["Notes", p.notes]].filter(([, v])=>String(v||"").trim());
     const sub = [p.gender, p.species, p.align].filter(Boolean).join(" · ");
-    return rows.length || sub ? `<div class="pbrief" style="font-size:12px;line-height:1.4;margin:2px 0 8px">${sub ? `<p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc(sub)}</p>` : ""}${rows.map(([k, v])=>`<p style="margin:0 0 4px"><b>${k}:</b> ${esc(v)}</p>`).join("")}</div>` : ""; };
+    return rows.length || sub || stagePick(p0) ? `<div class="pbrief" style="font-size:12px;line-height:1.4;margin:2px 0 8px">${stagePick(p0)}${sub ? `<p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc(sub)}</p>` : ""}${rows.map(([k, v])=>`<p style="margin:0 0 4px"><b>${k}:</b> ${esc(v)}</p>`).join("")}</div>` : ""; };
   const selAt = h.length;                         // the selected one's card: first in table mode
   if(selT){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;
@@ -11771,7 +11812,7 @@ function renderPlayNow(){
   h += `<p class="eyebrow spaced">Who you'll meet</p>` + (people.length ? people.map(p=>`<div class="playperson">
       <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}${factionChip(p)}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button></div>
       ${condChips(p.conds||[], "by:"+p.id)}
-      ${[["Look",p.look],["Voice",p.voice],["Wants",p.wants],["Knows",p.knows],["Backstory",p.backstory]].filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
+      ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
       ${p.fightsAs && p.fightsAs!=="self" && foeById(p.fightsAs)?`<div class="sbl"><b>Fights as</b> <span class="libref" data-libopen="foes:${p.fightsAs}">${esc(foeById(p.fightsAs).name)}</span></div>`:""}
       ${p.fightsAs==="self" || p.ac || p.hpMax || (p.attacks||[]).length ? `<div class="sbl"><b>Sheet</b> ${[p.ac?`AC ${esc(p.ac)}`:"", p.hpMax?`HP ${esc(p.hpMax)}`:"", p.pp?`PP ${esc(p.pp)}`:"",
           ...(p.attacks||[]).filter(a=>a&&a.name).map(a=>`${esc(a.name)} ${esc(a.hit||"")} ${esc(a.dmg||"")}${a.dtype?` ${esc(a.dtype)}`:""}`)].filter(Boolean).join(" · ")}${isCompanion(p.id)?` <span class="npctag">in the party</span>`:""}</div>` : ""}
@@ -13905,7 +13946,7 @@ document.addEventListener("click", e=>{
     const x = pzEdit==="new" ? { id:uid("pz"), given:0 } : P.find(q=>q.id===pzEdit); if(!x) return;
     Object.assign(x, { name, place, answer:$("#pz-answer").value.trim(), how:$("#pz-how").value.trim(), hints:$("#pz-hints").value.split("\n").map(s=>s.trim()).filter(Boolean),
       text:$("#pz-text").value.trim(), effect:$("#pz-effect").value.trim(), goal:$("#pz-goal").value.trim() });
-    if(x.goal){ const gt = $("#pz-goaltext").value.trim(); if(gt) pzGoals()[x.goal] = { text:gt }; else delete pzGoals()[x.goal]; }
+    if(x.goal){ const gt = $("#pz-goaltext").value.trim(); const G = pzGoals()[x.goal] = { ...(pzGoals()[x.goal]||{}), text:gt }; if(!gt) delete G.text; if(!Object.keys(G).length) delete pzGoals()[x.goal]; }
     if(pzEdit==="new") P.push(x);
     pzEdit = null; pzDraft = null; saveParty(); flash("Puzzle saved."); return puzzlesRedraw();
   }
@@ -13916,7 +13957,9 @@ document.addEventListener("click", e=>{
   if(act==="solve"){ p.solved = { day:campaignDay(), hour:root.hour }; pzOpen.delete(p.id);
     const g = p.goal ? pzGoal(p.goal) : null;
     gameLog("puzzle", `Solved ${p.name}${g ? ` (${p.goal}: ${g.done} of ${g.all})` : ""}`);
-    if(g && g.done===g.all) gameLog("puzzle", `${p.goal}: done`);
+    if(g && g.done===g.all){ gameLog("puzzle", `${p.goal}: done`);
+      /* a goal can move people on to a stage (the villain, cornered once the shield is down): { person id: stage id } */
+      const gs = (pzGoals()[p.goal]||{}).stages; if(isObj(gs)) for(const [pid, sid] of Object.entries(gs)){ const q = libNpcById(pid); if(q){ setStage(q, sid, true); gameLog("talk", `${q.name||"Someone"} now: ${(stageOf(q)||{}).name || "as written"}`); } } }
     pzPop = p.id; saveParty(); return puzzlesRedraw(); }
   if(act==="again"){ pzPop = p.id; return showPzPop(); }
   if(act==="unsolve"){ delete p.solved; if(pzPop===p.id) pzPop = null; if(playerShow.kind==="puzzle" && playerShow.id===p.id){ playerShow = { kind:"map" }; sendPlayers(true); }
@@ -16756,6 +16799,8 @@ function setScene(d, key){
   if(s.time){ root.timeOfDay = s.time; root.hour = s.hour!=null ? s.hour : PHASE_HOUR[s.time]; syncTimeBar(); }
   /* people the scene puts somewhere (the butler gone to hide in the kitchen once the doors seal): { person id: "plan/node" } */
   if(isObj(s.move)) for(const [pid, k] of Object.entries(s.move)){ const r = placeRef(k); if(libNpcById(pid) && r && r.node) setPersonAt(pid, r.plan || "survey", r.node); }
+  /* and the stage each is at ("" = as written): { person id: stage id } */
+  if(isObj(s.stages)) for(const [pid, sid] of Object.entries(s.stages)){ const p = libNpcById(pid); if(p) setStage(p, sid, true); }
   /* the party, all together */
   if(s.at){ const gs = groupsOf(), g = gs[0]; g.members = partyRoster().map(c=>c.id); g.at = { ...s.at }; root.groups = [g]; root.activeGroup = g.id; }
   saveParty(); touch();
@@ -16806,6 +16851,8 @@ function captureScene(d, key){
       if(Array.isArray(c.dance) && c.dance.length) s.dance = { pairs:c.dance.map(p=>p.filter(id=>String(id).startsWith("p:"))).filter(p=>p.length) }; }   // who dances with whom
   }
   else if(sel && sel.kind==="node") s.open = { plan:planOf||null, node:sel.id, battle:false };
+  { const stg = {}; for(const p of lib().npcs) if(Array.isArray(p.stages) && p.stages.length) stg[p.id] = p.stageNow || "";     // everyone with stages: where each is
+    if(Object.keys(stg).length) s.stages = stg; }
   (d.setups = d.setups || {})[key] = s; saveParty();
   flash(`Saved as this scene: ${sceneWord(s)}.`);
 }
@@ -17539,7 +17586,7 @@ function renderTCard(){
       <p class="empty-note" style="margin:0 0 6px">${esc([p.role, p.align].filter(Boolean).join(" · "))}</p>
       <div class="tstats"><div><small>AC</small>${esc(p.ac||"—")}</div><div><small>HP</small>${esc(p.hpMax?`${p.hp??p.hpMax}/${p.hpMax}`:"—")}</div><div><small>SPEED</small>${esc(p.speed||"—")}</div><div><small>PP</small>${esc(p.pp||"—")}</div></div>
       ${condChips(p.conds||[], "by:"+p.id)}
-      ${[["Look",p.look],["Voice",p.voice],["Wants",p.wants],["Knows",p.knows],["Backstory",p.backstory]].filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
+      ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
       ${(p.inv||[]).length ? `<p class="grouplab">Carries</p><p class="sbl">${p.inv.map(e=>esc(invName(e)) + (e.qty>1?` ×${e.qty}`:"")).join(", ")}</p>` : ""}
       <div class="pcrow" style="margin-top:6px"><button class="btn" style="flex:1" data-tctalk="${p.id}">Talked</button><button class="btn" style="flex:1" data-tcact="p:${p.id}">Into the Action box ↓</button></div>`;
   }
