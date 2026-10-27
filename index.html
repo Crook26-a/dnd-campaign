@@ -11811,6 +11811,11 @@ function rowSpell(p, row){
 }
 
 /* damage type and dice hinted by an action's text: "(1d6 + 3) Slashing damage" */
+/* the condition an ability's text puts on its target ("the target has the Charmed condition"), if it's one we track */
+function condFromText(text){
+  const m = /\bthe target has the (\w+) condition/i.exec(String(text||"")); if(!m) return "";
+  const c = CONDITIONS.find(k=>k.toLowerCase()===m[1].toLowerCase()); return c || "";
+}
 function hintFromText(text){
   const m = /\((\d+d\d+(?:\s*[+-]\s*\d+)?)\)\s*([A-Za-z]+) damage/.exec(String(text||""));
   return m ? { dice:m[1].replace(/\s+/g,""), dtype:m[2].toLowerCase() } : null;
@@ -11821,7 +11826,7 @@ function actInfo(c, t){
   if(w.startsWith("fa:")){
     const nm = w.slice(3), m = foeById(t.x.foe);
     const text = (foeEntries(m).find(([n])=>n===nm)||[])[1] || [...pairs(m&&m.leg)].find(([n])=>n===nm)?.[1] || "";
-    return { kind:/^Spellcasting/i.test(nm)?"spell":"ability", name:nm.replace(/\s*\(.*\)\s*$/,""), full:nm, hint:hintFromText(text), save:/Saving Throw/i.test(text) };
+    return { kind:/^Spellcasting/i.test(nm)?"spell":"ability", name:nm.replace(/\s*\(.*\)\s*$/,""), full:nm, hint:hintFromText(text), save:/Saving Throw/i.test(text), cond:condFromText(text), once:/can't use it again today/i.test(text) };
   }
   if(w.startsWith("fsp:")){ const key = w.slice(4), s = allSpells().find(x=>`spell:${x.name}`===key) || null;
     return { kind:"spell", name:key.slice(6), spell:s, save:!!(s&&s.save), hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null }; }
@@ -11978,7 +11983,7 @@ function logAction(n, c){
     const x = actor.x, r = foeResources(foeById(x.foe));
     const key = act.what.startsWith("fsp:") ? act.what.slice(4) : act.what.slice(3).replace(/^(Bonus|Reaction|Legendary): /,"").replace(/\s*\(.*\)\s*$/,"");
     const res = r.find(q=>q.key===key);
-    if(res && res.kind==="uses") x.used[key] = Math.min(res.max, (x.used[key]||0)+1);
+    if(res && res.kind==="uses") x.used[key] = info.once && act.outcome==="fail" ? res.max : Math.min(res.max, (x.used[key]||0)+1);   // "once it charms someone, he can't use it again today"
     if(res && res.kind==="recharge") x.spent[key] = true;
     if(res && res.kind==="slotspell"){ const s = r.find(q=>q.key===res.slot); if(s) x.used[s.key] = Math.min(s.max, (x.used[s.key]||0)+1); slotTxt = ` (${ORD[res.lv]})`; }
   }
@@ -11989,7 +11994,7 @@ function logAction(n, c){
     let dropped = false, got = 0, hl = 0;
     if(dmg){ got = dmg; dropped = t.kind==="foe" ? damageFoe(t.x, dmg) : damagePc(t.p, dmg); dealt += dmg; if(t.kind==="pc") statsOf(t.p).taken += dmg; }
     if(heal){ hl = healAny(t, heal); healed += hl; }
-    if(act.cond){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }
+    if(act.cond && !["miss","save"].includes(act.outcome)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save or a miss puts nothing on
     if(dropped) kills++;
     hits.push({ id:t.id, label:t.label, dmg:got, heal:hl, dropped });
   }
@@ -12014,7 +12019,7 @@ function logAction(n, c){
     + (out ? ` — ${out}` : "")
     + (dmg && act.outcome!=="miss" ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}` : "")
     + (healed ? `, healing ${healed}` : "")
-    + (act.cond ? `, ${act.cond.toLowerCase()}` : "")
+    + (act.cond && !["miss","save"].includes(act.outcome) ? `, ${act.cond.toLowerCase()}` : "")
     + (act.note ? ` (${act.note})` : "")
     + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}` : ""}` : "")
     + [...hits, ...hits2].filter((h,i,A)=>h.dropped && A.findIndex(x=>x.id===h.id && x.dropped)===i).map(h=>`. ${h.label} drops`).join("") + ".";
