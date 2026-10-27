@@ -1,7 +1,14 @@
 as written: {"look":"Grey gloves","wants":"A quiet night","knows":"Nothing he'll say"}
 library: Stages 2 · now: as written, stage boxes 2, picker true
-added a stage: {"id":"stgyruuv1","name":"Midnight","wants":"To be anywhere else"}
+added a stage: {"name":"Midnight","wants":"To be anywhere else"}
 switched on the page: now s2 · {"look":"Shaking","wants":"To get out alive","knows":"Where the key is","notes":"Won't fight","voice":"Correct"} · log "Bertram now: After"
+fight picker for After: As written (their own sheet) / This stage's own sheet
+own sheet made: id ln_b@s2, ac 12, hp 20, attacks Cane, story fields left out true
+its sheet on the page: ac box true, hp box true
+edited: stage ac 16 hp 44 · theirs still ac 12 hp 20
+in a fight at Before (as written): npc:ln_b hp 20 ac 12
+at After (its own sheet): npc:ln_b hp 44 ac 16
+at Midnight (as the Mage): srd:mage hp 81 ac 15, label Bertram
 arrival: stage s1, at hall true
 card: Stage As written Before After Midnight Looks: Grey gloves Voice: Correct Wants: For the party to go well Knows: Nothing he'll say
 switched on the card: s2 · Stage As written Before After Midnight Looks: Shaking Voice: Correct Wants: To get out alive Knows: Where the key is Notes: Won't fight

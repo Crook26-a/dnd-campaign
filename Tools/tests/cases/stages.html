@@ -29,9 +29,26 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   blk.querySelector('[data-stg="add"]').click(); await wait(40);
   const s3 = p().stages[2], nm = document.querySelector(`#pane-library [data-stgf="name"][data-sid="${s3.id}"]`), wt = document.querySelector(`#pane-library [data-stgf="wants"][data-sid="${s3.id}"]`);
   nm.value = 'Midnight'; nm.dispatchEvent(new Event('input', { bubbles:true })); wt.value = 'To be anywhere else'; wt.dispatchEvent(new Event('input', { bubbles:true }));
-  out.push('added a stage: ' + JSON.stringify(p().stages[2]));
+  out.push('added a stage: ' + JSON.stringify({ name:p().stages[2].name, wants:p().stages[2].wants }));
   const pick = document.querySelector('#pane-library [data-stagepick]'); pick.value = 's2'; pick.dispatchEvent(new Event('change', { bubbles:true })); await wait(40);
   out.push('switched on the page: now ' + p().stageNow + ' · ' + JSON.stringify((({ look, wants, knows, notes, voice })=>({ look, wants, knows, notes, voice }))(personNow(p()))) + ' · log "' + gameLogList().slice(-1)[0].text + '"');
+  /* how they fight at a stage: its own sheet, or a stat block */
+  p().fightsAs = 'self'; p().ac = '12'; p().hpMax = '20'; p().attacks = [{ name:'Cane', hit:'+2', dmg:'1d4', dtype:'bludgeoning' }]; saveParty(); renderLibList(); await wait(40);
+  const fsel = document.querySelector('#pane-library [data-stgfight][data-sid="s2"]');
+  out.push('fight picker for After: ' + (fsel ? [...fsel.options].slice(0, 2).map(o=>o.textContent).join(' / ') : 'none'));
+  fsel.value = 'sheet'; fsel.dispatchEvent(new Event('change', { bubbles:true })); await wait(40);
+  const sh = p().stages[1].sheet;
+  out.push('own sheet made: id ' + sh.id + ', ac ' + sh.ac + ', hp ' + sh.hpMax + ', attacks ' + (sh.attacks||[]).map(a=>a.name).join(',') + ', story fields left out ' + !('wants' in sh || 'look' in sh || 'stages' in sh));
+  const acIn = document.querySelector(`#pane-library [data-id="ln_b@s2"][data-f="ac"]`), hpIn = document.querySelector(`#pane-library [data-id="ln_b@s2"][data-f="hpMax"]`);
+  out.push('its sheet on the page: ac box ' + !!acIn + ', hp box ' + !!hpIn);
+  if(acIn){ acIn.value = '16'; acIn.dispatchEvent(new Event('input', { bubbles:true })); } if(hpIn){ hpIn.value = '44'; hpIn.dispatchEvent(new Event('input', { bubbles:true })); }
+  out.push('edited: stage ac ' + sh.ac + ' hp ' + sh.hpMax + ' · theirs still ac ' + p().ac + ' hp ' + p().hpMax);
+  const fc = { list:[], pos:{} };
+  setStage(p(), 's1', true); let x1 = addToFight(fc, 'p:ln_b'); out.push('in a fight at Before (as written): ' + x1.foe + ' hp ' + x1.max + ' ac ' + foeById(x1.foe).ac);
+  setStage(p(), 's2', true); let x2 = addToFight(fc, 'p:ln_b'); out.push('at After (its own sheet): ' + x2.foe + ' hp ' + x2.max + ' ac ' + foeById(x2.foe).ac);
+  p().stages[2].fightsAs = 'srd:mage'; setStage(p(), p().stages[2].id, true); let x3 = addToFight(fc, 'p:ln_b');
+  out.push('at Midnight (as the Mage): ' + x3.foe + ' hp ' + x3.max + ' ac ' + foeById(x3.foe).ac + ', label ' + x3.label);
+  setStage(p(), 's2', true);
   /* scenes */
   const d = root.docs[0];
   setScene(d, 'arrival'); await wait(300);

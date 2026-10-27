@@ -1534,7 +1534,7 @@ for(const x of SRD_LOOT){
           : /\(\+/.test(x.rarity) ? gps.map(v=>v.toLocaleString()).join(" / ")
           : `${Math.min(...gps).toLocaleString()}–${Math.max(...gps).toLocaleString()}`) + " gp";
 }
-const foeById = id => (typeof id==="string" && id.startsWith("npc:")) ? npcAsFoe(libNpcById(id.slice(4)))
+const foeById = id => (typeof id==="string" && id.startsWith("npc:")) ? npcAsFoe(fightPerson(libNpcById(id.slice(4))))
   : BESTIARY.find(m => m.id === id) || libFoeById(id) || SRD_FOE_BY.get(id) || null;
 /* a person from the library who fights with their own sheet: read their sheet as a stat block,
    so a fight treats them like any foe — hit points, actions, initiative, saves, what they carry */
@@ -1573,7 +1573,13 @@ function npcAsFoe(p){
     carries:p.carries||"", purse:p.purse||null, hideDc:p.hideDc };
 }
 /* the people who can step into a fight, and as what */
-const npcFightId = p => !p ? "" : p.fightsAs==="self" ? `npc:${p.id}` : (p.fightsAs||"");
+const npcFightId = p0 => { const p = fightPerson(p0); return !p ? "" : p.fightsAs==="self" ? `npc:${p.id}` : (p.fightsAs||""); };
+/* who they are in a fight, at the stage they're at: the stage's own sheet, or the stat block it fights as, or as written */
+function fightPerson(p){
+  const s = typeof stageOf==="function" && stageOf(p); if(!s || !s.fightsAs) return p;
+  if(s.fightsAs==="sheet") return s.sheet ? { ...p, ...s.sheet, id:p.id, name:p.name, fightsAs:"self" } : p;
+  return { ...p, fightsAs:s.fightsAs, hpMax:"", statBlock:null };              // a stat block's own hit points, not theirs
+}
 /* XP by challenge rating */
 const CR_XP = { 0:10, 0.125:25, 0.25:50, 0.5:100, 1:200, 2:450, 3:700, 4:1100, 5:1800, 6:2300, 7:2900,
   8:3900, 9:5000, 10:5900, 11:7200, 12:8400, 13:10000, 14:11500, 15:13000, 16:15000, 17:18000,
@@ -7111,7 +7117,9 @@ $("#pane-party").addEventListener("click", e=>{
 let libTab = "foes", libOpen = null, libQuery = "";
 /* "+ New" fills in a draft first: it joins the library only when Add is pressed (Cancel throws it away) */
 let libDraft = null;
-const libFind = (cat, id) => (libDraft && libDraft.cat===cat && libDraft.x.id===id) ? libDraft.x : (lib()[cat]||[]).find(o=>o.id===id);
+const libFind = (cat, id) => (libDraft && libDraft.cat===cat && libDraft.x.id===id) ? libDraft.x
+  : cat==="npcs" && String(id).includes("@") ? stageSheetById(id)          // a stage's own sheet: "person id@stage id"
+  : (lib()[cat]||[]).find(o=>o.id===id);
 const LIB_CATS = [["foes","Foes"],["npcs","People"],["loot","Loot"],["spells","Spells"],["encounters","Encounters"],["shops","Shop kinds"],["factions","Factions"]];
 /* a spell, laid out for reading at the table */
 function srdSpellBlock(s){
@@ -7676,8 +7684,31 @@ function stagesBlock(x){
     <p class="empty-note" style="font-size:11px;margin:2px 0 6px">What they want, know and show at each point (before the doors seal, after). Blank keeps what's written above. Switch it on their card at the table, or let a scene set it.</p>
     ${stagePick(x)}
     ${S.map(s=>`<div class="stgbox"><div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1"><label>Stage</label><input type="text" data-stgf="name" data-pid="${x.id}" data-sid="${s.id}" value="${esc(s.name||"")}" placeholder="After the doors seal"></div><button class="fdel" data-stg="del" data-pid="${x.id}" data-sid="${s.id}" title="Remove this stage" style="margin-bottom:9px">×</button></div>
-      ${STAGE_FIELDS.map(([k, l])=>`<div class="field"><label>${l}</label><textarea data-stgf="${k}" data-pid="${x.id}" data-sid="${s.id}" rows="${k==="voice"?1:2}" placeholder="${esc(x[k] ? "As written: " + x[k] : "As written")}">${esc(s[k]||"")}</textarea></div>`).join("")}</div>`).join("")}
+      ${STAGE_FIELDS.map(([k, l])=>`<div class="field"><label>${l}</label><textarea data-stgf="${k}" data-pid="${x.id}" data-sid="${s.id}" rows="${k==="voice"?1:2}" placeholder="${esc(x[k] ? "As written: " + x[k] : "As written")}">${esc(s[k]||"")}</textarea></div>`).join("")}
+      ${stageFightBlock(x, s)}</div>`).join("")}
     <button class="btn wide" data-stg="add" data-pid="${x.id}">+ A stage</button></details>`;
+}
+/* how they fight at a stage (s.fightsAs): as written, as a stat block (the lich they become), or with the stage's own
+   copy of their sheet (s.sheet: hit points, AC, saves, attacks, spells…), written with the same sheet as theirs */
+const STAGE_NOT_SHEET = ["stages","stageNow","role","where","look","voice","wants","knows","backstory","notes","faction","known","key","files","spare","purse","carries","gender","hideDc"];
+function stageSheetFrom(p, sid){
+  const o = JSON.parse(JSON.stringify(p)); for(const k of STAGE_NOT_SHEET) delete o[k];
+  o.id = `${p.id}@${sid}`; o.name = p.name || "";
+  if(o.fightsAs && o.fightsAs!=="self" && !(o.ac || o.hpMax || (o.attacks||[]).length)) fillSheetFromBlock(o);   // they fight from a stat block: its numbers, to start from
+  o.fightsAs = "self"; return o;
+}
+function stageSheetById(id){ const [pid, sid] = String(id).split("@"), p = libNpcById(pid), s = p && (p.stages||[]).find(q=>q.id===sid); return (s && s.sheet) || undefined; }
+function stageFightBlock(x, s){
+  const own = s.fightsAs==="sheet", sx = own && s.sheet;
+  let h = `<div class="field"><label>In a fight</label><select data-stgfight data-pid="${x.id}" data-sid="${s.id}"><option value="">As written${x.fightsAs ? ` (${x.fightsAs==="self" ? "their own sheet" : esc((foeById(x.fightsAs)||{}).name||"?")})` : " (doesn't fight)"}</option>
+    <option value="sheet" ${own?"selected":""}>This stage's own sheet</option>${foeOptions(own ? "" : s.fightsAs||"", true)}</select></div>`;
+  if(sx){ const a2 = `data-lib="npcs" data-id="${sx.id}"`, f = npcAsFoe(sx);
+    const t2 = (k,lab,flex,ph) => `<div class="field" style="flex:${flex||1}"><label>${lab}</label><input ${a2} data-f="${k}" type="text" value="${esc(sx[k]??"")}" placeholder="${ph||""}"></div>`;
+    const ta2 = (k,lab,ph,rows) => `<div class="field"><label>${lab}</label><textarea ${a2} data-f="${k}" rows="${rows||2}" placeholder="${ph||""}">${esc(sx[k]||"")}</textarea></div>`;
+    h += `<details class="pcset" data-invfor="stgsheet:${sx.id}" ${openInv.has("stgsheet:"+sx.id)?"open":""}><summary>This stage's sheet <small>AC ${esc(String(f.ac||"?"))} · HP ${esc(String(f.hp||"?"))}</small></summary>
+      ${npcSheet(sx, a2, t2, ta2)}
+      <button class="btn wide" data-stg="resheet" data-pid="${x.id}" data-sid="${s.id}" style="margin-top:4px" title="Start this stage's sheet again from theirs as it is now">Copy their sheet again</button></details>`; }
+  return h;
 }
 function setStage(p, sid, quiet){
   if(sid && (p.stages||[]).some(s=>s.id===sid)) p.stageNow = sid; else delete p.stageNow;
@@ -7690,9 +7721,16 @@ document.addEventListener("input", e=>{ const t = e.target; if(!t.dataset || !t.
   s[t.dataset.stgf] = t.value; saveParty(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || t.dataset.stagepick==null) return;
   const p = libNpcById(t.dataset.stagepick); if(p) setStage(p, t.value); });
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || t.dataset.stgfight==null) return;
+  const p = libNpcById(t.dataset.pid), s = p && (p.stages||[]).find(q=>q.id===t.dataset.sid); if(!s) return;
+  if(t.value) s.fightsAs = t.value; else delete s.fightsAs;
+  if(t.value==="sheet" && !s.sheet){ s.sheet = stageSheetFrom(p, s.id); openInv.add("stgsheet:" + s.sheet.id); flash(`A copy of ${p.name||"their"} sheet for this stage: change what's different.`); }
+  saveParty(); renderLibList(); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-stg]"); if(!b) return;
   const p = libNpcById(b.dataset.pid); if(!p) return; p.stages = Array.isArray(p.stages) ? p.stages : [];
   if(b.dataset.stg==="add") p.stages.push({ id:uid("stg"), name:"" });
+  else if(b.dataset.stg==="resheet"){ const s = p.stages.find(q=>q.id===b.dataset.sid); if(!s || !confirm(`Start "${s.name||"this stage"}"'s sheet again from ${p.name||"their"} own? What's on it now is replaced.`)) return;
+    s.sheet = stageSheetFrom(p, s.id); openInv.add("stgsheet:" + s.sheet.id); }
   else if(b.dataset.stg==="del"){ const s = p.stages.find(q=>q.id===b.dataset.sid); if(s && !confirm(`Remove the stage "${s.name||"unnamed"}"?`)) return;
     p.stages = p.stages.filter(q=>q.id!==b.dataset.sid); if(p.stageNow===b.dataset.sid) delete p.stageNow; }
   saveParty(); renderLibList(); });
@@ -8434,7 +8472,7 @@ function addToFight(c, who, ally){
   if(who.startsWith("p:")){ npc = libNpcById(who.slice(2)); if(!npc) return null; fid = npcFightId(npc); label = npc.name || "Someone"; }
   const m = foeById(fid); if(!m) return null;
   if(!label){ const same = c.list.filter(y=>y.foe===fid).length; label = `${m.name}${same?` ${same+1}`:""}`; }
-  const max = (npc && numOr(npc.hpMax)) || foeMaxHp(m);           // a person keeps their own hit points
+  const max = (npc && numOr(fightPerson(npc).hpMax)) || foeMaxHp(m);           // a person keeps their own hit points (their stage's, if it has its own)
   const x = foeBelongings({ id:uid("fx"), foe:fid, label, hp:max, max, used:{}, spent:{}, conds:[], ally:!!ally, npc:npc?npc.id:undefined });
   c.list.push(x);
   return x;
