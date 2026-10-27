@@ -209,6 +209,13 @@
   #tabs button:hover{color:var(--ink-soft)}
   #tabs button.on{color:var(--lead);border-bottom-color:var(--lead)}
   .pane{padding:14px 14px 40px;overflow-y:auto;min-height:0;overflow-anchor:none}   /* redraws keep their own place (see keepPaneScroll) */
+  .maxbtn{display:none}
+  body.table .maxbtn{display:block;position:sticky;top:0;float:right;z-index:6;margin:-8px -8px 0 6px;width:24px;height:22px;padding:0;border:1px solid var(--rule);border-radius:3px;background:var(--paper);color:var(--ink-soft);font-size:14px;line-height:1;cursor:pointer;opacity:.75}
+  body.table .maxbtn.abs{position:absolute;top:4px;right:6px;margin:0}
+  body.table .maxbtn:hover{opacity:1;color:var(--ink)}
+  body.table #tl-top{position:relative}
+  body.table .maxed{position:fixed !important;inset:10px !important;z-index:90 !important;width:auto !important;max-width:none !important;height:auto !important;flex:none !important;background:var(--paper-lit);border:1px solid var(--ink);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  body.table .maxed .maxbtn{opacity:1}
   .pane, #pscreen{overflow-x:hidden;overflow-wrap:anywhere}   /* never sideways: long lines wrap and stack instead */
   .pane input, .pane select, .pane textarea, #pscreen input, #pscreen select, #pscreen textarea{max-width:100%;min-width:0;box-sizing:border-box}
   .pane .pcrow, #pscreen .pcrow{flex-wrap:wrap}
@@ -18001,8 +18008,31 @@ function closeDrawer(){
   for(const x of [...body.children]){ x.hidden = true; $("#panel").insertBefore(x, $("#tr-split")); }
   drawerPane = null; $("#tdrawer").hidden = true;
 }
+/* any part of the sidebar, full screen (Joseph, 2026-10-27): a button in its top corner; the same button, or Esc, puts
+   it back to its normal size. The boxes redraw their insides all the time, so the button is put back whenever it goes */
+const MAX_BOXES = ["tl-top", "tl-log", "pane-inspect", "actionbox", "tdrawer"];
+function maxBtn(box){
+  if(!box || box.querySelector(":scope > .maxbtn")) return;
+  const b = document.createElement("button"); b.type = "button"; b.className = "maxbtn" + (box.id==="tl-top" || box.id==="tdrawer" ? " abs" : "");      // those two lay out in a column: the button sits over the corner
+  b.dataset.maxfor = box.id; maxLabel(b, box); box.prepend(b);
+}
+function maxLabel(b, box){ const on = box.classList.contains("maxed"); b.textContent = on ? "⤡" : "⤢"; b.title = on ? "Back to its normal size (Esc)" : "Full screen"; }
+function setMaxed(box, on){
+  for(const id of MAX_BOXES){ const o = document.getElementById(id); if(o && o!==box) o.classList.remove("maxed"); }
+  if(box) box.classList.toggle("maxed", !!on);
+  document.body.classList.toggle("boxmaxed", !!(box && on));
+  for(const id of MAX_BOXES){ const o = document.getElementById(id), b = o && o.querySelector(":scope > .maxbtn"); if(b) maxLabel(b, o); }
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest(".maxbtn"); if(!b) return;
+  e.preventDefault(); const box = document.getElementById(b.dataset.maxfor); setMaxed(box, !box.classList.contains("maxed")); });
+document.addEventListener("keydown", e=>{ if(e.key==="Escape" && document.body.classList.contains("boxmaxed")) setMaxed(null, false); });
+function wireMaxBoxes(){
+  for(const id of MAX_BOXES){ const box = document.getElementById(id); if(!box) continue;
+    maxBtn(box); new MutationObserver(()=>maxBtn(box)).observe(box, { childList:true }); }
+}
 function wireTable(){
   tableReady = true;
+  setTimeout(wireMaxBoxes, 0);
   $("#bar .spacer").insertAdjacentHTML("beforebegin", `<span id="tchips"></span>`);
   $("#panelToggle").insertAdjacentHTML("beforebegin", `<button id="moreBtn" class="btn" title="The other tabs">☰ More</button>`);
   $("#moreBtn").onclick = ()=>{ if(drawerPane) closeDrawer(); else openDrawer("library"); };
