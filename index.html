@@ -14592,7 +14592,12 @@ function exitDrop(tokId, everyone){
   const n = bnode(), c = n && n.site && n.site.combat, p = c && c.pos && c.pos[tokId];
   if(!p || editingInside()) return false;
   const ex = exitAt(n, p.x, p.y); if(!ex || !memberIds().includes(tokId)) return false;
-  const here = planOf || "survey", inRoom = membersIn(here, n.id);
+  const here = planOf || "survey";
+  /* whoever is drawn on this map is in this room, whatever their group last said (a room opened from a scene draws the party
+     there): settle that first, so the rest stay here when the party splits, and come along when it doesn't */
+  const onMap = memberIds().filter(id=>c.pos && c.pos[id]);
+  for(const id of onMap) if(!membersIn(here, n.id).includes(id)) moveMember(id, { map:here, node:n.id });
+  const inRoom = membersIn(here, n.id);
   return walkThrough((splitParty ? everyone : !everyone) ? [tokId, ...inRoom.filter(id=>id!==tokId)] : [tokId], ex, n);
 }
 /* a click on a way out's marker: where it goes, who can go, and a look in there */
