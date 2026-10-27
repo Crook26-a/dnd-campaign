@@ -16797,8 +16797,11 @@ function setScene(d, key){
   if(s.ship){ const sh = root.nodes.find(n=>n.id===s.ship.id); if(sh){ sh.x = s.ship.x; sh.y = s.ship.y; } }
   /* the time of day (the day count stays as it is) */
   if(s.time){ root.timeOfDay = s.time; root.hour = s.hour!=null ? s.hour : PHASE_HOUR[s.time]; syncTimeBar(); }
-  /* people the scene puts somewhere (the butler gone to hide in the kitchen once the doors seal): { person id: "plan/node" } */
-  if(isObj(s.move)) for(const [pid, k] of Object.entries(s.move)){ const r = placeRef(k); if(libNpcById(pid) && r && r.node) setPersonAt(pid, r.plan || "survey", r.node); }
+  /* people the scene puts somewhere (the butler gone to hide in the kitchen once the doors seal): { person id: "plan/node" },
+     or "" to take them off every map (the host vanishing into the shadows) */
+  if(isObj(s.move)) for(const [pid, k] of Object.entries(s.move)){ if(!libNpcById(pid)) continue;
+    if(!k){ setPersonAt(pid, null, null); continue; }
+    const r = placeRef(k); if(r && r.node) setPersonAt(pid, r.plan || "survey", r.node); }
   /* and the stage each is at ("" = as written): { person id: stage id } */
   if(isObj(s.stages)) for(const [pid, sid] of Object.entries(s.stages)){ const p = libNpcById(pid); if(p) setStage(p, sid, true); }
   /* the party, all together */
