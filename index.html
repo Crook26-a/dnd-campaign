@@ -16754,6 +16754,8 @@ function setScene(d, key){
   if(s.ship){ const sh = root.nodes.find(n=>n.id===s.ship.id); if(sh){ sh.x = s.ship.x; sh.y = s.ship.y; } }
   /* the time of day (the day count stays as it is) */
   if(s.time){ root.timeOfDay = s.time; root.hour = s.hour!=null ? s.hour : PHASE_HOUR[s.time]; syncTimeBar(); }
+  /* people the scene puts somewhere (the butler gone to hide in the kitchen once the doors seal): { person id: "plan/node" } */
+  if(isObj(s.move)) for(const [pid, k] of Object.entries(s.move)){ const r = placeRef(k); if(libNpcById(pid) && r && r.node) setPersonAt(pid, r.plan || "survey", r.node); }
   /* the party, all together */
   if(s.at){ const gs = groupsOf(), g = gs[0]; g.members = partyRoster().map(c=>c.id); g.at = { ...s.at }; root.groups = [g]; root.activeGroup = g.id; }
   saveParty(); touch();
