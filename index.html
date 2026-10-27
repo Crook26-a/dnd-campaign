@@ -7970,18 +7970,65 @@ function runRules(){
   for(let pass=0; pass<3; pass++){ let acted = false;
     for(const p of lib().npcs) for(const r of (Array.isArray(p.rules) ? p.rules : [])){
       const now = (r.when||[]).length > 0 && r.when.every(k=>condTrue(p, k));
-      if(now && !r.was){ r.was = true; acted = true; ruleAct(p, r); } else if(!now && r.was) r.was = false; }
+      if(now && !r.was){ r.was = true; acted = true; ruleAct(p, r); }
+      else if(!now && r.was){ r.was = false; if(!(r.when||[]).some(k=>k.hp)){ acted = true; ruleUndo(p, r); } } }   // a hit-point rule stays done: its stage changes the very hit points it watches
     if(!acted) break; }
 }
 function ruleAct(p, r){
   const why = (r.when||[]).map(condWords).join(" and "), bits = [];
-  if(r.stage && (p.stages||[]).some(s=>s.id===r.stage) && p.stageNow!==r.stage){ setStage(p, r.stage, true); bits.push((stageOf(p)||{}).name); }
-  if(r.unEffect){ const e = (p.effects||[]).find(x=>x.name===r.unEffect); if(e){ removeEffect(p, e.id); bits.push(`"${e.name}" off`); } }
+  if(r.stage && (p.stages||[]).some(s=>s.id===r.stage) && p.stageNow!==r.stage){ r.prevStage = p.stageNow || ""; setStage(p, r.stage, true); bits.push((stageOf(p)||{}).name); }
+  if(r.unEffect){ const e = (p.effects||[]).find(x=>x.name===r.unEffect); if(e){ r.removed = JSON.parse(JSON.stringify(e)); removeEffect(p, e.id); bits.push(`"${e.name}" off`); } }
   gameLog("talk", `${p.name||"Someone"}: ${bits.join(", ") || "a rule"} (${why})`);
   if(bits.length) flash(`${p.name||"Someone"}: ${bits.join(", ")}.`);
   if(r.say){ sayNow = { title:p.name||"", text:r.say }; showSayPop(); }
   saveParty();
 }
+/* …and when it stops being true (a flag unticked, a ward undone, healed above the line), it's undone: back to the
+   stage it moved them from (if they're still at its stage), and the effect it took off back on */
+function ruleUndo(p, r){
+  const bits = [];
+  if(r.stage && p.stageNow===r.stage && r.prevStage!==undefined){ setStage(p, r.prevStage, true); bits.push((stageOf(p)||{}).name || "as written"); }
+  if(r.removed && !(p.effects||[]).some(e=>e.name===r.removed.name)){ (p.effects = p.effects || []).push(r.removed); effectHpNow(p, +r.removed.hpRoll||0); bits.push(`"${r.removed.name}" back on`); }
+  delete r.prevStage; delete r.removed;
+  if(bits.length){ gameLog("talk", `${p.name||"Someone"}: ${bits.join(", ")} (undone: ${(r.when||[]).map(condWords).join(" and ")} no longer)`); flash(`${p.name||"Someone"}: ${bits.join(", ")}.`); }
+  saveParty();
+}
+/* ── a last-moment escape (Joseph, 2026-10-27: the Gentleman's Favour): a person's p.escape = { name, hp, stealth, dc,
+   where, say } names an entry in their stat block (a reaction, so many a day). While it's unused, a button on their
+   fight card uses it, and the moment they drop to 0 HP a pop-up offers it. Using it: back up to hp, one use spent, a
+   nudge to drag them somewhere none of the party can see, and the Hide action rolled (2024 rules: Dexterity (Stealth)
+   against DC 15; made, they're hidden, which is Invisible, and the total is the DC to find them) ── */
+function escapeOf(x){
+  const p = x && x.npc && libNpcById(x.npc), e = p && p.escape; if(!e || !e.name) return null;
+  const m = foeById(x.foe), base = nm => String(nm).replace(/\s*\(.*\)\s*$/, "").replace(/^Reaction: /i, "").trim().toLowerCase();
+  const entry = foeEntries(m).find(([nm])=>base(nm)===e.name.toLowerCase()); if(!entry) return null;          // not at this stage (the lich has none)
+  const r = foeResources(m).find(q=>q.key.toLowerCase()===e.name.toLowerCase()), max = r ? r.max : 1, used = (x.used||{})[r ? r.key : e.name] || 0;
+  return { p, e, key:r ? r.key : e.name, left:Math.max(0, max - used) };
+}
+function escapeRow(x){
+  const s = escapeOf(x); if(!s) return "";
+  return s.left ? `<button class="btn wide${x.hp<=0 ? " on" : ""}" data-escape="${x.id}" style="margin:0 0 6px" title="${esc(s.e.where || "")}">${esc(s.e.name)}${x.hp<=0 ? " (he's at 0 HP)" : ""}</button>` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${esc(s.e.name)}: used.</p>`;
+}
+/* the moment they drop: offer it, once per drop */
+function escapePrompt(c){
+  for(const x of (c && c.list) || []){ if(!(x.max!=null && x.hp<=0)){ delete x.escapeAsked; continue; }
+    const s = escapeOf(x); if(!s || !s.left || x.escapeAsked) continue;
+    x.escapeAsked = true;
+    sayNow = { title:`${s.e.name}?`, text:`${x.label} has just dropped to 0 Hit Points. ${s.e.name} lets him escape instead (once a day).`, escape:x.id, escapeLabel:`Use ${s.e.name}` };
+    showSayPop(); return;
+  }
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-escape]"); if(!b) return;
+  const n = bnode(), c = n && n.site && n.site.combat, x = c && c.list.find(y=>y.id===b.dataset.escape), s = x && escapeOf(x); if(!s || !s.left) return;
+  const snap = snapOf(c, [x.id]);
+  x.hp = Math.min(x.max||1, +s.e.hp || 1); x.conds = (x.conds||[]).filter(k=>k!=="Unconscious"); (x.used = x.used || {})[s.key] = ((x.used||{})[s.key] || 0) + 1;
+  const d20 = 1 + Math.floor(Math.random()*20), total = d20 + (+s.e.stealth || 0), dc = +s.e.dc || 15, made = total >= dc;
+  c.stealth = c.stealth || {}; if(made) c.stealth[x.id] = { ...(c.stealth[x.id]||{}), hide:total }; else if(c.stealth[x.id]) delete c.stealth[x.id].hide;
+  const line = `${s.e.name}: ${x.label} is up at ${x.hp} HP and gone. Hide: ${d20}${+s.e.stealth ? ` + ${+s.e.stealth}` : ""} = ${total} against DC ${dc}: ${made ? `hidden (Invisible), DC ${total} to find him` : "not hidden, just out of sight"}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap }); gameLog("fight", line);
+  sayNow = { title:s.e.name, text:`${s.e.say ? s.e.say + "\n\n" : ""}**Now:** ${s.e.where || "Drag him to a space none of the party can see."}\n\n**Hide:** ${d20}${+s.e.stealth ? ` + ${+s.e.stealth}` : ""} = **${total}** against DC ${dc}. ${made ? `He's hidden: Invisible, and **${total}** is the DC to find him (it's in the Hidden box on his card).` : "He fails to hide: he's out of their sight, but not hidden. Anyone who comes looking just sees him."}` };
+  battleSel = x.id; touch(); renderBattle(); renderBattlePanel(); sendPlayers(true); showSayPop();
+});
 /* the Session tab: the flags, to tick as things happen */
 function flagsPanel(){
   const F = flagsOf();
@@ -12047,6 +12094,7 @@ var lastCardSel = null;                                  // whose card was last 
 function renderBattlePanel(){
   if(tcard && tcard.over){ if(battleSel===tcard.sel && battleOf) return renderTCard(); tcard = null; }   // a person's card over the battle panel, till a token is picked
   runRules();                                                  // their hit points may have crossed a rule's line
+  { const n = bnode(); if(n && n.site && n.site.combat && !calmOf(n.site.combat)) escapePrompt(n.site.combat); }   // someone with a way out just dropped
   { const n = bnode(), c = n && n.site && n.site.combat;        // a waking's fight with nobody awake left standing: over, calm again
     if(wakeFightOver(c)){ const down = c.list.filter(y=>y.woke && y.max!=null && y.hp<=0).map(y=>y.label);
       endTheFight(n.site, n, c, true); flash(`${down.join(", ") || "It"} down: calm again.${nextDormant(c) ? " The rest still sleep." : ""}`); return; } }
@@ -12111,7 +12159,7 @@ function renderBattlePanelNow(){
   if(selT){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;
     h += `<div class="pcrow" style="align-items:center;margin-top:10px"><p class="grouplab" style="margin:0;flex:1">${esc(selT.label)}</p><button class="pcbig" data-bigsheet="${sheetKey}" title="Their whole sheet, big">Big sheet</button></div>`;
-    if(selT.kind==="foe") h += dormantRow(selT.x) + befriendRow(selT.x) + effectQuick(selT.x);
+    if(selT.kind==="foe") h += dormantRow(selT.x) + befriendRow(selT.x) + escapeRow(selT.x) + effectQuick(selT.x);
     h += stealthRow(c, selT);
     if(selT.kind==="foe") h += knownTick(tokPerson(selT));
     if(selT.kind==="foe" && tokPerson(selT)) h += personBrief(tokPerson(selT));
@@ -14307,7 +14355,7 @@ function showSayPop(){
   if(!el){ el = document.createElement("div"); el.id = "saypop"; document.body.appendChild(el); }
   const onTv = playerShow.kind==="say";
   el.innerHTML = `<div class="thrcard pzcard"><p class="eyebrow" style="margin:0 0 4px">${esc(sayNow.title||"")}</p><div class="pzread">${pzParas(sayNow.text)}</div>
-    <div class="pcrow" style="margin:8px 0 0"><button class="btn small${onTv ? " on" : ""}" data-say="${onTv ? "tvoff" : "tv"}">${onTv ? "Take it off the players' screen" : "Show on the players' screen"}</button><button class="btn small" data-say="close">Close</button></div></div>`;
+    <div class="pcrow" style="margin:8px 0 0">${sayNow.escape ? `<button class="btn small on" data-escape="${esc(sayNow.escape)}">${esc(sayNow.escapeLabel || "Use it")}</button>` : ""}<button class="btn small${onTv ? " on" : ""}" data-say="${onTv ? "tvoff" : "tv"}">${onTv ? "Take it off the players' screen" : "Show on the players' screen"}</button><button class="btn small" data-say="close">Close</button></div></div>`;
 }
 const sayTvHtml = s => `<div class="lb lb-tv pz-tv"><div class="lb-h">${esc((s||{}).title||"")}</div>${pzParas((s||{}).text)}</div>`;
 document.addEventListener("click", e=>{
@@ -15046,8 +15094,14 @@ function cdAdd(min){ const c = cdOf();
     if(c.endsAt) c.endsAt -= cut*1000; else c.left = cdLeft(c) - cut;
     gameLog("clock", `${Math.round(cut/60)} minute${Math.round(cut/60)===1?"":"s"} off the countdown${cdHasGame(c) ? ` (the story's clock to ${cdGameNow(c)})` : ""}`);
     return; }
-  cdRetime(c, (+c.total||0) + min*60);
-  if(min > 0 && c.done){ delete c.done; } }
+  /* and giving it back takes both clocks back the same way; past the start, the rest is more time on the end */
+  const e = (+c.total||0) - cdLeft(c), back = Math.min(e, min*60);
+  if(back > 0){
+    const b = c.gameBase; if(b && cdHasGame(c) && e - back < b.from){ const r = cdRate(c), from = e - back; c.gameBase = { from, at:b.at - r*(b.from - from)/60 }; }   // the story's line, run back past where it was last re-based
+    if(c.endsAt) c.endsAt += back*1000; else c.left = cdLeft(c) + back; delete c.done; }
+  if(min*60 - back > 0) cdRetime(c, (+c.total||0) + (min*60 - back));
+  gameLog("clock", `${min} minute${min===1?"":"s"} back on the countdown${cdHasGame(c) ? ` (the story's clock to ${cdGameNow(c)})` : ""}`);
+}
 function cdChanged(){ cdSave(); sendCountdown(); cdReadouts(); renderPScreen(); }
 var cdSecOpen = false;
 function cdSection(){
@@ -15058,7 +15112,7 @@ function cdSection(){
     ${c.on ? `<div class="cd-ps-big"><span id="cd-ps-left" class="mono">${cdClock(cdLeft(c))}${run?"":c.done?" · time's up":" · paused"}</span></div>
     <p class="mini" id="cd-ps-end" style="text-align:center;margin:-4px 0 6px">${esc(cdEndLine(c))}</p>
     <div class="pcrow"><button class="btn" style="flex:1.3" data-cd="go" title="${run?"Pause it: the clock stops on both screens":"Start it, or carry on from where it stopped"}">${run?"⏸ Pause":"▶ Start"}</button><button class="btn" style="flex:1" data-cd="reset" title="Back to the length you set, every bell unrung">↺ Reset</button></div>
-    <div class="pcrow" title="− takes time off: the real clock and the story's clock both jump ahead (the story's by its pace), and any bell jumped past rings. + gives them more real time: the story's clock keeps its end time and runs a little slower, and the bells still to ring keep their place in the story.">${[-5,-1,1,5].map(m=>`<button class="btn" style="flex:1" data-cd="add" data-m="${m}">${m>0?"+":"−"}${Math.abs(m)} min</button>`).join("")}</div>
+    <div class="pcrow" title="− takes time off: the real clock and the story's clock both jump ahead (the story's by its pace), and any bell jumped past rings. + gives it back: both clocks go back the same way (a bell already rung stays rung); more than has passed goes on the end.">${[-5,-1,1,5].map(m=>`<button class="btn" style="flex:1" data-cd="add" data-m="${m}">${m>0?"+":"−"}${Math.abs(m)} min</button>`).join("")}</div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Title</label><input data-cdf="title" value="${esc(c.title||"")}" placeholder="e.g. Before the last bell" style="flex:2" title="Small, above the clock on their screen"></div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Length</label><input data-cdf="total" class="mono" value="${cdHm(c.total)}" style="width:64px" title="How long the countdown runs in real time: hours and minutes, like 1:45. The bells still to ring keep their place in the story."><small>h:mm</small></div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="The real time you need it to end by. Pressing Start (or carrying on after a pause) fits the length so it ends then.">Or finish by</label><input data-cdf="finishBy" value="${c.finishBy!=null ? cdGameClock(c.finishBy) : ""}" placeholder="e.g. 9:00 pm" style="width:84px" title="A real clock time, like 9:00 pm. Leave it empty to use the length as it is."><small>real time</small></div>
@@ -17266,10 +17320,10 @@ function setScene(d, key){
     if(!k){ setPersonAt(pid, null, null); continue; }
     const r = placeRef(k); if(r && r.node) setPersonAt(pid, r.plan || "survey", r.node); }
   /* and the stage each is at ("" = as written): { person id: stage id } */
-  if(isObj(s.stages)) for(const [pid, sid] of Object.entries(s.stages)){ const p = libNpcById(pid); if(p) setStage(p, sid, true); }
-  /* and what has happened by now ({ flag id: true/false }), then anyone's rules that hang on it */
+  /* what has happened by now ({ flag id: true/false }) and anyone's rules that hang on it; then the stages the scene sets, which win */
   if(isObj(s.flags)) for(const [fid, on] of Object.entries(s.flags)) setFlag(fid, !!on, "the scene", true);
   runRules();
+  if(isObj(s.stages)) for(const [pid, sid] of Object.entries(s.stages)){ const p = libNpcById(pid); if(p) setStage(p, sid, true); }
   /* the party, all together */
   if(s.at){ const gs = groupsOf(), g = gs[0]; g.members = partyRoster().map(c=>c.id); g.at = { ...s.at }; root.groups = [g]; root.activeGroup = g.id; }
   saveParty(); touch();

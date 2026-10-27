@@ -266,3 +266,4 @@ Next in order (Joseph, 2026-10-12; all three DONE, see below): (1) name + backst
 - 2026-10-27: Starring/unstarring a key character in Where redraws the Session tab's 'Their cards' row.
 - 2026-10-27: Full screen for any part of the table sidebar (script, log, room panel, Action box, More drawer): a corner button (kept by a MutationObserver as the boxes redraw), again or Esc to put it back (setMaxed).
 - 2026-10-27: Loot here names an item's place as "the shelves, O7" (was "in a shelves").
+- 2026-10-27: Countdown +N takes both clocks back (gameBase run back along the same line), extra past the start goes on the end. Rules undo themselves when they stop being true (ruleUndo: prevStage, the effect they took off), except hit-point rules; scenes apply flags and rules before their own stages. Escapes (p.escape: Ashgrave's Gentleman's Favour): a card button while unused, a prompt at 0 HP, up to hp, use spent, drag-out nudge, Hide rolled vs DC 15 (2024).

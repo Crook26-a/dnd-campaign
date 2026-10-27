@@ -57,6 +57,10 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   document.querySelector('#pane-library [data-rlf="stage"]').value = 's1'; document.querySelector('#pane-library [data-rlf="say"]').value = 'He begs.';
   document.querySelector('#pane-library [data-rl="save"]').click(); await wait(30);
   const nr = p().rules[p().rules.length-1]; out.push('written in the app: ' + JSON.stringify({ when:nr.when, stage:nr.stage, say:nr.say }) + ' · ' + ruleWords(p(), nr));
+  /* unticking a flag undoes its rule: back to the stage it moved them from */
+  setStage(p(), 's1', true); flagsOf().find(f=>f.id==='f1').on = false; p().rules.find(r=>r.id==='r2').was = false;
+  setFlag('f1', true, 'ticked'); const st1 = p().stageNow; setFlag('f1', false, 'unticked');
+  out.push('flag on → ' + st1 + ', off → ' + p().stageNow);
   /* a puzzle's own flag: ticking it solves the puzzle, Solved ticks it, unticking undoes it */
   flagsOf().push({ id:'fw', name:'Ward D broken', on:false }); root.puzzles.push({ id:'pz4', name:'Ward D', flag:'fw', hints:[], given:0, text:'Crack.', does:[{ to:'ln_v', effect:{ name:'Ward D', save:{ wis:-1 } } }] });
   setFlag('fw', true, 'ticked'); out.push('flag ticked: Ward D solved ' + !!root.puzzles.find(q=>q.id==='pz4').solved + ', on him ' + (p().effects||[]).map(e=>e.name).join(','));

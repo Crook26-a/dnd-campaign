@@ -23,4 +23,4 @@ TV both, counting up: Until midnight 10:07 pm 15:00 paused, both true
 TV in-game only: 10:07 pm paused, both false
 TV real only: 45:00 paused
 TV off: hidden true
-log: The countdown started: 1:00:00 to go / The countdown's bell: The first bell / The countdown's bell: The second bell / The countdown started: 33:58 to go / The countdown ran out: Time's up / The countdown started: about 50 min to go / The countdown's bell: The first bell / 5 minutes off the countdown (the story's clock to 10:15 pm)
+log: The countdown started: 1:00:00 to go / The countdown's bell: The first bell / The countdown's bell: The second bell / 5 minutes back on the countdown / The countdown started: 33:58 to go / The countdown ran out: Time's up / The countdown started: about 50 min to go / The countdown's bell: The first bell / 5 minutes off the countdown (the story's clock to 10:15 pm)
