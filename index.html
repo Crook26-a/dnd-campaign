@@ -230,11 +230,12 @@
   body.table #actionbox{display:block;flex:1;min-height:70px;padding-top:6px}
   .tsplit{flex:0 0 9px;cursor:row-resize;background:linear-gradient(var(--rule),var(--rule)) center/40px 3px no-repeat,var(--paper-deep);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);touch-action:none}
   .tsplit:hover,.tsplit.drag{background:linear-gradient(var(--ink),var(--ink)) center/40px 3px no-repeat,var(--rule-soft)}
-  body.table #tchips{display:flex;gap:5px;align-items:center;min-width:0;overflow:hidden}
+  body.table #tchips{display:flex;gap:5px;align-items:center;min-width:0;flex:0 1 auto;overflow-x:auto;scrollbar-width:none}   /* it gives way, never the rest of the bar */
+  body.table #tchips::-webkit-scrollbar{display:none}
   .tchip{display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--paper);padding:2px 8px 2px 2px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap}
   .tchip .dot{width:21px;height:21px;border-radius:50%;background:var(--r4);color:var(--paper-lit);display:grid;place-items:center;font-family:var(--mono);font-size:10.5px}
   .tchip .hp{font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
-  .tchip.npc .dot{background:#8f7d58} .tchip.npc{border-style:dashed}
+  .keyppl{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:0 0 6px} .keyppl .mini{margin-right:2px}
   .spellpeek{border-left:3px solid var(--rule);margin:2px 0 6px;padding:2px 0 2px 8px;font-size:12px} .splink,.chiplbl{cursor:pointer;text-decoration:underline dotted}
   .tchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
   .tchip.down .dot{background:var(--lead)}
@@ -288,7 +289,8 @@
   body.table #bar{gap:9px}
   body.table #bar .barfield:has(#party){display:none}
   body.table #bar .mark{display:none}
-  body.table #saveState{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+  body.table #saveState{max-width:260px;overflow:hidden;text-overflow:ellipsis;flex:0 5 auto;min-width:24px}   /* the bar never pushes anything off: these give way first */
+  body.table #tchips{flex-shrink:2} body.table #crumb{flex-shrink:6;min-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} body.table #bar > .worldclock{flex-shrink:1;min-width:0;overflow:hidden}
   body.table #pscreenBtn{flex:none}
   body.table #tdrawer:not([hidden]),body.buildv #tdrawer:not([hidden]){display:flex;flex-direction:column;position:absolute;top:0;right:0;bottom:0;width:min(430px,92vw);z-index:45;background:var(--paper-lit);border-left:1px solid var(--ink);box-shadow:-8px 0 24px rgba(58,46,30,.25)}
   #tdtabs{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--rule)}
@@ -17317,11 +17319,18 @@ function captureScene(d, key){
   (d.setups = d.setups || {})[key] = s; saveParty();
   flash(`Saved as this scene: ${sceneWord(s)}.`);
 }
+/* the key people (a person marked key in the Library): a button each, opening their card on the side whether or not
+   they're on the map (Joseph, 2026-10-27: Corvin's sheet after he's vanished) */
+function keyPeopleRow(){
+  const K = lib().npcs.filter(p=>p.key && !isCompanion(p.id)); if(!K.length) return "";
+  return `<div class="keyppl"><span class="mini">Their cards</span>${K.map(p=>`<button class="btn small${tcard && tcard.kind==="npc" && tcard.id===p.id ? " on" : ""}" data-keyp="${p.id}" title="${esc(p.name||"")}: their card on the side (stage, what's been done to them, what they fight with), wherever they are">${esc((p.name||"Someone").replace(/^(Lord|Lady|Sir|Dame|Baron)\s+/i, "").split(" ")[0])}</button>`).join("")}</div>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-keyp]"); if(!b) return; openPersonCard("npc", b.dataset.keyp); });
 function renderSession(){
   const S = sessionDocs(), el = $("#pane-session");
   if(!S.find(d=>d.id===sessOpen)) sessOpen = S.length ? S[S.length-1].id : null;
   const d = docById(sessOpen);
-  let h = threadsPanel() + puzzlesPanel() + flagsPanel() + `<p class="eyebrow spaced">Session script</p>
+  let h = keyPeopleRow() + threadsPanel() + puzzlesPanel() + flagsPanel() + `<p class="eyebrow spaced">Session script</p>
     <div class="pcrow"><select id="ss-pick" style="flex:1;min-width:0">${S.map(x=>`<option value="${x.id}" ${x.id===sessOpen?"selected":""}>${esc(x.title||"Untitled session")}${x.date?` · ${esc(x.date)}`:""}</option>`).join("") || `<option>No sessions yet</option>`}</select>
       <button class="btn" data-dact="newsession">+ New</button></div>`;
   if(!d){ el.innerHTML = h + `<p class="empty-note">No session scripts yet. Make one, or bring a Word script in from the Docs tab.</p>`; return; }
@@ -17998,8 +18007,7 @@ function wireTable(){
   $("#panelToggle").insertAdjacentHTML("beforebegin", `<button id="moreBtn" class="btn" title="The other tabs">☰ More</button>`);
   $("#moreBtn").onclick = ()=>{ if(drawerPane) closeDrawer(); else openDrawer("library"); };
   $("#tdtabs").addEventListener("click", e=>{ const b = e.target.closest("[data-tdtab]"); if(!b) return; if(b.dataset.tdtab) openDrawer(b.dataset.tdtab); else closeDrawer(); });
-  $("#tchips").addEventListener("click", e=>{ const k = e.target.closest("[data-tchipnpc]"); if(k) return openPersonCard("npc", k.dataset.tchipnpc);
-    const b = e.target.closest("[data-tchip]"); if(!b) return; openPersonCard("pc", b.dataset.tchip); });
+  $("#tchips").addEventListener("click", e=>{ const b = e.target.closest("[data-tchip]"); if(!b) return; openPersonCard("pc", b.dataset.tchip); });
   /* the bars between the boxes: drag to size them; the size is remembered on this computer */
   for(const sp of document.querySelectorAll(".tsplit")){
     const side = sp.dataset.tsplit, top = sp.previousElementSibling, v = side==="left" ? "--tl-top" : "--tr-top";
@@ -18021,8 +18029,7 @@ function renderChips(){
   const el = $("#tchips"); if(!el) return;
   if(!tableOn()){ el.innerHTML = ""; return; }
   const cur = battleOf ? battleSel : (tcard && tcard.kind==="pc" ? tcard.id : null);
-  const keyPeople = lib().npcs.filter(p=>p.key && !isCompanion(p.id)).map(p=>`<button class="tchip npc${tcard && tcard.kind==="npc" && tcard.id===p.id ? " on" : ""}" data-tchipnpc="${p.id}" title="${esc(p.name||"")}: open their card (their stage and what they fight with), wherever they are"><span class="dot">${esc(((p.name||"?").trim().replace(/^(Lord|Lady|Sir|Dame|Baron)\s+/i, "")[0]||"?").toUpperCase())}</span>${esc((p.name||"Someone").replace(/^(Lord|Lady|Sir|Dame|Baron)\s+/i, "").split(" ")[0])}</button>`).join("");
-  el.innerHTML = keyPeople + partyRoster().map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
+  el.innerHTML = partyRoster().map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
     return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot">${esc((nm.trim()[0]||"?").toUpperCase())}</span>${esc(nm.split(" ")[0])} <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("");
 }
 function openPersonCard(kind, id){
