@@ -1,0 +1,13 @@
+themes: neutral, nautical, gothic, courtly, rustic, city, wilderness
+every list is a list: true
+GEN_FAMILY has every theme: true, has Tidewell true, GEN_WANTS.enemy true
+gothic campaign: themes gothic, surnames all gothic or neutral true, any nautical surname false
+backstories from gothic+neutral true, e.g. Lior Applewhite: Grew up in a walled city and never saw a field until twenty, and was pressed int
+70/30 mix of 400: gothic 266, courtly 134, other 0 (about right: true)
+neutral only: neutral, surnames all neutral true
+any: 6 themes seen
+roll override nautical: nautical
+backstory with no theme (the Field Book): true, genderFirst without a theme 205
+roll tab: theme picker true (This campaign's mix / Neutral only / Nautical / Gothic & horror / Courtly / Rustic / City / Wilderness / Any theme), mix section true
+mix set from the tab: {"mode":"mix","w":{"gothic":60,"city":40}}, summary Themes for this campaign Gothic & horror 60, City 40
+rolled from the tab with Rustic: theme rustic, card says true

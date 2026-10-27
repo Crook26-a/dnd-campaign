@@ -1,9 +1,9 @@
 kinds 33, lawyer true, advocate false
 stat blocks not in the SRD: none
 carried items not found as loot: none
-baker: Tobin Silvanus | Neutral · Halfling baker | Commoner | purse {"sp":12} | wants flour that isn't full of weevils | knows who's been buying more than a family could eat | carries Rations (1 day), Ink Pen
-lawyer: Delphine "Quick" Fiore | Potential ally · Human lawyer | Spy | purse {"gp":13} | wants a seat on the council | knows the law, its loopholes and its prices | carries Ink, Paper
-ruffian: Ysolde "the Quiet" Keel | Enemy · Halfling ruffian | Tough | purse {"sp":12} | wants a job that pays, no questions | knows which shops pay protection | carries Club, Dagger
-councillor: Svea Rossi | Neutral · Orc councillor | Noble | purse {"gp":45} | wants a scandal to sink a rival | knows who owes whom | carries Signet Ring, Clothes, fine
-priest: Valentina "Red" Fiore | Neutral · Tiefling priest | Priest | purse {"gp":9} | wants to retire somewhere quiet | knows who's dying and who's grieving | carries Holy Symbol, Amulet), Book
+baker: Lark Galloway | Neutral · Aasimar baker | Commoner | purse {"sp":14} | wants a steady order from a ship's cook | knows which ships buy bread for long voyages | carries Rations (1 day), Ink Pen
+lawyer: Stellan Lisboa | Neutral · Elf lawyer | Spy | purse {"gp":13} | wants a client who pays | knows who's suing whom | carries Ink, Paper
+ruffian: Lorca "Old Snow" Greywater | Enemy · Human ruffian | Tough | purse {"sp":16} | wants protection money from the shops | knows who runs the streets | carries Club, Dagger
+councillor: Ezekiel Goodenough | Enemy · Orc councillor | Noble | purse {"gp":35} | wants to wreck a peace that's bad for business | knows what the council plans next | carries Signet Ring, Clothes, fine
+priest: Quentin Rossi | Potential ally · Gnome priest | Priest | purse {"gp":7} | wants the temple roof repaired | knows the old prophecies | carries Holy Symbol, Amulet), Book
 roll tab kind select true, options 34
