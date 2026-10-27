@@ -1,0 +1,6 @@
+first: button "Befriend it"
+befriended: in the fight 1, companion true at {"x":6,"y":1} (was {"x":6,"y":1}), initiative 17, hp 25/33 · pop "FAITHFUL ARMOR It kneels. Show on the players' screen Close"
+second: button "They try to befriend it (it won't)"
+still fighting true · pop "ANIMATED ARMOR 2 Not this one. Show on the players' screen Close"
+Build: becomes Faithful Armor
+cleared: undefined

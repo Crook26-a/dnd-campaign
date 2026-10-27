@@ -7402,6 +7402,8 @@ function libForm(cat, x){
       ${ta("wants","Wants")}${ta("knows","Knows")}
       ${draft ? "" : stagesBlock(x)}
       ${draft ? "" : effectsBlock(x)}
+      ${draft ? "" : `<details class="pcset" ${x.befriendSay || x.befriendNo ? "open" : ""}><summary>Befriended <small>if a creature becomes them when the party befriends it</small></summary>
+        ${ta("befriendSay","When it joins the party","read aloud: the sword lowers, the helm tilts…",2)}${ta("befriendNo","When another one won't","read aloud: this one isn't listening…",2)}</details>`}
       ${ta("backstory","Backstory","Where they're from, how they came to this, what they hope for…",3)}
       <div class="pcrow" style="align-items:center;margin:-4px 0 8px"><button class="btn" ${a} data-libact="rollstory" title="Roll a short backstory (it replaces what's there)">🎲 Roll a backstory</button>
         <label class="check" style="flex:1;margin:0" title="Nobody yet: Give them a name, on an enemy's card, can make them that enemy"><input ${a} data-f="spare" type="checkbox" ${x.spare?"checked":""}> A spare: nobody yet</label></div>
@@ -8528,6 +8530,7 @@ function startFight(st){
       if(st.at && st.at[`f:${fi}:${i}`]) x.at = { ...st.at[`f:${fi}:${i}`] };
       if(f.hide > 0) stealth[x.id] = { hide:f.hide };     // Build set them to start hidden: an ambush
       if(f.guise && f.guise.as) x.dormant = { as:f.guise.as, icon:f.guise.icon || "", wake:f.guise.wake || "" };   // looks like a thing until it wakes
+      if(f.befriend) x.befriend = f.befriend;               // befriended, it becomes this person from the library and joins the party
       list.push(foeBelongings(x));
     }
   });
@@ -11970,7 +11973,7 @@ function renderBattlePanelNow(){
   if(selT){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;
     h += `<div class="pcrow" style="align-items:center;margin-top:10px"><p class="grouplab" style="margin:0;flex:1">${esc(selT.label)}</p><button class="pcbig" data-bigsheet="${sheetKey}" title="Their whole sheet, big">Big sheet</button></div>`;
-    if(selT.kind==="foe") h += dormantRow(selT.x) + effectQuick(selT.x);
+    if(selT.kind==="foe") h += dormantRow(selT.x) + befriendRow(selT.x) + effectQuick(selT.x);
     h += stealthRow(c, selT);
     if(selT.kind==="foe") h += knownTick(tokPerson(selT));
     if(selT.kind==="foe" && tokPerson(selT)) h += personBrief(tokPerson(selT));
@@ -14273,6 +14276,30 @@ function wakeOne(n, c, x){
 /* the button: wake the next one still asleep here */
 const wakeNextBtn = c => { const x = c && nextDormant(c), k = x ? c.list.filter(y=>y.dormant).length : 0;
   return x ? `<button class="btn wide" data-wake="next" style="margin:0 0 8px" title="The next one still asleep here: the fight starts (or it joins the one going), and its words pop up">Wake the next one <small>(${k} asleep: ${esc(x.dormant.as)})</small></button>` : ""; };
+/* ── befriending (Joseph, 2026-10-27): a creature can become someone from the library when the party befriends it (the
+   suit of armor that took a liking to them). The first one does, at once: it leaves the fight and that person joins
+   the party as a companion, on its square, with its hit points. After that the others like it won't: the person
+   has already joined. x.befriend: the person's id; on the person, befriendSay and befriendNo to read ── */
+function befriendRow(x){
+  const p = x && x.befriend && libNpcById(x.befriend); if(!p || x.ally) return "";
+  const taken = p.befriended || isCompanion(p.id);
+  return `<button class="btn wide" data-befriend="${taken ? "no" : "yes"}" data-id="${x.id}" style="margin:0 0 6px" title="${taken ? `${esc(p.name||"It")} has already joined the party: this one won't` : `It becomes ${esc(p.name||"someone")} and joins the party`}">${taken ? "They try to befriend it (it won't)" : "Befriend it"}</button>`;
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-befriend]"); if(!b) return;
+  const n = bnode(), c = n && n.site && n.site.combat, x = c && c.list.find(y=>y.id===b.dataset.id), p = x && libNpcById(x.befriend); if(!p) return;
+  if(b.dataset.befriend==="no" || p.befriended || isCompanion(p.id)){
+    sayNow = { title:x.label, text:p.befriendNo || "It doesn't respond. This one isn't listening." }; gameLog("talk", `They tried to befriend ${x.label}: it won't`); return showSayPop(); }
+  /* it leaves the fight, and they join on its square with its hit points (and its place in the turn order) */
+  const pos = (c.pos||{})[x.id], init = (c.init||{})[x.id], nid = "n:" + p.id;
+  joinParty(p, x.hp, x.max); p.hp = String(x.hp); p.hpMax = String(x.max); p.befriended = true;
+  c.list = c.list.filter(y=>y!==x); if(c.pos) delete c.pos[x.id]; if(c.init) delete c.init[x.id]; if(c.stealth) delete c.stealth[x.id];
+  if(pos) (c.pos = c.pos || {})[nid] = { ...pos }; if(init!=null) (c.init = c.init || {})[nid] = init;
+  if(c.turn===x.id) c.turn = nid;
+  gameLog("talk", `${x.label} was befriended: ${p.name||"it"} joins the party`);
+  sayNow = { title:p.name||"", text:p.befriendSay || `${p.name||"It"} joins the party.` };
+  battleSel = nid; touch(); saveParty(); renderBattle(); renderBattlePanel(); sendPlayers(true); showSayPop();
+});
 document.addEventListener("click", e=>{
   const b = e.target.closest && e.target.closest("[data-pz]"); if(!b) return;
   const act = b.dataset.pz, P = puzzlesOf(), p = P.find(x=>x.id===b.dataset.id);
@@ -16218,7 +16245,7 @@ function sitePanel(n){
       </div>${m?`<div class="foenote">${m.xp} xp each${f.chance!=null&&f.chance<1?` · ${Math.round(f.chance*100)}% of the time`:""}${m.boss?" · boss":""}${m.talk?" · can be talked to":""}${(libFoeById(f.id)||SRD_FOE_BY.get(f.id))?` · <span class="libref" data-libopen="foes:${f.id}">stat block</span>`:""}</div>`:""}${m?`<label style="display:block;font-size:11px;margin:2px 0 6px" title="An ambush: they start hidden (the Hide action, so Invisible while hidden), off the players' screen and their turn order until someone finds them. The DC is their Stealth total; blank = in plain sight">Start hidden, DC <input data-foeh="${i}" class="mono" type="number" min="1" value="${f.hide??""}" placeholder="no" style="width:64px"></label>`:""}${m?`<details class="pcset" style="margin:0 0 6px" ${f.guise&&f.guise.as?"open":""}><summary style="font-size:11px">Dormant until it wakes ${f.guise&&f.guise.as?`<small>looks like ${esc(f.guise.as)}</small>`:""}</summary>
         <label style="display:block;font-size:11px;margin:2px 0" title="A gargoyle on the mantel, a sword in its case: until you wake it from its card on the battle map, the players see only this, and it gets no turn">Looks like <input data-foeg="${i}" data-g="as" type="text" value="${esc((f.guise||{}).as||"")}" placeholder="a sword in a glass case (blank = not dormant)" style="width:100%"></label>
         <label style="display:block;font-size:11px;margin:2px 0" title="One character drawn on its square on the players' screen">Mark on the players' screen <input data-foeg="${i}" data-g="icon" type="text" maxlength="2" value="${esc((f.guise||{}).icon||"")}" placeholder="◆" style="width:40px"></label>
-        <label style="display:block;font-size:11px;margin:2px 0">When it wakes <small>read aloud</small><textarea data-foeg="${i}" data-g="wake" rows="2" style="width:100%">${esc((f.guise||{}).wake||"")}</textarea></label></details>`:""}${m?`<div style="margin:0 0 6px">${foeInvBlock(kitView(st, i), "s"+i, false)}</div>`:""}`;
+        <label style="display:block;font-size:11px;margin:2px 0">When it wakes <small>read aloud</small><textarea data-foeg="${i}" data-g="wake" rows="2" style="width:100%">${esc((f.guise||{}).wake||"")}</textarea></label></details>`:""}${m?`<label style="display:block;font-size:11px;margin:0 0 6px" title="If the party befriends it, it becomes this person from your library and joins them as a companion. Only once: after that, the others like it won't">Befriended, it becomes <select data-foebf="${i}" style="max-width:60%"><option value="">— can't be —</option>${lib().npcs.filter(q=>q.name).map(q=>`<option value="${q.id}" ${q.id===f.befriend?"selected":""}>${esc(q.name)}</option>`).join("")}</select></label>`:""}${m?`<div style="margin:0 0 6px">${foeInvBlock(kitView(st, i), "s"+i, false)}</div>`:""}`;
     }).join("")}
     <button class="btn wide" id="st-addfoe" style="margin-top:4px">Add another</button>
 
@@ -16305,6 +16332,7 @@ function wireSite(n){
       touch(); refreshVerdict(n);
     };
   });
+  $("#pane-inspect").querySelectorAll("[data-foebf]").forEach(s=>{ s.onchange = e=>{ const f = st.foes[+e.target.dataset.foebf]; if(!f) return; if(e.target.value) f.befriend = e.target.value; else delete f.befriend; touch(); }; });
   $("#pane-inspect").querySelectorAll("[data-foeg]").forEach(inp=>{
     inp.oninput = e=>{
       const f = st.foes[+e.target.dataset.foeg]; if(!f) return;
@@ -17175,6 +17203,7 @@ function setScene(d, key){
           const have = c.list.filter(x=>x.foe===id && !(x.max!=null && x.hp<=0) && !x.fled);
           list.forEach((f, k)=>{ let x = have[k];
             if(!x){ x = addToFight(c, id, f.side==="ally"); if(x && f.side==="neutral"){ x.neutral = true; x.ally = false; } }
+            if(x && f.befriend) x.befriend = f.befriend;
             if(!x) return;
             if(f.at){ (c.pos = c.pos || {})[x.id] = { x:f.at[0], y:f.at[1] }; }
             if(f.hide > 0) (c.stealth = c.stealth || {})[x.id] = { hide:f.hide };
@@ -17200,7 +17229,7 @@ function captureScene(d, key){
   if(battleOf){ const n = bnode(), c = n && n.site && n.site.combat;
     s.open = { plan:planOf||null, node:battleOf.nodeId, battle:true };
     if(c) s.foes = c.list.filter(x=>!(x.max!=null && x.hp<=0) && !x.fled).map(x=>{ const p = (c.pos||{})[x.id], h = ((c.stealth||{})[x.id]||{}).hide;
-      return { id:x.foe, ...(p ? { at:[p.x, p.y] } : {}), ...(h > 0 ? { hide:h } : {}), ...(x.ally ? { side:"ally" } : x.neutral ? { side:"neutral" } : {}) }; });
+      return { id:x.foe, ...(p ? { at:[p.x, p.y] } : {}), ...(h > 0 ? { hide:h } : {}), ...(x.befriend ? { befriend:x.befriend } : {}), ...(x.ally ? { side:"ally" } : x.neutral ? { side:"neutral" } : {}) }; });
     if(c){ const ppl = {}; for(const [id, p] of Object.entries(c.pos||{})) if(String(id).startsWith("p:")) ppl[id] = [p.x, p.y];      // the people standing about, on their squares
       if(Object.keys(ppl).length) s.people = ppl;
       if(Array.isArray(c.dance) && c.dance.length) s.dance = { pairs:c.dance.map(p=>p.filter(id=>String(id).startsWith("p:"))).filter(p=>p.length) }; }   // who dances with whom
