@@ -401,6 +401,7 @@
   .pzans{font-size:12.5px;margin:5px 0 3px;font-weight:600} .pzhow{font-size:12px} .pzhow p{margin:3px 0}
   .pzhint{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:2px 0} .pzhint.given{color:var(--ink-faint)} .pzhn{flex:0 0 14px;font-family:var(--mono)}
   .stgbox{border-left:3px solid var(--rule);padding:2px 0 2px 8px;margin:0 0 8px}
+  .whrow{display:flex;gap:4px;align-items:center;padding:3px 0;border-bottom:1px dotted var(--rule-soft);font-size:12.5px} .whrow small{display:block;color:var(--ink-faint);font-size:10.5px} .whrow.hid{background:rgba(217,180,90,.12)}
   .efline{border-left:3px solid var(--lead);padding:2px 0 2px 8px;margin:0 0 6px;font-size:12px} .efrow{margin:2px 0} .efrow .fdel{margin-left:4px}
   .efhint{font-style:italic;color:var(--ink-soft);margin:1px 0 0 8px}
   #saypop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:62;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
@@ -10545,6 +10546,34 @@ function toggleLamp(n, s){
    which square it's in, "x,y". Click a container (not while painting) to fill it, search it, hand out
    what's found. The players' screen never shows what's inside. ── */
 var battleSpot = null;                                   // { x, y } — the container picked on the battle map
+/* what's in this room, for the DM (Joseph, 2026-10-27): every item, where it is (the square and what it's in), whether
+   it's hidden and how hard to find, and whether it's been found; the coin too. Found toggles it by hand; the square
+   button picks it on the map (its container, if it's in one) */
+function whatsHere(n){
+  const st = n.site || {}, items = [...new Set(Array.isArray(st.items) ? st.items : [])], piles = Object.entries(st.coinsAt||{}), coin = placeCoin(st);
+  if(!items.length && !piles.length && !coin) return "";
+  const count = id => (st.items||[]).filter(q=>q===id).length;
+  const row = (id) => { const it = libLootById(id) || {}, at = (st.where||{})[id], dc = itemDc(st, id), shown = itemShown(st, id);
+    const [x, y] = at ? at.split(",").map(Number) : [];
+    const spot = at ? ((st.spotNames||{})[at] || "") : "";
+    return `<div class="whrow${shown ? "" : " hid"}"><span style="flex:1;min-width:0"><span class="libref" data-libopen="loot:${esc(baseId(id))}">${esc(it.name||id)}</span>${count(id)>1 ? ` ×${count(id)}` : ""}
+        <small>${at ? `${esc(spot ? spot + " · " : "")}${sqName(x, y)}` : "anywhere in the room"}${dc ? ` · hidden, DC ${dc}${shown ? " · found" : ""}` : " · in plain sight"}</small></span>
+      ${at ? `<button class="btn small" data-wh="go" data-at="${esc(at)}" title="Pick its square on the map">${sqName(x, y)}</button>` : ""}
+      ${dc ? `<button class="btn small${shown ? " on" : ""}" data-wh="found" data-id="${esc(id)}" title="${shown ? "Hide it again: not found yet" : "They found it"}">${shown ? "Found" : "Hidden"}</button>` : ""}</div>`; };
+  const hid = items.filter(id=>!itemShown(st, id)).length;
+  return `<details class="pcset whhere" data-invfor="whhere" ${openInv.has("whhere") || !openInv.has("whhere:shut") ? "open" : ""}><summary>What's in here <small>${items.length} item${items.length===1?"":"s"}${hid ? ` · ${hid} hidden` : ""}${coin || piles.length ? " · coin" : ""}</small></summary>
+    ${items.map(row).join("")}
+    ${coin ? `<div class="whrow${coinShown(st) ? "" : " hid"}"><span style="flex:1">Coin: ${esc(cpStr ? cpStr(coin) : String(coin))} <small>${+st.coinDc ? `hidden, DC ${st.coinDc}${coinShown(st) ? " · found" : ""}` : "in plain sight"}</small></span></div>` : ""}
+    ${piles.map(([k, p])=>{ const [x, y] = k.split(",").map(Number); return `<div class="whrow${pileShown(p) ? "" : " hid"}"><span style="flex:1">${esc(pileWord(p))} <small>${esc((st.spotNames||{})[k] ? st.spotNames[k] + " · " : "")}${sqName(x, y)}${+p.dc ? ` · hidden, DC ${p.dc}${pileShown(p) ? " · found" : ""}` : ""}</small></span><button class="btn small" data-wh="go" data-at="${k}">${sqName(x, y)}</button></div>`; }).join("")}</details>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-wh]"); if(!b) return;
+  const n = bnode(); if(!n) return; const st = n.site = n.site || {};
+  if(b.dataset.wh==="go"){ const [x, y] = b.dataset.at.split(",").map(Number); battleSpot = { x, y }; renderBattle(); renderBattlePanel(); return; }
+  if(b.dataset.wh==="found"){ const id = b.dataset.id; st.found = st.found || {};
+    if(st.found[id]) delete st.found[id]; else { st.found[id] = true; gameLog("search", `Found ${(libLootById(id)||{}).name || id} at ${placeLabel(n)}`); }
+    touch(); renderBattle(); renderBattlePanel(); }
+});
+document.addEventListener("toggle", e=>{ const d = e.target; if(!d.classList || !d.classList.contains("whhere")) return; if(d.open){ openInv.delete("whhere:shut"); } else openInv.add("whhere:shut"); }, true);
 const spotKey = s => `${s.x},${s.y}`;
 /* a square's name, as the players call it: letters across (A…Z, AA…), numbers down — "C7" */
 const colName = x => (x >= 26 ? colName(Math.floor(x/26) - 1) : "") + String.fromCharCode(65 + x%26);
@@ -11005,6 +11034,7 @@ function openBattle(n){
   useBmap(n); placeTokens(st.combat); fitBview();
   $("#battle").hidden = false;
   touch(); renderBattle(); renderPane(true);
+  if(typeof renderSession==="function") renderSession();    // a puzzle in this room opens in the Session tab
 }
 function closeBattle(quiet){
   setTimeout(syncUpBtn, 0);
@@ -11930,7 +11960,7 @@ function calmTop(n, st, c, all){
     <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
     <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p>
     ${n.shop ? `<div class="shopbattle">${shopBlock(n)}</div>` : ""}
-    ${lightRow(n)}${spotPanel(n)}${placeSearchBox(st)}
+    ${lightRow(n)}${spotPanel(n)}${whatsHere(n)}${placeSearchBox(st)}
     <p class="grouplab">Who's here <small>click one, or their token</small></p>
     ${all.map(t=>row(t.id, t.label, t.side==="party" ? "party" : t.side==="enemy" ? (t.kind==="foe" && t.x.dormant ? "dormant" : "hostile") : t.side==="neutral" ? "neutral" : "")).join("")}
     ${by.map(b=>row(b.id, b.p.name||"Someone", b.p.role ? String(b.p.role).split(" · ")[0].toLowerCase() : "here")).join("")}`;
@@ -11950,6 +11980,7 @@ function renderBattlePanelNow(){
     ${wakeNextBtn(c)}
     ${lightRow(n)}
     ${spotPanel(n)}
+    ${whatsHere(n)}
     ${placeSearchBox(st)}
     <div class="pcrow bt-turnctl"><button class="btn" style="flex:1" data-ba="init">Roll initiative</button><button class="btn" style="flex:1" data-ba="next">Next turn</button></div>
     <div class="pcrow"><button class="btn" style="flex:1" data-ba="layout">${c.layout==="lineup"?"Show the battle map":"Show a simple lineup"}</button></div>
@@ -14150,7 +14181,7 @@ const puzzlesOf = () => (root.puzzles = Array.isArray(root.puzzles) ? root.puzzl
 const pzGoals = () => (root.puzzleGoals = isObj(root.puzzleGoals) ? root.puzzleGoals : {});
 let pzEdit = null, pzDraft = null, pzPop = null;
 const pzOpen = new Set();                                    // puzzles opened by hand in the list
-const pzHere = p => !!p.place && partyHereKeys().has(p.place);
+const pzHere = p => !!p.place && (partyHereKeys().has(p.place) || (!!battleOf && `${planOf||""}/${battleOf.nodeId}`===p.place));   // where the party is, or the room you have open
 /* how far along a goal is: its puzzles, how many are solved */
 function pzGoal(name){ const P = puzzlesOf().filter(p=>p.goal===name); return { all:P.length, done:P.filter(p=>p.solved).length }; }
 const pzParas = s => String(s||"").split(/\n\s*\n/).map(x=>x.trim()).filter(Boolean).map(x=>`<p>${mdInline(x).replace(/\n/g, "<br>")}</p>`).join("");
@@ -15346,6 +15377,7 @@ function gameLog(kind, text){
   if(L.length > GLOG_MAX) L.splice(0, L.length - GLOG_MAX);
   markDirty(K_SURVEY); clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
   if(pane==="notes") refreshGameLog();
+  if(typeof renderTLog==="function") renderTLog();          // the log beside the session script, at the table
 }
 /* the place a site belongs to, for "searched X", "a fight at X" */
 function placeOfSite(st){
@@ -18035,7 +18067,7 @@ function dawnRecharge(){
 }
 
 /* ── the notes and the log (left, below the script) ── */
-const TL_KINDS = [["","All"],["scene","Scenes"],["fight","Fights"],["move","Moves"],["heal","Healing"],["check","Checks"],["item","Items"],["note","Notes"]];
+const TL_KINDS = [["","All"],["scene","Scenes"],["fight","Fights"],["move","Moves"],["heal","Healing"],["check","Checks"],["item","Items"],["puzzle","Puzzles"],["note","Notes"]];
 function renderTLog(force){
   const el = $("#tl-log"); if(!el || !tableOn()) return;
   const ae = document.activeElement; if(!force && ae && el.contains(ae) && (ae.tagName==="INPUT" || ae.tagName==="TEXTAREA")) return;
