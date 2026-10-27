@@ -4,10 +4,10 @@ ward 1: npc:ln_c: hp 77, Int 17 Wis 12 Cha 11, saves "Int +4, Wis +2", DC 14, bu
 ward 3: npc:ln_c: hp 77, Int 17 Wis 12 Cha 9, saves "Int +4, Wis +2", DC 13, burst Attack Roll: +5
 ward 2: npc:ln_c: hp 73, Int 17 Wis 12 Cha 9, saves "Int +4, Wis +2", DC 13, burst Attack Roll: +5
 weakened line: The book burned (Ward 1): Int and Wis saves −2; max HP −4 (1d6) · The portraits hung (Ward 3): Cha modifier −1; DCs −1; attack rolls −1 · The song played (Ward 2): max HP −4 (1d6); Loud noises deal 1 Psychic damage to him.
-library now: Weakened The book burned Ward 1: Int and Wis saves −2; max HP −4 (1d6) × The portraits hung Ward 3: Cha modifier −1; DCs −1; attack rolls −1 × The song played Ward 2: max HP −4 (1d6); Loud noises deal 1 Psychic damage to him. ×
+library now: Effects on them The book burned Ward 1: Int and Wis saves −2; max HP −4 (1d6) × The portraits hung Ward 3: Cha modifier −1; DCs −1; attack rolls −1 × The song played Ward 2: max HP −4 (1d6); Loud noises deal 1 Psychic damage to him. ×
 joins a fight: max 73, hp 73
 mid-fight -10: max 63, hp 60
-card: Weakened The book burned Ward 1: Int and Wis saves −2; max HP −4 (1d6) × The portraits hung Ward 3: Cha modifier −1; DCs −1; attack rolls −1 × The song played Ward 2: max HP −4 (1d6); Loud noises deal 1 Psychic damage to
+card: Effects on them The book burned Ward 1: Int and Wis saves −2; max HP −4 (1d6) × The portraits hung Ward 3: Cha modifier −1; DCs −1; attack rolls −1 × The song played Ward 2: max HP −4 (1d6); Loud noises deal 1 Psychic da
 taken off: max 73, hp 60, effects left 3
 log: Lord Test: A curse: max HP −10 / Lord Test: A curse is gone
 as the Lich: npc:ln_c, Lord Test, hp 307 (Lich 315), weakened true
@@ -16,3 +16,5 @@ solved: on him The song -3 · pop On Lord Test The song: max HP −3; Loud noise
 in a fight: max 78, button Loud noise: 1 Psychic, hint true
 pressed: hp 77, log "Loud noise: Lord Test takes 1 Psychic damage (The song)."
 undone: effects 0, max 81
+stage effects: resists "everything but radiant", card Effects on them Coming apart : resists everything but radiant; 10 Necrotic at the start of his turns. (this stage)
+text stat block as theirs: Lord Test hp 90 (12d8+36) ab 9/14/14/13/14/19 · Spirit Jar, Legendary Resistance (1/Day), Grave Bolt, Fey Step (3/Day) · per-day Legendary Resistance 1, Fey Step 3

@@ -66,6 +66,15 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   qb.click(); await wait(30); out.push('  pressed: hp ' + z.hp + ', log "' + c3.log.slice(-1)[0].text + '"');
   pzOpen.add(pz.id); renderSession(); document.querySelector(`#pane-session [data-pz="unsolve"][data-id="${pz.id}"]`).click(); await wait(30);
   out.push('undone: effects ' + p().effects.length + ', max ' + z.max);
+  /* effects that come with a stage, and a stat block of your own written as text */
+  lib().foes.push({ id:'lf_t', name:'Text Lich', cr:5, xp:1800, ac:'16', hp:'90 (12d8+36)', speed:'30 ft.', str:9, dex:14, con:14, int:13, wis:14, cha:19, sav:'Con +5',
+    traits:'Spirit Jar. It comes back.\n\nLegendary Resistance (1/Day). It succeeds instead.', attacks:'Grave Bolt. Ranged Attack Roll: +7, range 120 ft. Hit: 17 (3d8 + 4) Necrotic damage.\n\nFey Step (3/Day). Bonus Action: it teleports.' });
+  p().stages = [{ id:'sa', name:'Coming apart', effects:[{ id:'ea', name:'Coming apart', res:'everything but radiant', rule:'10 Necrotic at the start of his turns.', quick:{ label:'Start of his turn', dmg:10, type:'Necrotic' } }] },
+                { id:'sl', name:'The lich', fightsAs:'lf_t' }];
+  setStage(p(), 'sa', true); const fa = foeById(npcFightId(p()));
+  out.push('stage effects: resists "' + fa.res + '", card ' + txt({ innerText:effectsLine(p(), true).replace(/<[^>]+>/g, ' ') }) );
+  setStage(p(), 'sl', true); const fl = foeById(npcFightId(p()));
+  out.push('text stat block as theirs: ' + fl.name + ' hp ' + fl.hp + ' ab ' + fl.ab.join('/') + ' · ' + foeEntries(fl).map(([n])=>n).join(', ') + ' · per-day ' + foeResources(fl).map(r=>r.label + ' ' + r.max).join(', '));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  document.title = 'RES ' + out.join(' || ');
 }, 900);

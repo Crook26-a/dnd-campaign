@@ -1583,9 +1583,15 @@ function fightPerson(p){
   if(s && s.fightsAs==="sheet") return s.sheet ? { ...p, ...s.sheet, id:p.id, name:p.name, fightsAs:"self" } : p;
   /* a stat block (the stage's, or theirs once something has happened to them): read as their own, with none of their
      own numbers showing through, so they're still themselves in the fight and their effects still count */
-  const as = s && s.fightsAs ? s.fightsAs : p.fightsAs && p.fightsAs!=="self" && effectsOf(p).length ? p.fightsAs : "";
+  const as = s && s.fightsAs ? s.fightsAs : p.fightsAs && p.fightsAs!=="self" && allEffects(p).length ? p.fightsAs : "";
   const b = as && foeById(as); if(!b) return p;
-  const o = { ...p, fightsAs:"self", statBlock:JSON.parse(JSON.stringify(b)), cr:"", attacks:[] };
+  const sb = JSON.parse(JSON.stringify(b));
+  if(!sb.act && !sb.tr && (sb.traits || sb.attacks)){            // one of your own, written as text: its traits and actions as entries
+    const split = s => String(s||"").split(/\n\s*\n/).filter(x=>x.trim()).map(x=>{ const k = x.indexOf(". "); return k>0 ? [x.slice(0,k).trim(), x.slice(k+2).trim()] : [x.trim(), ""]; });
+    sb.tr = split(sb.traits); sb.act = split(sb.attacks); }
+  if(!Array.isArray(sb.ab)) sb.ab = ["str","dex","con","int","wis","cha"].map(k=>numOr(sb[k]));
+  if(!sb.spd && sb.speed) sb.spd = sb.speed;
+  const o = { ...p, fightsAs:"self", statBlock:sb, cr:"", attacks:[] };
   for(const k of ["ac","hpMax","hp","init","speed","str","dex","con","int","wis","cha","saves","senses","pp","defenses"]) o[k] = "";
   return o;
 }
@@ -7719,8 +7725,26 @@ function stageFightBlock(x, s){
     h += `<details class="pcset" data-invfor="stgsheet:${sx.id}" ${openInv.has("stgsheet:"+sx.id)?"open":""}><summary>This stage's sheet <small>AC ${esc(String(f.ac||"?"))} · HP ${esc(String(f.hp||"?"))}</small></summary>
       ${npcSheet(sx, a2, t2, ta2)}
       <button class="btn wide" data-stg="resheet" data-pid="${x.id}" data-sid="${s.id}" style="margin-top:4px" title="Start this stage's sheet again from theirs as it is now">Copy their sheet again</button></details>`; }
+  /* effects that come with this stage (resistances while he's coming apart, the damage at the start of his turn) */
+  const SE = Array.isArray(s.effects) ? s.effects : [];
+  h += `<details class="pcset" data-invfor="stgef:${x.id}:${s.id}" ${SE.length || openInv.has(`stgef:${x.id}:${s.id}`) ? "open" : ""}><summary>Effects at this stage <small>${SE.length ? esc(SE.map(e=>e.name).join(", ")) : "only while they're at it"}</small></summary>
+    ${SE.map(e=>`<div class="efrow"><b>${esc(e.name||"An effect")}</b>: ${esc(effectWords(e))} <button class="fdel" data-sef="del" data-pid="${x.id}" data-sid="${s.id}" data-eid="${e.id}" title="Remove">×</button></div>`).join("")}
+    <details class="pcset sefadd"><summary>Add one</summary>
+      <div class="field"><label>Name</label><input type="text" data-sefn="name" placeholder="Coming apart"></div>
+      <div class="field"><label>Resists <small>damage types</small></label><input type="text" data-sefn="res" placeholder="acid, bludgeoning, cold…"></div>
+      ${effectInputs("data-sefn")}
+      <button class="btn wide on" data-sef="add" data-pid="${x.id}" data-sid="${s.id}">Add it to this stage</button></details></details>`;
   return h;
 }
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-sef]"); if(!b) return;
+  const p = libNpcById(b.dataset.pid), s = p && (p.stages||[]).find(q=>q.id===b.dataset.sid); if(!s) return; s.effects = Array.isArray(s.effects) ? s.effects : [];
+  if(b.dataset.sef==="del") s.effects = s.effects.filter(q=>q.id!==b.dataset.eid);
+  else { const box = b.closest(".sefadd"), v = k => { const i = box.querySelector(`[data-sefn="${k}"]`); return i ? i.value.trim() : ""; };
+    const ef = effectFromForm(v); ef.id = uid("ef"); ef.name = v("name"); if(v("res")) ef.res = v("res");
+    if(!ef.name){ flash("Give the effect a name first."); return; }
+    if(ef.hp){ const h = ef.hp, neg = /^[-−]/.test(h), r = /d/i.test(h) ? rollDiceExpr(h.replace(/^[+−-]/, "")) : Math.abs(parseInt(h.replace(/^[+−-]/, ""), 10)||0); ef.hpRoll = (neg ? -1 : 1) * (r||0); }
+    s.effects.push(ef); openInv.add(`stgef:${p.id}:${s.id}`); }
+  stageFightSync(p); saveParty(); renderLibList(); });
 function setStage(p, sid, quiet){
   if(sid && (p.stages||[]).some(s=>s.id===sid)) p.stageNow = sid; else delete p.stageNow;
   stageFightSync(p);
@@ -7753,11 +7777,13 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
    save:{ str…cha }, dc, atk, hp:"-1d6", hpRoll, rule }] ── */
 const ABN = { str:"Str", dex:"Dex", con:"Con", int:"Int", wis:"Wis", cha:"Cha" };
 const effectsOf = p => (p && Array.isArray(p.effects)) ? p.effects.filter(e=>e && e.on!==false) : [];
+/* theirs, and the ones that come with the stage they're at (s.effects: "coming apart" while he's coming apart) */
+const allEffects = p => [...effectsOf(p), ...(((typeof stageOf==="function" && stageOf(p)) || {}).effects || []).map(e=>({ ...e, ofStage:true }))];
 const sgnN = n => (n>=0 ? "+" : "−") + Math.abs(n);
 const sgnT = n => (n>=0 ? "+" : "-") + Math.abs(n);           // in stat block text, as the SRD writes it
 function effectTotals(p){
   const t = { abil:{}, save:{}, dc:0, atk:0, hp:0 };
-  for(const e of effectsOf(p)){ for(const k of ABK){ t.abil[k] = (t.abil[k]||0) + (+((e.abil||{})[k])||0); t.save[k] = (t.save[k]||0) + (+((e.save||{})[k])||0); }
+  for(const e of allEffects(p)){ for(const k of ABK){ t.abil[k] = (t.abil[k]||0) + (+((e.abil||{})[k])||0); t.save[k] = (t.save[k]||0) + (+((e.save||{})[k])||0); }
     t.dc += +e.dc||0; t.atk += +e.atk||0; t.hp += +e.hpRoll||0; }
   return t;
 }
@@ -7770,12 +7796,13 @@ function effectWords(e){
   if(+e.dc) out.push(`DCs ${sgnN(+e.dc)}`); if(+e.atk) out.push(`attack rolls ${sgnN(+e.atk)}`);
   if(+e.hpRoll) out.push(`max HP ${sgnN(+e.hpRoll)}${e.hp && /d/i.test(e.hp) ? ` (${String(e.hp).replace(/^[+-]/, "")})` : ""}`);
   if((e.lose||[]).length) out.push(`doesn't have ${e.lose.join(", ")}`);
+  if(e.res) out.push(`resists ${e.res}`);
   if(e.rule) out.push(e.rule);
   return out.join("; ");
 }
 /* their stat block with everything done to them */
 function withEffects(f, p){
-  const E = effectsOf(p); if(!f || !E.length) return f;
+  const E = allEffects(p); if(!f || !E.length) return f;
   const t = effectTotals(p), o = { ...f }, ab0 = Array.isArray(f.ab) ? f.ab : [];
   o.ab = ABK.map((k, j)=>ab0[j]==null ? (t.abil[k] ? 10 + 2*t.abil[k] : ab0[j]) : +ab0[j] + 2*(t.abil[k]||0));
   const listed = {}; String(f.sav||"").split(",").forEach(part=>{ const mm = /(Str|Dex|Con|Int|Wis|Cha)\w*\s*([+-]\s*\d+)/i.exec(part); if(mm) listed[mm[1].slice(0,3).toLowerCase()] = +mm[2].replace(/\s+/g,""); });
@@ -7793,6 +7820,7 @@ function withEffects(f, p){
   const lose = E.flatMap(e=>e.lose||[]).map(s=>String(s).trim().toLowerCase()).filter(Boolean);
   if(lose.length){ const keep = v => { const L = pairs(v).filter(([nm])=>!lose.includes(String(nm).replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase())); return Array.isArray(v) && v.length && typeof v[0]==="string" ? (L[0] || []) : L; };
     for(const k of ["act","bon","rea","tr"]) if(o[k]) o[k] = keep(o[k]); }
+  const R = E.map(e=>e.res).filter(Boolean); if(R.length) o.res = [f.res, ...R].filter(Boolean).join("; ");
   o.tr = [...pairs(o.tr), ["Weakened", E.map(e=>`${e.name||"An effect"}${e.from ? ` (${e.from})` : ""}: ${effectWords(e)}`).join(" · ")]];
   return o;
 }
@@ -7819,8 +7847,8 @@ function removeEffect(p, id){
 }
 /* on their card, at the table */
 function effectsLine(p, canRemove){
-  const E = effectsOf(p); if(!E.length) return "";
-  return `<div class="efline"><span class="mini">Weakened</span>${E.map(e=>`<div class="efrow"><b>${esc(e.name||"An effect")}</b>${e.from ? ` <small>${esc(e.from)}</small>` : ""}: ${esc(effectWords(e))}${canRemove ? ` <button class="fdel" data-ef="del" data-pid="${p.id}" data-eid="${e.id}" title="Take it off them">×</button>` : ""}${e.hint ? `<div class="efhint">To play: ${esc(e.hint)}</div>` : ""}</div>`).join("")}</div>`;
+  const E = allEffects(p); if(!E.length) return "";
+  return `<div class="efline"><span class="mini">Effects on them</span>${E.map(e=>`<div class="efrow"><b>${esc(e.name||"An effect")}</b>${e.from ? ` <small>${esc(e.from)}</small>` : ""}: ${esc(effectWords(e))}${e.ofStage ? ` <small>(this stage)</small>` : canRemove ? ` <button class="fdel" data-ef="del" data-pid="${p.id}" data-eid="${e.id}" title="Take it off them">×</button>` : ""}${e.hint ? `<div class="efhint">To play: ${esc(e.hint)}</div>` : ""}</div>`).join("")}</div>`;
 }
 /* an effect's rule, a button for it in fights ("Loud noise: 1 Psychic"), and how to let the players find out; attr is the
    data attribute the form reads its fields by, e the effect to fill them from */
@@ -7848,11 +7876,11 @@ function effectFromForm(v){
 }
 /* in a fight: an effect's button on the card of the one it's on ("Loud noise: 1 Psychic") */
 function effectQuick(x){
-  const p = x && x.npc && libNpcById(x.npc), E = effectsOf(p).filter(e=>e.quick && e.quick.label); if(!E.length) return "";
+  const p = x && x.npc && libNpcById(x.npc), E = allEffects(p).filter(e=>e.quick && e.quick.label); if(!E.length) return "";
   return `<div class="pcrow" style="flex-wrap:wrap;margin:0 0 6px">${E.map(e=>`<button class="btn" style="flex:1" data-efq="${e.id}" data-x="${x.id}" title="${esc(e.rule||e.name||"")}">${esc(e.quick.label)}${e.quick.dmg ? `: ${e.quick.dmg} ${esc(e.quick.type||"")}` : ""}</button>`).join("")}</div>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-efq]"); if(!b) return;
-  const n = bnode(), c = n && n.site && n.site.combat, x = c && c.list.find(y=>y.id===b.dataset.x), p = x && libNpcById(x.npc), ef = p && (p.effects||[]).find(q=>q.id===b.dataset.efq); if(!ef) return;
+  const n = bnode(), c = n && n.site && n.site.combat, x = c && c.list.find(y=>y.id===b.dataset.x), p = x && libNpcById(x.npc), ef = p && allEffects(p).find(q=>q.id===b.dataset.efq); if(!ef) return;
   const d = Math.max(0, +ef.quick.dmg||0), snap = snapOf(c, [x.id]);
   if(d && x.max!=null){ x.hp = Math.max(0, x.hp - d); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); }
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:`${ef.quick.label}: ${x.label}${d ? ` takes ${d} ${ef.quick.type||""} damage`.replace(/\s+damage$/, " damage") : ""} (${ef.name||"an effect"}).`, snap });
