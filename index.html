@@ -8416,7 +8416,7 @@ function wirePlaceTail(el, n){
 function lootWhere(n, st, id){
   const at = (st.where||{})[id]; if(!at) return "";
   const [x, y] = at.split(",").map(Number), own = (st.spotNames||{})[at], t = spotTile(bmapOf(n), { x, y });
-  return ` <small>· ${own ? esc(own) : `in a ${esc(((t||{}).name||"container").toLowerCase())}`}, ${sqName(x, y)}</small>${battleOf ? ` <button class="btn small" data-wh="go" data-at="${esc(at)}" title="Pick it on the map">${sqName(x, y)}</button>` : ""}`;
+  return ` <small>· ${own ? esc(own) : `the ${esc(((t||{}).name||"container").toLowerCase())}`}, ${sqName(x, y)}</small>${battleOf ? ` <button class="btn small" data-wh="go" data-at="${esc(at)}" title="Pick it on the map">${sqName(x, y)}</button>` : ""}`;
 }
 function lootHere(n, st, reg){
   const items = (st&&st.items)||[], pc = st&&st.loot ? (st.loot.purse ?? st.loot.coin) : 0, purse = PURSES.find(p=>p.cat===pc);

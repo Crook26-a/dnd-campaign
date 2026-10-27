@@ -265,3 +265,4 @@ Next in order (Joseph, 2026-10-12; all three DONE, see below): (1) name + backst
 - 2026-10-27: Key people out of the top bar (they pushed ☰ More/Data off it) into a 'Their cards' row in the Session tab; the top bar never pushes anything off: the party chips, place name, world clock and save status shrink instead (#bar > * is flex-shrink:0 by default).
 - 2026-10-27: Starring/unstarring a key character in Where redraws the Session tab's 'Their cards' row.
 - 2026-10-27: Full screen for any part of the table sidebar (script, log, room panel, Action box, More drawer): a corner button (kept by a MutationObserver as the boxes redraw), again or Esc to put it back (setMaxed).
+- 2026-10-27: Loot here names an item's place as "the shelves, O7" (was "in a shelves").
