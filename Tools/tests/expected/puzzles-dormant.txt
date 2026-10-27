@@ -17,5 +17,11 @@ card: Dormant. The players see a sword in a glass display case. No turn until it
 woke: dormant false, initiative true, on the TV true, cases left 1, in the strip true
 pop: ANIMATED FLYING SWORD 1 WAKES The glass bursts and the sword comes on. Show on the players' screen Close | log "Animated Flying Sword 1 woke at The Library"
 on the TV: say Animated Flying Sword 1 wakes The glass bursts and the sword comes on.
+calm: button Wake the next one (2 asleep: a sword in a glass display case) · tags party,party,dormant,dormant
+woke one: calm false, wakeFight true, strip R1 Start 21 Animated Flying Sword 1 – Anna – Bram, next button Wake the next one (1 asleep: a sword in a glass display case)
+it fell: calm true, left here Animated Flying Sword 2 (asleep), party initiative kept {"pa":15,"pb":5}, XP pool 50, cleared false
+log: A fight began at The Library: Animated Flying Sword / Animated Flying Sword 1 woke at The Library / Fight at The Library — 1 round, 1 of 1 enemies down
+woke the next: calm false, party initiative back true, turn Anna Ash, next button false
+it fell: calm true, left 0, XP pool for both 100, cleared true
 Build: dormant box true, shows a sword in a glass display case
 cleared: guise undefined

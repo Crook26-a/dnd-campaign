@@ -8174,7 +8174,7 @@ function beginBattle(st){
   if(!st.combat) startFight(st);
   const c = st.combat; c.calm = false; c.round = c.round || 1;
   c.statsAt = statSnap();                               // where everyone's tallies stood: the fight's XP card counts from here
-  const foesNow = c.list.filter(x=>!x.ally && !x.neutral && !(x.max && x.hp<=0) && !x.fled), by = {};
+  const foesNow = c.list.filter(x=>!x.ally && !x.neutral && !(x.max && x.hp<=0) && !x.fled && !x.dormant), by = {};
   for(const x of foesNow){ const nm = (foeById(x.foe)||{}).name||"foe"; by[nm] = (by[nm]||0)+1; }
   gameLog("fight", `A fight began${placeOfSite(st) ? ` at ${placeOfSite(st)}` : ""}${foesNow.length ? `: ${Object.entries(by).map(([k,v])=>v>1?`${v} × ${k}`:k).join(", ")}` : ""}`);
   if(battleOf){ const all = combatants(c); act = freshAct((all[0]||{}).id); }
@@ -8187,6 +8187,44 @@ function calmAfterBattle(st){
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
   c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.onceUsed; delete c.fled;
+}
+/* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
+   calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking
+   started ends by itself (auto) once everyone awake against the party is down: no questions, its XP adds to any still
+   to share, its party initiative is kept for the next one, and the place isn't cleared while anything here still sleeps */
+function endTheFight(st, n, c, auto){
+  const E = c.list.filter(y=>!y.ally && !y.neutral), up = E.filter(y=>!y.dormant), left = up.filter(y=>!(y.max && y.hp<=0) && !y.fled).length, ran = E.filter(y=>y.fled).length, asleep = E.length - up.length;
+  if(!auto && !confirm(`End the fight?${left?` ${left} still standing.`:""}${ran?` ${ran} fled.`:""}${asleep?` ${asleep} still dormant.`:""}`)) return false;
+  /* the fight goes into the session log before it's cleared away */
+  if((c.log||[]).length){ const j = journal(); j.log.push({ id:uid("lg"), at:today(), n:j.log.length+1, text:fightSummary(n, c) }); saveParty(); }
+  gameLog("fight", fightSummary(n, c).split("\n")[0]);
+  /* the fight's XP: the foes brought down, and what each party member did in it (shared out on the card that follows) */
+  { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
+    const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
+    for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
+    /* what each did in this fight goes into their in-fight tallies, so the value score can be split in fights and out of them */
+    for(const [id, dl] of Object.entries(delta)){ const p = partyRoster().find(q=>q.id===id); if(!p) continue; const S = statsOf(p), F = S.fight = S.fight || {};
+      for(const k of STAT_KEYS) F[k] = Math.round(((+F[k]||0) + (+dl[k]||0)) * 100) / 100; }
+    if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length){
+      const due = { pool, place:placeLabel(n), delta, at:today() }, was0 = st.xpDue;
+      if(auto && was0 && was0.place===due.place){ due.pool += +was0.pool||0;        // one sword after another: one card for them all
+        for(const [id, d] of Object.entries(was0.delta||{})){ const t = due.delta[id] = due.delta[id] || {}; for(const k of Object.keys(d)) t[k] = (+t[k]||0) + (+d[k]||0); } }
+      st.xpDue = due; }
+    /* how big the fight was (its enemies' hit points), so the value score knows what a fight takes; and who was its best */
+    const hp = up.reduce((s, y)=>s + (+y.max||0), 0); if(hp){ const f = root.fightHp = root.fightHp || { hp:0, n:0 }; f.hp += hp; f.n += 1; } battleAward(placeLabel(n), delta, hp); }
+  /* the fallen stay here to be searched — whoever ran or still stands keeps their things */
+  const laid = layBodies(st, c.list.filter(y=>!y.ally && !y.neutral && y.max!=null && y.hp<=0 && !y.fled));
+  if(laid && !auto) flash(`${laid} bod${laid===1?"y":"ies"} left here to search — see "On the fallen" under Loot here.`);
+  if(!asleep && (!left || (!auto && confirm("Mark this place cleared?")))) st.cleared = true;
+  const keep = auto ? Object.fromEntries(combatants(c).filter(t=>t.side==="party" && t.init!=null).map(t=>[t.id, t.init])) : null;
+  delete c.wakeFight;
+  /* on the map: stay here, calm again; from the place's panel: the fight is put away */
+  if(battleOf){ calmAfterBattle(st); if(keep) c.partyInit = keep; touch(); renderBattle(); renderBattlePanel(); return "calm"; }
+  delete st.combat; return "gone";
+}
+/* a fight a waking started: over once nobody awake is left standing against the party */
+function wakeFightOver(c){
+  return !!(c && c.wakeFight && !calmOf(c) && !c.list.some(y=>!y.ally && !y.neutral && !y.dormant && !(y.max!=null && y.hp<=0) && !y.fled));
 }
 /* bringing someone into a fight already going: a person from the library (as their own sheet or
    the stat block they fight as), or any foe — against the party or on its side */
@@ -8549,30 +8587,7 @@ function wireFight(n, st){
       if(battleOf){ gameLog("fight", `The fight at ${placeLabel(battleOf ? bnode() : {})} is over`); calmAfterBattle(st); touch(); renderBattle(); renderBattlePanel(); return; }
       delete st.combat;
     }
-    else if(a==="end"){
-      const E = c.list.filter(y=>!y.ally && !y.neutral), left = E.filter(y=>!(y.max && y.hp<=0) && !y.fled).length, ran = E.filter(y=>y.fled).length;
-      if(!confirm(`End the fight?${left?` ${left} still standing.`:""}${ran?` ${ran} fled.`:""}`)) return;
-      /* the fight goes into the session log before it's cleared away */
-      if((c.log||[]).length){ const j = journal(); j.log.push({ id:uid("lg"), at:today(), n:j.log.length+1, text:fightSummary(n, c) }); saveParty(); }
-      gameLog("fight", fightSummary(n, c).split("\n")[0]);
-      /* the fight's XP: the foes brought down, and what each party member did in it (shared out on the card that follows) */
-      { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
-        const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
-        for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
-        /* what each did in this fight goes into their in-fight tallies, so the value score can be split in fights and out of them */
-        for(const [id, dl] of Object.entries(delta)){ const p = partyRoster().find(q=>q.id===id); if(!p) continue; const S = statsOf(p), F = S.fight = S.fight || {};
-          for(const k of STAT_KEYS) F[k] = Math.round(((+F[k]||0) + (+dl[k]||0)) * 100) / 100; }
-        if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length) st.xpDue = { pool, place:placeLabel(n), delta, at:today() }; 
-        /* how big the fight was (all its enemies' hit points), so the value score knows what a fight takes; and who was its best */
-        const hp = E.reduce((s, y)=>s + (+y.max||0), 0); if(hp){ const f = root.fightHp = root.fightHp || { hp:0, n:0 }; f.hp += hp; f.n += 1; } battleAward(placeLabel(n), delta, hp); }
-      /* the fallen stay here to be searched — whoever ran or still stands keeps their things */
-      const laid = layBodies(st, c.list.filter(y=>!y.ally && !y.neutral && y.max!=null && y.hp<=0 && !y.fled));
-      if(laid) flash(`${laid} bod${laid===1?"y":"ies"} left here to search — see "On the fallen" under Loot here.`);
-      if(!left || confirm("Mark this place cleared?")) st.cleared = true;
-      /* on the map: stay here, calm again; from the place's panel: the fight is put away */
-      if(battleOf){ calmAfterBattle(st); touch(); renderBattle(); renderBattlePanel(); return; }
-      delete st.combat;
-    }
+    else if(a==="end"){ const r = endTheFight(st, n, c, false); if(r!=="gone") return; }
     else return;
     touch(); renderPlay(); if(battleOf) renderBattle();
   });
@@ -11462,7 +11477,7 @@ function undoAction(c){
 /* the fight in a paragraph, for the session log */
 function fightSummary(n, c){
   const L = (c.log||[]).map(e=>`R${e.round}: ${e.text}`);
-  const E = c.list.filter(x=>!x.ally && !x.neutral), ran = E.filter(x=>x.fled).length;
+  const E = c.list.filter(x=>!x.ally && !x.neutral && !x.dormant), ran = E.filter(x=>x.fled).length;     // the ones still asleep weren't in it
   return `Fight at ${placeLabel(n)} — ${c.round} round${c.round===1?"":"s"}, ${E.filter(x=>x.max!=null&&x.hp<=0).length} of ${E.length} enemies down${ran?`, ${ran} fled`:""}.` + (L.length ? "\n" + L.join("\n") : "");
 }
 
@@ -11518,6 +11533,9 @@ function wireBmapPanel(el, n, c){
 }
 var lastCardSel = null;                                  // whose card was last shown: a new pick scrolls the panel to it
 function renderBattlePanel(){
+  { const n = bnode(), c = n && n.site && n.site.combat;        // a waking's fight with nobody awake left standing: over, calm again
+    if(wakeFightOver(c)){ const down = c.list.filter(y=>y.woke && y.max!=null && y.hp<=0).map(y=>y.label);
+      endTheFight(n.site, n, c, true); flash(`${down.join(", ") || "It"} down: calm again.${nextDormant(c) ? " The rest still sleep." : ""}`); return; } }
   const r = keepPaneScroll("pane-inspect", renderBattlePanelNow);
   if(battleSel && battleSel!==lastCardSel){ const card = document.querySelector("#pane-inspect .bt-sel"); if(card && card.textContent.trim()) scrollInPane(card, "start", true); }
   lastCardSel = battleSel; return r;
@@ -11531,12 +11549,13 @@ function calmTop(n, st, c, all){
     <!--selcard-->
     ${togetherBlock()}
     ${xpDueBlock(st)}
+    ${wakeNextBtn(c)}
     <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
     <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p>
     ${n.shop ? `<div class="shopbattle">${shopBlock(n)}</div>` : ""}
     ${lightRow(n)}${spotPanel(n)}${placeSearchBox(st)}
     <p class="grouplab">Who's here <small>click one, or their token</small></p>
-    ${all.map(t=>row(t.id, t.label, t.side==="party" ? "party" : t.side==="enemy" ? "hostile" : t.side==="neutral" ? "neutral" : "")).join("")}
+    ${all.map(t=>row(t.id, t.label, t.side==="party" ? "party" : t.side==="enemy" ? (t.kind==="foe" && t.x.dormant ? "dormant" : "hostile") : t.side==="neutral" ? "neutral" : "")).join("")}
     ${by.map(b=>row(b.id, b.p.name||"Someone", b.p.role ? String(b.p.role).split(" · ")[0].toLowerCase() : "here")).join("")}`;
 }
 function renderBattlePanelNow(){
@@ -11550,6 +11569,8 @@ function renderBattlePanelNow(){
   const calm = calmOf(c);
   let h = calm ? calmTop(n, st, c, all) : `<p class="eyebrow">Encounter · ${esc(placeLabel(n))}</p>
     <div class="fighthead"><span>Round <b>${c.round}</b></span><span>${cur?`Turn: <b>${esc(cur.label)}</b>`:"Roll initiative to begin"}</span></div>
+    ${c.wakeFight ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">Started by a waking: it ends by itself, calm again, once whatever woke is down.</p>` : ""}
+    ${wakeNextBtn(c)}
     ${lightRow(n)}
     ${spotPanel(n)}
     ${placeSearchBox(st)}
@@ -13848,15 +13869,30 @@ function dormantRow(x){
 document.addEventListener("click", e=>{
   const b = e.target.closest && e.target.closest("[data-wake]"); if(!b) return;
   e.preventDefault();
-  const n = bnode(), c = n && n.site && n.site.combat, x = c && c.list.find(y=>y.id===b.dataset.id); if(!x) return;
+  const n = bnode(), c = n && n.site && n.site.combat, x = c && (b.dataset.wake==="next" ? nextDormant(c) : c.list.find(y=>y.id===b.dataset.id)); if(!x) return;
   if(b.dataset.wake==="again"){ sayNow = { title:`${x.label} wakes`, text:(x.woke||{}).text||"" }; return showSayPop(); }
+  wakeOne(n, c, x);
+});
+/* the next one still asleep here, in the order they were set out */
+const nextDormant = c => (c.list||[]).find(y=>y.dormant);
+/* waking: it starts the fight if it's calm here (just it and the party: the rest sleep on, and the party's initiative
+   from the last waking holds), or joins the one going; the fight ends by itself when it's down (wakeFightOver) */
+function wakeOne(n, c, x){
   const d = x.dormant; if(!d) return;
   delete x.dormant; x.woke = { text:d.wake || "" };
-  if(!calmOf(c) && (c.init||{})[x.id]==null) (c.init = c.init || {})[x.id] = 1 + Math.floor(Math.random()*20) + initBonus(foeById(x.foe));   // into the fight already going
+  let began = false;
+  if(calmOf(c)){ beginBattle(n.site); c.wakeFight = true; began = true;
+    for(const [id, v] of Object.entries(c.partyInit||{})) if(combatants(c).some(t=>t.id===id)) c.init[id] = v; }
+  if((c.init||{})[x.id]==null) (c.init = c.init || {})[x.id] = 1 + Math.floor(Math.random()*20) + initBonus(foeById(x.foe));   // its own initiative
+  if(began && Object.keys(c.partyInit||{}).length){ c.turn = null; nextTurn(c); }        // everyone has initiative: straight to the first turn
+  battleSel = x.id;
   gameLog("fight", `${x.label} woke${placeLabel(n) ? ` at ${placeLabel(n)}` : ""}`);
   sayNow = d.wake ? { title:`${x.label} wakes`, text:d.wake } : null;
   touch(); renderBattle(); renderBattlePanel(); sendPlayers(true); showSayPop();
-});
+}
+/* the button: wake the next one still asleep here */
+const wakeNextBtn = c => { const x = c && nextDormant(c), k = x ? c.list.filter(y=>y.dormant).length : 0;
+  return x ? `<button class="btn wide" data-wake="next" style="margin:0 0 8px" title="The next one still asleep here: the fight starts (or it joins the one going), and its words pop up">Wake the next one <small>(${k} asleep: ${esc(x.dormant.as)})</small></button>` : ""; };
 document.addEventListener("click", e=>{
   const b = e.target.closest && e.target.closest("[data-pz]"); if(!b) return;
   const act = b.dataset.pz, P = puzzlesOf(), p = P.find(x=>x.id===b.dataset.id);
@@ -14500,6 +14536,12 @@ function cdStart(){ const c = cdOf(); cdAudioOn();
 function cdPause(){ const c = cdOf(); c.left = cdLeft(c); c.endsAt = null; }
 function cdReset(quiet){ const c = cdOf(); c.endsAt = null; c.left = +c.total||0; delete c.done; delete c.gameBase; c.bells.forEach(b=>{ b.rung = false; }); if(+c.planned > 0 && +c.planned !== +c.total) cdRetime(c, +c.planned); if(!quiet) cdBanners = [], cdBannerDraw(); }
 function cdAdd(min){ const c = cdOf();
+  /* taking time away is time passing (Joseph, 2026-10-27): the real clock jumps ahead, and the story's with it at its
+     own pace; the end stays where it was, and a bell jumped past rings */
+  if(min < 0){ const cut = Math.min(cdLeft(c), -min*60);
+    if(c.endsAt) c.endsAt -= cut*1000; else c.left = cdLeft(c) - cut;
+    gameLog("clock", `${Math.round(cut/60)} minute${Math.round(cut/60)===1?"":"s"} off the countdown${cdHasGame(c) ? ` (the story's clock to ${cdGameNow(c)})` : ""}`);
+    return; }
   cdRetime(c, (+c.total||0) + min*60);
   if(min > 0 && c.done){ delete c.done; } }
 function cdChanged(){ cdSave(); sendCountdown(); cdReadouts(); renderPScreen(); }
@@ -14512,7 +14554,7 @@ function cdSection(){
     ${c.on ? `<div class="cd-ps-big"><span id="cd-ps-left" class="mono">${cdClock(cdLeft(c))}${run?"":c.done?" · time's up":" · paused"}</span></div>
     <p class="mini" id="cd-ps-end" style="text-align:center;margin:-4px 0 6px">${esc(cdEndLine(c))}</p>
     <div class="pcrow"><button class="btn" style="flex:1.3" data-cd="go" title="${run?"Pause it: the clock stops on both screens":"Start it, or carry on from where it stopped"}">${run?"⏸ Pause":"▶ Start"}</button><button class="btn" style="flex:1" data-cd="reset" title="Back to the length you set, every bell unrung">↺ Reset</button></div>
-    <div class="pcrow" title="Add or take away real time they have left. The story's clock keeps its end time (it runs a little slower or faster), and the bells still to ring keep their place in the story.">${[-5,-1,1,5].map(m=>`<button class="btn" style="flex:1" data-cd="add" data-m="${m}">${m>0?"+":"−"}${Math.abs(m)} min</button>`).join("")}</div>
+    <div class="pcrow" title="− takes time off: the real clock and the story's clock both jump ahead (the story's by its pace), and any bell jumped past rings. + gives them more real time: the story's clock keeps its end time and runs a little slower, and the bells still to ring keep their place in the story.">${[-5,-1,1,5].map(m=>`<button class="btn" style="flex:1" data-cd="add" data-m="${m}">${m>0?"+":"−"}${Math.abs(m)} min</button>`).join("")}</div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Title</label><input data-cdf="title" value="${esc(c.title||"")}" placeholder="e.g. Before the last bell" style="flex:2" title="Small, above the clock on their screen"></div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1">Length</label><input data-cdf="total" class="mono" value="${cdHm(c.total)}" style="width:64px" title="How long the countdown runs in real time: hours and minutes, like 1:45. The bells still to ring keep their place in the story."><small>h:mm</small></div>
     <div class="pcrow" style="align-items:center"><label class="mini" style="flex:1" title="The real time you need it to end by. Pressing Start (or carrying on after a pause) fits the length so it ends then.">Or finish by</label><input data-cdf="finishBy" value="${c.finishBy!=null ? cdGameClock(c.finishBy) : ""}" placeholder="e.g. 9:00 pm" style="width:84px" title="A real clock time, like 9:00 pm. Leave it empty to use the length as it is."><small>real time</small></div>
