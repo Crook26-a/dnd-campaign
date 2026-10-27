@@ -1,0 +1,37 @@
+// uses: nothing
+<script>
+/* one room panel (Joseph, 2026-10-27): every section of a place's card is beside its battle map too, so a feature in
+   one is in both. Card-only parts are the ones about the map itself (its choice, opening it, the planned fight) */
+const __RP = { format:"ordinate-survey-v1", title:"Panel Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
+  threads:[{ id:"th1", text:"The butler owes them a favour.", place:"h/hall", person:"", day:null, until:null, made:1 }],
+  library:{ npcs:[{ id:"ln_b", name:"Bertram", role:"The butler", look:"Grey gloves", wants:"Quiet", npcs:[] }], foes:[], loot:[{ id:"ll_k", name:"A brass key", kind:"key", value:"", desc:"" }], encounters:[], shops:[], factions:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, npcs:["ln_b"], dmNotes:"They broke a vase.",
+      board:{ title:"Odd jobs", skin:"parchment", missions:[] },
+      site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:["ll_k"], where:{ ll_k:"2,1" }, hide:{ ll_k:12 }, foes:[], light:"bright" },
+      bmap:{ name:"The Hall", rows:["##########","#..CC....#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ try{
+  loadJSONNow(JSON.stringify(__RP)); await wait(300); setDmMode(true); await wait(50);
+  enterPlan('h'); await wait(40);
+  const heads = () => [...document.querySelectorAll('#pane-inspect .eyebrow.spaced, #pane-inspect details > summary, #pane-inspect .field > label')]
+    .map(e=>e.firstChild && e.firstChild.textContent ? e.firstChild.textContent.trim() : txt(e)).filter(Boolean);
+  const CARD_ONLY = ['Battle map', 'The fight'];
+  select('node', 'hall'); renderPane(true); await wait(40); const card = [...new Set(heads())];
+  openBattle(doc.nodes.find(n=>n.id==='hall')); await wait(120); const map = new Set(heads());
+  out.push('on the card: ' + card.join(' | '));
+  out.push('missing beside the map: ' + (card.filter(h=>!map.has(h) && !CARD_ONLY.includes(h)).join(' | ') || 'none'));
+  /* they work there: the notes, the adder, the loose thread, the loot */
+  const pn = document.querySelector('#pane-inspect #pl-notes'); pn.value = 'And a window.'; pn.dispatchEvent(new Event('input'));
+  out.push('notes beside the map: ' + doc.nodes.find(n=>n.id==='hall').dmNotes);
+  const pane = document.getElementById('pane-inspect');
+  out.push('who you\'ll meet: ' + /Grey gloves/.test(txt(pane)) + ', thread: ' + /owes them a favour/.test(txt(pane)) + ', board: ' + /Odd jobs/.test(pane.innerHTML) + ', loot: ' + /A brass key/.test(txt(pane)));
+  const ad = pane.querySelector('details.adder'); ad.open = true; pane.querySelector('[data-adkind="loot"]') && pane.querySelector('[data-adkind="loot"]').click(); await wait(40);
+  out.push('the adder redraws beside the map: still on the map ' + !!battleOf + ', adder there ' + !!document.querySelector('#pane-inspect details.adder'));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

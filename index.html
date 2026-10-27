@@ -8374,6 +8374,31 @@ function placeSearchBox(st){
     <div class="pcrow">${rows.length>1?`<button class="btn" style="flex:1" data-psroll="all">Roll for everyone</button>`:""}<button class="btn" style="flex:1" data-psearch title="Everyone with a total searches; blank ones don't">Search</button></div>
     ${battleOf ? `<p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Each finds only what they can see from where they stand on the map. Dim light is Lightly Obscured: Disadvantage on Perception checks to see things there; darkness hides them from anyone without Darkvision or a light (2024 rules).</p>` : ""}</div>`;
 }
+/* ── a place's own sections, the same on its card and beside its battle map (Joseph, 2026-10-27: one room panel, so a
+   feature in one is in both): its board, loose threads and factions, who you'll meet; then adding to it, its session
+   notes and putting up a board. The battle panel adds the map's own parts (lights, turns, waking) around them ── */
+function whoYoullMeet(n){
+  const people = (n.npcs||[]).map(libNpcById).filter(Boolean), many = people.length > 6;      // a crowd (a ballroom) folds shut
+  const inner = (people.length ? people.map(p=>`<div class="playperson">
+      <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}${factionChip(p)}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button></div>
+      ${condChips(p.conds||[], "by:"+p.id)}
+      ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
+      ${p.fightsAs && p.fightsAs!=="self" && foeById(p.fightsAs)?`<div class="sbl"><b>Fights as</b> <span class="libref" data-libopen="foes:${p.fightsAs}">${esc(foeById(p.fightsAs).name)}</span></div>`:""}
+      ${p.fightsAs==="self" || p.ac || p.hpMax || (p.attacks||[]).length ? `<div class="sbl"><b>Sheet</b> ${[p.ac?`AC ${esc(p.ac)}`:"", p.hpMax?`HP ${esc(p.hpMax)}`:"", p.pp?`PP ${esc(p.pp)}`:"",
+          ...(p.attacks||[]).filter(a=>a&&a.name).map(a=>`${esc(a.name)} ${esc(a.hit||"")} ${esc(a.dmg||"")}${a.dtype?` ${esc(a.dtype)}`:""}`)].filter(Boolean).join(" · ")}${isCompanion(p.id)?` <span class="npctag">in the party</span>`:""}</div>` : ""}
+      ${p.purse&&purseGp(p.purse)?`<div class="sbl"><b>Purse</b> ${COINS.filter(([k])=>p.purse[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", ")}</div>`:""}
+      ${carryBlock(p)}
+      ${filesBlock(p, "npc:"+p.id, true)}
+    </div>`).join("") : `<p class="empty-note" style="margin:0 0 8px">Nobody in particular.</p>`);
+  return many ? `<details class="pcset" data-invfor="meet:${n.id}" ${openInv.has("meet:"+n.id) ? "open" : ""}><summary>Who you'll meet <small>${people.length} people</small></summary>${inner}</details>`
+    : `<p class="eyebrow spaced">Who you'll meet</p>` + inner;
+}
+const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + whoYoullMeet(n);
+const placeTail = n => adderBlock(n) + `<div class="field" style="margin-top:12px"><label>Session notes</label>
+    <textarea id="pl-notes" rows="3" placeholder="What happened here, what the players promised, what they took…">${esc(n.dmNotes||"")}</textarea></div>` + boardAdd(n);
+function wirePlaceTail(el, n){
+  const t = el.querySelector("#pl-notes"); if(t) t.oninput = e=>{ n.dmNotes = e.target.value; touch(); };
+}
 /* ── Loot here: a place's coin, its items (what each is in, its square, how hard to find) and the search; the same block
    on the place's card and beside its battle map. redraw puts back whichever is showing ── */
 function lootWhere(n, st, id){
@@ -12007,7 +12032,8 @@ function calmTop(n, st, c, all){
     ${lightRow(n)}${spotPanel(n)}${lootHere(n, st, null)}
     <p class="grouplab">Who's here <small>click one, or their token</small></p>
     ${all.map(t=>row(t.id, t.label, t.side==="party" ? "party" : t.side==="enemy" ? (t.kind==="foe" && t.x.dormant ? "dormant" : "hostile") : t.side==="neutral" ? "neutral" : "")).join("")}
-    ${by.map(b=>row(b.id, b.p.name||"Someone", b.p.role ? String(b.p.role).split(" · ")[0].toLowerCase() : "here")).join("")}`;
+    ${by.map(b=>row(b.id, b.p.name||"Someone", b.p.role ? String(b.p.role).split(" · ")[0].toLowerCase() : "here")).join("")}
+    ${placeTalk(n)}${placeTail(n)}`;
 }
 function renderBattlePanelNow(){
   if(editingInside()) return renderEditPanel();
@@ -12081,7 +12107,7 @@ function renderBattlePanelNow(){
     : `<div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-fa="recharge">Roll recharges</button><button class="btn" style="flex:1" data-fa="end" title="Lays out the fallen to search, then it's calm again here">End the battle</button></div>
     <button class="btn wide" data-ba="back">Back to the map</button>`;
   el.innerHTML = h;
-  wireSpotPanel(el, n); wireLightRow(el, n); wireStealthRow(el, c); wireDance(el, c); wirePlaceSearch(el, n, ()=>{ renderBattle(); renderBattlePanel(); }); wireLootHere(el, n, n.site, ()=>{ renderBattle(); renderBattlePanel(); });
+  wireSpotPanel(el, n); wireLightRow(el, n); wireStealthRow(el, c); wireDance(el, c); wirePlaceSearch(el, n, ()=>{ renderBattle(); renderBattlePanel(); }); wireLootHere(el, n, n.site, ()=>{ renderBattle(); renderBattlePanel(); }); wirePlaceTail(el, n);
   el.querySelectorAll("[data-bremove]").forEach(b=>b.onclick = ()=>{ const nm = removeFromMap(c, n, b.dataset.bremove); if(!nm) return;
     touch(); renderBattle(); renderBattlePanel(); flash(`${nm} removed from here.`); });
   el.querySelectorAll("[data-bystand]").forEach(b=>b.onclick = ()=>{
@@ -12218,18 +12244,7 @@ function renderPlayNow(){
     ${enterAsk===n.id ? enterBox(n) : ""}
     ${sailBlock(n)}${travelBlock(n)}${coachBlock(n)}${xpDueBlock(st)}`;
 
-  h += boardBlock(n) + threadsHere(n) + factionsHere(n);
-  h += `<p class="eyebrow spaced">Who you'll meet</p>` + (people.length ? people.map(p=>`<div class="playperson">
-      <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}${factionChip(p)}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button></div>
-      ${condChips(p.conds||[], "by:"+p.id)}
-      ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
-      ${p.fightsAs && p.fightsAs!=="self" && foeById(p.fightsAs)?`<div class="sbl"><b>Fights as</b> <span class="libref" data-libopen="foes:${p.fightsAs}">${esc(foeById(p.fightsAs).name)}</span></div>`:""}
-      ${p.fightsAs==="self" || p.ac || p.hpMax || (p.attacks||[]).length ? `<div class="sbl"><b>Sheet</b> ${[p.ac?`AC ${esc(p.ac)}`:"", p.hpMax?`HP ${esc(p.hpMax)}`:"", p.pp?`PP ${esc(p.pp)}`:"",
-          ...(p.attacks||[]).filter(a=>a&&a.name).map(a=>`${esc(a.name)} ${esc(a.hit||"")} ${esc(a.dmg||"")}${a.dtype?` ${esc(a.dtype)}`:""}`)].filter(Boolean).join(" · ")}${isCompanion(p.id)?` <span class="npctag">in the party</span>`:""}</div>` : ""}
-      ${p.purse&&purseGp(p.purse)?`<div class="sbl"><b>Purse</b> ${COINS.filter(([k])=>p.purse[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", ")}</div>`:""}
-      ${carryBlock(p)}
-      ${filesBlock(p, "npc:"+p.id, true)}
-    </div>`).join("") : `<p class="empty-note" style="margin:0 0 8px">Nobody in particular.</p>`);
+  h += placeTalk(n);
 
   h += shopBlock(n);
   if(st && (st.foes||[]).length){
@@ -12253,11 +12268,7 @@ function renderPlayNow(){
         <button class="btn" id="pl-bopen" title="Opens the map: everyone here, calm until you press Start the battle">${going?"Back to it":"Open it"}</button></div>`; }
 
   h += lootHere(n, st, reg);
-  h += adderBlock(n);
-
-  h += `<div class="field" style="margin-top:12px"><label>Session notes</label>
-    <textarea id="pl-notes" rows="3" placeholder="What happened here, what the players promised, what they took…">${esc(n.dmNotes||"")}</textarea></div>`;
-  h += boardAdd(n);
+  h += placeTail(n);
   el.innerHTML = h;
 
   el.querySelectorAll("[data-libopen]").forEach(s=>s.onclick = ()=>{ const [c,id] = s.dataset.libopen.split(":"); openLib(c,id); });
@@ -12280,7 +12291,7 @@ function renderPlayNow(){
   const aw = $("#pl-award"); if(aw) aw.onclick = ()=>{ awardXP(+aw.dataset.xp, "split", placeLabel(n)); pane = "party"; syncTabs(); renderPane(true); };
   wireLootHere(el, n, st, renderPlay);
   if(st) wirePlaceSearch(el, n, renderPlay);
-  $("#pl-notes").oninput = e=>{ n.dmNotes = e.target.value; touch(); };
+  wirePlaceTail(el, n);
 }
 
 function applyMode(){
@@ -12482,10 +12493,10 @@ function adderRoll(n){
 }
 /* one set of handlers on the side panel, whichever mode drew the panel */
 (()=>{
-  const el = $("#pane-inspect"), redraw = () => { openInv.add("adder"); renderPane(true); };
+  const el = $("#pane-inspect"), redraw = () => { openInv.add("adder"); if(battleOf){ renderBattle(); renderBattlePanel(); } else renderPane(true); };
   el.addEventListener("click", e=>{
     const b = e.target.closest("[data-adkind],[data-admode],[data-adadd],[data-adact],[data-rollspell]"); if(!b) return;
-    const n = selNode(); if(!n) return;
+    const n = boardHere(); if(!n) return;
     const a = adder;
     if(b.dataset.rollspell){ openLibFrom("spells", b.dataset.rollspell, { pane:"inspect", scroll:el.scrollTop, label:`Back to ${placeLabel(n)}` }); return; }
     if(b.dataset.adkind){ a.kind = b.dataset.adkind; a.q = ""; a.res = null; return redraw(); }
