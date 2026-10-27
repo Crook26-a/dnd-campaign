@@ -1,0 +1,8 @@
+tick + new text: "# Run\n- [x] start the clock\n\n## Room\nnew puzzle\nnew hint\nend"
+same change both sides: "# Run\n- [x] start the clock\n\n## Room\nold puzzle\nend"
+same line, different change: null (play wins)
+both add at the end: null (play wins)
+builder adds a line, app deletes another: "# Run\n- [ ] start the clock\n## Room\nold puzzle\nadded\nend"
+merge3 md: "# Run\n- [x] start the clock\n\n## Room\nnew puzzle\nnew hint\nend"
+merge3 keeps the app's setups: {"the-room":{"at":"x"}}; from the map: docs › Run › md (merged with yours, line by line); yours kept: none
+a one-line name both changed: C, yours kept name

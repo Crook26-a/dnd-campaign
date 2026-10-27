@@ -1,0 +1,26 @@
+// uses: nothing
+<script>
+/* updating from a new map file: a doc's text both sides changed is merged line by line (mergeLines in merge3), so a box
+   ticked in the app and a paragraph from the builder both stay; the same lines changed on both sides still go to play */
+setTimeout(async ()=>{ const out=[];
+ try{
+  const J = a => a.join("\n"), show = v => v==null ? "null (play wins)" : JSON.stringify(v);
+  const b = J(["# Run", "- [ ] start the clock", "", "## Room", "old puzzle", "end"]);
+  const ticked = J(["# Run", "- [x] start the clock", "", "## Room", "old puzzle", "end"]);
+  const rebuilt = J(["# Run", "- [ ] start the clock", "", "## Room", "new puzzle", "new hint", "end"]);
+  out.push("tick + new text: " + show(mergeLines(b, rebuilt, ticked)));
+  out.push("same change both sides: " + show(mergeLines(b, ticked, ticked)));
+  out.push("same line, different change: " + show(mergeLines(b, J(["# Run", "- [ ] start the clock", "", "## Room", "builder's", "end"]), J(["# Run", "- [ ] start the clock", "", "## Room", "yours", "end"]))));
+  out.push("both add at the end: " + show(mergeLines(b, b + "\nbuilder line", b + "\nyour line")));
+  out.push("builder adds a line, app deletes another: " + show(mergeLines(b, J(["# Run", "- [ ] start the clock", "", "## Room", "old puzzle", "added", "end"]), J(["# Run", "- [ ] start the clock", "## Room", "old puzzle", "end"]))));
+  /* through merge3, as an update does: the doc's md merges, the app's own setups stay */
+  const base = { docs:[{ id:"d1", title:"Run", md:b }] }, mine = { docs:[{ id:"d1", title:"Run", md:rebuilt }] }, theirs = { docs:[{ id:"d1", title:"Run", md:ticked, setups:{ "the-room":{ at:"x" } } }] };
+  const rep = { mine:[], yours:[] }, m = merge3(base, mine, theirs, "", rep);
+  out.push("merge3 md: " + show(m.docs[0].md));
+  out.push("merge3 keeps the app's setups: " + JSON.stringify(m.docs[0].setups) + "; from the map: " + rep.mine.join(" | ") + "; yours kept: " + (rep.yours.join(" | ") || "none"));
+  /* one-line strings still go to play */
+  const r2 = { mine:[], yours:[] }; out.push("a one-line name both changed: " + merge3("A", "B", "C", "name", r2) + ", yours kept " + r2.yours.join(","));
+ }catch(e){ out.push('ERROR ' + e.message + ' ' + (e.stack||'').split('\n').slice(0, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

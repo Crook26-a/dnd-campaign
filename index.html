@@ -16916,6 +16916,40 @@ const sameJSON = (a, b) => a===b || (a!==undefined && b!==undefined && JSON.stri
 const idList = v => Array.isArray(v) && v.length>0 && v.every(x=>isObj(x) && typeof x.id==="string") && new Set(v.map(x=>x.id)).size===v.length;
 const mergeName = x => isObj(x) ? (x.name || x.label || x.title || x.id || "") : "";
 const blanksOf = x => isObj(x) ? Object.fromEntries(Object.entries(x).filter(([k, v])=>v==null || v==="" || v===false || (Array.isArray(v) && !v.length))) : undefined;
+/* a long text both sides changed (a doc's markdown): merged line by line, so a box ticked in the app and a paragraph from
+   the builder both stay. Where both changed the same lines (or added at the same spot), null: play wins, as before */
+function mergeLines(b, m, t){
+  const B = b.split("\n");
+  const hunks = text => {                                    // what one side did to the base: {from, to, lines} runs
+    const S = text.split("\n"); let p = 0, s = 0;
+    while(p<B.length && p<S.length && B[p]===S[p]) p++;
+    while(s<B.length-p && s<S.length-p && B[B.length-1-s]===S[S.length-1-s]) s++;
+    const b2 = B.slice(p, B.length-s), s2 = S.slice(p, S.length-s), n = b2.length, k = s2.length;
+    if(n*k > 4e6) return null;
+    const L = Array.from({ length:n+1 }, ()=>new Uint32Array(k+1));
+    for(let i=n-1; i>=0; i--) for(let j=k-1; j>=0; j--) L[i][j] = b2[i]===s2[j] ? L[i+1][j+1]+1 : Math.max(L[i+1][j], L[i][j+1]);
+    const out = []; let i = 0, j = 0, h = null;
+    while(i<n || j<k){
+      if(i<n && j<k && b2[i]===s2[j]){ if(h){ out.push(h); h = null; } i++; j++; continue; }
+      if(!h) h = { from:p+i, to:p+i, lines:[] };
+      if(j<k && (i>=n || L[i][j+1]>=L[i+1][j])){ h.lines.push(s2[j]); j++; }
+      else { i++; h.to = p+i; }
+    }
+    if(h) out.push(h);
+    return out;
+  };
+  const hm = hunks(m), ht = hunks(t); if(!hm || !ht) return null;
+  const all = [...hm.map(h=>({ ...h, side:"m" })), ...ht.map(h=>({ ...h, side:"t" }))].sort((x, y)=>x.from-y.from || x.to-y.to);
+  for(let a=0; a<all.length; a++) for(let c=a+1; c<all.length; c++){
+    const x = all[a], y = all[c]; if(x.side===y.side || y.dup) continue;
+    if(x.from===y.from && x.to===y.to && x.lines.join("\n")===y.lines.join("\n")){ y.dup = true; continue; }   // the same change on both sides
+    if(y.from<x.to || y.from===x.from) return null;
+  }
+  const out = []; let i = 0;
+  for(const h of all) if(!h.dup){ out.push(...B.slice(i, h.from), ...h.lines); i = h.to; }
+  out.push(...B.slice(i));
+  return out.join("\n");
+}
 function merge3(b, m, t, path, rep){
   if(sameJSON(m, b)) return t;                                   // the builder left it alone: the app's
   if(sameJSON(m, t)) return m;
@@ -16944,6 +16978,9 @@ function merge3(b, m, t, path, rep){
       else if(!sameJSON(x, bm.get(x.id))){ out.push(x); rep.mine.push(`${path} › ${mergeName(x)} (put back: the builder changed it)`); }
     }
     return out;
+  }
+  if([b, m, t].every(v=>typeof v==="string") && m.includes("\n") && t.includes("\n")){
+    const v = mergeLines(b, m, t); if(v!=null){ rep.mine.push(`${path} (merged with yours, line by line)`); return v; }
   }
   rep.yours.push(path);                                            // both changed it: play wins
   return t;
