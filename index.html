@@ -7696,7 +7696,8 @@ function stagesBlock(x){
     ${S.map(s=>`<div class="stgbox"><div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1"><label>Stage</label><input type="text" data-stgf="name" data-pid="${x.id}" data-sid="${s.id}" value="${esc(s.name||"")}" placeholder="After the doors seal"></div><button class="fdel" data-stg="del" data-pid="${x.id}" data-sid="${s.id}" title="Remove this stage" style="margin-bottom:9px">×</button></div>
       ${STAGE_FIELDS.map(([k, l])=>`<div class="field"><label>${l}</label><textarea data-stgf="${k}" data-pid="${x.id}" data-sid="${s.id}" rows="${k==="voice"?1:2}" placeholder="${esc(x[k] ? "As written: " + x[k] : "As written")}">${esc(s[k]||"")}</textarea></div>`).join("")}
       ${stageFightBlock(x, s)}</div>`).join("")}
-    <button class="btn wide" data-stg="add" data-pid="${x.id}">+ A stage</button></details>`;
+    <button class="btn wide" data-stg="add" data-pid="${x.id}">+ A stage</button></details>
+    ${rulesBlock(x)}`;
 }
 /* how they fight at a stage (s.fightsAs): as written, as a stat block (the lich they become), or with the stage's own
    copy of their sheet (s.sheet: hit points, AC, saves, attacks, spells…), written with the same sheet as theirs */
@@ -7722,6 +7723,7 @@ function stageFightBlock(x, s){
 }
 function setStage(p, sid, quiet){
   if(sid && (p.stages||[]).some(s=>s.id===sid)) p.stageNow = sid; else delete p.stageNow;
+  stageFightSync(p);
   if(quiet) return;
   gameLog("talk", `${p.name||"Someone"} now: ${(stageOf(p)||{}).name || "as written"}`); saveParty();
   if(pane==="library") renderLibList(); if(battleOf) renderBattlePanel(); else if(pane!=="library") renderPane(true);
@@ -7767,6 +7769,7 @@ function effectWords(e){
   for(const [v, ks] of Object.entries(bySave)) out.push(`${ks.join(" and ")} saves ${v}`);
   if(+e.dc) out.push(`DCs ${sgnN(+e.dc)}`); if(+e.atk) out.push(`attack rolls ${sgnN(+e.atk)}`);
   if(+e.hpRoll) out.push(`max HP ${sgnN(+e.hpRoll)}${e.hp && /d/i.test(e.hp) ? ` (${String(e.hp).replace(/^[+-]/, "")})` : ""}`);
+  if((e.lose||[]).length) out.push(`doesn't have ${e.lose.join(", ")}`);
   if(e.rule) out.push(e.rule);
   return out.join("; ");
 }
@@ -7787,6 +7790,9 @@ function withEffects(f, p){
     for(const k of ["act","bon","rea","tr"]) if(o[k]) o[k] = tx(o[k]);
   }
   if(t.hp){ const h = foeMaxHp(f); if(h) o.hp = Math.max(1, h + t.hp); }
+  const lose = E.flatMap(e=>e.lose||[]).map(s=>String(s).trim().toLowerCase()).filter(Boolean);
+  if(lose.length){ const keep = v => { const L = pairs(v).filter(([nm])=>!lose.includes(String(nm).replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase())); return Array.isArray(v) && v.length && typeof v[0]==="string" ? (L[0] || []) : L; };
+    for(const k of ["act","bon","rea","tr"]) if(o[k]) o[k] = keep(o[k]); }
   o.tr = [...pairs(o.tr), ["Weakened", E.map(e=>`${e.name||"An effect"}${e.from ? ` (${e.from})` : ""}: ${effectWords(e)}`).join(" · ")]];
   return o;
 }
@@ -7823,6 +7829,7 @@ function effectRuleFields(attr, e){ e = e || {}; const q = e.quick || {};
     <div class="pcrow"><div class="field" style="flex:1.6"><label>A button in fights <small>optional</small></label><input type="text" ${attr}="quick.label" value="${esc(q.label||"")}" placeholder="Loud noise"></div>
       <div class="field" style="flex:.7"><label>Damage</label><input type="number" ${attr}="quick.dmg" value="${esc(q.dmg??"")}" placeholder="1"></div>
       <div class="field" style="flex:1"><label>Type</label><input type="text" ${attr}="quick.type" value="${esc(q.type||"")}" placeholder="Psychic"></div></div>
+    <div class="field"><label>Takes away <small>abilities they don't have while it's on, by name, with commas</small></label><input type="text" ${attr}="lose" value="${esc((e.lose||[]).join(", "))}" placeholder="Masked Charm"></div>
     <div class="field"><label>How the players find out <small>a hint for you to play out in the fight</small></label><textarea ${attr}="hint" rows="2" placeholder="The first time something loud happens near him, he flinches…">${esc(e.hint||"")}</textarea></div>`; }
 /* all of an effect's numbers, filled in from e: for a form that makes one (a puzzle's) */
 function effectInputs(attr, e){ e = e || {}; const n = (k, v) => `<input type="number" ${attr}="${k}" value="${v ? esc(v) : ""}" placeholder="0" style="width:100%">`;
@@ -7835,6 +7842,7 @@ function effectFromForm(v){
   const ef = { abil:{}, save:{}, dc:+v("dc")||0, atk:+v("atk")||0, hp:v("hp"), rule:v("rule"), hint:v("hint") };
   for(const k of ABK){ if(+v("abil."+k)) ef.abil[k] = +v("abil."+k); if(+v("save."+k)) ef.save[k] = +v("save."+k); }
   if(v("quick.label")) ef.quick = { label:v("quick.label"), dmg:+v("quick.dmg")||0, type:v("quick.type") };
+  if(v("lose")) ef.lose = v("lose").split(",").map(s=>s.trim()).filter(Boolean);
   for(const k of ["hp","rule","hint"]) if(!ef[k]) delete ef[k];
   return ef;
 }
@@ -7870,11 +7878,127 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
     const box = b.closest(".efadd"), v = k => { const i = box.querySelector(`[data-efn="${k}"]`); return i ? i.value.trim() : ""; };
     const ef = effectFromForm(v); ef.name = v("name"); ef.from = v("from");
     if(!ef.name){ flash("Give the effect a name first."); return; }
-    if(!effectWords({ ...ef, hpRoll:ef.hp ? 1 : 0 })){ flash("It doesn't change anything yet."); return; }
+    if(!effectWords({ ...ef, hpRoll:ef.hp ? 1 : 0 }) && !ef.quick){ flash("It doesn't change anything yet."); return; }
     const done = addEffect(p, ef); openInv.add("effects:" + p.id);
     flash(`${p.name||"They"}: ${done.name}${done.hpRoll ? `, max HP ${sgnN(done.hpRoll)}` : ""}.`);
   }
   if(pane==="library") renderLibList(); if(battleOf){ renderBattle(); renderBattlePanel(); } else if(pane!=="library") renderPane(true);
+});
+/* a stage changed while they're in a fight: the fight takes their new numbers, keeping the damage they'd taken */
+function stageFightSync(p){
+  if(!p || typeof allMapNodes!=="function") return;
+  const fid = npcFightId(p), m = fid && foeById(fid), max = m && foeMaxHp(m); if(!m) return;
+  for(const [, nodes] of allMapNodes()) for(const n of nodes){ const c = n.site && n.site.combat; if(!c) continue;
+    for(const x of c.list||[]) if(x.npc===p.id){ x.foe = fid;
+      if(max && x.max!=null && max!==x.max){ const taken = x.max - x.hp; x.max = max; x.hp = x.hp<=0 ? 0 : Math.max(1, Math.min(max, max - taken)); } } }
+}
+
+/* ── story flags and rules (Joseph, 2026-10-27): flags are the things that have happened ("The chandelier is broken"),
+   ticked in the Session tab, or set by a scene (s.flags) or the countdown running out (countdown.flagsAtEnd). A person's
+   rules say what changes when something comes true: a stage, an effect taken off, words to read. A rule acts once, as
+   its "when" becomes true (all of it), and again only after it's stopped being true. root.flags: [{ id, name, on }];
+   p.rules: [{ id, when:[{ flag, off } | { goal, n } | { hp }], stage, unEffect, say, was }] ── */
+const flagsOf = () => (root.flags = Array.isArray(root.flags) ? root.flags : []);
+const flagOn = id => !!(flagsOf().find(f=>f.id===id)||{}).on;
+const flagName = id => (flagsOf().find(f=>f.id===id)||{}).name || id;
+function setFlag(id, on, why, quiet){
+  const f = flagsOf().find(x=>x.id===id); if(!f || !!f.on===!!on) return false;
+  f.on = !!on; gameLog("note", `${on ? "" : "No longer: "}${f.name}${why ? ` (${why})` : ""}`);
+  if(!quiet){ runRules(); saveParty(); }
+  return true;
+}
+/* is it true now, for them */
+function condTrue(p, k){
+  if(k.flag) return flagOn(k.flag) !== !!k.off;
+  if(k.goal) return pzGoal(k.goal).done >= (+k.n||1);
+  if(k.hp){ for(const [, nodes] of allMapNodes()) for(const n of nodes){ const c = n.site && n.site.combat; if(!c || calmOf(c)) continue;
+      for(const x of c.list||[]) if(x.npc===p.id && x.max && x.hp > 0 && x.hp <= x.max * (+k.hp)/100) return true; }
+    return false; }
+  return false;
+}
+const condWords = k => k.flag ? `${k.off ? "not: " : ""}${flagName(k.flag)}` : k.goal ? `${k.goal}: ${+k.n||1} or more done` : k.hp ? `at or below ${+k.hp}% of their hit points in a fight` : "?";
+function ruleWords(p, r){
+  const st = r.stage && (p.stages||[]).find(s=>s.id===r.stage);
+  const does = [st ? `stage: ${st.name||"?"}` : "", r.unEffect ? `takes off "${r.unEffect}"` : "", r.say ? "words to read" : ""].filter(Boolean).join(", ");
+  return `When ${(r.when||[]).map(condWords).join(" and ") || "…"}: ${does || "nothing yet"}`;
+}
+/* everyone's rules, after anything that might have changed: each acts once as it comes true */
+function runRules(){
+  if(typeof root==="undefined" || !root || location.hash==="#player") return;
+  for(let pass=0; pass<3; pass++){ let acted = false;
+    for(const p of lib().npcs) for(const r of (Array.isArray(p.rules) ? p.rules : [])){
+      const now = (r.when||[]).length > 0 && r.when.every(k=>condTrue(p, k));
+      if(now && !r.was){ r.was = true; acted = true; ruleAct(p, r); } else if(!now && r.was) r.was = false; }
+    if(!acted) break; }
+}
+function ruleAct(p, r){
+  const why = (r.when||[]).map(condWords).join(" and "), bits = [];
+  if(r.stage && (p.stages||[]).some(s=>s.id===r.stage) && p.stageNow!==r.stage){ setStage(p, r.stage, true); bits.push((stageOf(p)||{}).name); }
+  if(r.unEffect){ const e = (p.effects||[]).find(x=>x.name===r.unEffect); if(e){ removeEffect(p, e.id); bits.push(`"${e.name}" off`); } }
+  gameLog("talk", `${p.name||"Someone"}: ${bits.join(", ") || "a rule"} (${why})`);
+  if(bits.length) flash(`${p.name||"Someone"}: ${bits.join(", ")}.`);
+  if(r.say){ sayNow = { title:p.name||"", text:r.say }; showSayPop(); }
+  saveParty();
+}
+/* the Session tab: the flags, to tick as things happen */
+function flagsPanel(){
+  const F = flagsOf();
+  return `<details class="pcset pcsec" data-invfor="flags" ${openInv.has("flags") ? "open" : ""}><summary>Story flags <small>${F.length ? `${F.filter(f=>f.on).length} of ${F.length} on` : "none"}</small></summary>
+    <p class="empty-note" style="font-size:11px;margin:2px 0 6px">What has happened. Tick one as it happens: anyone's rules that hang on it act at once (a stage, an effect off, words to read).</p>
+    ${F.map(f=>`<label class="check flagrow"><input type="checkbox" data-flag="${f.id}" ${f.on ? "checked" : ""}> ${esc(f.name)}</label>`).join("")}
+    <div class="pcrow" style="margin:4px 0 6px"><input type="text" id="flag-new" placeholder="The elixir is ruined" style="flex:1;min-width:0"><button class="btn small" data-flagact="add">Add</button></div></details>`;
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || t.dataset.flag==null) return;
+  setFlag(t.dataset.flag, t.checked, "ticked"); renderSession(); if(battleOf) renderBattlePanel(); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-flagact]"); if(!b) return;
+  const i = $("#flag-new"), name = i && i.value.trim(); if(!name){ flash("Name the flag first."); return; }
+  flagsOf().push({ id:uid("fl"), name, on:false }); openInv.add("flags"); saveParty(); renderSession(); });
+/* their Library page: the rules, to write */
+let rlEdit = null;                                           // { pid, id, draft }
+function rulesBlock(x){
+  const R = Array.isArray(x.rules) ? x.rules : [], ed = rlEdit && rlEdit.pid===x.id ? rlEdit : null;
+  return `<details class="pcset" data-invfor="rules:${x.id}" ${R.length || ed || openInv.has("rules:"+x.id) ? "open" : ""}><summary>When things happen <small>${R.length ? `${R.length} rule${R.length===1?"":"s"}` : "rules that change them"}</small></summary>
+    <p class="empty-note" style="font-size:11px;margin:2px 0 6px">A rule acts once, the moment all of its "when" is true: a story flag ticked, a goal's puzzles solved, their hit points falling in a fight.</p>
+    ${R.map(r=>ed && ed.id===r.id ? ruleForm(x, ed.draft) : `<div class="thrrow"><div style="flex:1;min-width:0" class="thrtext">${esc(ruleWords(x, r))}</div><span class="sr-a"><button class="btn small" data-rl="edit" data-pid="${x.id}" data-rid="${r.id}">Edit</button><button class="fdel" data-rl="del" data-pid="${x.id}" data-rid="${r.id}" title="Remove the rule">×</button></span></div>`).join("")}
+    ${ed && ed.id==="new" ? ruleForm(x, ed.draft) : ed ? "" : `<button class="btn wide" data-rl="new" data-pid="${x.id}">+ A rule</button>`}</details>`;
+}
+function ruleForm(x, d){
+  const F = flagsOf(), goals = [...new Set(puzzlesOf().map(q=>q.goal).filter(Boolean))], S = x.stages || [];
+  const condRow = (k, j) => { const type = k.flag ? (k.off ? "off" : "flag") : k.goal ? "goal" : k.hp ? "hp" : "flag";
+    return `<div class="pcrow" style="align-items:center;margin:0 0 4px"><select data-rlc="type" data-j="${j}" style="flex:1">${[["flag","a flag is on"],["off","a flag is off"],["goal","a goal's puzzles"],["hp","their HP in a fight"]].map(([v, l])=>`<option value="${v}" ${v===type?"selected":""}>${l}</option>`).join("")}</select>
+      ${type==="flag"||type==="off" ? `<select data-rlc="flag" data-j="${j}" style="flex:1.4;min-width:0">${F.map(f=>`<option value="${f.id}" ${f.id===k.flag?"selected":""}>${esc(f.name)}</option>`).join("") || `<option value="">(add a flag in the Session tab)</option>`}</select>`
+        : type==="goal" ? `<select data-rlc="goal" data-j="${j}" style="flex:1.2;min-width:0">${goals.map(g=>`<option ${g===k.goal?"selected":""}>${esc(g)}</option>`).join("") || `<option value="">(no goals)</option>`}</select><input type="number" min="1" data-rlc="n" data-j="${j}" value="${+k.n||1}" style="width:48px" title="How many solved">`
+        : `<input type="number" min="1" max="100" data-rlc="hp" data-j="${j}" value="${+k.hp||50}" style="width:60px"> <small>% or less</small>`}
+      <button class="fdel" data-rl="cdel" data-j="${j}" data-pid="${x.id}" title="Remove">×</button></div>`; };
+  return `<div class="thrform"><label class="grouplab" style="margin:0">When</label>${(d.when||[]).map(condRow).join("")}
+    <button class="btn small" data-rl="cadd" data-pid="${x.id}" style="margin:0 0 6px">+ and…</button>
+    <div class="field"><label>They move to the stage</label><select data-rlf="stage"><option value="">— stays as is —</option>${S.map(s=>`<option value="${s.id}" ${s.id===d.stage?"selected":""}>${esc(s.name||"A stage")}</option>`).join("")}</select></div>
+    <div class="field"><label>And the effect comes off <small>by name</small></label><input type="text" data-rlf="unEffect" list="rl-efs" value="${esc(d.unEffect||"")}"><datalist id="rl-efs">${(x.effects||[]).map(e=>`<option value="${esc(e.name)}">`).join("")}</datalist></div>
+    <div class="field"><label>Words to read <small>optional</small></label><textarea data-rlf="say" rows="2">${esc(d.say||"")}</textarea></div>
+    <div class="pcrow"><button class="btn on" style="flex:2" data-rl="save" data-pid="${x.id}">Save the rule</button><button class="btn" style="flex:1" data-rl="cancel" data-pid="${x.id}">Cancel</button></div></div>`;
+}
+const rlFormRead = () => { const d = rlEdit.draft; document.querySelectorAll("#pane-library [data-rlf]").forEach(f=>{ d[f.dataset.rlf] = f.value.trim(); }); };
+document.addEventListener("change", e=>{ const t = e.target; if(!rlEdit || !t.dataset || t.dataset.rlc==null) return;
+  rlFormRead(); const k = rlEdit.draft.when[+t.dataset.j]; if(!k) return; const f = t.dataset.rlc;
+  if(f==="type"){ for(const q of ["flag","off","goal","n","hp"]) delete k[q];
+    if(t.value==="flag" || t.value==="off"){ k.flag = (flagsOf()[0]||{}).id || ""; if(t.value==="off") k.off = true; }
+    else if(t.value==="goal"){ k.goal = (puzzlesOf().find(q=>q.goal)||{}).goal || ""; k.n = 1; } else k.hp = 50;
+    renderLibList(); return; }
+  k[f] = f==="n" || f==="hp" ? (+t.value||1) : t.value; });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-rl]"); if(!b) return;
+  const p = libNpcById(b.dataset.pid); if(!p) return; p.rules = Array.isArray(p.rules) ? p.rules : []; const a = b.dataset.rl;
+  if(a==="new"){ rlEdit = { pid:p.id, id:"new", draft:{ when:[{ flag:(flagsOf()[0]||{}).id || "" }] } }; openInv.add("rules:"+p.id); return renderLibList(); }
+  if(a==="edit"){ const r = p.rules.find(q=>q.id===b.dataset.rid); if(r) rlEdit = { pid:p.id, id:r.id, draft:JSON.parse(JSON.stringify(r)) }; return renderLibList(); }
+  if(a==="cancel"){ rlEdit = null; return renderLibList(); }
+  if(a==="cadd"){ rlFormRead(); rlEdit.draft.when.push({ flag:(flagsOf()[0]||{}).id || "" }); return renderLibList(); }
+  if(a==="cdel"){ rlFormRead(); rlEdit.draft.when.splice(+b.dataset.j, 1); return renderLibList(); }
+  if(a==="del"){ if(!confirm("Remove this rule?")) return; p.rules = p.rules.filter(q=>q.id!==b.dataset.rid); saveParty(); return renderLibList(); }
+  if(a==="save"){ rlFormRead(); const d = rlEdit.draft; d.when = (d.when||[]).filter(k=>k.flag || k.goal || k.hp);
+    if(!d.when.length){ flash("Say when first."); return; }
+    for(const k of ["stage","unEffect","say"]) if(!d[k]) delete d[k];
+    if(rlEdit.id==="new"){ d.id = uid("rl"); p.rules.push(d); } else { const i = p.rules.findIndex(q=>q.id===rlEdit.id); if(i>=0) p.rules[i] = d; }
+    d.was = (d.when).every(k=>condTrue(p, k));                  // already true now: it waits for the next time
+    rlEdit = null; saveParty(); renderLibList(); flash("Rule saved."); }
 });
 function renderLibrary(){
   refreshSpellList();
@@ -11754,6 +11878,7 @@ function wireBmapPanel(el, n, c){
 }
 var lastCardSel = null;                                  // whose card was last shown: a new pick scrolls the panel to it
 function renderBattlePanel(){
+  runRules();                                                  // their hit points may have crossed a rule's line
   { const n = bnode(), c = n && n.site && n.site.combat;        // a waking's fight with nobody awake left standing: over, calm again
     if(wakeFightOver(c)){ const down = c.list.filter(y=>y.woke && y.max!=null && y.hp<=0).map(y=>y.label);
       endTheFight(n.site, n, c, true); flash(`${down.join(", ") || "It"} down: calm again.${nextDormant(c) ? " The rest still sleep." : ""}`); return; } }
@@ -14153,11 +14278,11 @@ document.addEventListener("click", e=>{
     if(g && g.done===g.all){ gameLog("puzzle", `${p.goal}: done`);
       /* a goal can move people on to a stage (the villain, cornered once the shield is down): { person id: stage id } */
       const gs = (pzGoals()[p.goal]||{}).stages; if(isObj(gs)) for(const [pid, sid] of Object.entries(gs)){ const q = libNpcById(pid); if(q){ setStage(q, sid, true); gameLog("talk", `${q.name||"Someone"} now: ${(stageOf(q)||{}).name || "as written"}`); } } }
-    pzPop = p.id; saveParty(); return puzzlesRedraw(); }
+    pzPop = p.id; runRules(); saveParty(); return puzzlesRedraw(); }
   if(act==="again"){ pzPop = p.id; return showPzPop(); }
   if(act==="unsolve"){ delete p.solved; if(pzPop===p.id) pzPop = null;
     for(const a of p.applied||[]){ const q = libNpcById(a.to); if(q) removeEffect(q, a.ef); } delete p.applied; if(playerShow.kind==="puzzle" && playerShow.id===p.id){ playerShow = { kind:"map" }; sendPlayers(true); }
-    gameLog("puzzle", `${p.name}: not solved after all`); saveParty(); return puzzlesRedraw(); }
+    gameLog("puzzle", `${p.name}: not solved after all`); runRules(); saveParty(); return puzzlesRedraw(); }
   if(act==="tv"){ playerShow = { kind:"puzzle", id:p.id }; sendPlayers(true); renderPScreen(); return showPzPop(); }
   if(act==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); return showPzPop(); }
   if(act==="del"){ if(!confirm(`Delete the puzzle "${p.name}"?`)) return; root.puzzles = P.filter(x=>x!==p); pzEdit = null; if(pzPop===p.id) pzPop = null; saveParty(); return puzzlesRedraw(); }
@@ -14752,7 +14877,9 @@ function cdTick(){
     if(!b.rung && el >= (+b.at||0) && (+b.at||0) < (+c.total||0)/60){ b.rung = true; changed = true; const took = b.take ? takeDancer(b.take) : ""; cdRing({ label:b.label, note:[b.note, took].filter(Boolean).join(" "), tolls:1 });
       gameLog("clock", `The countdown's bell: ${b.label || `${b.at} minutes in`}`); }
   if(cdLeft(c) <= 0){ c.endsAt = null; c.left = 0; c.done = true; changed = true;
-    cdRing({ label:c.doneLabel || "Time's up", note:c.doneNote, tolls:3, done:true }); gameLog("clock", `The countdown ran out: ${c.doneLabel || "time's up"}`); }
+    cdRing({ label:c.doneLabel || "Time's up", note:c.doneNote, tolls:3, done:true }); gameLog("clock", `The countdown ran out: ${c.doneLabel || "time's up"}`);
+    for(const fid of (Array.isArray(c.flagsAtEnd) ? c.flagsAtEnd : [])) setFlag(fid, true, "the countdown ran out", true);
+    runRules(); }
   if(changed){ cdSave(); sendCountdown(); cdReadouts(); renderPScreen(); }
 }
 function cdReadouts(){
@@ -16998,6 +17125,9 @@ function setScene(d, key){
     const r = placeRef(k); if(r && r.node) setPersonAt(pid, r.plan || "survey", r.node); }
   /* and the stage each is at ("" = as written): { person id: stage id } */
   if(isObj(s.stages)) for(const [pid, sid] of Object.entries(s.stages)){ const p = libNpcById(pid); if(p) setStage(p, sid, true); }
+  /* and what has happened by now ({ flag id: true/false }), then anyone's rules that hang on it */
+  if(isObj(s.flags)) for(const [fid, on] of Object.entries(s.flags)) setFlag(fid, !!on, "the scene", true);
+  runRules();
   /* the party, all together */
   if(s.at){ const gs = groupsOf(), g = gs[0]; g.members = partyRoster().map(c=>c.id); g.at = { ...s.at }; root.groups = [g]; root.activeGroup = g.id; }
   saveParty(); touch();
@@ -17057,7 +17187,7 @@ function renderSession(){
   const S = sessionDocs(), el = $("#pane-session");
   if(!S.find(d=>d.id===sessOpen)) sessOpen = S.length ? S[S.length-1].id : null;
   const d = docById(sessOpen);
-  let h = threadsPanel() + puzzlesPanel() + `<p class="eyebrow spaced">Session script</p>
+  let h = threadsPanel() + puzzlesPanel() + flagsPanel() + `<p class="eyebrow spaced">Session script</p>
     <div class="pcrow"><select id="ss-pick" style="flex:1;min-width:0">${S.map(x=>`<option value="${x.id}" ${x.id===sessOpen?"selected":""}>${esc(x.title||"Untitled session")}${x.date?` · ${esc(x.date)}`:""}</option>`).join("") || `<option>No sessions yet</option>`}</select>
       <button class="btn" data-dact="newsession">+ New</button></div>`;
   if(!d){ el.innerHTML = h + `<p class="empty-note">No session scripts yet. Make one, or bring a Word script in from the Docs tab.</p>`; return; }
