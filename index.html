@@ -9949,7 +9949,7 @@ function turnViewer(c, all){
   return picked && isMember(picked) ? picked : null;
 }
 /* the picture for one fight: what each square looks like from the chosen point of view, and who the party can see */
-function sightOf(n, c, bm){
+function sightOf(n, c, bm, players){
   const st = n.site || {}, light = lightGrid(bm, st, c), all = combatants(c);
   const party = all.filter(t=>isMember(t) && !t.fled && !isDownT(t) && c.pos && c.pos[t.id]);
   const views = new Map(party.map(t=>[t.id, viewGrid(bm, st, c, light, t)]));
@@ -9960,6 +9960,7 @@ function sightOf(n, c, bm){
   if(mode==="plain"){ shade = light; who = "the light itself"; }
   else if(mode!=="turn" && mode!=="party" && views.has(mode)){ shade = views.get(mode); who = (all.find(t=>t.id===mode)||{}).label; }
   else if(mode==="turn" && turnT && views.has(turnT.id)){ shade = views.get(turnT.id); who = turnT.label; }
+  else if(!party.length && !players){ shade = light; who = "the light itself (nobody from the party is in here)"; }     // a room looked into before the party arrives: as it's lit, on the DM's screen only
   else { shade = union; who = "the whole party"; }
   /* can the party see this creature? walls, darkness, hiding, Invisible, the Ethereal Plane and burrowing all count.
      Truesight sees the Invisible and into the Ethereal Plane; Blindsight sees the Invisible; nothing sees through the ground */
@@ -9974,6 +9975,7 @@ function sightOf(n, c, bm){
         return s.ethereal ? (sv.ts && d<=sv.ts) : ((sv.ts && d<=sv.ts) || (sv.bs && d<=sv.bs)); });
     }
     if(mode==="plain") return true;
+    if(!party.length && !players) return true;
     return union[i] >= 1;
   };
   return { shade, union, who, seen, light };
@@ -10783,7 +10785,7 @@ function renderBattle(players){
     let lines = ""; for(let x=1;x<BW;x++) lines += `M${x*BS} 0 V${BH*BS} `; for(let y=1;y<BH;y++) lines += `M0 ${y*BS} H${BW*BS} `;
     g += `<path d="${lines}" stroke="${bm.rows?"#3a2e1e":"var(--rule)"}" stroke-width="1" opacity="${bm.rows?.18:1}" style="pointer-events:none"/>
       <rect x="0" y="0" width="${BW*BS}" height="${BH*BS}" fill="none" stroke="var(--ink-soft)" stroke-width="2" style="pointer-events:none"/>`;
-    sight = sightOf(n, c, bm);                         // light, walls and eyes: what the chosen point of view can see
+    sight = sightOf(n, c, bm, players);                         // light, walls and eyes: what the chosen point of view can see
     g += shadeSvg(sight.shade, players);
     if(gridNames()) g += gridNameSvg();                // faint square names, so players can say where they go
     for(const l of ((n.site||{}).lights||[])) if(!l.on && !(players && sight.shade[l.y*BW+l.x] <= 0)) g += `<g class="blight" data-light="${l.id}" transform="translate(${l.x*BS+BS/2} ${l.y*BS+BS/2})" style="cursor:pointer"><title>${esc((LIGHT_KINDS[l.kind]||{}).name||"Light")} — ${l.lit?"lit":"out"}</title>${lightIcon(l, l.lit)}</g>`;

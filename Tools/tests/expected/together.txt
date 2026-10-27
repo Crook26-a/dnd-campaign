@@ -1,3 +1,4 @@
+a room with nobody in it: DM sees the light itself (nobody from the party is in here), TV sees anything false
 boxes: split true, follow true
 held, not moved yet: paused true
 dragging class while moving: true
