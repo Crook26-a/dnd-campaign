@@ -9,3 +9,8 @@ down to 30: stage s3, 264/315
 countdown out: midnight true, stage still s3 (r3 needs no chandelier)
 library rules: When things happen 4 rules · When The shield: 2 or more done: takes off "Not yet desperate", words to read | When The chandelier is broken: stage: In a fury, words to read | When Midnight has struck and not: The chandelier is broken: stage: Coming apart | When at or below 50% of their hit points in a fight: stage: Coming apart
 written in the app: {"when":[{"hp":25}],"stage":"s1","say":"He begs."} · When at or below 25% of their hit points in a fight: stage: The host, words to read
+flag ticked: Ward D solved true, on him Ward D
+unticked: solved false, on him nothing
+Solved: flag true
+spell links: data-spellpeek="spell:shield" data-spellpeek="spell:fireball"
+card off the map: true, stage box true, stat block true

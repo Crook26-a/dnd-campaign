@@ -57,6 +57,17 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   document.querySelector('#pane-library [data-rlf="stage"]').value = 's1'; document.querySelector('#pane-library [data-rlf="say"]').value = 'He begs.';
   document.querySelector('#pane-library [data-rl="save"]').click(); await wait(30);
   const nr = p().rules[p().rules.length-1]; out.push('written in the app: ' + JSON.stringify({ when:nr.when, stage:nr.stage, say:nr.say }) + ' · ' + ruleWords(p(), nr));
+  /* a puzzle's own flag: ticking it solves the puzzle, Solved ticks it, unticking undoes it */
+  flagsOf().push({ id:'fw', name:'Ward D broken', on:false }); root.puzzles.push({ id:'pz4', name:'Ward D', flag:'fw', hints:[], given:0, text:'Crack.', does:[{ to:'ln_v', effect:{ name:'Ward D', save:{ wis:-1 } } }] });
+  setFlag('fw', true, 'ticked'); out.push('flag ticked: Ward D solved ' + !!root.puzzles.find(q=>q.id==='pz4').solved + ', on him ' + (p().effects||[]).map(e=>e.name).join(','));
+  setFlag('fw', false, 'unticked'); out.push('unticked: solved ' + !!root.puzzles.find(q=>q.id==='pz4').solved + ', on him ' + ((p().effects||[]).map(e=>e.name).join(',') || 'nothing'));
+  pane = 'session'; syncTabs(); pzOpen.add('pz4'); renderSession(); document.querySelector('#pane-session [data-pz="solve"][data-id="pz4"]').click(); await wait(30);
+  out.push('Solved: flag ' + flagOn('fw'));
+  /* spell names in a stat block, and a key person's card while they're off the map */
+  out.push('spell links: ' + (spellLinks('casts Shield or Fireball, not a Fireballer').match(/data-spellpeek="[^"]+"/g)||[]).join(' '));
+  p().key = true; enterPlan('h'); await wait(30); openBattle(doc.nodes.find(n=>n.id==='hall')); await wait(80); closeBattle(true); delete doc.nodes.find(n=>n.id==='hall').site.combat;
+  openBattle(doc.nodes.find(n=>n.id==='hall')); await wait(80); openPersonCard('npc', 'ln_v'); await wait(40);
+  out.push('card off the map: ' + /Lord Vile/.test(txt(document.getElementById('pane-inspect'))) + ', stage box ' + !!document.querySelector('#pane-inspect [data-stagepick]') + ', stat block ' + !!document.querySelector('#pane-inspect .fq-acts'));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  document.title = 'RES ' + out.join(' || ');
 }, 900);

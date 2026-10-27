@@ -234,6 +234,8 @@
   .tchip{display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--paper);padding:2px 8px 2px 2px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap}
   .tchip .dot{width:21px;height:21px;border-radius:50%;background:var(--r4);color:var(--paper-lit);display:grid;place-items:center;font-family:var(--mono);font-size:10.5px}
   .tchip .hp{font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
+  .tchip.npc .dot{background:#8f7d58} .tchip.npc{border-style:dashed}
+  .spellpeek{border-left:3px solid var(--rule);margin:2px 0 6px;padding:2px 0 2px 8px;font-size:12px} .splink,.chiplbl{cursor:pointer;text-decoration:underline dotted}
   .tchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
   .tchip.down .dot{background:var(--lead)}
   body.table #moreBtn{display:inline-flex;flex:none}
@@ -7934,6 +7936,7 @@ const flagName = id => (flagsOf().find(f=>f.id===id)||{}).name || id;
 function setFlag(id, on, why, quiet){
   const f = flagsOf().find(x=>x.id===id); if(!f || !!f.on===!!on) return false;
   f.on = !!on; gameLog("note", `${on ? "" : "No longer: "}${f.name}${why ? ` (${why})` : ""}`);
+  const pz = puzzlesOf().find(q=>q.flag===id); if(pz){ if(on) pzSolve(pz); else pzUnsolve(pz); if(on && !quiet) showPzPop(); }   // the puzzle it belongs to
   if(!quiet){ runRules(); saveParty(); }
   return true;
 }
@@ -8900,12 +8903,37 @@ function foeQuickStats(m){
     <div class="fq-line">Init ${ib>=0?"+":""}${ib}${(m.spd||m.speed)?` · ${esc(m.spd||m.speed)}`:""}${pp?` · PP ${pp}`:""}</div>`;
 }
 /* actions and traits, folded — the to-hit and damage you need on its turn */
+/* the names of spells in a stat block's text, as links that open the spell under it (Joseph, 2026-10-27: "what does
+   Shield do?" at the table). Only in the text, never inside a tag */
+let spellRe = null, spellReN = -1;
+function spellLinks(html){
+  const all = [...SRD_SPELLS, ...ownSpells()]; if(!all.length) return html;
+  if(!spellRe || spellReN!==all.length){ spellReN = all.length;
+    const names = [...new Set(all.map(s=>s.name).filter(nm=>nm && nm.length > 3))].sort((a, b)=>b.length - a.length).map(nm=>nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    spellRe = new RegExp(`\\b(${names.join("|")})\\b`, "g"); }
+  return String(html).split(/(<[^>]+>)/).map(part=>part.startsWith("<") ? part : part.replace(spellRe, nm=>{ const s = spellByName(nm); return s ? `<span class="libref splink" data-spellpeek="${esc(s.id)}" title="What ${esc(nm)} does">${nm}</span>` : nm; })).join("");
+}
+/* a spell or an ability, opened in place under where it was clicked; again to close it */
+function peekToggle(after, key, html){
+  const nx = after.nextElementSibling;
+  if(nx && nx.classList.contains("spellpeek")){ const same = nx.dataset.key===key; nx.remove(); if(same) return; }
+  after.insertAdjacentHTML("afterend", `<div class="spellpeek" data-key="${esc(key)}">${html}</div>`);
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-spellpeek],[data-respeek]"); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  if(b.dataset.spellpeek){ const s = spellOf(b.dataset.spellpeek); if(!s) return; return peekToggle(b.closest(".sbp, .fc-res, p, div"), "s:"+s.id, srdSpellBlock(s)); }
+  const [kind, name] = [b.dataset.respeek.slice(0, 1), b.dataset.respeek.slice(2)], row = b.closest(".fc-res") || b.parentElement;
+  if(kind==="s"){ const s = spellByName(name); if(s) return peekToggle(row, "s:"+s.id, srdSpellBlock(s)); }
+  const m = foeById(b.dataset.foe), hit = foeEntries(m).find(([nm])=>String(nm).replace(/\s*\(.*\)\s*$/, "").replace(/^(Bonus action|Reaction|Legendary): /i, "").trim().toLowerCase()===name.toLowerCase());
+  if(hit) peekToggle(row, "e:"+name, `<div class="statblock"><p class="sbp"><b>${esc(hit[0])}.</b> ${spellLinks(srdText(hit[1]))}</p></div>`);
+}, true);
 function foeActionsBlock(m, open){
   if(!m) return "";
-  const sec = (title, list) => { const L = pairs(list); return L.length ? `<p class="sbh">${title}</p>` + L.map(([n,d])=>`<p class="sbp"><b>${esc(n)}.</b> ${srdText(d)}</p>`).join("") : ""; };
+  const sec = (title, list) => { const L = pairs(list); return L.length ? `<p class="sbh">${title}</p>` + L.map(([n,d])=>`<p class="sbp"><b>${esc(n)}.</b> ${spellLinks(srdText(d))}</p>`).join("") : ""; };
   const body = (m.act || m.tr)
     ? sec("Traits", m.tr) + sec("Actions", m.act) + sec("Bonus actions", m.bon) + sec("Reactions", m.rea) + sec("Legendary actions", m.leg)
-    : [["Traits", m.traits], ["Actions", m.attacks]].filter(x=>x[1]).map(([t,v])=>`<p class="sbh">${t}</p><p class="sbp" style="white-space:pre-wrap">${esc(v)}</p>`).join("");
+    : [["Traits", m.traits], ["Actions", m.attacks]].filter(x=>x[1]).map(([t,v])=>`<p class="sbh">${t}</p><p class="sbp" style="white-space:pre-wrap">${spellLinks(esc(v))}</p>`).join("");
   return body ? `<details class="fq-acts" ${open?"open":""}><summary>Actions and traits</summary><div class="statblock">${body}</div></details>` : "";
 }
 function enemyCard(x, i, extra, open){
@@ -8920,7 +8948,7 @@ function enemyCard(x, i, extra, open){
           <input class="fc-amt" data-fi="${i}" type="number" min="0" placeholder="amt">
           <button data-fa="dmg" data-fi="${i}">Damage</button><button data-fa="heal" data-fi="${i}">Heal</button></div>
         ${res.some(r=>r.kind==="uses"||r.kind==="recharge")?`<div class="fc-res">${res.filter(r=>r.kind==="uses"||r.kind==="recharge").map(r=> r.kind==="uses"
-            ? `<span class="chip${r.spell||r.slots?" spell":""}" title="${r.slots ? `Spell slots: ${r.max}, back after a ${r.key==="slots:pact"?"Short or ":""}Long Rest` : `${r.spell?"Spell, ":""}${r.max} per ${r.perRound?"round":"day"}`}">${esc(r.label)} ${Array.from({length:r.max},(_,j)=>`<span class="pip${j<(x.used[r.key]||0)?" on":""}" data-fa="pip" data-fi="${i}" data-k="${esc(r.key)}" data-j="${j}"></span>`).join("")}</span>`
+            ? `<span class="chip${r.spell||r.slots?" spell":""}" title="${r.slots ? `Spell slots: ${r.max}, back after a ${r.key==="slots:pact"?"Short or ":""}Long Rest` : `${r.spell?"Spell, ":""}${r.max} per ${r.perRound?"round":"day"}`}">${r.slots ? esc(r.label) : `<span class="chiplbl" data-respeek="${r.spell?"s":"e"}:${esc(r.label)}" data-foe="${esc(x.foe)}" title="What it does">${esc(r.label)}</span>`} ${Array.from({length:r.max},(_,j)=>`<span class="pip${j<(x.used[r.key]||0)?" on":""}" data-fa="pip" data-fi="${i}" data-k="${esc(r.key)}" data-j="${j}"></span>`).join("")}</span>`
             : `<button class="chip${x.spent[r.key]?" spent":""}" data-fa="rech" data-fi="${i}" data-k="${esc(r.key)}" title="${r.min<=6?`Recharges on ${r.min}–6`:"Recharges after a rest"}">${esc(r.label)}: ${x.spent[r.key]?"spent":"ready"}</button>`).join("")}</div>`:""}
         <div class="fc-cond">${x.conds.map(cn=>`<button class="chip cond" data-fa="uncond" data-fi="${i}" data-k="${esc(cn)}" title="Remove">${esc(cn)} ×</button>`).join("")}
           <select class="fc-addcond" data-fi="${i}"><option value="">+ condition</option>${CONDITIONS.filter(cn=>!x.conds.includes(cn)).map(cn=>`<option>${cn}</option>`).join("")}</select>
@@ -12008,6 +12036,7 @@ function wireBmapPanel(el, n, c){
 }
 var lastCardSel = null;                                  // whose card was last shown: a new pick scrolls the panel to it
 function renderBattlePanel(){
+  if(tcard && tcard.over){ if(battleSel===tcard.sel && battleOf) return renderTCard(); tcard = null; }   // a person's card over the battle panel, till a token is picked
   runRules();                                                  // their hit points may have crossed a rule's line
   { const n = bnode(), c = n && n.site && n.site.combat;        // a waking's fight with nobody awake left standing: over, calm again
     if(wakeFightOver(c)){ const down = c.list.filter(y=>y.woke && y.max!=null && y.hp<=0).map(y=>y.label);
@@ -14360,7 +14389,17 @@ document.addEventListener("click", e=>{
   if(act==="toggle"){ if(pzEdit===p.id) return; if(pzOpen.has(p.id)) pzOpen.delete(p.id); else pzOpen.add(p.id); return renderSession(); }
   if(act==="edit"){ pzEdit = p.id; openInv.add("puzzles"); if(pane!=="session"){ pane = "session"; syncTabs(); } return puzzlesRedraw(); }
   if(act==="hint"){ const i = +p.given||0; if(i >= (p.hints||[]).length) return; p.given = i + 1; gameLog("puzzle", `Hint ${i+1} for ${p.name}: ${p.hints[i]}`); saveParty(); return renderSession(); }
-  if(act==="solve"){ p.solved = { day:campaignDay(), hour:root.hour }; pzOpen.delete(p.id);
+  if(act==="solve"){ pzSolve(p); return puzzlesRedraw(); }
+  if(act==="again"){ pzPop = p.id; return showPzPop(); }
+  if(act==="unsolve"){ pzUnsolve(p); return puzzlesRedraw(); }
+  if(act==="tv"){ playerShow = { kind:"puzzle", id:p.id }; sendPlayers(true); renderPScreen(); return showPzPop(); }
+  if(act==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); return showPzPop(); }
+  if(act==="del"){ if(!confirm(`Delete the puzzle "${p.name}"?`)) return; root.puzzles = P.filter(x=>x!==p); pzEdit = null; if(pzPop===p.id) pzPop = null; saveParty(); return puzzlesRedraw(); }
+});
+/* solving a puzzle, whichever way it's done (Solved, or its story flag ticked): marked, logged, what it does to someone
+   put on them, its flag on, a goal finished, the pop-up; Undo takes all of it back. p.flag: its story flag's id */
+function pzSolve(p){
+  if(p.solved) return; p.solved = { day:campaignDay(), hour:root.hour }; pzOpen.delete(p.id);
     const g = p.goal ? pzGoal(p.goal) : null;
     gameLog("puzzle", `Solved ${p.name}${g ? ` (${p.goal}: ${g.done} of ${g.all})` : ""}`);
     /* what it does to someone (a ward broken weakens the warlock): put on them now, its dice rolled */
@@ -14370,15 +14409,15 @@ document.addEventListener("click", e=>{
     if(g && g.done===g.all){ gameLog("puzzle", `${p.goal}: done`);
       /* a goal can move people on to a stage (the villain, cornered once the shield is down): { person id: stage id } */
       const gs = (pzGoals()[p.goal]||{}).stages; if(isObj(gs)) for(const [pid, sid] of Object.entries(gs)){ const q = libNpcById(pid); if(q){ setStage(q, sid, true); gameLog("talk", `${q.name||"Someone"} now: ${(stageOf(q)||{}).name || "as written"}`); } } }
-    pzPop = p.id; runRules(); saveParty(); return puzzlesRedraw(); }
-  if(act==="again"){ pzPop = p.id; return showPzPop(); }
-  if(act==="unsolve"){ delete p.solved; if(pzPop===p.id) pzPop = null;
+    if(p.flag) setFlag(p.flag, true, p.name, true);
+    pzPop = p.id; runRules(); saveParty();
+}
+function pzUnsolve(p){
+  if(!p.solved) return; delete p.solved; if(pzPop===p.id) pzPop = null;
     for(const a of p.applied||[]){ const q = libNpcById(a.to); if(q) removeEffect(q, a.ef); } delete p.applied; if(playerShow.kind==="puzzle" && playerShow.id===p.id){ playerShow = { kind:"map" }; sendPlayers(true); }
-    gameLog("puzzle", `${p.name}: not solved after all`); runRules(); saveParty(); return puzzlesRedraw(); }
-  if(act==="tv"){ playerShow = { kind:"puzzle", id:p.id }; sendPlayers(true); renderPScreen(); return showPzPop(); }
-  if(act==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); return showPzPop(); }
-  if(act==="del"){ if(!confirm(`Delete the puzzle "${p.name}"?`)) return; root.puzzles = P.filter(x=>x!==p); pzEdit = null; if(pzPop===p.id) pzPop = null; saveParty(); return puzzlesRedraw(); }
-});
+    if(p.flag) setFlag(p.flag, false, `${p.name} undone`, true);
+    gameLog("puzzle", `${p.name}: not solved after all`); runRules(); saveParty();
+}
 
 /* ── factions and standing (Joseph, 2026-10-16; your table rule: the SRD has no standing rules). Factions are in the
    Library; the party's standing with each runs −10 to +10. What a standing means depends on alignment: a good faction
@@ -17959,7 +17998,8 @@ function wireTable(){
   $("#panelToggle").insertAdjacentHTML("beforebegin", `<button id="moreBtn" class="btn" title="The other tabs">☰ More</button>`);
   $("#moreBtn").onclick = ()=>{ if(drawerPane) closeDrawer(); else openDrawer("library"); };
   $("#tdtabs").addEventListener("click", e=>{ const b = e.target.closest("[data-tdtab]"); if(!b) return; if(b.dataset.tdtab) openDrawer(b.dataset.tdtab); else closeDrawer(); });
-  $("#tchips").addEventListener("click", e=>{ const b = e.target.closest("[data-tchip]"); if(!b) return; openPersonCard("pc", b.dataset.tchip); });
+  $("#tchips").addEventListener("click", e=>{ const k = e.target.closest("[data-tchipnpc]"); if(k) return openPersonCard("npc", k.dataset.tchipnpc);
+    const b = e.target.closest("[data-tchip]"); if(!b) return; openPersonCard("pc", b.dataset.tchip); });
   /* the bars between the boxes: drag to size them; the size is remembered on this computer */
   for(const sp of document.querySelectorAll(".tsplit")){
     const side = sp.dataset.tsplit, top = sp.previousElementSibling, v = side==="left" ? "--tl-top" : "--tr-top";
@@ -17981,17 +18021,21 @@ function renderChips(){
   const el = $("#tchips"); if(!el) return;
   if(!tableOn()){ el.innerHTML = ""; return; }
   const cur = battleOf ? battleSel : (tcard && tcard.kind==="pc" ? tcard.id : null);
-  el.innerHTML = partyRoster().map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
+  const keyPeople = lib().npcs.filter(p=>p.key && !isCompanion(p.id)).map(p=>`<button class="tchip npc${tcard && tcard.kind==="npc" && tcard.id===p.id ? " on" : ""}" data-tchipnpc="${p.id}" title="${esc(p.name||"")}: open their card (their stage and what they fight with), wherever they are"><span class="dot">${esc(((p.name||"?").trim().replace(/^(Lord|Lady|Sir|Dame|Baron)\s+/i, "")[0]||"?").toUpperCase())}</span>${esc((p.name||"Someone").replace(/^(Lord|Lady|Sir|Dame|Baron)\s+/i, "").split(" ")[0])}</button>`).join("");
+  el.innerHTML = keyPeople + partyRoster().map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
     return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot">${esc((nm.trim()[0]||"?").toUpperCase())}</span>${esc(nm.split(" ")[0])} <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("");
 }
 function openPersonCard(kind, id){
-  if(battleOf){ battleSel = id; renderBattle(); renderBattlePanel(); renderChips(); return; }
+  if(battleOf){ const c = (bnode()||{}).site && bnode().site.combat;
+    const tok = kind==="pc" ? id : c && ((c.list||[]).find(x=>x.npc===id) || {}).id || (c && c.pos && c.pos["p:"+id] ? "p:"+id : null);
+    if(tok){ tcard = null; battleSel = tok; renderBattle(); renderBattlePanel(); renderChips(); return; }
+    tcard = { kind, id, over:true, sel:battleSel }; renderBattlePanel(); renderChips(); return; }
   tcard = { kind, id }; renderPlay(); renderChips(); renderActionBox(true);
 }
 
 /* ── the card: a party member or a person, with what you do with them (the place's own panel otherwise) ── */
 function renderTCard(){
-  const el = $("#pane-inspect"), back = `<button class="tcard-back" data-tcback>← ${sel && sel.kind==="node" && nodeById(sel.id) ? esc(placeLabel(nodeById(sel.id))) : "Back to the map"}</button>`;
+  const el = $("#pane-inspect"), back = `<button class="tcard-back" data-tcback>← ${battleOf && bnode() ? esc(placeLabel(bnode())) : sel && sel.kind==="node" && nodeById(sel.id) ? esc(placeLabel(nodeById(sel.id))) : "Back to the map"}</button>`;
   if(tcard.kind==="pc"){
     const c = partyRoster().find(x=>x.id===tcard.id) || companions().find(x=>x.id===tcard.id); if(!c){ tcard = null; return renderPlay(); }
     const i = partyRoster().indexOf(c), key = i>=0 ? i : "n:"+c.id;
@@ -18006,13 +18050,18 @@ function renderTCard(){
     const p = libNpcById(tcard.id); if(!p){ tcard = null; return renderPlay(); }
     el.innerHTML = `${back}<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(p.name||"Someone")}</p><button class="pcbig" data-bigsheet="npc:${p.id}">Big sheet</button></div>
       <p class="empty-note" style="margin:0 0 6px">${esc([p.role, p.align].filter(Boolean).join(" · "))}</p>
-      <div class="tstats"><div><small>AC</small>${esc(p.ac||"—")}</div><div><small>HP</small>${esc(p.hpMax?`${p.hp??p.hpMax}/${p.hpMax}`:"—")}</div><div><small>SPEED</small>${esc(p.speed||"—")}</div><div><small>PP</small>${esc(p.pp||"—")}</div></div>
+      ${(()=>{ const fid = npcFightId(p), m = fid && foeById(fid); if(!m) return ""; let x = null;
+        for(const [, nodes] of allMapNodes()) for(const nd of nodes){ const c = nd.site && nd.site.combat; const y = c && (c.list||[]).find(q=>q.npc===p.id); if(y) x = y; }
+        const ac = typeof m.ac==="number" ? m.ac : (String(m.ac||"").match(/\d+/)||["—"])[0];
+        return `<div class="tstats"><div><small>AC</small>${esc(String(ac))}</div><div><small>HP</small>${x && x.max!=null ? `${x.hp}/${x.max}` : esc(String(foeMaxHp(m)||"—"))}</div><div><small>FIGHTS AS</small>${esc(stageOf(p) && stageOf(p).fightsAs && stageOf(p).fightsAs!=="sheet" ? ((foeById(stageOf(p).fightsAs)||{}).name||"?") : p.fightsAs==="self" || stageOf(p) ? "their sheet" : m.name)}</div></div>`; })()}
       ${condChips(p.conds||[], "by:"+p.id)}
       ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
       ${(p.inv||[]).length ? `<p class="grouplab">Carries</p><p class="sbl">${p.inv.map(e=>esc(invName(e)) + (e.qty>1?` ×${e.qty}`:"")).join(", ")}</p>` : ""}
+      ${effectsLine(p, true)}
+      ${(()=>{ const fid = npcFightId(p), m = fid && foeById(fid); return m ? `${foeQuickStats(m)}${foeActionsBlock(m, true)}` : ""; })()}
       <div class="pcrow" style="margin-top:6px"><button class="btn" style="flex:1" data-tctalk="${p.id}">Talked</button><button class="btn" style="flex:1" data-tcact="p:${p.id}">Into the Action box ↓</button></div>`;
   }
-  el.querySelector("[data-tcback]").onclick = ()=>{ tcard = null; renderPlay(); renderChips(); };
+  el.querySelector("[data-tcback]").onclick = ()=>{ tcard = null; if(battleOf) renderBattlePanel(); else renderPlay(); renderChips(); };
   el.querySelectorAll("[data-tcact]").forEach(b=>b.onclick = ()=>{ const v = b.dataset.tcact; ta.who = v.startsWith("p:") ? v : "pc:"+v; ta.item = ""; renderActionBox(true); });
   el.querySelectorAll("[data-tctalk]").forEach(b=>b.onclick = ()=>{ const p = libNpcById(b.dataset.tctalk); gameLog("talk", `The party talked with ${p.name||"someone"}`); flash("In the game log."); renderTLog(true); });
 }
