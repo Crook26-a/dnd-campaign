@@ -1,4 +1,6 @@
 setup dance: [["p:n1","p:n2"],["p:n3","p:n4"]]
+saved scene: dance pairs {"pairs":[["p:n1","p:n2"],["p:n3","p:n4"]]}, people kept 5
+set again: same couples true, Arno back on his square true
 after the bell: fallen 1, still dancing 3, the fallen is out of the dance true, Unconscious true
 banner names them: true, host untouched true
 drawn lying down on the TV true, on the DM screen true

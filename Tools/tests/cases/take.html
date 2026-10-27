@@ -21,7 +21,13 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   loadJSONNow(JSON.stringify(__TK)); await wait(300); setDmMode(true); await wait(50);
   /* the scene setup starts the dancing: a man and a woman each, the host left out */
   setScene(root.docs[0], 'the-dance'); await wait(150);
-  const c = bnode().site.combat; out.push('setup dance: ' + JSON.stringify(c.dance));
+  let c = bnode().site.combat; out.push("setup dance: " + JSON.stringify(c.dance));
+  /* saving the map as the scene keeps the couples and where everyone stands; setting it again puts them back */
+  { const d0 = root.docs[0], before = JSON.stringify(c.dance); captureScene(d0, "the-dance"); const s0 = d0.setups["the-dance"];
+    out.push("saved scene: dance pairs " + JSON.stringify(s0.dance) + ", people kept " + Object.keys(s0.people||{}).length);
+    c.pos["p:n1"] = { x:9, y:5 }; delete c.dance; setScene(d0, "the-dance"); await wait(150); const c2 = bnode().site.combat;
+    out.push("set again: same couples " + (JSON.stringify(c2.dance)===before) + ", Arno back on his square " + (c2.pos["p:n1"].x===s0.people["p:n1"][0] && c2.pos["p:n1"].y===s0.people["p:n1"][1]));
+    c = c2; }
   /* the bell rings (a minute in) and takes one of the four */
   cdStart(); root.countdown.endsAt -= 61000; cdTick(); await wait(300);
   const fallen = Object.keys(c.fallen||{}); const who = fallen.map(id=>libNpcById(id.slice(2)).name);

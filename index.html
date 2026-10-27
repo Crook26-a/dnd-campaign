@@ -16513,6 +16513,7 @@ function sceneWord(s){
     bits.push(`${s.open.battle ? "opens the battle map of" : "shows"} ${n ? placeLabel(n) : "a place"}`); }
   const by = {}; for(const f of s.foes||[]){ const m = foeById(f.id); const nm = m ? m.name : "someone"; by[nm] = (by[nm]||0) + 1; }
   if(Object.keys(by).length) bits.push(Object.entries(by).map(([k, v])=>v > 1 ? `${v} × ${k}` : k).join(", "));
+  if(s.dance) bits.push(s.dance.pairs ? `${s.dance.pairs.filter(p=>p.length>1).length} couples dancing` : "the guests dancing");
   return bits.join(" · ");
 }
 function setScene(d, key){
@@ -16550,7 +16551,10 @@ function setScene(d, key){
             if(f.hide > 0) (c.stealth = c.stealth || {})[x.id] = { hide:f.hide };
           });
         }
-        if(s.dance){ placeTokens(c); const ex = new Set(s.dance.except||[]);
+        if(s.people || s.dance){ placeTokens(c); }
+        if(s.people) for(const [id, xy] of Object.entries(s.people)) if(c.pos && c.pos[id] && Array.isArray(xy)) c.pos[id] = { x:xy[0], y:xy[1] };
+        if(s.dance && Array.isArray(s.dance.pairs)){ c.dance = s.dance.pairs.map(p=>p.filter(id=>c.pos && c.pos[id])).filter(p=>p.length); if(!c.dance.length) delete c.dance; }
+        else if(s.dance){ const ex = new Set(s.dance.except||[]);
           const ids = [...bystanders(c).map(b=>b.id), ...combatants(c).filter(t=>t.side!=="party").map(t=>t.id)].filter(id=>!ex.has(id) && c.pos && c.pos[id]);
           startDance(c, ids, s.dance.mode || "any"); }
         placeTokens(c); touch(); renderBattle(); renderBattlePanel();
@@ -16568,6 +16572,9 @@ function captureScene(d, key){
     s.open = { plan:planOf||null, node:battleOf.nodeId, battle:true };
     if(c) s.foes = c.list.filter(x=>!(x.max!=null && x.hp<=0) && !x.fled).map(x=>{ const p = (c.pos||{})[x.id], h = ((c.stealth||{})[x.id]||{}).hide;
       return { id:x.foe, ...(p ? { at:[p.x, p.y] } : {}), ...(h > 0 ? { hide:h } : {}), ...(x.ally ? { side:"ally" } : x.neutral ? { side:"neutral" } : {}) }; });
+    if(c){ const ppl = {}; for(const [id, p] of Object.entries(c.pos||{})) if(String(id).startsWith("p:")) ppl[id] = [p.x, p.y];      // the people standing about, on their squares
+      if(Object.keys(ppl).length) s.people = ppl;
+      if(Array.isArray(c.dance) && c.dance.length) s.dance = { pairs:c.dance.map(p=>p.filter(id=>String(id).startsWith("p:"))).filter(p=>p.length) }; }   // who dances with whom
   }
   else if(sel && sel.kind==="node") s.open = { plan:planOf||null, node:sel.id, battle:false };
   (d.setups = d.setups || {})[key] = s; saveParty();
