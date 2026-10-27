@@ -11,3 +11,8 @@ card: Weakened The book burned Ward 1: Int and Wis saves −2; max HP −4 (1d6)
 taken off: max 73, hp 60, effects left 3
 log: Lord Test: A curse: max HP −10 / Lord Test: A curse is gone
 as the Lich: npc:ln_c, Lord Test, hp 307 (Lich 315), weakened true
+puzzle made: [{"to":"ln_c","effect":{"abil":{},"save":{},"dc":0,"atk":0,"hp":"-3","rule":"Loud noises hurt him.","hint":"He flinches at loud sounds.","quick":{"label":"Loud noise","dmg":1,"type":"Psychic"}}}]
+solved: on him The song -3 · pop On Lord Test The song: max HP −3; Loud noises hurt him. To play: He flinches at loud sounds.
+in a fight: max 78, button Loud noise: 1 Psychic, hint true
+pressed: hp 77, log "Loud noise: Lord Test takes 1 Psychic damage (The song)."
+undone: effects 0, max 81

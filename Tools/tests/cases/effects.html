@@ -45,6 +45,27 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   /* a stage fighting as a stat block keeps the effects */
   p().stages = [{ id:'s1', name:'Undying', fightsAs:'srd:lich' }]; setStage(p(), 's1', true);
   const f2 = foeById(npcFightId(p())); out.push('as the Lich: ' + npcFightId(p()) + ', ' + f2.name + ', hp ' + f2.hp + ' (Lich ' + foeById('srd:lich').hp + '), weakened ' + !!foeEntries(f2).find(([n])=>n==='Weakened'));
+  setStage(p(), '', true); p().effects = [];
+  /* a puzzle that does something to someone, made in the app: solved puts it on, Undo takes it off */
+  pane = 'session'; syncTabs(); renderSession(); await wait(30);
+  document.querySelector('#pane-session [data-pz="new"]').click(); await wait(30);
+  document.getElementById('pz-name').value = 'The song'; document.getElementById('pz-text').value = 'The sigil cracks.';
+  document.getElementById('pz-efto').value = 'ln_c';
+  const pf = (k, v) => { const i = document.querySelector(`#pane-session [data-pzef="${k}"]`); i.value = v; };
+  pf('hp', '-3'); pf('rule', 'Loud noises hurt him.'); pf('quick.label', 'Loud noise'); pf('quick.dmg', '1'); pf('quick.type', 'Psychic'); pf('hint', 'He flinches at loud sounds.');
+  document.querySelector('#pane-session [data-pz="save"]').click(); await wait(30);
+  const pz = root.puzzles.find(q=>q.name==='The song');
+  out.push('puzzle made: ' + JSON.stringify(pz.does));
+  pzOpen.add(pz.id); renderSession(); document.querySelector(`#pane-session [data-pz="solve"][data-id="${pz.id}"]`).click(); await wait(40);
+  out.push('solved: on him ' + p().effects.map(e=>e.name + ' ' + e.hpRoll).join(', ') + ' · pop ' + [...document.querySelectorAll('#pzpop .pzfx')].map(e=>txt(e)).join(' | '));
+  document.querySelector('#pzpop [data-pz="close"]').click();
+  closeBattle(true); delete hall.site.combat; enterPlan('h'); openBattle(hall); await wait(100);
+  const c3 = hall.site.combat, z = addToFight(c3, 'p:ln_c'); placeTokens(c3); battleSel = z.id; renderBattlePanel(); await wait(40);
+  const qb = document.querySelector('#pane-inspect [data-efq]');
+  out.push('in a fight: max ' + z.max + ', button ' + (qb ? txt(qb) : 'none') + ', hint ' + /To play: He flinches/.test(txt(document.getElementById('pane-inspect'))));
+  qb.click(); await wait(30); out.push('  pressed: hp ' + z.hp + ', log "' + c3.log.slice(-1)[0].text + '"');
+  pzOpen.add(pz.id); renderSession(); document.querySelector(`#pane-session [data-pz="unsolve"][data-id="${pz.id}"]`).click(); await wait(30);
+  out.push('undone: effects ' + p().effects.length + ', max ' + z.max);
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  document.title = 'RES ' + out.join(' || ');
 }, 900);

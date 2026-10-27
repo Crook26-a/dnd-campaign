@@ -402,6 +402,7 @@
   .pzhint{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:2px 0} .pzhint.given{color:var(--ink-faint)} .pzhn{flex:0 0 14px;font-family:var(--mono)}
   .stgbox{border-left:3px solid var(--rule);padding:2px 0 2px 8px;margin:0 0 8px}
   .efline{border-left:3px solid var(--lead);padding:2px 0 2px 8px;margin:0 0 6px;font-size:12px} .efrow{margin:2px 0} .efrow .fdel{margin-left:4px}
+  .efhint{font-style:italic;color:var(--ink-soft);margin:1px 0 0 8px}
   #saypop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:62;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
   #pzpop{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:61;width:min(520px, calc(100vw - 32px));max-height:70vh;overflow:auto}
   .pzread{font-family:var(--serif);font-size:14px;line-height:1.45} .pzread p{margin:4px 0} .pzfx{font-size:12px;margin:8px 0 0}
@@ -7813,8 +7814,41 @@ function removeEffect(p, id){
 /* on their card, at the table */
 function effectsLine(p, canRemove){
   const E = effectsOf(p); if(!E.length) return "";
-  return `<div class="efline"><span class="mini">Weakened</span>${E.map(e=>`<div class="efrow"><b>${esc(e.name||"An effect")}</b>${e.from ? ` <small>${esc(e.from)}</small>` : ""}: ${esc(effectWords(e))}${canRemove ? ` <button class="fdel" data-ef="del" data-pid="${p.id}" data-eid="${e.id}" title="Take it off them">×</button>` : ""}</div>`).join("")}</div>`;
+  return `<div class="efline"><span class="mini">Weakened</span>${E.map(e=>`<div class="efrow"><b>${esc(e.name||"An effect")}</b>${e.from ? ` <small>${esc(e.from)}</small>` : ""}: ${esc(effectWords(e))}${canRemove ? ` <button class="fdel" data-ef="del" data-pid="${p.id}" data-eid="${e.id}" title="Take it off them">×</button>` : ""}${e.hint ? `<div class="efhint">To play: ${esc(e.hint)}</div>` : ""}</div>`).join("")}</div>`;
 }
+/* an effect's rule, a button for it in fights ("Loud noise: 1 Psychic"), and how to let the players find out; attr is the
+   data attribute the form reads its fields by, e the effect to fill them from */
+function effectRuleFields(attr, e){ e = e || {}; const q = e.quick || {};
+  return `<div class="field"><label>A rule of its own</label><textarea ${attr}="rule" rows="2" placeholder="Loud noises deal 1 Psychic damage to them.">${esc(e.rule||"")}</textarea></div>
+    <div class="pcrow"><div class="field" style="flex:1.6"><label>A button in fights <small>optional</small></label><input type="text" ${attr}="quick.label" value="${esc(q.label||"")}" placeholder="Loud noise"></div>
+      <div class="field" style="flex:.7"><label>Damage</label><input type="number" ${attr}="quick.dmg" value="${esc(q.dmg??"")}" placeholder="1"></div>
+      <div class="field" style="flex:1"><label>Type</label><input type="text" ${attr}="quick.type" value="${esc(q.type||"")}" placeholder="Psychic"></div></div>
+    <div class="field"><label>How the players find out <small>a hint for you to play out in the fight</small></label><textarea ${attr}="hint" rows="2" placeholder="The first time something loud happens near him, he flinches…">${esc(e.hint||"")}</textarea></div>`; }
+/* all of an effect's numbers, filled in from e: for a form that makes one (a puzzle's) */
+function effectInputs(attr, e){ e = e || {}; const n = (k, v) => `<input type="number" ${attr}="${k}" value="${v ? esc(v) : ""}" placeholder="0" style="width:100%">`;
+  return `<label class="grouplab" style="margin:0">Ability modifiers</label><div class="abil">${ABK.map(k=>`<div class="ab"><label>${ABN[k]}</label>${n("abil."+k, (e.abil||{})[k])}</div>`).join("")}</div>
+    <label class="grouplab" style="margin:0">Saves</label><div class="abil">${ABK.map(k=>`<div class="ab"><label>${ABN[k]}</label>${n("save."+k, (e.save||{})[k])}</div>`).join("")}</div>
+    <div class="pcrow"><div class="field" style="flex:1"><label>DCs</label>${n("dc", e.dc)}</div><div class="field" style="flex:1"><label>Attack rolls</label>${n("atk", e.atk)}</div><div class="field" style="flex:1.2"><label>Max HP</label><input type="text" ${attr}="hp" value="${esc(e.hp||"")}" placeholder="-1d6"></div></div>
+    ${effectRuleFields(attr, e)}`; }
+/* the effect a form describes; v(key) reads a field */
+function effectFromForm(v){
+  const ef = { abil:{}, save:{}, dc:+v("dc")||0, atk:+v("atk")||0, hp:v("hp"), rule:v("rule"), hint:v("hint") };
+  for(const k of ABK){ if(+v("abil."+k)) ef.abil[k] = +v("abil."+k); if(+v("save."+k)) ef.save[k] = +v("save."+k); }
+  if(v("quick.label")) ef.quick = { label:v("quick.label"), dmg:+v("quick.dmg")||0, type:v("quick.type") };
+  for(const k of ["hp","rule","hint"]) if(!ef[k]) delete ef[k];
+  return ef;
+}
+/* in a fight: an effect's button on the card of the one it's on ("Loud noise: 1 Psychic") */
+function effectQuick(x){
+  const p = x && x.npc && libNpcById(x.npc), E = effectsOf(p).filter(e=>e.quick && e.quick.label); if(!E.length) return "";
+  return `<div class="pcrow" style="flex-wrap:wrap;margin:0 0 6px">${E.map(e=>`<button class="btn" style="flex:1" data-efq="${e.id}" data-x="${x.id}" title="${esc(e.rule||e.name||"")}">${esc(e.quick.label)}${e.quick.dmg ? `: ${e.quick.dmg} ${esc(e.quick.type||"")}` : ""}</button>`).join("")}</div>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-efq]"); if(!b) return;
+  const n = bnode(), c = n && n.site && n.site.combat, x = c && c.list.find(y=>y.id===b.dataset.x), p = x && libNpcById(x.npc), ef = p && (p.effects||[]).find(q=>q.id===b.dataset.efq); if(!ef) return;
+  const d = Math.max(0, +ef.quick.dmg||0), snap = snapOf(c, [x.id]);
+  if(d && x.max!=null){ x.hp = Math.max(0, x.hp - d); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); }
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:`${ef.quick.label}: ${x.label}${d ? ` takes ${d} ${ef.quick.type||""} damage`.replace(/\s+damage$/, " damage") : ""} (${ef.name||"an effect"}).`, snap });
+  touch(); renderBattle(); renderBattlePanel(); });
 /* their Library page: what's on them, and a way to add one */
 function effectsBlock(x){
   const E = Array.isArray(x.effects) ? x.effects : [], n = k => `<input type="number" data-efn="${k}" placeholder="0" style="width:100%">`;
@@ -7826,7 +7860,7 @@ function effectsBlock(x){
       <label class="grouplab" style="margin:0">Ability modifiers</label><div class="abil">${ABK.map(k=>`<div class="ab"><label>${ABN[k]}</label>${n("abil."+k)}</div>`).join("")}</div>
       <label class="grouplab" style="margin:0">Saves</label><div class="abil">${ABK.map(k=>`<div class="ab"><label>${ABN[k]}</label>${n("save."+k)}</div>`).join("")}</div>
       <div class="pcrow"><div class="field" style="flex:1"><label>DCs</label>${n("dc")}</div><div class="field" style="flex:1"><label>Attack rolls</label>${n("atk")}</div><div class="field" style="flex:1.2"><label>Max HP</label><input type="text" data-efn="hp" placeholder="-1d6"></div></div>
-      <div class="field"><label>A rule of its own</label><textarea data-efn="rule" rows="2" placeholder="Loud noises deal 1 Psychic damage to them."></textarea></div>
+      ${effectRuleFields('data-efn')}
       <button class="btn wide on" data-ef="add" data-pid="${x.id}">Put it on them</button></details></details>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-ef]"); if(!b) return;
@@ -7834,8 +7868,7 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   if(b.dataset.ef==="del"){ const ef = (p.effects||[]).find(x=>x.id===b.dataset.eid); if(!ef || !confirm(`Take "${ef.name||"this effect"}" off ${p.name||"them"}?`)) return; removeEffect(p, ef.id); }
   else if(b.dataset.ef==="add"){
     const box = b.closest(".efadd"), v = k => { const i = box.querySelector(`[data-efn="${k}"]`); return i ? i.value.trim() : ""; };
-    const ef = { name:v("name"), from:v("from"), abil:{}, save:{}, dc:+v("dc")||0, atk:+v("atk")||0, hp:v("hp"), rule:v("rule") };
-    for(const k of ABK){ if(+v("abil."+k)) ef.abil[k] = +v("abil."+k); if(+v("save."+k)) ef.save[k] = +v("save."+k); }
+    const ef = effectFromForm(v); ef.name = v("name"); ef.from = v("from");
     if(!ef.name){ flash("Give the effect a name first."); return; }
     if(!effectWords({ ...ef, hpRoll:ef.hp ? 1 : 0 })){ flash("It doesn't change anything yet."); return; }
     const done = addEffect(p, ef); openInv.add("effects:" + p.id);
@@ -11784,7 +11817,7 @@ function renderBattlePanelNow(){
   if(selT){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;
     h += `<div class="pcrow" style="align-items:center;margin-top:10px"><p class="grouplab" style="margin:0;flex:1">${esc(selT.label)}</p><button class="pcbig" data-bigsheet="${sheetKey}" title="Their whole sheet, big">Big sheet</button></div>`;
-    if(selT.kind==="foe") h += dormantRow(selT.x);
+    if(selT.kind==="foe") h += dormantRow(selT.x) + effectQuick(selT.x);
     h += stealthRow(c, selT);
     if(selT.kind==="foe") h += knownTick(tokPerson(selT));
     if(selT.kind==="foe" && tokPerson(selT)) h += personBrief(tokPerson(selT));
@@ -13992,6 +14025,11 @@ function pzForm(p){
     <div class="field"><label>Hints <small>one per line, in order</small></label><textarea id="pz-hints" rows="3">${esc((p.hints||[]).join("\n"))}</textarea></div>
     <div class="field"><label>When they solve it <small>read aloud; it can go on the players' screen</small></label><textarea id="pz-text" rows="4">${esc(p.text||"")}</textarea></div>
     <div class="field"><label>What it changes <small>for you only</small></label><textarea id="pz-effect" rows="2">${esc(p.effect||"")}</textarea></div>
+    ${(()=>{ const d = (p.does||[])[0] || {}, ppl = [...lib().npcs].filter(q=>q.name).sort((a, b)=>a.name.localeCompare(b.name));
+      return `<details class="pcset" ${d.to ? "open" : ""}><summary>What it does to someone <small>${d.to ? esc((libNpcById(d.to)||{}).name||"?") : "an effect put on them when it's solved"}</small></summary>
+        <div class="field"><label>Who</label><select id="pz-efto"><option value="">— nobody —</option>${ppl.map(q=>`<option value="${q.id}" ${q.id===d.to?"selected":""}>${esc(q.name)}${q.role?` (${esc(q.role)})`:""}</option>`).join("")}</select></div>
+        <div class="field"><label>Its name <small>blank: the puzzle's</small></label><input type="text" data-pzef="name" value="${esc((d.effect||{}).name||"")}" placeholder="${esc(p.name||"")}"></div>
+        ${effectInputs("data-pzef", d.effect)}</details>`; })()}
     <div class="field"><label>Counts toward <small>a goal several puzzles share, or blank</small></label><input id="pz-goal" type="text" list="pz-goals" value="${esc(p.goal||"")}" placeholder="The shield"><datalist id="pz-goals">${[...new Set(goals)].map(g=>`<option value="${esc(g)}">`).join("")}</datalist></div>
     <div class="field"><label>When the whole goal is done <small>read aloud after the last one</small></label><textarea id="pz-goaltext" rows="3">${esc(goalText)}</textarea></div>
     <div class="pcrow"><button class="btn on" style="flex:2" data-pz="save">${p.id ? "Save" : "Add the puzzle"}</button><button class="btn" style="flex:1" data-pz="cancel">Cancel</button>${p.id ? `<button class="btn danger" data-pz="del" data-id="${p.id}">Delete</button>` : ""}</div></div>`;
@@ -14019,6 +14057,7 @@ function showPzPop(){
     ${w.text ? `<div class="pzread">${pzParas(w.text)}</div>` : `<p class="empty-note" style="font-size:11px">Nothing written to read aloud (Edit adds it).</p>`}
     ${w.goalText ? `<p class="grouplab" style="margin:8px 0 2px">${esc(p.goal)}: done</p><div class="pzread">${pzParas(w.goalText)}</div>` : ""}
     ${p.effect ? `<p class="pzfx"><span class="mini">What it changes</span> ${esc(p.effect)}</p>` : ""}
+    ${(p.applied||[]).map(a=>{ const q = libNpcById(a.to), e = q && (q.effects||[]).find(y=>y.id===a.ef); return e ? `<p class="pzfx"><span class="mini">On ${esc(q.name||"them")}</span> ${esc(e.name||"")}: ${esc(effectWords(e))}${e.hint ? `<br><i>To play: ${esc(e.hint)}</i>` : ""}</p>` : ""; }).join("")}
     <div class="pcrow" style="margin:8px 0 0">${w.text || w.goalText ? `<button class="btn small${onTv ? " on" : ""}" data-pz="${onTv ? "tvoff" : "tv"}" data-id="${p.id}">${onTv ? "Take it off the players' screen" : "Show on the players' screen"}</button>` : ""}<button class="btn small" data-pz="close">Close</button></div></div>`;
 }
 /* on the players' screen: the words alone, on a card */
@@ -14093,6 +14132,9 @@ document.addEventListener("click", e=>{
     const x = pzEdit==="new" ? { id:uid("pz"), given:0 } : P.find(q=>q.id===pzEdit); if(!x) return;
     Object.assign(x, { name, place, answer:$("#pz-answer").value.trim(), how:$("#pz-how").value.trim(), hints:$("#pz-hints").value.split("\n").map(s=>s.trim()).filter(Boolean),
       text:$("#pz-text").value.trim(), effect:$("#pz-effect").value.trim(), goal:$("#pz-goal").value.trim() });
+    { const to = $("#pz-efto") ? $("#pz-efto").value : "", v = k => { const f = document.querySelector(`#pane-session [data-pzef="${k}"]`); return f ? f.value.trim() : ""; };
+      const ef = effectFromForm(v); if(v("name")) ef.name = v("name");
+      if(to && (effectWords({ ...ef, hpRoll:ef.hp ? 1 : 0 }) || ef.quick)) x.does = [{ to, effect:ef }]; else delete x.does; }
     if(x.goal){ const gt = $("#pz-goaltext").value.trim(); const G = pzGoals()[x.goal] = { ...(pzGoals()[x.goal]||{}), text:gt }; if(!gt) delete G.text; if(!Object.keys(G).length) delete pzGoals()[x.goal]; }
     if(pzEdit==="new") P.push(x);
     pzEdit = null; pzDraft = null; saveParty(); flash("Puzzle saved."); return puzzlesRedraw();
@@ -14104,12 +14146,17 @@ document.addEventListener("click", e=>{
   if(act==="solve"){ p.solved = { day:campaignDay(), hour:root.hour }; pzOpen.delete(p.id);
     const g = p.goal ? pzGoal(p.goal) : null;
     gameLog("puzzle", `Solved ${p.name}${g ? ` (${p.goal}: ${g.done} of ${g.all})` : ""}`);
+    /* what it does to someone (a ward broken weakens the warlock): put on them now, its dice rolled */
+    p.applied = (p.does||[]).map(d=>{ const q = libNpcById(d.to); if(!q || !d.effect) return null;
+      const e = addEffect(q, { ...d.effect, name:d.effect.name || p.name, from:d.effect.from || p.name }); return { to:q.id, ef:e.id }; }).filter(Boolean);
+    if(!p.applied.length) delete p.applied;
     if(g && g.done===g.all){ gameLog("puzzle", `${p.goal}: done`);
       /* a goal can move people on to a stage (the villain, cornered once the shield is down): { person id: stage id } */
       const gs = (pzGoals()[p.goal]||{}).stages; if(isObj(gs)) for(const [pid, sid] of Object.entries(gs)){ const q = libNpcById(pid); if(q){ setStage(q, sid, true); gameLog("talk", `${q.name||"Someone"} now: ${(stageOf(q)||{}).name || "as written"}`); } } }
     pzPop = p.id; saveParty(); return puzzlesRedraw(); }
   if(act==="again"){ pzPop = p.id; return showPzPop(); }
-  if(act==="unsolve"){ delete p.solved; if(pzPop===p.id) pzPop = null; if(playerShow.kind==="puzzle" && playerShow.id===p.id){ playerShow = { kind:"map" }; sendPlayers(true); }
+  if(act==="unsolve"){ delete p.solved; if(pzPop===p.id) pzPop = null;
+    for(const a of p.applied||[]){ const q = libNpcById(a.to); if(q) removeEffect(q, a.ef); } delete p.applied; if(playerShow.kind==="puzzle" && playerShow.id===p.id){ playerShow = { kind:"map" }; sendPlayers(true); }
     gameLog("puzzle", `${p.name}: not solved after all`); saveParty(); return puzzlesRedraw(); }
   if(act==="tv"){ playerShow = { kind:"puzzle", id:p.id }; sendPlayers(true); renderPScreen(); return showPzPop(); }
   if(act==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); return showPzPop(); }
