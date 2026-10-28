@@ -11121,7 +11121,7 @@ function combatants(c){
      the characters and any companions (people from the library travelling with them) */
   const foes = c.list.map((x,i)=>({ kind:"foe", side:x.ally?"party":x.neutral?"neutral":"enemy", id:x.id, i, x, label:x.label, init:c.init[x.id], fled:!!x.fled }));
   const chars = presentChars(c);                  // the party members at this place (everyone, if none of them is)
-  const pcs = [...chars.map((p,i)=>({ kind:"pc", side:"party", id:p.id, i, p, label:(p.name||`Character ${i+1}`) + (shapeForm(p) ? ` (${shapeForm(p).name})` : ""), init:c.init[p.id], fled:!!(c.fled&&c.fled[p.id]) })),
+  const pcs = [...chars.map((p,i)=>({ kind:"pc", side:(c.turned||{})[p.id] ? "enemy" : "party", turned:!!(c.turned||{})[p.id], id:p.id, i, p, label:(p.name||`Character ${i+1}`) + (shapeForm(p) ? ` (${shapeForm(p).name})` : ""), init:c.init[p.id], fled:!!(c.fled&&c.fled[p.id]) })),
     ...companions().filter(p=>{ const b = bondOf(p); return !b || !memberIds().includes(b.to) || chars.some(q=>q.id===b.to); }).map(p=>{
       const id = "n:"+p.id, b = bondOf(p);
       /* a mount (or anyone set to) goes right after its owner, on the owner's initiative */
@@ -11811,6 +11811,15 @@ function rowSpell(p, row){
 }
 
 /* damage type and dice hinted by an action's text: "(1d6 + 3) Slashing damage" */
+/* is this one immune to a condition: a creature's condition immunities, or "immune … charmed" in its or a character's
+   Defenses (your Gentleman's warlock: Corvin's charms slide off her) */
+function condImmune(t, cond){
+  const c = String(cond||"").toLowerCase(); if(!c) return false;
+  const m = t.kind==="foe" ? foeById(t.x.foe) : null, p = t.kind==="foe" ? null : t.p;
+  if(m && String(m.cimm||"").toLowerCase().split(/[,;]\s*|\s+and\s+/).map(s=>s.trim()).includes(c)) return true;
+  const def = [p && p.defenses, m && (pairs(m.tr).find(([n])=>/^Defenses$/i.test(n))||[])[1]].filter(Boolean).join(" ; ").toLowerCase();
+  return def.split(/[;\n.]/).some(part=>/immun/.test(part) && new RegExp(`\\b${c}\\b`).test(part));
+}
 /* the condition an ability's text puts on its target ("the target has the Charmed condition"), if it's one we track */
 function condFromText(text){
   const m = /\bthe target has the (\w+) condition/i.exec(String(text||"")); if(!m) return "";
@@ -11994,7 +12003,7 @@ function logAction(n, c){
     let dropped = false, got = 0, hl = 0;
     if(dmg){ got = dmg; dropped = t.kind==="foe" ? damageFoe(t.x, dmg) : damagePc(t.p, dmg); dealt += dmg; if(t.kind==="pc") statsOf(t.p).taken += dmg; }
     if(heal){ hl = healAny(t, heal); healed += hl; }
-    if(act.cond && !["miss","save"].includes(act.outcome)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save or a miss puts nothing on
+    if(act.cond && !["miss","save"].includes(act.outcome) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
     if(dropped) kills++;
     hits.push({ id:t.id, label:t.label, dmg:got, heal:hl, dropped });
   }
@@ -12019,7 +12028,7 @@ function logAction(n, c){
     + (out ? ` — ${out}` : "")
     + (dmg && act.outcome!=="miss" ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}` : "")
     + (healed ? `, healing ${healed}` : "")
-    + (act.cond && !["miss","save"].includes(act.outcome) ? `, ${act.cond.toLowerCase()}` : "")
+    + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
     + (act.note ? ` (${act.note})` : "")
     + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}` : ""}` : "")
     + [...hits, ...hits2].filter((h,i,A)=>h.dropped && A.findIndex(x=>x.id===h.id && x.dropped)===i).map(h=>`. ${h.label} drops`).join("") + ".";
@@ -12170,7 +12179,8 @@ function renderBattlePanelNow(){
     if(selT.kind==="foe" && tokPerson(selT)) h += personBrief(tokPerson(selT));
     h += `<button class="btn wide" data-breact="${selT.id}" style="margin-bottom:6px">⚡ ${esc(selT.label)} takes a reaction${reactedThisRound(c,selT.id)?" (already used one this round)":""}</button>`;
     h += selT.kind==="foe" ? enemyCard(selT.x, selT.i, "", true)
-      : pcTracker(selT.p, selT.i) + `<button class="btn wide" data-ba="pcfled" data-id="${selT.id}" style="margin:-4px 0 6px">${selT.fled?"Back in the fight":"Mark as fled"}</button>` + partyUndoBtn();
+      : pcTracker(selT.p, selT.i) + `<button class="btn wide" data-ba="pcfled" data-id="${selT.id}" style="margin:-4px 0 6px">${selT.fled?"Back in the fight":"Mark as fled"}</button>`
+        + (!selT.npc ? `<button class="btn wide${selT.turned ? " on" : ""}" data-ba="pcturn" data-id="${selT.id}" style="margin:0 0 6px" title="${selT.turned ? "Back on the party's side" : "They've betrayed the party: in this fight they're on the other side (their token, the turn order, what the party's eyes count)"}">${selT.turned ? "Back with the party" : "Turns against the party"}</button>` : "") + partyUndoBtn();
   }
   /* someone here who isn't fighting, picked on the map */
   const by = !selT && battleSel && String(battleSel).startsWith("p:") ? libNpcById(battleSel.slice(2)) : null;
@@ -12274,6 +12284,10 @@ function renderBattlePanelNow(){
     if(a==="back") return closeBattle();
     if(a==="undo") return undoAction(c);
     if(a==="pcfled"){ c.fled = c.fled||{}; if(c.fled[b.dataset.id]) delete c.fled[b.dataset.id]; else c.fled[b.dataset.id] = true; }
+    if(a==="pcturn"){ c.turned = c.turned||{}; const id = b.dataset.id, nm = memberName(id), on = !c.turned[id];
+      if(on) c.turned[id] = true; else delete c.turned[id];
+      const line = on ? `${nm} turns against the party!` : `${nm} is back on the party's side.`;
+      (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("fight", line); flash(line); sendPlayers(true); }
     if(a==="initorder"){ delete c.order; flash("Back to initiative order."); }
     if(a==="begin"){ beginBattle(st); battleSel = null; flash("The battle begins: roll initiative."); }
     if(a==="layout"){ c.layout = c.layout==="lineup" ? "map" : "lineup"; bview = { x:-BS, y:-BS, w:(BW+2)*BS, h:(BH+2)*BS }; }
