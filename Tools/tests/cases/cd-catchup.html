@@ -1,0 +1,26 @@
+// uses: nothing
+<script>
+/* a countdown left running while the app was shut: bells long past go quietly, a run-out long past stops at zero with
+   no end flags; a quick reload still rings a bell that's only just come due */
+const mk = (startedAgoS, bells) => ({ format:"ordinate-survey-v1", title:"CD Test", ppm:10, unit:"mi", party:1,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[], roster:[{ id:"pa", name:"Anna", level:5 }],
+  flags:[{ id:"f_mid", name:"Midnight has struck", on:false }],
+  library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[] },
+  countdown:{ on:true, title:"Until midnight", total:7200, left:7200, endsAt:Date.now() + (7200 - startedAgoS)*1000, show:false, sound:false, flagsAtEnd:["f_mid"],
+    bells:bells, doneLabel:"Midnight." } });
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
+ try{
+  /* left running three hours ago */
+  loadJSONNow(JSON.stringify(mk(3*3600, [{ id:"b1", at:24, label:"First" }, { id:"b2", at:48, label:"Second" }]))); await wait(1500);
+  let c = root.countdown;
+  out.push('stale: rung ' + c.bells.map(b=>b.rung).join(',') + ', done ' + !!c.done + ', running ' + !!c.endsAt + ', left ' + c.left + ', flag ' + JSON.stringify((root.flags||[]).find(f=>f.id==='f_mid')) + ', tolled ' + cdQueue.length + '/' + cdBusy);
+  out.push('  banner: ' + (document.getElementById('cdbanner')||{}).innerText.replace(/\s+/g,' ').trim().slice(0, 260));
+  cdBanners = []; cdBannerDraw(); cdQueue = []; cdBusy = false;
+  /* reloaded mid-game: started 25 min ago, the 10-minute bell rang while it was open, the 24-minute one came due a minute ago */
+  loadJSONNow(JSON.stringify(mk(25*60, [{ id:"b0", at:10, label:"Long past", rung:true }, { id:"b1", at:24, label:"Just now" }, { id:"b2", at:48, label:"Later" }]))); await wait(1500);
+  c = root.countdown;
+  out.push('reload: rung ' + c.bells.map(b=>b.id + '=' + !!b.rung).join(',') + ', running ' + !!c.endsAt + ', left ~' + Math.round(cdLeft(c)/60) + ' min, banner "' + ((document.querySelector('#cdbanner .cdb b')||{}).textContent||'') + '"');
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

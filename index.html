@@ -15146,9 +15146,32 @@ function cdBannerDraw(){
 }
 document.addEventListener("click", e=>{ const x = e.target.closest && e.target.closest("[data-cdx]"); if(!x) return; cdBanners = cdBanners.filter(b=>b.id!==x.dataset.cdx); cdBannerDraw(); });
 
+/* a countdown left running while the app was shut (Joseph, 2026-10-28: he came back to every bell at once and
+   midnight struck): when the app opens, bells that came due more than two minutes ago are passed quietly, and if it
+   ran out more than two minutes ago it stops at zero without the end's tolls or flags. A banner says what was missed.
+   A quick reload mid-game still rings what's just come due. */
+const CD_GRACE = 120;
+var cdChecked = false;
+function cdCatchUp(c){
+  const now = Date.now(), startMs = c.endsAt - (+c.total||0)*1000, late = ms => now - ms > CD_GRACE*1000;
+  const missed = c.bells.filter(b=>!b.rung && (+b.at||0) < (+c.total||0)/60 && late(startMs + (+b.at||0)*60000));
+  const ranOut = cdLeft(c) <= 0 && late(c.endsAt);
+  if(!missed.length && !ranOut) return false;
+  missed.forEach(b=>{ b.rung = true; });
+  if(ranOut){ c.left = 0; c.done = true; }
+  c.endsAt = null;                                         // paused either way: the DM carries on, or resets, when ready
+  if(!ranOut) c.left = Math.max(0, (startMs + (+c.total||0)*1000 - now)/1000);
+  const what = [missed.length ? `${missed.length} bell${missed.length===1?"":"s"} passed without ringing (${missed.map(b=>b.label||`${b.at} min`).join("; ")})` : "",
+    ranOut ? `it ran out at ${cdWall(startMs + (+c.total||0)*1000)} (the end's flags weren't set)` : ""].filter(Boolean).join("; ");
+  cdBanners.push({ id:uid("cdb"), label:`The countdown ran on while the app was shut`, note:`${what[0].toUpperCase()}${what.slice(1)}. It's paused. Press ▶ to carry on${ranOut ? " (it starts over from the top)" : ""}, or Reset it in the Players' screen panel.`, done:false });
+  cdBannerDraw(); gameLog("clock", `The countdown ran on while the app was shut: ${what}`);
+  cdSave(); sendCountdown(); cdReadouts(); renderPScreen();
+  return true;
+}
 /* once a second: the readouts, and any bell that has come due */
 function cdTick(){
   const c = cdGet(); cdReadouts();
+  if(c && !cdChecked){ cdChecked = true; if(c.on && c.endsAt && cdCatchUp(c)) return; }
   if(!c || !c.on || !c.endsAt) return;
   const el = cdElapsedMin(c); let changed = false;
   for(const b of c.bells.slice().sort((a, b)=>(+a.at||0)-(+b.at||0)))
@@ -17757,6 +17780,7 @@ function refreshAfterLoad(){
   try{ renderSession(); renderDocs(); renderTLog(true); renderChips(); }catch(err){}
 }
 function loadJSONNow(text){
+  cdChecked = false;                                       // a file with a countdown left running gets the same check as opening the app
   let d;
   try{ d = JSON.parse(text); } catch(err){ flash("That isn't valid JSON."); return; }
   if(!d||!Array.isArray(d.nodes)||!Array.isArray(d.roads)){ flash("No nodes and roads in that file."); return; }

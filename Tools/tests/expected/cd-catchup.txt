@@ -1,0 +1,3 @@
+stale: rung true,true, done true, running false, left 0, flag {"id":"f_mid","name":"Midnight has struck","on":false}, tolled 0/false
+banner: 🔔 The countdown ran on while the app was shut 2 bells passed without ringing (First; Second); it ran out at 12:38 pm (the end's flags weren't set). It's paused. Press ▶ to carry on (it starts over from the top), or Reset it in the Players' screen panel. ×
+reload: rung b0=true,b1=true,b2=false, running true, left ~95 min, banner "🔔 Just now"
