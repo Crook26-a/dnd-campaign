@@ -1,0 +1,5 @@
+panel: rows 3, swatches 24, not chosen 2
+showing: tokens · board "Choose your token Teal · free Blue · freeB Bram Birch Purple · free Pink · free Orange · free Gold · free Charcoal · free Still to choose: Anna Ash, Cass"
+Anna pink: pink, not chosen 1 · board "Choose your token Teal · free Blue · freeB Bram Birch Purple · freeA Anna Ash Orange · free Gold · free Charcoal · free Still to choose: Cass"
+letters AA: AA · on the board true
+start over: -,-,-, letters kept AA · board "Choose your token Teal · free Blue · free Navy · free Purple · free Pink · free Orange · free Gold · free Charcoal · free Still to choose: Anna Ash, Bram Birch, Cass"

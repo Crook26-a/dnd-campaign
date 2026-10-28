@@ -917,6 +917,12 @@
   .aw-tv{text-align:center;width:min(1000px,90vw)} .aw-star{font-size:min(8vh,70px);color:#a8782a;line-height:1;margin-top:1vh} .aw-name{font-family:var(--serif);font-size:min(7vh,64px);color:#3a2e1e} .aw-name small,.aw-row small{display:block;font-family:var(--mono);font-size:min(1.8vh,15px);letter-spacing:.1em;text-transform:uppercase;color:#6d5c43} .aw-sub{font-family:var(--mono);font-size:min(2vh,17px);color:#6d5c43;margin-bottom:3vh}
   .aw-bt{font-family:var(--serif);font-variant:small-caps;letter-spacing:.08em;font-size:min(3.4vh,30px);color:#3a2e1e;border-top:1px solid #6d5c43;padding-top:2vh;margin:1vh auto 1vh;width:70%} .aw-row{display:flex;justify-content:space-between;align-items:baseline;gap:2vw;width:70%;margin:0 auto;padding:.6vh 0;font-size:min(2.6vh,22px);text-align:left} .aw-row b{font-family:var(--serif);text-align:right}
   .lb-tv{width:min(1400px,94vw);background:#efe4c6;border:2px solid #3a2e1e;box-shadow:0 0 0 6px #efe4c6,0 0 0 8px #6d5c43,0 10px 40px rgba(0,0,0,.35);padding:3vh 3vw}
+  .tok-tv .tok-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4vh 3vw;margin:4vh 0 3vh}
+  .tok-tv .tok-c{display:flex;flex-direction:column;align-items:center;gap:1.4vh;opacity:.6} .tok-tv .tok-c.taken{opacity:1}
+  .tok-tv .tok-dot{width:min(15vh,150px);height:min(15vh,150px);border-radius:50%;border:3px solid #3a2e1e;display:grid;place-items:center;color:#f8f2e1;font-family:var(--mono);font-size:min(4.6vh,44px);letter-spacing:.04em}
+  .tok-tv .tok-nm{font-family:var(--serif);font-size:min(3.2vh,30px);color:#3a2e1e;text-align:center} .tok-tv .tok-nm i{color:#6d5c43}
+  .tok-tv .tok-still{text-align:center;font-family:var(--serif);font-size:min(2.8vh,26px);color:#6d5c43;font-style:italic}
+  .ps-tok{border-top:1px dotted var(--rule);padding-top:4px} .ps-tokn{font-size:12.5px} .ps-tokn small{color:var(--lead);font-family:var(--mono);font-size:10px} .ps-tok .pctok{margin:2px 0 4px}
   .lb-tv .lb-h{font-family:var(--serif);font-size:min(6vh,54px);text-align:center;font-variant:small-caps;letter-spacing:.08em;color:#3a2e1e}
   .lb-tv .lb-when{text-align:center;font-size:min(1.8vh,15px);margin-bottom:2vh}
   .lb-tv .lb-grid{grid-template-columns:repeat(4,1fr);gap:1.6vh 1.4vw}
@@ -2149,6 +2155,7 @@ function sendPlayers(now){
       else if(playerShow.kind==="awards") msg = { kind:"board", html:awardsTvHtml(playerShow.sess || sessKey()) };
       else if(playerShow.kind==="puzzle") msg = { kind:"board", html:pzTvHtml(playerShow.id) };
       else if(playerShow.kind==="say") msg = { kind:"board", html:sayTvHtml(playerShow) };
+      else if(playerShow.kind==="tokens") msg = { kind:"board", html:tokensTvHtml() };
       else if(playerShow.kind==="standing") msg = { kind:"board", html:`<div class="lb lb-tv"><div class="lb-h">Who is where</div>${xpStanding(partyRoster(), true)}</div>` };
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
       else msg = playerMapScene();
@@ -2342,6 +2349,10 @@ function renderPScreen(){
     ${picList().length ? picList().map(p=>`<div class="adrow"><span>${esc(p.name||"Picture")}${picRowTag(p)}</span>${showBtn("picture", playerShow.kind==="picture"&&playerShow.id===p.id?"Showing":"Show", p.id)}<button class="fdel" data-ps="del" data-id="${p.id}" title="Remove">×</button></div>`).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${picSess() && picView==="session" && P.length ? `None for ${esc(sessShort(picSess()))} yet. Add one below, or pick some from All.` : "None yet."}</p>`}
     <button class="btn wide" data-ps="add" style="margin-top:6px">Add a picture…</button><input type="file" id="ps-file" accept="image/*" multiple hidden>
+    <p class="grouplab" style="margin-top:10px">Tokens</p>
+    <div class="adrow"><span>Choose your token<br><small>the eight colours, who has which</small></span>${showBtn("tokens", playerShow.kind==="tokens" ? "Showing" : "Show")}</div>
+    ${partyRoster().map((c, i)=>`<div class="ps-tok"><span class="ps-tokn">${esc(c.name||`Character ${i+1}`)}${TOKEN_COLOURS.some(x=>x[0]===c.tokCol) ? "" : ` <small>not chosen</small>`}</span>${pcTokRow(c, i)}</div>`).join("")}
+    <button class="btn wide" data-ps="tokreset" style="margin-top:2px" title="Everyone back to not chosen (their letters stay)">Start the choosing over</button>
     ${cdSection()}
     <p class="grouplab" style="margin-top:10px">Leaderboards</p>
     <div class="adrow"><span>Who's leading<br><small>${leaderScope==="session" ? "this session" : "the whole campaign"} (change it in the Party tab)</small></span>${showBtn("leaders", playerShow.kind==="leaders" ? "Showing" : "Show")}</div>
@@ -2416,6 +2427,7 @@ function wirePScreen(){
     if(a==="x"){ el.hidden = true; return; }
     if(a==="open") openPlayerScreen();
     else if(a==="close"){ if(playersUp()) playerWin.close(); playerWin = null; }
+    else if(a==="tokreset"){ for(const c of partyRoster()){ partyDoing("Token colour", c); delete c.tokCol; } saveParty(); tokensChanged(); renderPScreen(); return; }
     else if(a==="show"){ playerShow = b.dataset.k==="picture" || b.dataset.k==="board" || b.dataset.k==="puzzle" ? { kind:b.dataset.k, id:b.dataset.id } : { kind:b.dataset.k }; sendPlayers(true);
       if(b.dataset.k==="picture"){ const pic = pictures().find(x=>x.id===b.dataset.id); gameLog("pic", `Showed the players the picture "${(pic&&pic.name)||"a picture"}"`); } }
     else if(a==="send") sendPlayers(true);
@@ -7106,6 +7118,17 @@ function renderParty(){
   saveParty();
   if(k==="name") tokensChanged();
 }));
+/* token select on the TV (Joseph, 2026-10-28): the eight colours big, each one free or whose it is (their letters on
+   it), and who still has to choose. The players call out a colour; the DM gives it to them in the Players' screen
+   panel (or on their card), and the board keeps up. Only a colour picked on purpose (p.tokCol) counts as taken */
+function tokensTvHtml(){
+  const R = partyRoster(), who = k => R.filter(p=>p.tokCol===k), still = R.filter(p=>!TOKEN_COLOURS.some(x=>x[0]===p.tokCol));
+  return `<div class="lb lb-tv tok-tv"><div class="lb-h">Choose your token</div>
+    <div class="tok-grid">${TOKEN_COLOURS.map(([k, nm, hex])=>{ const W = who(k);
+      return `<div class="tok-c${W.length ? " taken" : ""}"><div class="tok-dot" style="background:${hex}">${W.length ? esc(W.map(p=>pcTokText(p)).join(" ")) : ""}</div>
+        <div class="tok-nm">${W.length ? W.map(p=>esc(p.name||"Character")).join(" &amp; ") : `${nm} <i>· free</i>`}</div></div>`; }).join("")}</div>
+    ${still.length ? `<div class="tok-still">Still to choose: ${still.map(p=>esc(p.name||"Character")).join(", ")}</div>` : `<div class="tok-still">Everyone has a token.</div>`}</div>`;
+}
 /* the token row, on the Party tab's card and the table's card: letters and the eight colours */
 function pcTokRow(c, i){
   return `<div class="pctok"><span class="pctok-l">Token</span><input data-toktxt="${i}" type="text" maxlength="3" value="${esc(c.tok||"")}" placeholder="${esc(pcTokAuto(c))}" title="Up to three letters on their token; blank uses their initial (two letters if someone shares it)">
@@ -7122,6 +7145,7 @@ document.addEventListener("click", e=>{
   partyDoing("Token colour", c); c.tokCol = b.dataset.tokcol; saveParty();
   document.querySelectorAll(`[data-tokpc="${b.dataset.tokpc}"]`).forEach(x=>x.classList.toggle("on", x===b));
   tokensChanged();
+  if(b.closest("#pscreen")) renderPScreen();            // its "not chosen" marks
 });
 /* a character's token letters or colour changed: their card, the top bar, the battle map and the TV keep up */
 function tokensChanged(){
@@ -7129,6 +7153,7 @@ function tokensChanged(){
     document.querySelectorAll(`[data-toktxt="${i}"]`).forEach(inp=>inp.placeholder = pcTokAuto(p)); });
   renderChips();
   if(battleOf){ renderBattle(); if(typeof sendPlayers==="function") sendPlayers(); }
+  if(playerShow.kind==="tokens") sendPlayers(true);
 }
 ["pane-party","pane-inspect"].forEach(pid=>document.getElementById(pid).addEventListener("change", e=>{
   if(pid!=="pane-party" && !(e.target.closest && e.target.closest(".pcard"))) return;

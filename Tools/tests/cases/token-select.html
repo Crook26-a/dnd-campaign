@@ -1,0 +1,27 @@
+// uses: nothing
+<script>
+/* token select: the Players' screen panel shows "Choose your token" on the TV and gives each character a colour;
+   the board shows each colour free or whose it is, and who still has to choose; Start over clears the colours */
+const __TS = { format:"ordinate-survey-v1", title:"Token Select Test", ppm:10, unit:"mi", party:3,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5 }, { id:"pb", name:"Bram Birch", level:5, tokCol:"navy" }, { id:"pc", name:"Cass", level:5, tok:"Cx" }],
+  library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[] } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
+ const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const board = () => { const d = document.createElement('div'); d.innerHTML = tokensTvHtml(); return txt(d); };
+ try{
+  loadJSONNow(JSON.stringify(__TS)); await wait(300); setDmMode(true); await wait(50);
+  const ps = document.getElementById('pscreen'); ps.hidden = false; renderPScreen(); await wait(30);
+  out.push('panel: rows ' + ps.querySelectorAll('.ps-tok').length + ', swatches ' + ps.querySelectorAll('.ps-tok .tokcol').length + ', not chosen ' + ps.querySelectorAll('.ps-tokn small').length);
+  ps.querySelector('[data-ps="show"][data-k="tokens"]').click(); await wait(40);
+  out.push('showing: ' + playerShow.kind + ' · board "' + board() + '"');
+  ps.querySelector('[data-tokcol="pink"][data-tokpc="0"]').click(); await wait(40);
+  out.push('Anna pink: ' + partyRoster()[0].tokCol + ', not chosen ' + document.querySelectorAll('#pscreen .ps-tokn small').length + ' · board "' + board() + '"');
+  const t = document.querySelector('#pscreen [data-toktxt="0"]'); t.value = 'AA'; t.dispatchEvent(new Event('input', { bubbles:true })); await wait(30);
+  out.push('letters AA: ' + partyRoster()[0].tok + ' · on the board ' + /AA/.test(board()));
+  document.querySelector('#pscreen [data-ps="tokreset"]').click(); await wait(40);
+  out.push('start over: ' + partyRoster().map(p=>p.tokCol||'-').join(',') + ', letters kept ' + partyRoster()[0].tok + ' · board "' + board() + '"');
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
