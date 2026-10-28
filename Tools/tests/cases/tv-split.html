@@ -1,0 +1,52 @@
+// uses: nothing
+<script>
+/* the TV with the party split: split by default; the DM can put one room on it, or have it follow theirs, and back
+   (tvRoom). The rooms test's house: a hall and a library downstairs, a landing up */
+const __ROOMS = { format:"ordinate-survey-v1", title:"Test House", ppm:10, unit:"mi", party:3,
+  nodes:[{ id:"f1", name:"Test House", kind:"town", x:0, y:0 }, { id:"f2", name:"Upstairs", kind:"town", x:60, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }, { id:"pc", name:"Cole Cedar", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb","pc"], at:{ map:"f1", node:"hall" } }],
+  plans:{
+    f1:{ format:"ordinate-plan-v1", of:"f1", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+      { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:12, d:8, bmap:{ name:"The Hall", rows:["############","#..........#","#.U........#","#..........D","#..........#","#..........#","#..........#","############"],
+        start:{ party:[[3,4],[4,4],[5,4]], enemy:[] }, exits:[{ x:11, y:3, to:"library", at:[1,3] }, { x:2, y:2, to:"f2/landing", at:[3,2], label:"Upstairs" }] } },
+      { id:"library", name:"The Library", kind:"archive", x:180, y:100, w:10, d:8, bmap:{ name:"The Library", rows:["##########","#SSSS....#","#........#","D........#","#........#","#..T.....#","#........#","##########"],
+        start:{ party:[[2,3]], enemy:[] }, exits:[{ x:0, y:3, to:"hall" }] } } ] },
+    f2:{ format:"ordinate-plan-v1", of:"f2", title:"Upstairs", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+      { id:"landing", name:"The Landing", kind:"house", x:100, y:100, w:8, d:6, bmap:{ name:"The Landing", rows:["########","#......#","#.U....#","#......#","#......#","########"],
+        start:{ party:[[3,3]], enemy:[] }, exits:[{ x:2, y:2, to:"f1/hall", at:[3,2] }] } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[]; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const where = () => groupsOf().map(g=>g.members.join('+') + '@' + g.at.map + '/' + g.at.node).join(', ');
+ const view = () => (planOf||'survey') + '/' + (bnode() ? bnode().id : '-');
+ /* a real drag with the pointer: from a token onto a square */
+ const sqClient = (x, y) => { const r = document.getElementById('bsvg').getBoundingClientRect(), b = bview, s = Math.max(b.w/r.width, b.h/r.height);
+   return { clientX: r.left + (r.width - b.w/s)/2 + ((x+.5)*BS - b.x)/s, clientY: r.top + (r.height - b.h/s)/2 + ((y+.5)*BS - b.y)/s }; };
+ const drag = async (tokId, x, y, shift) => { const t = document.querySelector(`#bsvg [data-tok="${tokId}"]`); if(!t) throw new Error('no token ' + tokId);
+   const c = n => n.site.combat, p0 = c(bnode()).pos[tokId], a = sqClient(p0.x, p0.y), b = sqClient(x, y), o = { bubbles:true, pointerId:1, button:0, shiftKey:!!shift };
+   t.dispatchEvent(new PointerEvent('pointerdown', { ...o, ...a })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, clientX:(a.clientX+b.clientX)/2, clientY:(a.clientY+b.clientY)/2 })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointermove', { ...o, ...b })); await wait(10);
+   document.getElementById('bsvg').dispatchEvent(new PointerEvent('pointerup', { ...o, ...b })); await wait(80); };
+ try{
+  loadJSONNow(JSON.stringify(__ROOMS)); await wait(300); splitParty = true; setDmMode(true); await wait(50);
+  enterPlan('f1'); await wait(40); openBattle(doc.nodes.find(n=>n.id==='hall')); await wait(150);
+  await drag('pa', 11, 3); await wait(100);                       /* Anna into the library: two rooms */
+  const tv = () => { const s = playerMapScene(); return s.kind + (s.panes ? ' ' + s.panes.map(p=>p.name).join(' | ') : '') + (s.order!==undefined ? ' order' : ''); };
+  const bar = () => [...document.querySelectorAll('#bt-rooms [data-tv]')].map(b=>(b.classList.contains('on') ? '*' : '') + b.textContent).join(' ');
+  out.push('split: on my screen ' + view() + ' · TV ' + tv() + ' · bar ' + bar());
+  document.querySelector('#bt-rooms [data-tv="f1/library"]').click(); await wait(60);
+  const one = playerMapScene(); out.push('just the library: ' + one.kind + ', library tokens ' + (one.svg.match(/data-tok="pa"/g)||[]).length + ', hall tokens ' + (one.svg.match(/data-tok="pb"/g)||[]).length + ' · bar ' + bar());
+  document.querySelector('#bt-rooms [data-tv="mine"]').click(); await wait(60);
+  let m = playerMapScene(); out.push('same as mine (hall): ' + m.kind + ', Bram ' + /data-tok="pb"/.test(m.svg) + ', Anna ' + /data-tok="pa"/.test(m.svg));
+  document.querySelector('#bt-rooms [data-room="f1|library"]').click(); await wait(120);
+  m = playerMapScene(); out.push('  I switch to the library: ' + view() + ', TV Anna ' + /data-tok="pa"/.test(m.svg) + ', Bram ' + /data-tok="pb"/.test(m.svg));
+  document.querySelector('#bt-rooms [data-tv=""]').click(); await wait(60);
+  out.push('back to split: ' + tv() + ' · bar ' + bar());
+  /* the room picked empties: back to the split by itself */
+  document.querySelector('#bt-rooms [data-tv="f1/library"]').click(); await wait(40);
+  await drag('pa', 0, 3); await wait(150);
+  out.push('Anna back in the hall: rooms ' + partyRooms().length + ', TV ' + playerMapScene().kind + ', tvRoom ' + tvRoom);
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

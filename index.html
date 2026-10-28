@@ -899,7 +899,8 @@
   #bt-rooms{display:flex;gap:4px;align-items:center;padding:4px 8px;background:#eef3ef;border-bottom:1px solid var(--rule);overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
   #bt-rooms[hidden]{display:none} #bt-rooms .rt-l{font:10.5px var(--mono);color:var(--ink-soft);margin-right:2px;flex:0 0 auto}
   #bt-rooms .rt{flex:0 0 auto;border:1px solid var(--rule);background:var(--paper-lit);border-radius:3px;padding:2px 8px;font:12px var(--sans);cursor:pointer;color:var(--ink)}
-  #bt-rooms .rt.on{border-color:#2f5d6b;box-shadow:inset 0 -3px 0 #2f5d6b;font-weight:600} #bt-rooms .rt-i{font:10.5px var(--mono);color:#2f6170;margin-left:3px}
+  #bt-rooms .rt.on{border-color:#2f5d6b;box-shadow:inset 0 -3px 0 #2f5d6b;font-weight:600} #bt-rooms .rt-sep{flex:0 0 auto;width:1px;align-self:stretch;background:var(--rule);margin:0 6px}
+  #bt-rooms .rt.tv{font-size:11.5px;padding:2px 7px} #bt-rooms .rt.tv.on{border-color:var(--lead);box-shadow:inset 0 -3px 0 var(--lead);font-weight:600} #bt-rooms .rt-i{font:10.5px var(--mono);color:#2f6170;margin-left:3px}
   body.player .turnring{animation:turnpulse 1.4s ease-in-out infinite}
   @keyframes turnpulse{0%,100%{stroke-width:4;opacity:1}50%{stroke-width:9;opacity:.55}}
   .pv-img{max-width:100vw;max-height:100vh;object-fit:contain;display:block}
@@ -15550,8 +15551,15 @@ function renderRoomTabs(){
   if(!rooms.length || (rooms.length===1 && onIt(rooms[0]))){ el.hidden = true; el.innerHTML = ""; return; }
   el.hidden = false;
   el.innerHTML = `<span class="rt-l">The party is in</span>` + rooms.map(r=>`<button class="rt${onIt(r) ? " on" : ""}" data-room="${esc(r.map)}|${esc(r.id)}" title="${esc(r.members.map(memberName).join(", "))}${onIt(r) ? " (on your screen)" : ": click to look in there (nobody moves)"}">${esc(placeLabel(r.n))} <span class="rt-i">${esc(r.members.map(id=>(memberName(id).trim()[0]||"?").toUpperCase()).join(""))}</span></button>`).join("")
+    + (rooms.length > 1 ? `<span class="rt-sep"></span><span class="rt-l">TV</span>`
+      + `<button class="rt tv${!tvRoom ? " on" : ""}" data-tv="" title="Their screen split, a pane for each room (at most ${SPLIT_MAX})">Split</button>`
+      + rooms.map(r=>{ const k = `${r.map}/${r.id}`; return `<button class="rt tv${tvRoom===k ? " on" : ""}" data-tv="${esc(k)}" title="Only this room on their screen">${esc(placeLabel(r.n))}</button>`; }).join("")
+      + `<button class="rt tv${tvRoom==="mine" ? " on" : ""}" data-tv="mine" title="Their screen shows whichever room is on yours, and follows you as you switch">Same as mine</button>` : "")
     + (rooms.length > SPLIT_MAX ? `<span class="rt-l" title="The players' screen splits at most ${SPLIT_MAX} ways">TV: the ${SPLIT_MAX} with the latest comings and goings</span>` : "");
 }
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("#bt-rooms [data-tv]"); if(!b) return;
+  tvRoom = b.dataset.tv || null; renderRoomTabs(); sendPlayers(true);
+  flash(!tvRoom ? "Their screen: split by room." : tvRoom==="mine" ? "Their screen: whichever room is on yours." : `Their screen: just ${b.textContent}.`); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("#bt-rooms [data-room]"); if(!b) return;
   const k = b.dataset.room.indexOf("|"); goRoom(b.dataset.room.slice(0, k), b.dataset.room.slice(k+1)); });
 /* draw a room's battle map as if it were the one open (for the players' screen), then put everything back */
@@ -15563,10 +15571,20 @@ function withRoom(map, id, fn){
     return fn(n);
   } finally { doc = keep.doc; planOf = keep.planOf; battleOf = keep.battleOf; BW = keep.BW; BH = keep.BH; battleSel = keep.battleSel; }
 }
+/* the party in several rooms (Joseph, 2026-10-28): the players' screen splits by default; the DM can put just one of
+   the rooms on it, or have it follow whichever room is on their own screen, and go back to the split. tvRoom: null =
+   split, "map/id" = that room, "mine" = the DM's room. Session-only: it opens split */
+var tvRoom = null;
 /* the players' screen while the party is in two to four rooms: one pane each (past four, the latest comings and goings) */
 function splitScene(){
   if(!battleOf || editingInside()) return null;
-  const all = partyRooms(); if(all.length < 2) return null;
+  const all = partyRooms(); if(all.length < 2){ if(tvRoom!=="mine") tvRoom = null; return null; }     // together again: the next split starts split
+  if(tvRoom){
+    const key = tvRoom==="mine" ? `${planOf||"survey"}/${(bnode()||{}).id}` : tvRoom, r = all.find(x=>`${x.map}/${x.id}`===key);
+    if(r) return withRoom(r.map, r.id, n=>({ kind:"svg", viewBox:`${-BS/2} ${-BS/2} ${(BW+1)*BS} ${(BH+1)*BS}`, svg:renderBattle(true), bg:"#d6c49c", order:playersOrder() }));
+    if(tvRoom==="mine") return null;                 // the DM is looking at a room nobody's in: the TV shows it, as with one room
+    tvRoom = null;                                   // nobody's in that room any more: back to the split
+  }
   const top = new Set(all.slice().sort((a, b)=>b.at-a.at).slice(0, SPLIT_MAX).map(r=>r.map+"/"+r.id));
   const panes = all.filter(r=>top.has(r.map+"/"+r.id)).map(r=>withRoom(r.map, r.id, n=>({ name:placeLabel(n),
     who:r.members.map(id=>memberName(id).split(" ")[0]).join(", "), viewBox:`${-BS/2} ${-BS/2} ${(BW+1)*BS} ${(BH+1)*BS}`,

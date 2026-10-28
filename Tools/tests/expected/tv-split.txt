@@ -1,0 +1,6 @@
+split: on my screen f1/hall · TV split The Hall | The Library · bar *Split The Hall The Library Same as mine
+just the library: svg, library tokens 1, hall tokens 0 · bar Split The Hall *The Library Same as mine
+same as mine (hall): svg, Bram true, Anna false
+I switch to the library: f1/library, TV Anna true, Bram false
+back to split: split The Hall | The Library · bar *Split The Hall The Library Same as mine
+Anna back in the hall: rooms 1, TV svg, tvRoom null

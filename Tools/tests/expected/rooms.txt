@@ -1,13 +1,13 @@
 open: f1/hall, marks 2 (The Library, Upstairs), rooms strip hidden true
 Anna through the door: pb+pc@f1/hall, pa@f1/library | view f1/hall | in the library at {"x":1,"y":3} | hall has pb,pc
-strip: The party is in The Hall BC The Library A
+strip: The party is in The Hall BC The Library A TV Split The Hall The Library Same as mine
 TV: split The Hall [Bram, Cole] true | The Library [Anna] true
 Bram and Cole upstairs: pa@f1/library, pb+pc@f2/landing | view f2/landing | landing pos {"pb":{"x":3,"y":2},"pc":{"x":2,"y":1}}
 TV: split The Library [Anna] | The Landing [Bram, Cole]
 popup: → The Hall (C3) Bram Birch goes through Cole Cedar goes through Everyone in here goes through Look in there Close
 Cole down: pa@f1/library, pb@f2/landing, pc@f1/hall | view f2/landing | hall pos of Cole {"x":3,"y":2}
 TV: split 3 panes: The Library, The Landing, The Hall
-strip: The party is in The Library A The Landing B The Hall C
+strip: The party is in The Library A The Landing B The Hall C TV Split The Library The Landing The Hall Same as mine
 looked in: view f1/library | pa@f1/library, pb@f2/landing, pc@f1/hall
 Anna leaves the fight: turn passed on, in the fight foe | pb@f2/landing, pc+pa@f1/hall | view f1/hall
 Build: L4 -> The Library, C3 -> The Landing | arrive B4,D3
