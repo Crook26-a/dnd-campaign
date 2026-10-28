@@ -12245,12 +12245,13 @@ function renderBattlePanelNow(){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;
     h += `<div class="pcrow" style="align-items:center;margin-top:10px"><p class="grouplab" style="margin:0;flex:1">${esc(selT.label)}</p><button class="pcbig" data-bigsheet="${sheetKey}" title="Their whole sheet, big">Big sheet</button></div>`;
     if(selT.kind==="foe") h += dormantRow(selT.x) + befriendRow(selT.x) + escapeRow(selT.x) + effectQuick(selT.x);
+    else if(!selT.person) h += pcBrief(selT.p);              // the same top as their card off the battle map
     h += stealthRow(c, selT);
     if(selT.kind==="foe") h += knownTick(tokPerson(selT));
     if(selT.kind==="foe" && tokPerson(selT)) h += personBrief(tokPerson(selT));
     h += `<button class="btn wide" data-breact="${selT.id}" style="margin-bottom:6px">⚡ ${esc(selT.label)} takes a reaction${reactedThisRound(c,selT.id)?" (already used one this round)":""}</button>`;
     h += selT.kind==="foe" ? enemyCard(selT.x, selT.i, "", true)
-      : pcTracker(selT.p, selT.i) + `<button class="btn wide" data-ba="pcfled" data-id="${selT.id}" style="margin:-4px 0 6px">${selT.fled?"Back in the fight":"Mark as fled"}</button>`
+      : pcTracker(selT.p, selT.i) + pcCarries(selT.p) + `<button class="btn wide" data-ba="pcfled" data-id="${selT.id}" style="margin:-4px 0 6px">${selT.fled?"Back in the fight":"Mark as fled"}</button>`
         + (!selT.npc ? `<button class="btn wide${selT.turned ? " on" : ""}" data-ba="pcturn" data-id="${selT.id}" style="margin:0 0 6px" title="${selT.turned ? "Back on the party's side" : "They've betrayed the party: in this fight they're on the other side (their token, the turn order, what the party's eyes count)"}">${selT.turned ? "Back with the party" : "Turns against the party"}</button>` : "") + partyUndoBtn();
   }
   /* someone here who isn't fighting, picked on the map */
@@ -18248,6 +18249,16 @@ function openPersonCard(kind, id){
   tcard = { kind, id }; renderPlay(); renderChips(); renderActionBox(true);
 }
 
+/* a character's card is the same in a battle and out of one (Joseph, 2026-10-28): what they are, AC/speed/PP/XP and
+   their token on top, their tracker, then what they carry. Only the fight's own buttons (a reaction, fled, turned)
+   and the Action box button differ */
+function pcBrief(c){
+  const i = partyRoster().findIndex(x=>x.id===c.id);
+  return `<p class="empty-note" style="margin:0 0 6px">${esc([c.role, [c.species, c.cls, c.subcls].filter(Boolean).join(" "), c.level?`level ${c.level}`:""].filter(Boolean).join(" · "))}</p>
+      <div class="tstats"><div><small>AC</small>${esc(c.ac||"—")}</div><div><small>SPEED</small>${esc(c.speed||"—")}</div><div><small>PP</small>${esc(c.pp||"—")}</div><div><small>XP</small>${(+c.xp||0).toLocaleString()}</div></div>
+      ${i>=0 ? pcTokRow(c, i) : ""}`;
+}
+const pcCarries = c => (c.inv||[]).length ? `<p class="grouplab">Carries</p><p class="sbl">${(c.inv||[]).map(e=>esc(invName(e)) + (e.qty>1?` ×${e.qty}`:"")).join(", ")}</p>` : "";
 /* ── the card: a party member or a person, with what you do with them (the place's own panel otherwise) ── */
 function renderTCard(){
   const el = $("#pane-inspect"), back = `<button class="tcard-back" data-tcback>← ${battleOf && bnode() ? esc(placeLabel(bnode())) : sel && sel.kind==="node" && nodeById(sel.id) ? esc(placeLabel(nodeById(sel.id))) : "Back to the map"}</button>`;
@@ -18255,11 +18266,9 @@ function renderTCard(){
     const c = partyRoster().find(x=>x.id===tcard.id) || companions().find(x=>x.id===tcard.id); if(!c){ tcard = null; return renderPlay(); }
     const i = partyRoster().indexOf(c), key = i>=0 ? i : "n:"+c.id;
     el.innerHTML = `${back}<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(c.name||"Character")}</p><button class="pcbig" data-bigsheet="pc:${c.id}" title="Their whole sheet, big">Big sheet</button></div>
-      <p class="empty-note" style="margin:0 0 6px">${esc([c.role, [c.species, c.cls, c.subcls].filter(Boolean).join(" "), c.level?`level ${c.level}`:""].filter(Boolean).join(" · "))}</p>
-      <div class="tstats"><div><small>AC</small>${esc(c.ac||"—")}</div><div><small>SPEED</small>${esc(c.speed||"—")}</div><div><small>PP</small>${esc(c.pp||"—")}</div><div><small>XP</small>${(+c.xp||0).toLocaleString()}</div></div>
-      ${i>=0 ? pcTokRow(c, i) : ""}
+      ${pcBrief(c)}
       ${pcTracker(c, key)}
-      ${(c.inv||[]).length ? `<p class="grouplab">Carries</p><p class="sbl">${(c.inv||[]).map(e=>esc(invName(e)) + (e.qty>1?` ×${e.qty}`:"")).join(", ")}</p>` : ""}
+      ${pcCarries(c)}
       <button class="btn wide" data-tcact="${c.id}" style="margin-top:6px">Put them in the Action box ↓</button>`;
     wirePc(el, ()=>{ renderTCard(); renderChips(); });
   } else {
