@@ -7073,7 +7073,8 @@ function renderParty(){
 }
 
 /* typing updates the sheet in place; the pane only redraws when a level or XP settles */
-$("#pane-party").addEventListener("input", e=>{
+["pane-party","pane-inspect"].forEach(pid=>document.getElementById(pid).addEventListener("input", e=>{
+  if(pid!=="pane-party" && !(e.target.closest && e.target.closest(".pcard"))) return;     // the card in the table's card box takes the same typing
   const t = e.target, i = t.dataset.pc, k = t.dataset.f;
   if(t.dataset.pcatk!=null){
     const c = pcAt(t.dataset.pcatk), a = c && (c.attacks||[])[+t.dataset.k];
@@ -7104,7 +7105,7 @@ $("#pane-party").addEventListener("input", e=>{
   if(x && (k==="xp"||k==="level")){ const nx = nextLevelXP(c); x.textContent = `${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}`; }
   saveParty();
   if(k==="name") tokensChanged();
-});
+}));
 /* the token row, on the Party tab's card and the table's card: letters and the eight colours */
 function pcTokRow(c, i){
   return `<div class="pctok"><span class="pctok-l">Token</span><input data-toktxt="${i}" type="text" maxlength="3" value="${esc(c.tok||"")}" placeholder="${esc(pcTokAuto(c))}" title="Up to three letters on their token; blank uses their initial (two letters if someone shares it)">
@@ -7129,13 +7130,15 @@ function tokensChanged(){
   renderChips();
   if(battleOf){ renderBattle(); if(typeof sendPlayers==="function") sendPlayers(); }
 }
-$("#pane-party").addEventListener("change", e=>{
+["pane-party","pane-inspect"].forEach(pid=>document.getElementById(pid).addEventListener("change", e=>{
+  if(pid!=="pane-party" && !(e.target.closest && e.target.closest(".pcard"))) return;
   const k = e.target.dataset.f;
   if(k==="favor"){ const c = pcAt(e.target.dataset.pc); if(c) gameLog("favor", `${root.favorLabel || "Favor"} for ${c.name||"a character"} is now ${favorWord(c.favor)} (secret)`); }
   if(k==="level"||k==="xp"||k==="favor"||k==="role"){ saveParty(); renderPane(true); }
-});
-$("#pane-party").addEventListener("click", e=>{
+}));
+["pane-party","pane-inspect"].forEach(pid=>document.getElementById(pid).addEventListener("click", e=>{
   const b = e.target.closest("[data-act]"); if(!b) return;
+  if(pid!=="pane-party" && !b.closest(".pcard")) return;
   const act = b.dataset.act;
   if(act==="split"||act==="each"){
     awardXP($("#px-amt").value, act, $("#px-note").value.trim());
@@ -7172,7 +7175,7 @@ $("#pane-party").addEventListener("click", e=>{
     saveParty();
   }
   renderPane(true);
-});
+}));
 
 /* ══════════════════════════════════════════════════════════════
    THE LIBRARY — the campaign's own foes, people and loot. One pool,
@@ -12241,18 +12244,25 @@ function renderBattlePanelNow(){
     const sub = [p.gender, p.species, p.align].filter(Boolean).join(" · ");
     return rows.length || sub || stagePick(p0) || effectsOf(p0).length ? `<div class="pbrief" style="font-size:12px;line-height:1.4;margin:2px 0 8px">${stagePick(p0)}${effectsLine(p0, true)}${sub ? `<p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc(sub)}</p>` : ""}${rows.map(([k, v])=>`<p style="margin:0 0 4px"><b>${k}:</b> ${esc(v)}</p>`).join("")}</div>` : ""; };
   const selAt = h.length;                         // the selected one's card: first in table mode
-  if(selT){
+  if(selT && selT.kind==="pc" && !selT.person){
+    /* a party member or companion: their whole card, the same as off the battle map (Joseph, 2026-10-28). What only a
+       fight has (hidden, a reaction, fled, turned) is the action panel's: in table mode it moves to the Action box */
+    const comp = !!selT.npc, ri = comp ? -1 : partyRoster().findIndex(x=>x.id===selT.p.id);
+    h += `<div class="bt-pccard">${pcCard(comp ? selT.p : partyRoster()[ri], comp ? "n:"+selT.p.id : ri, comp)}${toActionBtn(selT.id)}</div>`;
+    h += `<div class="bt-selacts"><p class="grouplab" style="margin-top:8px">${esc(selT.label)} in this fight</p>${stealthRow(c, selT)}
+      <button class="btn wide" data-breact="${selT.id}" style="margin-bottom:6px">⚡ ${esc(selT.label)} takes a reaction${reactedThisRound(c,selT.id)?" (already used one this round)":""}</button>
+      <button class="btn wide" data-ba="pcfled" data-id="${selT.id}" style="margin:0 0 6px">${selT.fled?"Back in the fight":"Mark as fled"}</button>
+      ${!comp ? `<button class="btn wide${selT.turned ? " on" : ""}" data-ba="pcturn" data-id="${selT.id}" style="margin:0 0 6px" title="${selT.turned ? "Back on the party's side" : "They've betrayed the party: in this fight they're on the other side (their token, the turn order, what the party's eyes count)"}">${selT.turned ? "Back with the party" : "Turns against the party"}</button>` : ""}${partyUndoBtn()}</div>`;
+  }
+  else if(selT){
     const sheetKey = selT.kind==="foe" ? (selT.x.npc ? `npc:${selT.x.npc}` : `foe:${selT.x.foe}`) : `${selT.npc ? "npc" : "pc"}:${selT.p.id}`;
     h += `<div class="pcrow" style="align-items:center;margin-top:10px"><p class="grouplab" style="margin:0;flex:1">${esc(selT.label)}</p><button class="pcbig" data-bigsheet="${sheetKey}" title="Their whole sheet, big">Big sheet</button></div>`;
     if(selT.kind==="foe") h += dormantRow(selT.x) + befriendRow(selT.x) + escapeRow(selT.x) + effectQuick(selT.x);
-    else if(!selT.person) h += pcBrief(selT.p);              // the same top as their card off the battle map
     h += stealthRow(c, selT);
     if(selT.kind==="foe") h += knownTick(tokPerson(selT));
     if(selT.kind==="foe" && tokPerson(selT)) h += personBrief(tokPerson(selT));
     h += `<button class="btn wide" data-breact="${selT.id}" style="margin-bottom:6px">⚡ ${esc(selT.label)} takes a reaction${reactedThisRound(c,selT.id)?" (already used one this round)":""}</button>`;
-    h += selT.kind==="foe" ? enemyCard(selT.x, selT.i, "", true)
-      : pcTracker(selT.p, selT.i) + pcCarries(selT.p) + `<button class="btn wide" data-ba="pcfled" data-id="${selT.id}" style="margin:-4px 0 6px">${selT.fled?"Back in the fight":"Mark as fled"}</button>`
-        + (!selT.npc ? `<button class="btn wide${selT.turned ? " on" : ""}" data-ba="pcturn" data-id="${selT.id}" style="margin:0 0 6px" title="${selT.turned ? "Back on the party's side" : "They've betrayed the party: in this fight they're on the other side (their token, the turn order, what the party's eyes count)"}">${selT.turned ? "Back with the party" : "Turns against the party"}</button>` : "") + partyUndoBtn();
+    h += selT.kind==="foe" ? enemyCard(selT.x, selT.i, "", true) : pcTracker(selT.p, selT.i) + partyUndoBtn();     // a library person in the turn order as themselves
   }
   /* someone here who isn't fighting, picked on the map */
   const by = !selT && battleSel && String(battleSel).startsWith("p:") ? libNpcById(battleSel.slice(2)) : null;
@@ -12372,6 +12382,7 @@ function renderBattlePanelNow(){
   });
   wireFight(n, st);
   wirePc(el, ()=>{ renderBattle(); renderBattlePanel(); });
+  wirePcCardLinks(el);
   /* table mode: the action form (with Roll initiative and Next turn) goes to the Action box below the card, and the
      one picked on the map comes first in the card */
   if(tableOn() && calm){                          // calm: the Action box stays the one for outside a fight
@@ -12379,7 +12390,8 @@ function renderBattlePanelNow(){
   } else if(tableOn()){
     const ab = $("#actionbox"), form = el.querySelector(".actbox"), ctl = el.querySelector(".bt-turnctl");
     ab.innerHTML = `<div class="tbhead"><span class="eyebrow">Action · round ${c.round}</span><span class="empty-note" style="margin:0;font-size:11px">${cur ? `${esc(cur.label)}'s turn` : "roll initiative to begin"}</span></div>`;
-    if(ctl) ab.appendChild(ctl); if(form) ab.appendChild(form);
+    const sa = el.querySelector(".bt-selacts");          // the picked one's fight-only buttons: the action panel's, between the turn buttons and the form
+    if(ctl) ab.appendChild(ctl); if(sa) ab.appendChild(sa); if(form) ab.appendChild(form);
     const s = el.querySelector(".bt-sel"); if(s && s.children.length) el.prepend(s);
     renderChips();
   }
@@ -18249,28 +18261,31 @@ function openPersonCard(kind, id){
   tcard = { kind, id }; renderPlay(); renderChips(); renderActionBox(true);
 }
 
-/* a character's card is the same in a battle and out of one (Joseph, 2026-10-28): what they are, AC/speed/PP/XP and
-   their token on top, their tracker, then what they carry. Only the fight's own buttons (a reaction, fled, turned)
-   and the Action box button differ */
-function pcBrief(c){
-  const i = partyRoster().findIndex(x=>x.id===c.id);
-  return `<p class="empty-note" style="margin:0 0 6px">${esc([c.role, [c.species, c.cls, c.subcls].filter(Boolean).join(" "), c.level?`level ${c.level}`:""].filter(Boolean).join(" · "))}</p>
-      <div class="tstats"><div><small>AC</small>${esc(c.ac||"—")}</div><div><small>SPEED</small>${esc(c.speed||"—")}</div><div><small>PP</small>${esc(c.pp||"—")}</div><div><small>XP</small>${(+c.xp||0).toLocaleString()}</div></div>
-      ${i>=0 ? pcTokRow(c, i) : ""}`;
+/* a character's card is the same in a battle and out of one (Joseph, 2026-10-28): the whole card, as on the Party tab
+   (spells, attacks, abilities, everything). Only the actions differ, and those are the action panel's */
+function toActionBtn(tokId){ return `<button class="btn wide" data-toaction="${esc(tokId)}" style="margin-top:6px">Put them in the Action box ↓</button>`; }
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-toaction]"); if(!b) return;
+  const id = b.dataset.toaction;
+  if(battleOf && !calmHere()){ act = freshAct(id); renderBattlePanel(); return; }     // in a fight: they're the one acting in the battle's form
+  ta.who = id.startsWith("n:") ? "pc:"+id.slice(2) : "pc:"+id; ta.item = ""; renderActionBox(true);
+});
+/* a spell's name or "Open in the library" on a card in the table's card box: the library opens in the drawer, the card stays */
+function wirePcCardLinks(el){
+  const peek = (cat, id) => { libTab = cat; libOpen = id; libQuery = "";
+    const std = cat==="foes" ? SRD_FOE_BY.get(id) : cat==="loot" ? SRD_LOOT_BY.get(id) : cat==="spells" ? SPELL_BY.get(id) : null; if(std) libQuery = std.name;
+    if(tableOn()) openDrawer("library"); else { if(battleOf) closeBattle(true); openLib(cat, id); } };
+  el.querySelectorAll(".pcard [data-spellgo]").forEach(s=>s.onclick = e=>{ e.stopPropagation(); peek("spells", s.dataset.spellgo); });
+  el.querySelectorAll(".pcard [data-libopen]").forEach(s=>s.onclick = e=>{ e.stopPropagation(); const [k,id] = s.dataset.libopen.split(":"); peek(k, id); });
 }
-const pcCarries = c => (c.inv||[]).length ? `<p class="grouplab">Carries</p><p class="sbl">${(c.inv||[]).map(e=>esc(invName(e)) + (e.qty>1?` ×${e.qty}`:"")).join(", ")}</p>` : "";
 /* ── the card: a party member or a person, with what you do with them (the place's own panel otherwise) ── */
 function renderTCard(){
   const el = $("#pane-inspect"), back = `<button class="tcard-back" data-tcback>← ${battleOf && bnode() ? esc(placeLabel(bnode())) : sel && sel.kind==="node" && nodeById(sel.id) ? esc(placeLabel(nodeById(sel.id))) : "Back to the map"}</button>`;
   if(tcard.kind==="pc"){
     const c = partyRoster().find(x=>x.id===tcard.id) || companions().find(x=>x.id===tcard.id); if(!c){ tcard = null; return renderPlay(); }
     const i = partyRoster().indexOf(c), key = i>=0 ? i : "n:"+c.id;
-    el.innerHTML = `${back}<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(c.name||"Character")}</p><button class="pcbig" data-bigsheet="pc:${c.id}" title="Their whole sheet, big">Big sheet</button></div>
-      ${pcBrief(c)}
-      ${pcTracker(c, key)}
-      ${pcCarries(c)}
-      <button class="btn wide" data-tcact="${c.id}" style="margin-top:6px">Put them in the Action box ↓</button>`;
-    wirePc(el, ()=>{ renderTCard(); renderChips(); });
+    el.innerHTML = `${back}${pcCard(i>=0 ? c : pcState(c), key, i<0)}${toActionBtn(i>=0 ? c.id : "n:"+c.id)}`;
+    wirePc(el, ()=>{ renderTCard(); renderChips(); }); wirePcCardLinks(el);
   } else {
     const p = libNpcById(tcard.id); if(!p){ tcard = null; return renderPlay(); }
     el.innerHTML = `${back}<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(p.name||"Someone")}</p><button class="pcbig" data-bigsheet="npc:${p.id}">Big sheet</button></div>
@@ -18287,7 +18302,7 @@ function renderTCard(){
       <div class="pcrow" style="margin-top:6px"><button class="btn" style="flex:1" data-tctalk="${p.id}">Talked</button><button class="btn" style="flex:1" data-tcact="p:${p.id}">Into the Action box ↓</button></div>`;
   }
   el.querySelector("[data-tcback]").onclick = ()=>{ tcard = null; if(battleOf) renderBattlePanel(); else renderPlay(); renderChips(); };
-  el.querySelectorAll("[data-tcact]").forEach(b=>b.onclick = ()=>{ const v = b.dataset.tcact; ta.who = v.startsWith("p:") ? v : "pc:"+v; ta.item = ""; renderActionBox(true); });
+  el.querySelectorAll("[data-tcact]").forEach(b=>b.onclick = ()=>{ const v = b.dataset.tcact; ta.who = v; ta.item = ""; renderActionBox(true); });
   el.querySelectorAll("[data-tctalk]").forEach(b=>b.onclick = ()=>{ const p = libNpcById(b.dataset.tctalk); gameLog("talk", `The party talked with ${p.name||"someone"}`); flash("In the game log."); renderTLog(true); });
 }
 const invName = e => e.text || ((libLootById(e.id)||{}).name) || e.id || "something";

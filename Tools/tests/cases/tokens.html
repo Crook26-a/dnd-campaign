@@ -31,6 +31,10 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('picked: menu ' + (document.querySelector('#tchips .tchipmenu') ? 'still open' : 'shut') + ', button "' + document.querySelector('#tchips [data-tchipsbtn]').innerText.replace(/\s+/g,' ').trim() + '", card token row ' + document.querySelectorAll('#pane-inspect .pctok .tokcol').length);
   const tt = document.querySelector('#pane-inspect [data-toktxt="1"]'); tt.value = 'MB'; tt.dispatchEvent(new Event('input', { bubbles:true })); await wait(30);
   out.push('typed MB: ' + R[1].tok + ', bar "' + document.querySelector('#tchips [data-tchipsbtn] .dot').textContent + '"');
+  const secs = el => [...el.querySelectorAll('.pcard summary')].map(s=>s.firstChild.textContent.trim()).join('/');
+  out.push('card off the map: ' + secs(document.querySelector('#pane-inspect')));
+  const nm = document.querySelector('#pane-inspect .pcname'); nm.value = 'Milo Birchwood'; nm.dispatchEvent(new Event('input', { bubbles:true })); await wait(20);
+  out.push('  renamed there: ' + R[1].name);
   document.querySelector('#tchips [data-tchipsbtn]').click(); await wait(20); document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles:true })); await wait(20);
   out.push('click away: ' + (document.querySelector('#tchips .tchipmenu') ? 'open' : 'shut'));
   document.querySelector('#pane-inspect [data-tcback]').click(); await wait(30);
@@ -42,7 +46,8 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   /* on the battle map, picking one from the menu: the same top of the card (what they are, the numbers, the token row) */
   chipsOpen = true; renderChips(); document.querySelector('#tchips .tchipmenu [data-tchip="pc"]').click(); await wait(80);
   const bp = document.querySelector('#pane-inspect');
-  out.push('battle card: tstats ' + bp.querySelectorAll('.tstats').length + ', token row ' + bp.querySelectorAll('.pctok .tokcol').length + ', letters "' + (bp.querySelector('[data-toktxt]')||{}).value + '"');
+  out.push('battle card: ' + secs(bp) + ', reaction in the card ' + bp.querySelectorAll('.pcard [data-breact], .bt-pccard [data-breact]').length + ', fight block in the Action box ' + document.querySelectorAll('#actionbox .bt-selacts [data-breact]').length + ', token row ' + bp.querySelectorAll('.pctok .tokcol').length + ', letters "' + (bp.querySelector('[data-toktxt]')||{}).value + '"');
+  bp.querySelector('[data-toaction="pc"]').click(); await wait(40); out.push('  into the action box: acting ' + act.actor);
   bp.querySelector('[data-tokcol="navy"][data-tokpc="2"]').click(); await wait(40);
   out.push('  navy: ' + R[2].tokCol + ', token ' + document.querySelector('#bsvg .btok[data-tok="pc"] > circle:last-of-type').getAttribute('fill'));
   chipsOpen = true; renderChips(); out.push('chips: ' + [...document.querySelectorAll('#tchips .tchipmenu .dot')].map(d=>d.textContent + '/' + d.style.background).join(' '));

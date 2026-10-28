@@ -6,9 +6,12 @@ bar: 1 button, 0 chips shut
 open: 4 in the menu, fixed at top 35px
 picked: menu shut, button "Mi Milo ▾", card token row 8
 typed MB: MB, bar "MB"
+card off the map: Slots, resources/Stats/Correct the tallies/Inventory and purse · ~0 gp, 0 items · attuned 0/3/Character sheet/Abilities, saves, skills and senses/Attacks/Spells/Personality, favor and notes/Files
+renamed there: Milo Birchwood
 click away: shut
-map: pa=M1/#cf6f1c pb=MB/#b03d7e pc=BrX/#3f6f78 pd=M2/#3f6f78 fxis3fx1=G/var(--lead)
-tv order: Mara Ash(#cf6f1c), Milo Birch(#b03d7e), Bram(#3f6f78), Mary(#3f6f78), Goblin Warrior
-battle card: tstats 1, token row 8, letters "BrX!"
+map: pa=M1/#cf6f1c pb=MB/#b03d7e pc=BrX/#3f6f78 pd=M2/#3f6f78 fxj97jz1=G/var(--lead)
+tv order: Mara Ash(#cf6f1c), Milo Birchwood(#b03d7e), Bram(#3f6f78), Mary(#3f6f78), Goblin Warrior
+battle card: Slots, resources/Stats/Correct the tallies/Inventory and purse · ~0 gp, 0 items · attuned 0/3/Character sheet/Abilities, saves, skills and senses/Attacks/Spells/Personality, favor and notes/Files, reaction in the card 0, fight block in the Action box 1, token row 8, letters "BrX!"
+into the action box: acting pc
 navy: navy, token #1f2d5e
 chips: M1/rgb(207, 111, 28) MB/rgb(176, 61, 126) BrX/rgb(31, 45, 94) M2/rgb(63, 111, 120)
