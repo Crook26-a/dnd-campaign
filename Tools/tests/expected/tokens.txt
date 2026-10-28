@@ -1,0 +1,7 @@
+auto: M1,Mi,B,M2
+own: BrX · colours #3f6f78,#b03d7e,#3f6f78,#3f6f78
+card: swatches 32, tok fields 4
+clicked orange: orange · on 1
+map: pa=M1/#cf6f1c pb=Mi/#b03d7e pc=BrX/#3f6f78 pd=M2/#3f6f78 fxhzbg31=G/var(--lead)
+tv order: Mara Ash(#cf6f1c), Milo Birch(#b03d7e), Bram(#3f6f78), Mary(#3f6f78), Goblin Warrior
+chips: M1/rgb(207, 111, 28) Mi/rgb(176, 61, 126) BrX/rgb(63, 111, 120) M2/rgb(63, 111, 120)

@@ -242,6 +242,10 @@
   .tchip{display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--paper);padding:2px 8px 2px 2px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap}
   .tchip .dot{width:21px;height:21px;border-radius:50%;background:var(--r4);color:var(--paper-lit);display:grid;place-items:center;font-family:var(--mono);font-size:10.5px}
   .tchip .hp{font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
+  .tokcols{display:flex;flex-wrap:wrap;gap:5px;padding-top:3px}
+  .tokcol{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--ink);padding:0;cursor:pointer}
+  .tokcol.on{box-shadow:0 0 0 2px var(--paper-lit),0 0 0 4px var(--ink)}
+  .tokprev{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;color:var(--paper-lit);font-family:var(--mono);font-size:9.5px;margin-right:5px;vertical-align:-4px;border:1px solid var(--ink)}
   .keyppl{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:0 0 6px} .keyppl .mini{margin-right:2px}
   .spellpeek{border-left:3px solid var(--rule);margin:2px 0 6px;padding:2px 0 2px 8px;font-size:12px} .splink,.chiplbl{cursor:pointer;text-decoration:underline dotted}
   .tchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
@@ -867,6 +871,7 @@
   #pv-order .rd{font:12px monospace;letter-spacing:.12em;text-transform:uppercase;color:#d8c49a;margin-right:4px}
   #pv-order .o{padding:3px 10px;border-radius:14px;background:rgba(255,255,255,.08);white-space:nowrap}
   #pv-order .o.party{color:#bfe0d8}
+  #pv-order .odot,.pv-porder .odot{display:inline-block;width:.7em;height:.7em;border-radius:50%;margin-right:5px;border:1px solid #f3ead2;vertical-align:-1px}
   #pv-order .o.now{background:#e2a53a;color:#1d150a;font-weight:bold;box-shadow:0 0 12px rgba(226,165,58,.8)}
   /* the players' screen split between rooms: two side by side, three or four in a grid (the first of three takes the left half) */
   .pv-split{position:fixed;inset:0;display:grid;gap:4px;background:#111;grid-template-columns:1fr 1fr;grid-template-rows:1fr}
@@ -2151,7 +2156,7 @@ function playersOrder(){
   if(!c.turn && !Object.values(c.init||{}).some(v=>v!=null)) return null;
   const lineup = c.layout==="lineup", sight = lineup ? null : sightOf(n, c, useBmap(n));
   const list = combatants(c).filter(t=>!t.fled && !(t.kind==="foe" && (t.x.dormant || (t.x.max!=null && t.x.hp<=0))) && (isMember(t) || (sight ? sight.seen(t) : !outOfSight(stealthOf(c, t)))))
-    .map(t=>({ label:(t.x && t.x.shownAs) || t.label, party:t.side==="party", now:c.turn===t.id }));      // a foe named at the table keeps its old label for the players
+    .map(t=>({ label:(t.x && t.x.shownAs) || t.label, party:t.side==="party", now:c.turn===t.id, col:t.kind==="pc" && !t.npc && t.side==="party" ? pcTokColour(t.p) : null }));      // a foe named at the table keeps its old label for the players
   return list.length ? { round:c.round, list } : null;
 }
 /* what the players see of the map: a copy of the drawing, with the DM's things taken out */
@@ -2275,9 +2280,9 @@ function playerMode(){
     if(d.kind==="svg") v.innerHTML = `<svg class="pv-svg" viewBox="${vbox}" preserveAspectRatio="xMidYMid meet" style="background:${d.bg}">${d.svg}</svg>`
       + (d.rose ? `<div class="pv-rose">${d.rose}</div>` : "")
       + (d.weather ? `<div class="pv-weather">${d.weather}</div>` : "")
-      + (d.order ? `<div id="pv-order"><span class="rd">Round ${d.order.round}</span>${d.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${esc(o.label)}</span>`).join("")}</div>` : "");
+      + (d.order ? `<div id="pv-order"><span class="rd">Round ${d.order.round}</span>${d.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${o.col?`<i class="odot" style="background:${o.col}"></i>`:""}${esc(o.label)}</span>`).join("")}</div>` : "");
     else if(d.kind==="split") v.innerHTML = `<div class="pv-split n${d.panes.length}">${d.panes.map(p=>`<div class="pv-pane"><div class="pv-ph"><b>${esc(p.name)}</b>${p.who ? ` <span>${esc(p.who)}</span>` : ""}</div><svg class="pv-psvg" viewBox="${p.viewBox}" preserveAspectRatio="xMidYMid meet" style="background:${d.bg}">${p.svg}</svg>`
-      + (p.order ? `<div class="pv-porder"><span class="rd">Round ${p.order.round}</span>${p.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${esc(o.label)}</span>`).join("")}</div>` : "") + `</div>`).join("")}</div>`;
+      + (p.order ? `<div class="pv-porder"><span class="rd">Round ${p.order.round}</span>${p.order.list.map(o=>`<span class="o${o.party?" party":""}${o.now?" now":""}">${o.now?"▶ ":""}${o.col?`<i class="odot" style="background:${o.col}"></i>`:""}${esc(o.label)}</span>`).join("")}</div>` : "") + `</div>`).join("")}</div>`;
     else if(d.kind==="picture" && d.blob){ url = URL.createObjectURL(d.blob); v.innerHTML = `<img class="pv-img" src="${url}" alt="">`; }
     else if(d.kind==="board") v.innerHTML = `<div class="pv-board">${d.html}</div>`;
     else v.innerHTML = "";
@@ -6875,7 +6880,7 @@ function pcCard(c, i, npc){
       <input class="pcname" data-pc="${i}" data-f="name" type="text" value="${esc(c.name)}" placeholder="${npc?"Companion":`Character ${(+i||0)+1}`}">
     </div>
     <div class="pcsub">  <!-- role and level under the name, so the name gets the whole width -->
-      <span class="pclv">${npc ? `<span class="npctag">NPC</span>` : `${c.role?`${esc(c.role)} · `:""}Lv ${clampLv(c.level)} · <b class="pclvxp" title="${nx!=null ? `${Math.max(0, nx - (+c.xp||0)).toLocaleString()} to level ${clampLv(c.level)+1}` : "Top level"}">${(+c.xp||0).toLocaleString()} XP</b>`}</span>
+      <span class="pclv">${npc ? `<span class="npctag">NPC</span>` : `<span class="tokprev" data-tokprev="${i}" style="background:${pcTokColour(c)}${pcTokText(c).length>2?";font-size:8px":""}" title="Their token">${esc(pcTokText(c))}</span>${c.role?`${esc(c.role)} · `:""}Lv ${clampLv(c.level)} · <b class="pclvxp" title="${nx!=null ? `${Math.max(0, nx - (+c.xp||0)).toLocaleString()} to level ${clampLv(c.level)+1}` : "Top level"}">${(+c.xp||0).toLocaleString()} XP</b>`}</span>
       <button class="pcbig" data-bigsheet="${npc?"npc":"pc"}:${c.id}" title="Their whole character sheet, big, over the map">Big sheet</button>
     </div>
     <div class="pcsum mono">${c.shape ? `<b class="wstag">${esc(shapeName(c))}</b> · ` : ""}${npc && (bondOwner(c) || c.role) ? `<b>${esc(bondOwner(c) ? bondLabel(c) : c.role)}</b>${sum?" · ":""}` : ""}${sum}${!npc&&c.player?` · <i>${esc(c.player)}</i>`:""}${!npc ? bondedTo(c.id).map(p=>` · ${esc((p.bond.kind||"companion").toLowerCase())}: ${esc(p.name||"?")}`).join("") : ""}</div>
@@ -6891,6 +6896,8 @@ function pcCard(c, i, npc){
       <div class="pcrow">${f("ac","AC",.8)}${f("hp","HP now",1)}${f("hpMax","HP max",1)}${f("speed","Speed",1)}${f("init","Init",.9,"+0")}</div>
       <div class="pcrow">${f("pp","Passive Perception",1.5)}${f("dc","Spell save DC",1.2)}${f("satk","Spell attack",1,"+5")}</div>` : `
       <div class="pcrow">${f("player","Player",1,"Who plays them")}${roleSel}</div>
+      <div class="pcrow pctok"><div class="field" style="flex:0 0 74px"><label>Token</label><input data-pc="${i}" data-f="tok" type="text" maxlength="3" value="${esc(c.tok||"")}" placeholder="${esc(pcTokAuto(c))}" title="Up to three letters on their token; blank uses their initial (two letters if someone shares it)"></div>
+        <div class="field" style="flex:1"><label>Colour</label><div class="tokcols">${TOKEN_COLOURS.map(([k,nm,hex])=>`<button type="button" class="tokcol${pcTokColour(c)===hex?" on":""}" data-act="tokcol" data-pc="${i}" data-col="${k}" title="${nm}" style="background:${hex}"></button>`).join("")}</div></div></div>
       <div class="pcrow">${f("species","Species",1)}${f("cls","Class",1.2)}</div>
       <div class="pcrow">${f("subcls","Subclass",1.3)}${f("bg","Background",1)}</div>
       <div class="pcrow"><div class="field" style="flex:1"><label>Alignment</label><select data-pc="${i}" data-f="align">${alignOptions(c.align)}</select></div></div>
@@ -7089,7 +7096,15 @@ $("#pane-party").addEventListener("input", e=>{
   const x = $(`[data-xpline="${i}"]`);
   if(x && (k==="xp"||k==="level")){ const nx = nextLevelXP(c); x.textContent = `${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}`; }
   saveParty();
+  if(k==="tok" || k==="name") tokensChanged();
 });
+/* a character's token letters or colour changed: their card, the top bar, the battle map and the TV keep up */
+function tokensChanged(){
+  partyRoster().forEach((p,i)=>{ const s = $(`[data-tokprev="${i}"]`); if(s){ const tx = pcTokText(p); s.textContent = tx; s.style.background = pcTokColour(p); s.style.fontSize = tx.length>2 ? "8px" : ""; }
+    const inp = $(`[data-pc="${i}"][data-f="tok"]`); if(inp) inp.placeholder = pcTokAuto(p); });
+  renderChips();
+  if(battleOf){ renderBattle(); if(typeof sendPlayers==="function") sendPlayers(); }
+}
 $("#pane-party").addEventListener("change", e=>{
   const k = e.target.dataset.f;
   if(k==="favor"){ const c = pcAt(e.target.dataset.pc); if(c) gameLog("favor", `${root.favorLabel || "Favor"} for ${c.name||"a character"} is now ${favorWord(c.favor)} (secret)`); }
@@ -7123,6 +7138,7 @@ $("#pane-party").addEventListener("click", e=>{
   }
   else if(act==="leave"){ const c = pcAt(b.dataset.pc); if(c){ partyDoing("Leaves the party", c); leaveParty(c.id); saveParty(); flash(`${c.name||"They"} leaves the party.`); } }
   else if(act==="fold"){ const c = pcAt(b.dataset.pc); if(c){ if(foldedPc.has(c.id)) foldedPc.delete(c.id); else foldedPc.add(c.id); } }
+  else if(act==="tokcol"){ const c = pcAt(b.dataset.pc); if(c){ partyDoing("Token colour", c); c.tokCol = b.dataset.col; saveParty(); tokensChanged(); } }
   else if(act==="foldall"){ const pcs = partyRoster(), all = pcs.every(c=>foldedPc.has(c.id)); for(const c of pcs){ if(all) foldedPc.delete(c.id); else foldedPc.add(c.id); } }
   else if(act==="atkadd" || act==="atkdel"){
     const c = pcAt(b.dataset.pc); if(!c) return;
@@ -11353,10 +11369,27 @@ function wireDance(el, c){
   const dp = el.querySelector("[data-dancepair]"); if(dp) dp.onchange = ()=>{ dancePair = dp.value; try{ localStorage.setItem("ordinate-dancepair", dancePair); }catch(err){} };
   const ds = el.querySelector(".dancesec"); if(ds) ds.addEventListener("toggle", ()=>{ danceOpen = ds.open; });
 }
+/* each character's token (Joseph, 2026-10-28): one of eight colours (never the enemy's red, the companions' green or a
+   bystander's brown) and up to three letters. Left blank, the letters are their initial, or the first two letters of
+   their name when someone else in the party shares the initial */
+const TOKEN_COLOURS = [["teal","Teal","#3f6f78"], ["blue","Blue","#2d5ea8"], ["navy","Navy","#1f2d5e"], ["purple","Purple","#6a4699"],
+  ["pink","Pink","#b03d7e"], ["orange","Orange","#cf6f1c"], ["gold","Gold","#a08018"], ["charcoal","Charcoal","#34343e"]];
+function pcTokColour(p){ const k = (TOKEN_COLOURS.find(x=>x[0]===(p&&p.tokCol)) || TOKEN_COLOURS[0]); return k[2]; }
+function pcTokAuto(p){
+  const nm = String((p && p.name) || "").trim(); if(!nm) return "?";
+  const first = nm[0].toUpperCase(), same = partyRoster().filter(q=>q!==p && String(q.name||"").trim()[0]?.toUpperCase()===first);
+  if(!same.length) return first;
+  const two = first + (nm.replace(/[^A-Za-z0-9]/g,"")[1]||"").toLowerCase();
+  const clash = same.filter(q=>(first + (String(q.name).replace(/[^A-Za-z0-9]/g,"")[1]||"").toLowerCase())===two);
+  if(!clash.length) return two;
+  return first + (partyRoster().filter(q=>q===p || clash.includes(q)).indexOf(p) + 1);     // Mara and Mary: M1, M2
+}
+function pcTokText(p){ const own = String((p && p.tok) || "").trim().slice(0, 3); return own || pcTokAuto(p); }
 function tokenText(t){
-  if(t.kind==="pc") return (t.label.trim()[0]||"?").toUpperCase();
+  if(t.kind==="pc") return t.npc ? (t.label.trim()[0]||"?").toUpperCase() : pcTokText(t.p);
   const m = /(\d+)$/.exec(t.label); return m ? m[1] : (t.label.trim()[0]||"?").toUpperCase();
 }
+const tokFont = s => s.length>=3 ? 10.5 : s.length===2 ? 12.5 : 14;     // three letters still fit inside the token
 function renderBattle(players){
   players = players===true;                       // true: the players' screen's copy — no selection, no hit points
   const selB = players ? null : battleSel;
@@ -11399,7 +11432,7 @@ function renderBattle(players){
     const p = c.pos[t.id];
     const cx = lineup ? spots[t.id].cx : p.x*BS + BS/2, cy = lineup ? spots[t.id].cy : p.y*BS + BS/2;
     const isFoe = t.kind==="foe", down = isFoe ? (t.x.max!=null && t.x.hp<=0) : (numOr(t.p.hp)!==null && numOr(t.p.hp)<=0);
-    const col = t.side==="neutral" ? "#8f7d58" : t.side!=="party" ? "var(--lead)" : (isFoe || t.npc) ? "var(--r1)" : "var(--r4)";     // allies and companions in green, neutrals in a bystander's brown
+    const col = t.side==="neutral" ? "#8f7d58" : t.side!=="party" ? "var(--lead)" : (isFoe || t.npc) ? "var(--r1)" : pcTokColour(t.p);     // allies and companions in green, neutrals in a bystander's brown, each character their own colour
     const hp = isFoe ? (t.x.max!=null ? `${t.x.hp}/${t.x.max}` : "") : (numOr(t.p.hpMax)!=null ? `${numOr(t.p.hp)??"?"}/${numOr(t.p.hpMax)}` : "");
     /* out of sight: the party's own greyed on both screens; anyone else greyed on the DM's and gone from the players'
        unless the party can see them (darkness, walls, hiding, Invisible, Ethereal, burrowed) */
@@ -11420,7 +11453,7 @@ function renderBattle(players){
       ${c.turn===t.id?`<circle class="turnring" r="${BS*.5}" fill="none" stroke="var(--r3)" stroke-width="4"/>`:""}
       ${selB===t.id?`<circle r="${BS*.56}" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="4 3"/>`:""}
       <circle r="${BS*.4}" fill="${col}" stroke="var(--ink)" stroke-width="1.5"/>
-      <text text-anchor="middle" dy=".35em" font-size="14" font-family="var(--mono)" fill="var(--paper-lit)" style="pointer-events:none">${esc(tokenText(t))}</text>
+      <text text-anchor="middle" dy=".35em" font-size="${tokFont(tokenText(t))}" font-family="var(--mono)" fill="var(--paper-lit)" style="pointer-events:none">${esc(tokenText(t))}</text>
       ${down?`<path d="M-12 -12 L12 12 M12 -12 L-12 12" stroke="var(--ink)" stroke-width="2.5" style="pointer-events:none"/>`:""}
       ${(lineup || !isFoe || selB===t.id || (isFoe && (tokPerson(t)||{}).known)) ? `<text text-anchor="middle" y="${BS*.4+11}" font-size="9.5" font-family="var(--serif)" fill="var(--ink)" style="pointer-events:none">${esc(lineup&&isFoe ? tokenText(t)==="?"?t.label:t.label.replace(/^.*?(\d+)$/,"#$1") : t.label.length>22?t.label.slice(0,21)+"…":t.label)}</text>` : ""}
       ${lineup && hp && !players ? `<text text-anchor="middle" y="${BS*.4+22}" font-size="8.5" font-family="var(--mono)" fill="var(--ink-soft)" style="pointer-events:none">${hp}</text>` : ""}${knownEye(players, isFoe ? tokPerson(t) : null)}</g>`;
@@ -18148,7 +18181,7 @@ function renderChips(){
   if(!tableOn()){ el.innerHTML = ""; return; }
   const cur = battleOf ? battleSel : (tcard && tcard.kind==="pc" ? tcard.id : null);
   el.innerHTML = partyRoster().map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
-    return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot">${esc((nm.trim()[0]||"?").toUpperCase())}</span>${esc(nm.split(" ")[0])} <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("");
+    return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot" style="background:${hp!==null&&hp<=0?"var(--lead)":pcTokColour(c)}${pcTokText(c).length>2?";font-size:8.5px":""}">${esc(pcTokText(c))}</span>${esc(nm.split(" ")[0])} <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("");
 }
 function openPersonCard(kind, id){
   if(battleOf){ const c = (bnode()||{}).site && bnode().site.combat;

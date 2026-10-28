@@ -1,0 +1,35 @@
+// uses: nothing
+<script>
+/* character tokens (p.tok, p.tokCol): eight colours, up to three letters; blank letters are the initial, two letters
+   when someone shares it, initial + number when two letters still clash; the card, the top bar, the map and the TV order */
+const __TK = { format:"ordinate-survey-v1", title:"Token Test", ppm:10, unit:"mi", party:4,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Mara Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Milo Birch", level:5, hp:"30", hpMax:"30" },
+    { id:"pc", name:"Bram", level:5, hp:"30", hpMax:"30" }, { id:"pd", name:"Mary", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb","pc","pd"], at:{ map:"h", node:"hall" } }],
+  library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:goblin-warrior", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2],[4,2],[5,2]], enemy:[[7,1]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
+ try{
+  loadJSONNow(JSON.stringify(__TK)); await wait(300);
+  const R = partyRoster();
+  out.push('auto: ' + R.map(p=>pcTokText(p)).join(','));
+  R[2].tok = 'BrX!'; R[1].tokCol = 'pink';
+  out.push('own: ' + pcTokText(R[2]) + ' · colours ' + R.map(p=>pcTokColour(p)).join(','));
+  pane = 'party'; syncTabs(); renderPane(true); await wait(40);
+  out.push('card: swatches ' + document.querySelectorAll('#pane-party .tokcol').length + ', tok fields ' + document.querySelectorAll('#pane-party [data-f="tok"]').length);
+  const sw = document.querySelector('#pane-party [data-act="tokcol"][data-pc="0"][data-col="orange"]'); sw.click(); await wait(40);
+  out.push('clicked orange: ' + R[0].tokCol + ' · on ' + document.querySelectorAll('#pane-party [data-pc="0"].tokcol.on').length);
+  setDmMode(true); await wait(50);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(120);
+  const toks = [...document.querySelectorAll('#bsvg .btok')].map(g=>{ const cs = g.querySelectorAll(':scope > circle'); const c = cs[cs.length-1]; return g.dataset.tok + '=' + g.querySelector(':scope > text').textContent + '/' + c.getAttribute('fill'); });
+  out.push('map: ' + toks.join(' '));
+  beginBattle(hall.site); const c = hall.site.combat; Object.keys(c.init).forEach((k,i)=>c.init[k]=20-i); c.turn = 'pa';
+  const o = playersOrder(); out.push('tv order: ' + o.list.map(x=>x.label + (x.col ? '(' + x.col + ')' : '')).join(', '));
+  renderChips(); out.push('chips: ' + [...document.querySelectorAll('#tchips .dot')].map(d=>d.textContent + '/' + d.style.background).join(' '));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
