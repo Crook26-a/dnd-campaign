@@ -1,0 +1,6 @@
+unset: value "", placeholder "Gull Isles", name used Gull Isles · note Not set yet: the Field Book uses the map's title, "Gull Isle
+same as the title: kept "Gull Isles" · note Saved in the map. On the phone, the Fiel
+renamed: The Gull Isles Campaign, campName The Gull Isles Campaign
+name file: field-book-campaign-the-gull-isles-campaign.json · ordinate-fieldbook, campaign The Gull Isles Campaign, items 0
+brought in: Anyone's, Ours
+cleared: undefined, campName Gull Isles

@@ -1,0 +1,34 @@
+// uses: nothing
+<script>
+/* a campaign name for every map: the Data tab's This campaign box (root.campaign, kept even when it's the title),
+   the Library's Field Book row showing the same, a name-only file for the phone, and bringing in only this campaign */
+const __CN = { format:"ordinate-survey-v1", title:"Gull Isles", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[], roster:[{ id:"pa", name:"Anna", level:5 }],
+  library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[] } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
+ const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ try{
+  loadJSONNow(JSON.stringify(__CN)); await wait(300);
+  pane = 'data'; syncTabs(); renderPane(true); await wait(30);
+  const box = () => document.querySelector('#pane-data [data-fbcamp]');
+  out.push('unset: value "' + box().value + '", placeholder "' + box().placeholder + '", name used ' + campName() + ' · note ' + txt(box().closest('.field').nextElementSibling.nextElementSibling).slice(0, 60));
+  box().value = 'Gull Isles'; box().dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  out.push('same as the title: kept ' + JSON.stringify(root.campaign) + ' · note ' + txt(document.querySelector('#pane-data [data-fbcamp]').closest('.field').nextElementSibling.nextElementSibling).slice(0, 40));
+  box().value = 'The Gull Isles Campaign'; box().dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  out.push('renamed: ' + root.campaign + ', campName ' + campName());
+  /* the name-only file: what fieldBookOut(true) would save */
+  let saved = null; const make = URL.createObjectURL; URL.createObjectURL = b => { saved = b; return make.call(URL, b); };
+  const clickWas = HTMLAnchorElement.prototype.click; let fname = ''; HTMLAnchorElement.prototype.click = function(){ fname = this.download; };
+  document.querySelector('#pane-data [data-fbcampsend]').click(); await wait(30);
+  HTMLAnchorElement.prototype.click = clickWas; URL.createObjectURL = make;
+  const pack = JSON.parse(await saved.text()); out.push('name file: ' + fname + ' · ' + pack.format + ', campaign ' + pack.campaign + ', items ' + (pack.loot.length + pack.npcs.length));
+  /* bringing in: this campaign's and any, not another's */
+  const inPack = { format:"ordinate-fieldbook", version:1, loot:[{ id:"ll_a", name:"Ours", campaign:"The Gull Isles Campaign" }, { id:"ll_b", name:"Anyone's" }, { id:"ll_c", name:"Theirs", campaign:"Kalatecha" }], npcs:[] };
+  window.confirm = () => false; fieldBookIn(JSON.stringify(inPack)); await wait(30);
+  out.push('brought in: ' + lib().loot.map(x=>x.name).join(', '));
+  box().value = ''; box().dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  out.push('cleared: ' + JSON.stringify(root.campaign) + ', campName ' + campName());
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

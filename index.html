@@ -7606,8 +7606,21 @@ const campName = () => String((root && (root.campaign || root.title)) || "").tri
 const sameCampaign = (a, b) => String(a||"").trim().toLowerCase()===String(b||"").trim().toLowerCase();
 const forOtherCampaign = x => !!(x && x.campaign && campName() && !sameCampaign(x.campaign, campName()));
 document.addEventListener("change", e=>{ const t = e.target; if(!t.matches || !t.matches("[data-fbcamp]")) return;
-  const v = String(t.value||"").trim(); if(v && v!==String(root.title||"").trim()) root.campaign = v; else delete root.campaign;
-  saveParty(); flash(`The Field Book will send things here for "${campName()}".`); });
+  const v = String(t.value||"").trim(); if(v) root.campaign = v; else delete root.campaign;
+  saveParty(); document.querySelectorAll("[data-fbcamp]").forEach(x=>{ if(x!==t) x.value = campName(); });
+  if(t.closest("#pane-data")) renderData();                // its note: set, or still the title
+  flash(v ? `This campaign is "${v}". The Field Book sends things here for it.` : `No campaign name: the Field Book uses the map's title, "${campName()}".`); });
+document.addEventListener("click", e=>{ if(e.target.closest && e.target.closest("[data-fbcampsend]")) fieldBookOut(true); });
+/* the campaign's name, at the top of the Data tab (Joseph, 2026-10-28): every map gets one, and the Field Book's
+   Campaign dropdown offers it once something has been sent to the phone from here */
+function campNameBlock(){
+  const set = !!String(root.campaign||"").trim();
+  return `<p class="eyebrow">This campaign</p>
+    <div class="field" style="margin-bottom:4px"><label>Campaign name</label><input data-fbcamp value="${esc(set ? root.campaign : "")}" placeholder="${esc(String(root.title||"") || "Its name")}"></div>
+    <button class="btn wide" data-fbcampsend style="margin-bottom:4px" title="A small file with only this name: bring it into the Field Book and it's in the phone's Campaign dropdown">Send the name to the Field Book</button>
+    <p class="empty-note" style="font-size:11px;margin:0 0 12px">${set ? "Saved in the map. On the phone, the Field Book's Campaign dropdown has it once you've sent something from here (Library → Send to the Field Book), and only things for this campaign (or for any) come in here."
+      : `Not set yet: the Field Book uses the map's title, "${esc(String(root.title||""))}". Type the name you want the phone to show.`}</p>`;
+}
 function fieldBookIn(text, quiet){                  // quiet: the inbox — no message, just the counts back
   let o; try{ o = JSON.parse(text); }catch(err){ flash("That isn't a Field Book file."); return; }
   if(!o || (!Array.isArray(o.loot) && !Array.isArray(o.npcs) && !Array.isArray(o.spells) && !Array.isArray(o.shops) && !Array.isArray(o.factions))){ flash("No items or people in that file."); return; }
@@ -7689,8 +7702,14 @@ async function checkFbInbox(quiet, ask){
 }
 setInterval(()=>{ if(fbDir && !fbAsk && document.visibilityState==="visible") checkFbInbox(true); }, 2*60*1000);
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && fbDir && !fbAsk) checkFbInbox(true); });
-function fieldBookOut(){
+function fieldBookOut(nameOnly){
   const L = lib(), d = new Date(), p = n => String(n).padStart(2,"0");
+  if(nameOnly){ if(!campName()){ flash("Give the campaign a name first."); return; }
+    const pack = { format:"ordinate-fieldbook", version:1, app:"Ordinate Survey", exported:d.toISOString(), campaign:campName(), loot:[], npcs:[], spells:[], shops:[], factions:[] };
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(pack)], { type:"application/json" }));
+    a.download = `field-book-campaign-${campName().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "name"}.json`;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    flash(`Saved a file with just the name "${campName()}". On the phone: Send → Bring a file in, and it's in the Campaign dropdown.`); return; }
   const pack = { format:"ordinate-fieldbook", version:1, app:"Ordinate Survey", exported:d.toISOString(), campaign:campName(),
     loot:JSON.parse(JSON.stringify(L.loot.filter(x=>!x.shopGood))), npcs:JSON.parse(JSON.stringify(L.npcs)), spells:JSON.parse(JSON.stringify(L.spells||[])), shops:JSON.parse(JSON.stringify(L.shops||[])), factions:JSON.parse(JSON.stringify(L.factions||[])) };
   if(!pack.loot.length && !pack.npcs.length && !pack.spells.length){ flash("No items or people of your own to send yet."); return; }
@@ -17644,6 +17663,7 @@ function renderData(){
   $("#pane-data").innerHTML = (builtInMap() ? `<p class="eyebrow">A demonstration</p>
     <p class="empty-note" style="margin:0 0 6px">This copy has its own map built in, and keeps its own save: nothing here touches any other campaign on this computer. Change anything you like.</p>
     <button class="btn wide" data-demoreset style="margin-bottom:12px">Start the demo over</button>` : "") + `
+    ${campNameBlock()}
         ${(()=>{
       /* A plan that has markers and no outlines at all usually means
          something removed them. Offer the ground back. */
