@@ -237,13 +237,22 @@
   body.table #actionbox{display:block;flex:1;min-height:70px;padding-top:6px}
   .tsplit{flex:0 0 9px;cursor:row-resize;background:linear-gradient(var(--rule),var(--rule)) center/40px 3px no-repeat,var(--paper-deep);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);touch-action:none}
   .tsplit:hover,.tsplit.drag{background:linear-gradient(var(--ink),var(--ink)) center/40px 3px no-repeat,var(--rule-soft)}
-  body.table #tchips{display:flex;gap:5px;align-items:center;min-width:0;flex:0 1 auto;overflow-x:auto;scrollbar-width:none}   /* it gives way, never the rest of the bar */
+  body.table #tchips{display:flex;align-items:center;position:relative;flex:0 0 auto}
+  .tchipsbtn{display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--paper);padding:2px 9px 2px 3px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap;min-height:25px}
+  .tchipsbtn:not(:has(.dot)){padding-left:10px} .tchipsbtn.open{border-color:var(--ink)} .tchipsbtn .caret{font-size:10px;color:var(--ink-soft)}
+  .tchipsbtn .tdown{font-family:var(--mono);font-size:10px;color:var(--lead)}
+  .tchipsbtn .dot{width:21px;height:21px;border-radius:50%;color:var(--paper-lit);display:grid;place-items:center;font-family:var(--mono);font-size:10.5px}
+  .tchipmenu{position:fixed;z-index:80;display:flex;flex-direction:column;gap:3px;min-width:210px;max-height:70vh;overflow-y:auto;background:var(--paper-lit);border:1px solid var(--ink);border-radius:8px;padding:5px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  .tchipmenu .tchip{border-radius:6px;padding:3px 8px 3px 3px;font-size:13px} .tchipmenu .tchip .nm{flex:1;text-align:left} .tchipmenu .tchip:hover{background:var(--paper)}   /* it gives way, never the rest of the bar */
   body.table #tchips::-webkit-scrollbar{display:none}
   .tchip{display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--paper);padding:2px 8px 2px 2px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap}
   .tchip .dot{width:21px;height:21px;border-radius:50%;background:var(--r4);color:var(--paper-lit);display:grid;place-items:center;font-family:var(--mono);font-size:10.5px}
   .tchip .hp{font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
-  .tokcols{display:flex;flex-wrap:wrap;gap:5px;padding-top:3px}
-  .tokcol{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--ink);padding:0;cursor:pointer}
+  .pctok{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:2px 0 6px}
+  .pctok-l{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)}
+  .pctok input{width:46px;text-align:center;font-family:var(--mono)}
+  .tokcols{display:flex;flex-wrap:wrap;gap:5px}
+  .tokcol{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--ink);padding:0;cursor:pointer}
   .tokcol.on{box-shadow:0 0 0 2px var(--paper-lit),0 0 0 4px var(--ink)}
   .tokprev{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;color:var(--paper-lit);font-family:var(--mono);font-size:9.5px;margin-right:5px;vertical-align:-4px;border:1px solid var(--ink)}
   .keyppl{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:0 0 6px} .keyppl .mini{margin-right:2px}
@@ -301,7 +310,7 @@
   body.table #bar .barfield:has(#party){display:none}
   body.table #bar .mark{display:none}
   body.table #saveState{max-width:260px;overflow:hidden;text-overflow:ellipsis;flex:0 5 auto;min-width:24px}   /* the bar never pushes anything off: these give way first */
-  body.table #tchips{flex-shrink:2} body.table #crumb{flex-shrink:6;min-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} body.table #bar > .worldclock{flex-shrink:1;min-width:0;overflow:hidden}
+  body.table #tchips{flex-shrink:0} body.table #crumb{flex-shrink:6;min-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} body.table #bar > .worldclock{flex-shrink:1;min-width:0;overflow:hidden}
   body.table #pscreenBtn{flex:none}
   body.table #tdrawer:not([hidden]),body.buildv #tdrawer:not([hidden]){display:flex;flex-direction:column;position:absolute;top:0;right:0;bottom:0;width:min(430px,92vw);z-index:45;background:var(--paper-lit);border-left:1px solid var(--ink);box-shadow:-8px 0 24px rgba(58,46,30,.25)}
   #tdtabs{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--rule)}
@@ -6885,7 +6894,7 @@ function pcCard(c, i, npc){
     </div>
     <div class="pcsum mono">${c.shape ? `<b class="wstag">${esc(shapeName(c))}</b> · ` : ""}${npc && (bondOwner(c) || c.role) ? `<b>${esc(bondOwner(c) ? bondLabel(c) : c.role)}</b>${sum?" · ":""}` : ""}${sum}${!npc&&c.player?` · <i>${esc(c.player)}</i>`:""}${!npc ? bondedTo(c.id).map(p=>` · ${esc((p.bond.kind||"companion").toLowerCase())}: ${esc(p.name||"?")}`).join("") : ""}</div>
     ${folded ? "" : `
-    ${npc ? bondRow(c, i) : ""}
+    ${npc ? bondRow(c, i) : pcTokRow(c, i)}
     ${npc ? "" : `<div class="pcxp"><span data-xpline="${i}">${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}</span>
       ${ready?`<button class="btn" data-act="levelup" data-pc="${i}">Ready — level up to ${clampLv(c.level)+1}</button>`:""}</div>`}
     ${pcTracker(c, i)}
@@ -6896,8 +6905,6 @@ function pcCard(c, i, npc){
       <div class="pcrow">${f("ac","AC",.8)}${f("hp","HP now",1)}${f("hpMax","HP max",1)}${f("speed","Speed",1)}${f("init","Init",.9,"+0")}</div>
       <div class="pcrow">${f("pp","Passive Perception",1.5)}${f("dc","Spell save DC",1.2)}${f("satk","Spell attack",1,"+5")}</div>` : `
       <div class="pcrow">${f("player","Player",1,"Who plays them")}${roleSel}</div>
-      <div class="pcrow pctok"><div class="field" style="flex:0 0 74px"><label>Token</label><input data-pc="${i}" data-f="tok" type="text" maxlength="3" value="${esc(c.tok||"")}" placeholder="${esc(pcTokAuto(c))}" title="Up to three letters on their token; blank uses their initial (two letters if someone shares it)"></div>
-        <div class="field" style="flex:1"><label>Colour</label><div class="tokcols">${TOKEN_COLOURS.map(([k,nm,hex])=>`<button type="button" class="tokcol${pcTokColour(c)===hex?" on":""}" data-act="tokcol" data-pc="${i}" data-col="${k}" title="${nm}" style="background:${hex}"></button>`).join("")}</div></div></div>
       <div class="pcrow">${f("species","Species",1)}${f("cls","Class",1.2)}</div>
       <div class="pcrow">${f("subcls","Subclass",1.3)}${f("bg","Background",1)}</div>
       <div class="pcrow"><div class="field" style="flex:1"><label>Alignment</label><select data-pc="${i}" data-f="align">${alignOptions(c.align)}</select></div></div>
@@ -7096,12 +7103,29 @@ $("#pane-party").addEventListener("input", e=>{
   const x = $(`[data-xpline="${i}"]`);
   if(x && (k==="xp"||k==="level")){ const nx = nextLevelXP(c); x.textContent = `${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}`; }
   saveParty();
-  if(k==="tok" || k==="name") tokensChanged();
+  if(k==="name") tokensChanged();
+});
+/* the token row, on the Party tab's card and the table's card: letters and the eight colours */
+function pcTokRow(c, i){
+  return `<div class="pctok"><span class="pctok-l">Token</span><input data-toktxt="${i}" type="text" maxlength="3" value="${esc(c.tok||"")}" placeholder="${esc(pcTokAuto(c))}" title="Up to three letters on their token; blank uses their initial (two letters if someone shares it)">
+    <span class="tokcols">${TOKEN_COLOURS.map(([k,nm,hex])=>`<button type="button" class="tokcol${pcTokColour(c)===hex?" on":""}" data-tokcol="${k}" data-tokpc="${i}" title="${nm}" style="background:${hex}"></button>`).join("")}</span></div>`;
+}
+document.addEventListener("input", e=>{
+  const t = e.target; if(t.dataset==null || t.dataset.toktxt==null) return;
+  const c = partyRoster()[+t.dataset.toktxt]; if(!c) return;
+  partyDoing("Token letters", c); c.tok = t.value; saveParty(); tokensChanged();
+});
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-tokcol]"); if(!b) return;
+  const c = partyRoster()[+b.dataset.tokpc]; if(!c) return;
+  partyDoing("Token colour", c); c.tokCol = b.dataset.tokcol; saveParty();
+  document.querySelectorAll(`[data-tokpc="${b.dataset.tokpc}"]`).forEach(x=>x.classList.toggle("on", x===b));
+  tokensChanged();
 });
 /* a character's token letters or colour changed: their card, the top bar, the battle map and the TV keep up */
 function tokensChanged(){
   partyRoster().forEach((p,i)=>{ const s = $(`[data-tokprev="${i}"]`); if(s){ const tx = pcTokText(p); s.textContent = tx; s.style.background = pcTokColour(p); s.style.fontSize = tx.length>2 ? "8px" : ""; }
-    const inp = $(`[data-pc="${i}"][data-f="tok"]`); if(inp) inp.placeholder = pcTokAuto(p); });
+    document.querySelectorAll(`[data-toktxt="${i}"]`).forEach(inp=>inp.placeholder = pcTokAuto(p)); });
   renderChips();
   if(battleOf){ renderBattle(); if(typeof sendPlayers==="function") sendPlayers(); }
 }
@@ -7138,7 +7162,6 @@ $("#pane-party").addEventListener("click", e=>{
   }
   else if(act==="leave"){ const c = pcAt(b.dataset.pc); if(c){ partyDoing("Leaves the party", c); leaveParty(c.id); saveParty(); flash(`${c.name||"They"} leaves the party.`); } }
   else if(act==="fold"){ const c = pcAt(b.dataset.pc); if(c){ if(foldedPc.has(c.id)) foldedPc.delete(c.id); else foldedPc.add(c.id); } }
-  else if(act==="tokcol"){ const c = pcAt(b.dataset.pc); if(c){ partyDoing("Token colour", c); c.tokCol = b.dataset.col; saveParty(); tokensChanged(); } }
   else if(act==="foldall"){ const pcs = partyRoster(), all = pcs.every(c=>foldedPc.has(c.id)); for(const c of pcs){ if(all) foldedPc.delete(c.id); else foldedPc.add(c.id); } }
   else if(act==="atkadd" || act==="atkdel"){
     const c = pcAt(b.dataset.pc); if(!c) return;
@@ -18158,7 +18181,11 @@ function wireTable(){
   $("#panelToggle").insertAdjacentHTML("beforebegin", `<button id="moreBtn" class="btn" title="The other tabs">☰ More</button>`);
   $("#moreBtn").onclick = ()=>{ if(drawerPane) closeDrawer(); else openDrawer("library"); };
   $("#tdtabs").addEventListener("click", e=>{ const b = e.target.closest("[data-tdtab]"); if(!b) return; if(b.dataset.tdtab) openDrawer(b.dataset.tdtab); else closeDrawer(); });
-  $("#tchips").addEventListener("click", e=>{ const b = e.target.closest("[data-tchip]"); if(!b) return; openPersonCard("pc", b.dataset.tchip); });
+  $("#tchips").addEventListener("click", e=>{
+    if(e.target.closest("[data-tchipsbtn]")){ chipsOpen = !chipsOpen; renderChips(); return; }
+    const b = e.target.closest("[data-tchip]"); if(!b) return; chipsOpen = false; openPersonCard("pc", b.dataset.tchip); renderChips(); });
+  document.addEventListener("pointerdown", e=>{ if(chipsOpen && !e.target.closest("#tchips")){ chipsOpen = false; renderChips(); } });
+  document.addEventListener("keydown", e=>{ if(chipsOpen && e.key==="Escape"){ chipsOpen = false; renderChips(); } });
   /* the bars between the boxes: drag to size them; the size is remembered on this computer */
   for(const sp of document.querySelectorAll(".tsplit")){
     const side = sp.dataset.tsplit, top = sp.previousElementSibling, v = side==="left" ? "--tl-top" : "--tr-top";
@@ -18175,13 +18202,19 @@ function wireTable(){
   window.addEventListener("resize", ()=>{ const was = document.body.classList.contains("table"), wasB = document.body.classList.contains("buildv"); if(was !== tableOn() || wasB !== buildOn()){ buildRail(); applyTable(); syncTabs(); renderPane(true); } });
   wireTLog(); wireActionBox();
 }
-/* the party along the top bar: a click opens their card (on the battle map, picks their token) */
+/* the party in the top bar: one button that drops down a list of them (Joseph, 2026-10-28); a click on one opens
+   their card (on the battle map, picks their token). The button shows whose card is open, or how many are down */
+let chipsOpen = false;
 function renderChips(){
   const el = $("#tchips"); if(!el) return;
   if(!tableOn()){ el.innerHTML = ""; return; }
-  const cur = battleOf ? battleSel : (tcard && tcard.kind==="pc" ? tcard.id : null);
-  el.innerHTML = partyRoster().map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
-    return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot" style="background:${hp!==null&&hp<=0?"var(--lead)":pcTokColour(c)}${pcTokText(c).length>2?";font-size:8.5px":""}">${esc(pcTokText(c))}</span>${esc(nm.split(" ")[0])} <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("");
+  const cur = battleOf ? battleSel : (tcard && tcard.kind==="pc" ? tcard.id : null), R = partyRoster(), on = R.find(c=>c.id===cur);
+  const down = R.filter(c=>{ const hp = numOr(c.hp); return hp!==null && hp<=0; }).length;
+  el.innerHTML = `<button class="tchipsbtn${chipsOpen?" open":""}" data-tchipsbtn title="The party: pick one to open their card">${on ? `<span class="dot" style="background:${pcTokColour(on)}${pcTokText(on).length>2?";font-size:8.5px":""}">${esc(pcTokText(on))}</span>${esc((on.name||"Character").split(" ")[0])}` : `Party`}${down ? ` <span class="tdown">${down} down</span>` : ""} <span class="caret">▾</span></button>`
+    + (chipsOpen ? `<div class="tchipmenu">${R.map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
+    return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot" style="background:${hp!==null&&hp<=0?"var(--lead)":pcTokColour(c)}${pcTokText(c).length>2?";font-size:8.5px":""}">${esc(pcTokText(c))}</span><span class="nm">${esc(nm)}</span> <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("")}</div>` : "");
+  const m = el.querySelector(".tchipmenu");             // the bar clips what hangs below it, so the menu sits on the page under the button
+  if(m){ const r = el.getBoundingClientRect(); m.style.top = (r.bottom + 4) + "px"; m.style.left = Math.max(4, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px"; }
 }
 function openPersonCard(kind, id){
   if(battleOf){ const c = (bnode()||{}).site && bnode().site.combat;
@@ -18200,6 +18233,7 @@ function renderTCard(){
     el.innerHTML = `${back}<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(c.name||"Character")}</p><button class="pcbig" data-bigsheet="pc:${c.id}" title="Their whole sheet, big">Big sheet</button></div>
       <p class="empty-note" style="margin:0 0 6px">${esc([c.role, [c.species, c.cls, c.subcls].filter(Boolean).join(" "), c.level?`level ${c.level}`:""].filter(Boolean).join(" · "))}</p>
       <div class="tstats"><div><small>AC</small>${esc(c.ac||"—")}</div><div><small>SPEED</small>${esc(c.speed||"—")}</div><div><small>PP</small>${esc(c.pp||"—")}</div><div><small>XP</small>${(+c.xp||0).toLocaleString()}</div></div>
+      ${i>=0 ? pcTokRow(c, i) : ""}
       ${pcTracker(c, key)}
       ${(c.inv||[]).length ? `<p class="grouplab">Carries</p><p class="sbl">${(c.inv||[]).map(e=>esc(invName(e)) + (e.qty>1?` ×${e.qty}`:"")).join(", ")}</p>` : ""}
       <button class="btn wide" data-tcact="${c.id}" style="margin-top:6px">Put them in the Action box ↓</button>`;

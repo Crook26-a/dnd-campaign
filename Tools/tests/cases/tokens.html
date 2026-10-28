@@ -19,16 +19,27 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   R[2].tok = 'BrX!'; R[1].tokCol = 'pink';
   out.push('own: ' + pcTokText(R[2]) + ' · colours ' + R.map(p=>pcTokColour(p)).join(','));
   pane = 'party'; syncTabs(); renderPane(true); await wait(40);
-  out.push('card: swatches ' + document.querySelectorAll('#pane-party .tokcol').length + ', tok fields ' + document.querySelectorAll('#pane-party [data-f="tok"]').length);
-  const sw = document.querySelector('#pane-party [data-act="tokcol"][data-pc="0"][data-col="orange"]'); sw.click(); await wait(40);
-  out.push('clicked orange: ' + R[0].tokCol + ' · on ' + document.querySelectorAll('#pane-party [data-pc="0"].tokcol.on').length);
+  out.push('card: swatches ' + document.querySelectorAll('#pane-party .tokcol').length + ', tok fields ' + document.querySelectorAll('#pane-party [data-toktxt]').length);
+  const sw = document.querySelector('#pane-party [data-tokcol="orange"][data-tokpc="0"]'); sw.click(); await wait(40);
+  out.push('clicked orange: ' + R[0].tokCol + ' · on ' + document.querySelectorAll('#pane-party [data-tokpc="0"].tokcol.on').length);
   setDmMode(true); await wait(50);
+  /* the top bar: one button; it drops down the party; a pick opens the table card, which has the token row */
+  out.push('bar: ' + document.querySelectorAll('#tchips [data-tchipsbtn]').length + ' button, ' + document.querySelectorAll('#tchips .tchip').length + ' chips shut');
+  document.querySelector('#tchips [data-tchipsbtn]').click(); await wait(30);
+  const menu = document.querySelector('#tchips .tchipmenu'); out.push('open: ' + menu.querySelectorAll('.tchip').length + ' in the menu, fixed at top ' + menu.style.top);
+  menu.querySelector('[data-tchip="pb"]').click(); await wait(60);
+  out.push('picked: menu ' + (document.querySelector('#tchips .tchipmenu') ? 'still open' : 'shut') + ', button "' + document.querySelector('#tchips [data-tchipsbtn]').innerText.replace(/\s+/g,' ').trim() + '", card token row ' + document.querySelectorAll('#pane-inspect .pctok .tokcol').length);
+  const tt = document.querySelector('#pane-inspect [data-toktxt="1"]'); tt.value = 'MB'; tt.dispatchEvent(new Event('input', { bubbles:true })); await wait(30);
+  out.push('typed MB: ' + R[1].tok + ', bar "' + document.querySelector('#tchips [data-tchipsbtn] .dot').textContent + '"');
+  document.querySelector('#tchips [data-tchipsbtn]').click(); await wait(20); document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles:true })); await wait(20);
+  out.push('click away: ' + (document.querySelector('#tchips .tchipmenu') ? 'open' : 'shut'));
+  document.querySelector('#pane-inspect [data-tcback]').click(); await wait(30);
   enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(120);
   const toks = [...document.querySelectorAll('#bsvg .btok')].map(g=>{ const cs = g.querySelectorAll(':scope > circle'); const c = cs[cs.length-1]; return g.dataset.tok + '=' + g.querySelector(':scope > text').textContent + '/' + c.getAttribute('fill'); });
   out.push('map: ' + toks.join(' '));
   beginBattle(hall.site); const c = hall.site.combat; Object.keys(c.init).forEach((k,i)=>c.init[k]=20-i); c.turn = 'pa';
   const o = playersOrder(); out.push('tv order: ' + o.list.map(x=>x.label + (x.col ? '(' + x.col + ')' : '')).join(', '));
-  renderChips(); out.push('chips: ' + [...document.querySelectorAll('#tchips .dot')].map(d=>d.textContent + '/' + d.style.background).join(' '));
+  chipsOpen = true; renderChips(); out.push('chips: ' + [...document.querySelectorAll('#tchips .tchipmenu .dot')].map(d=>d.textContent + '/' + d.style.background).join(' '));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  document.title = 'RES ' + out.join(' || ');
 }, 900);
