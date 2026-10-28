@@ -1,0 +1,51 @@
+// uses: nothing
+<script>
+/* one room panel, calm or fighting: starting a battle only adds the battle block (turn order, the action form, the
+   log, End the battle), and in table mode that's the Action box's. A person's card is the same off the battle map
+   and on it; what only the battle does with them is in the battle block */
+const __OR = { format:"ordinate-survey-v1", title:"Room Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", level:5, hp:"30", hpMax:"30" }, { id:"pb", name:"Bram Birch", level:5, hp:"30", hpMax:"30" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
+  library:{ npcs:[{ id:"ln_v", name:"Lady Vane", role:"A guest", fightsAs:"srd:noble", look:"Silver mask", wants:"Gossip", npcs:[] },
+                  { id:"ln_m", name:"Marlowe", role:"The butler", fightsAs:"srd:guard", look:"Stooped", npcs:[] }], foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, npcs:["ln_m"], site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:goblin-warrior", n:"1" }, { id:"npc:ln_v", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[[6,1],[7,1]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
+ const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const heads = () => [...document.querySelectorAll('#pane-inspect > .grouplab, #pane-inspect > .eyebrow, #pane-inspect > details > summary, #pane-inspect .calmrow')].length;
+ const box = () => document.getElementById('actionbox');
+ try{
+  loadJSONNow(JSON.stringify(__OR)); await wait(300); setDmMode(true); await wait(50);
+  /* the person's card off the battle map (from the key people / their name) */
+  openPersonCard('npc', 'ln_v'); await wait(60);
+  const off = document.querySelector('#pane-inspect'); const offSecs = [...off.querySelectorAll('.sbl b, .tstats small, .grouplab')].map(e=>e.textContent.trim()).join('/');
+  out.push('Vane off the map: ' + offSecs + ' · talked ' + off.querySelectorAll('[data-tctalk]').length + ' · into the box ' + off.querySelectorAll('[data-toaction]').length);
+  document.querySelector('#pane-inspect [data-tcback]').click(); await wait(30);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat;
+  /* calm */
+  const calmRoom = heads(), calmTxt = txt(document.querySelector('#pane-inspect')).slice(0, 60);
+  out.push('calm: room ' + calmRoom + ' heads · "' + calmTxt + '" · Start in the Action box ' + box().querySelectorAll('[data-ba="begin"]').length + ' · Action box form ' + box().querySelectorAll('[data-ta="who"]').length + ' · Start in the room ' + document.querySelectorAll('#pane-inspect [data-ba="begin"]').length);
+  /* the Action box redraws itself (pick who acts): the battle block stays */
+  const w = box().querySelector('[data-ta="who"]'); w.value = 'party'; w.dispatchEvent(new Event('change', { bubbles:true })); await wait(40);
+  out.push('  after the box redraws: Start ' + box().querySelectorAll('[data-ba="begin"]').length);
+  /* a person on the map, calm: the same card, plus the battle block's bits in the Action box */
+  const vx = c.list.find(x=>x.npc==='ln_v'); battleSel = vx.id; renderBattle(); renderBattlePanel(); await wait(60);
+  const on = document.querySelector('#pane-inspect .bt-sel'); const onSecs = [...on.querySelectorAll('.sbl b, .grouplab')].map(e=>e.textContent.trim()).join('/');
+  out.push('Vane on the map: ' + onSecs + ' · tracker ' + on.querySelectorAll('.fcard').length + ' · who-they-are twice ' + on.querySelectorAll('.fq-acts').length + ' · talked ' + on.querySelectorAll('[data-tctalk]').length + ' · in the box: ' + txt(box().querySelector('.bt-selacts .grouplab')) + ', reaction ' + box().querySelectorAll('.bt-selacts [data-breact]').length);
+  /* Marlowe standing there, not in the turn order */
+  battleSel = 'p:ln_m'; renderBattle(); renderBattlePanel(); await wait(60);
+  out.push('Marlowe: card ' + txt(document.querySelector('#pane-inspect .bt-sel .playname')) + ' · into the turn order in the box ' + box().querySelectorAll('[data-bystand]').length);
+  /* start the battle from the Action box: the room panel keeps its sections */
+  battleSel = null; renderBattlePanel(); await wait(30);
+  box().querySelector('[data-ba="begin"]').click(); await wait(80);
+  out.push('fighting: room ' + heads() + ' heads (calm ' + calmRoom + ') · "' + txt(document.querySelector('#pane-inspect .fighthead')) + '" · in the box: turn order ' + box().querySelectorAll('.initrow').length + ', form ' + box().querySelectorAll('#ac-actor').length + ', End ' + box().querySelectorAll('[data-fa="end"]').length + ' · in the room: turn order ' + document.querySelectorAll('#pane-inspect .initrow').length + ', Back to the map ' + document.querySelectorAll('#pane-inspect [data-ba="back"]').length);
+  battleSel = vx.id; renderBattle(); renderBattlePanel(); await wait(60);
+  const on2 = document.querySelector('#pane-inspect .bt-sel'); out.push('Vane fighting: ' + [...on2.querySelectorAll('.sbl b, .grouplab')].map(e=>e.textContent.trim()).join('/') + ' · in the box: ' + txt(box().querySelector('.bt-selacts .grouplab')));
+  on2.querySelector('[data-toaction]').click(); await wait(40); out.push('  into the box: acting ' + act.actor + ' (' + (act.actor===vx.id) + ')');
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

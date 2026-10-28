@@ -62,7 +62,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   const order = []; c.turn = null; for(let k=0; k<3; k++){ nextTurn(c); order.push((all.find(t=>t.id===c.turn)||{}).label); }
   out.push('turns while dormant: ' + order.join(', ') + ' · strip ' + txt(document.getElementById('bt-strip')).replace(/[⏭]/g, ''));
   battleSel = c.list[0].id; renderBattlePanel(); await wait(30);
-  const wk = document.querySelector('#pane-inspect [data-wake="wake"]');
+  const wk = document.querySelector('#actionbox [data-wake="wake"]');
   out.push('card: ' + (wk ? txt(wk.parentElement) : 'no Wake button'));
   delete c.init[c.list[0].id]; wk.click(); await wait(60);
   const x0 = c.list[0];
@@ -73,19 +73,19 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   document.querySelector('#saypop [data-say="tvoff"]').click(); document.querySelector('#saypop [data-say="close"]').click();
   /* a waking starts the fight from calm, and its end puts it back: rinse and repeat */
   closeBattle(true); await wait(30); delete lib.site.combat; delete lib.site.xpDue; openBattle(lib); await wait(120);
-  const c2 = lib.site.combat, nb = document.querySelector('#pane-inspect [data-wake="next"]');
+  const c2 = lib.site.combat, nb = document.querySelector('#actionbox [data-wake="next"]');
   out.push('calm: button ' + (nb ? txt(nb) : 'none') + ' · tags ' + [...document.querySelectorAll('#pane-inspect .calmrow small')].map(s=>s.textContent).join(','));
   nb.click(); await wait(60);
   const w1 = c2.list.find(y=>y.woke);
-  out.push('woke one: calm ' + calmOf(c2) + ', wakeFight ' + !!c2.wakeFight + ', strip ' + txt(document.getElementById('bt-strip')).replace(/[⏭▶]/g, '').trim() + ', next button ' + txt(document.querySelector('#pane-inspect [data-wake="next"]')));
+  out.push('woke one: calm ' + calmOf(c2) + ', wakeFight ' + !!c2.wakeFight + ', strip ' + txt(document.getElementById('bt-strip')).replace(/[⏭▶]/g, '').trim() + ', next button ' + txt(document.querySelector('#actionbox [data-wake="next"]')));
   c2.init.pa = 15; c2.init.pb = 5; c2.turn = null; nextTurn(c2);
   w1.hp = 0; renderBattlePanel(); await wait(60);
   out.push('it fell: calm ' + calmOf(c2) + ', left here ' + c2.list.map(y=>y.label + (y.dormant ? ' (asleep)' : '')).join(', ') + ', party initiative kept ' + JSON.stringify(c2.partyInit) + ', XP pool ' + (lib.site.xpDue && lib.site.xpDue.pool) + ', cleared ' + !!lib.site.cleared);
   out.push('  log: ' + gameLogList().slice(-3).map(e=>e.text).join(' / '));
   document.querySelector('#saypop [data-say="close"]') && document.querySelector('#saypop [data-say="close"]').click();
-  document.querySelector('#pane-inspect [data-wake="next"]').click(); await wait(60);
+  document.querySelector('#actionbox [data-wake="next"]').click(); await wait(60);
   const w2 = c2.list.find(y=>y.woke && y.hp > 0);
-  out.push('woke the next: calm ' + calmOf(c2) + ', party initiative back ' + (c2.init.pa===15 && c2.init.pb===5) + ', turn ' + ((combatants(c2).find(t=>t.id===c2.turn)||{}).label) + ', next button ' + !!document.querySelector('#pane-inspect [data-wake="next"]'));
+  out.push('woke the next: calm ' + calmOf(c2) + ', party initiative back ' + (c2.init.pa===15 && c2.init.pb===5) + ', turn ' + ((combatants(c2).find(t=>t.id===c2.turn)||{}).label) + ', next button ' + !!document.querySelector('#actionbox [data-wake="next"]'));
   w2.hp = 0; renderBattlePanel(); await wait(60);
   out.push('it fell: calm ' + calmOf(c2) + ', left ' + c2.list.length + ', XP pool for both ' + (lib.site.xpDue && lib.site.xpDue.pool) + ', cleared ' + !!lib.site.cleared);
   /* the Build panel sets it up */

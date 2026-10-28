@@ -10,8 +10,8 @@ in a fight at Before (as written): npc:ln_b hp 20 ac 12
 at After (its own sheet): npc:ln_b hp 44 ac 16
 at Midnight (as the Mage): npc:ln_b hp 81 ac 15, label Bertram
 arrival: stage s1, at hall true
-card: Stage As written Before After Midnight Looks: Grey gloves Voice: Correct Wants: For the party to go well Knows: Nothing he'll say
-switched on the card: s2 · Stage As written Before After Midnight Looks: Shaking Voice: Correct Wants: To get out alive Knows: Where the key is Notes: Won't fight
+card: Look Grey gloves / Voice Correct / Wants For the party to go well / Knows Nothing he'll say · stage pick 1
+switched on the card: s2 · Look Shaking / Voice Correct / Wants To get out alive / Knows Where the key is / Notes Won't fight
 doors seal: stage s2, in the kitchen true, still in the hall false, on the kitchen map true
 a stage that isn't there: as written
 saved scene keeps stages: {"ln_b":"s1"}

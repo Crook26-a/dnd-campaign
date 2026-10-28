@@ -16,13 +16,13 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(120);
   const c = hall.site.combat, [x1, x2] = c.list; beginBattle(hall.site); c.init[x1.id] = 17; x1.hp = 25;
   battleSel = x1.id; renderBattlePanel(); await wait(40);
-  out.push('first: button "' + txt(document.querySelector('#pane-inspect [data-befriend]')) + '"');
-  const pos = c.pos[x1.id]; document.querySelector('#pane-inspect [data-befriend]').click(); await wait(60);
+  out.push('first: button "' + txt(document.querySelector('#actionbox [data-befriend]')) + '"');
+  const pos = c.pos[x1.id]; document.querySelector('#actionbox [data-befriend]').click(); await wait(60);
   const p = libNpcById('ln_ar');
   out.push('befriended: in the fight ' + c.list.length + ', companion ' + isCompanion('ln_ar') + ' at ' + JSON.stringify(c.pos['n:ln_ar']) + ' (was ' + JSON.stringify(pos) + '), initiative ' + c.init['n:ln_ar'] + ', hp ' + p.hp + '/' + p.hpMax + ' · pop "' + txt(document.getElementById('saypop')) + '"');
   document.querySelector('#saypop [data-say="close"]').click();
   battleSel = x2.id; renderBattlePanel(); await wait(40);
-  const b2 = document.querySelector('#pane-inspect [data-befriend]'); out.push('second: button "' + txt(b2) + '"');
+  const b2 = document.querySelector('#actionbox [data-befriend]'); out.push('second: button "' + txt(b2) + '"');
   b2.click(); await wait(40); out.push('  still fighting ' + c.list.includes(x2) + ' · pop "' + txt(document.getElementById('saypop')) + '"');
   document.querySelector('#saypop [data-say="close"]').click();
   /* the Build panel */

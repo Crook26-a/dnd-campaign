@@ -39,7 +39,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('click away: ' + (document.querySelector('#tchips .tchipmenu') ? 'open' : 'shut'));
   document.querySelector('#pane-inspect [data-tcback]').click(); await wait(30);
   enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(120);
-  const toks = [...document.querySelectorAll('#bsvg .btok')].map(g=>{ const cs = g.querySelectorAll(':scope > circle'); const c = cs[cs.length-1]; return g.dataset.tok + '=' + g.querySelector(':scope > text').textContent + '/' + c.getAttribute('fill'); });
+  const toks = [...document.querySelectorAll('#bsvg .btok')].map(g=>{ const cs = g.querySelectorAll(':scope > circle'); const c = cs[cs.length-1]; return (g.dataset.tok.length>3 ? 'foe' : g.dataset.tok) + '=' + g.querySelector(':scope > text').textContent + '/' + c.getAttribute('fill'); });
   out.push('map: ' + toks.join(' '));
   beginBattle(hall.site); const c = hall.site.combat; Object.keys(c.init).forEach((k,i)=>c.init[k]=20-i); c.turn = 'pa';
   const o = playersOrder(); out.push('tv order: ' + o.list.map(x=>x.label + (x.col ? '(' + x.col + ')' : '')).join(', '));

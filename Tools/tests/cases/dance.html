@@ -40,7 +40,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('Dora dragged: dance ' + JSON.stringify(c.dance||null) + ', Dora at ' + JSON.stringify(c.pos['p:n1']));
   el.querySelector('.dancesec').open = true; document.getElementById('pane-inspect').querySelector('[data-dance="all"]').click(); await wait(80);
   out.push('everyone not in the party: ' + JSON.stringify(c.dance) + ', Anna dancing ' + !!danceOf(c, 'pa'));
-  battleSel = 'p:n3'; renderBattlePanel(); await wait(30); const one = document.querySelector('#pane-inspect [data-dance="one"]');
+  battleSel = 'p:n3'; renderBattlePanel(); await wait(30); const one = document.querySelector('#actionbox [data-dance="one"]');
   out.push('card: ' + txt(one)); one.click(); await wait(60); out.push('after Stop on Fay: ' + JSON.stringify(c.dance||null));
   document.querySelector('#pane-inspect [data-dance="stop"]').click(); await wait(60);
   out.push('stop all: ' + JSON.stringify(c.dance||null) + ', turning groups ' + document.querySelectorAll('#bsvg .dance').length);

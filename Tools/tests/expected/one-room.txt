@@ -1,0 +1,8 @@
+Vane off the map: AC/HP/FIGHTS AS/Look/Wants · talked 1 · into the box 1
+calm: room 14 heads · "⤢ HERE · THE HALL Calm, not fighting 5 here Split the party " · Start in the Action box 1 · Action box form 1 · Start in the room 0
+after the box redraws: Start 1
+Vane on the map: Purse/Carrying/Look/Wants · tracker 1 · who-they-are twice 0 · talked 1 · in the box: LADY VANE HERE, reaction 1
+Marlowe: card Marlowe · into the turn order in the box 3
+fighting: room 14 heads (calm 14) · "Fighting · round 1 5 here" · in the box: turn order 4, form 1, End 1 · in the room: turn order 0, Back to the map 1
+Vane fighting: Purse/Carrying/Look/Wants · in the box: LADY VANE IN THIS FIGHT
+into the box: acting fxjoifz2 (true)

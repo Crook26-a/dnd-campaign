@@ -54,10 +54,10 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   setScene(d, 'arrival'); await wait(300);
   out.push('arrival: stage ' + p().stageNow + ', at hall ' + (doc.nodes.find(n=>n.id==='hall').npcs||[]).includes('ln_b'));
   battleSel = 'p:ln_b'; renderBattlePanel(); await wait(40);
-  const card = document.querySelector('#pane-inspect .pbrief');
-  out.push('  card: ' + txt(card).slice(0, 160));
+  const card = document.querySelector('#pane-inspect .bt-sel');
+  out.push('  card: ' + [...card.querySelectorAll('.sbl')].map(txt).join(' / ') + ' · stage pick ' + card.querySelectorAll('[data-stagepick]').length);
   const cp = card && card.querySelector('[data-stagepick]'); cp.value = 's2'; cp.dispatchEvent(new Event('change', { bubbles:true })); await wait(40);
-  out.push('  switched on the card: ' + p().stageNow + ' · ' + txt(document.querySelector('#pane-inspect .pbrief')).slice(0, 140));
+  out.push('  switched on the card: ' + p().stageNow + ' · ' + [...document.querySelectorAll('#pane-inspect .bt-sel .sbl')].map(txt).join(' / '));
   setScene(d, 'the-doors-seal'); await wait(300);
   out.push('doors seal: stage ' + p().stageNow + ', in the kitchen ' + (doc.nodes.find(n=>n.id==='kit').npcs||[]).includes('ln_b') + ', still in the hall ' + (doc.nodes.find(n=>n.id==='hall').npcs||[]).includes('ln_b') + ', on the kitchen map ' + !!(bnode().site.combat.pos||{})['p:ln_b']);
   setStage(p(), 's3x'); out.push('a stage that isn\'t there: ' + (p().stageNow===undefined ? 'as written' : p().stageNow));
