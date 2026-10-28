@@ -8009,6 +8009,20 @@ function escapeRow(x){
   const s = escapeOf(x); if(!s) return "";
   return s.left ? `<button class="btn wide${x.hp<=0 ? " on" : ""}" data-escape="${x.id}" style="margin:0 0 6px" title="${esc(s.e.where || "")}">${esc(s.e.name)}${x.hp<=0 ? " (he's at 0 HP)" : ""}</button>` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${esc(s.e.name)}: used.</p>`;
 }
+/* heartbreak (Joseph, 2026-10-28: Gnick and his armor): a person's p.heartbreak = { foe, say } names a creature (by its
+   stat block) they love. If one like it in the same fight is destroyed while they're still standing, they weep and are out
+   of the fight: neutral, Incapacitated, and their words pop up. If they fell first, nothing happens */
+function heartbreakCheck(c){
+  for(const x of (c && c.list) || []){
+    const p = x.npc && libNpcById(x.npc), h = p && p.heartbreak;
+    if(!h || x.heartbroken || x.neutral || x.ally || (x.max!=null && x.hp<=0) || x.fled) continue;
+    if(!c.list.some(y=>y!==x && y.foe===h.foe && y.max!=null && y.hp<=0)) continue;
+    x.heartbroken = true; x.neutral = true; x.ally = false; x.conds = x.conds || []; if(!x.conds.includes("Incapacitated")) x.conds.push("Incapacitated");
+    const line = `${x.label} sees a dear friend fall, and weeps: out of the fight.`;
+    (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("fight", line);
+    if(h.say){ sayNow = { title:p.name || x.label, text:h.say }; showSayPop(); }
+  }
+}
 /* the moment they drop: offer it, once per drop */
 function escapePrompt(c){
   for(const x of (c && c.list) || []){ if(!(x.max!=null && x.hp<=0)){ delete x.escapeAsked; continue; }
@@ -8679,6 +8693,7 @@ function startFight(st){
       if(f.hide > 0) stealth[x.id] = { hide:f.hide };     // Build set them to start hidden: an ambush
       if(f.guise && f.guise.as) x.dormant = { as:f.guise.as, icon:f.guise.icon || "", wake:f.guise.wake || "" };   // looks like a thing until it wakes
       if(f.befriend) x.befriend = f.befriend;               // befriended, it becomes this person from the library and joins the party
+      if(String(f.id).startsWith("npc:")) x.npc = f.id.slice(4);   // a person from the library placed here: their card, effects and stages come with them
       list.push(foeBelongings(x));
     }
   });
@@ -12108,7 +12123,7 @@ var lastCardSel = null;                                  // whose card was last 
 function renderBattlePanel(){
   if(tcard && tcard.over){ if(battleSel===tcard.sel && battleOf) return renderTCard(); tcard = null; }   // a person's card over the battle panel, till a token is picked
   runRules();                                                  // their hit points may have crossed a rule's line
-  { const n = bnode(); if(n && n.site && n.site.combat && !calmOf(n.site.combat)) escapePrompt(n.site.combat); }   // someone with a way out just dropped
+  { const n = bnode(); if(n && n.site && n.site.combat && !calmOf(n.site.combat)){ escapePrompt(n.site.combat); heartbreakCheck(n.site.combat); } }   // someone with a way out just dropped; someone's friend just fell
   { const n = bnode(), c = n && n.site && n.site.combat;        // a waking's fight with nobody awake left standing: over, calm again
     if(wakeFightOver(c)){ const down = c.list.filter(y=>y.woke && y.max!=null && y.hp<=0).map(y=>y.label);
       endTheFight(n.site, n, c, true); flash(`${down.join(", ") || "It"} down: calm again.${nextDormant(c) ? " The rest still sleep." : ""}`); return; } }
