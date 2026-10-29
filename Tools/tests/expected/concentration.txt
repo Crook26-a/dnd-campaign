@@ -1,0 +1,22 @@
+calm Bless: {"name":"Bless","rounds":10,"left":10} · slot 1 used 1
+card: ◎ Concentrating: Bless · 10 rounds left End it
+chip: Concentrating: Bless
+asked: "This ends Bless. Cast Hold Person anyway?" → no
+after no: still Bless, slot 2 used 0
+asked: "This ends Bless. Cast Hold Person anyway?" → yes
+after yes: Hold Person · log "Anna Ash stops concentrating on Bless: to cast Hold Person / Anna Ash casts Hold Person (2nd)"
+12 damage: Anna Ash is concentrating on Hold Person: Constitution save, DC 10 (12 damage) Roll (+2) Made it Lost it
+Made it: still Hold Person · "Anna Ash keeps concentrating on Hold Person: made the Constitution save (DC 10)" · box now none
+to 0 HP: concentrating false · "Anna Ash stops concentrating on Hold Person: dropped to 0 hit points"
+an hour later: concentrating false · "Anna Ash stops concentrating on Bless: its time ran out"
+now CR with no slots left: without a running spell 6.2, holding Bless 7.8 (Bless is a buff: worth its estimate)
+asked: "This ends Spiritual Weapon. Cast Bless anyway?" → yes
+End it: concentrating false · "Anna Ash stops concentrating on Bless: they ended it" · card empty
+fight Bless: {"name":"Bless","left":10} · token mark 1
+undo: concentrating false
+three rounds on: 7 left
+Stunned: concentrating false · fight log "Anna Ash stops concentrating on Bless: stunned."
+enemy: Mage holding Hold Person · token mark 1 · Con save +0
+22 damage: Mage is concentrating on Hold Person: Constitution save, DC 11 (22 damage) Roll (+0) Made it Lost it
+Roll: "Mage keeps concentrating on Hold Person: made the Constitution save (N against DC 11)"
+TV scene has the mark: false

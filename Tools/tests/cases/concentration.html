@@ -1,0 +1,83 @@
+// uses: nothing
+<script>
+/* concentration (Joseph, 2026-10-29): casting starts it (calm, and in a fight's action form), a second one asks first,
+   damage asks for a Constitution save in the Action box (DC 10 or half, at most 30) with Roll / Made it / Lost it, and it
+   ends at 0 hit points, on Incapacitated, when its time runs out (rounds; the world clock) or with End it, each in the
+   game log; an enemy can concentrate; undo takes a cast back; shown on the card, the chip and the token (not the TV);
+   the "now" CR counts a running spell */
+const __CC = { format:"ordinate-survey-v1", title:"Conc Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna Ash", cls:"Cleric", level:5, hp:"30", hpMax:"30", ac:"18", con:"14", saves:"Wis +6, Cha +3, Con +2", dc:"14", satk:"+6",
+      slots:[null, { max:4, used:0 }, { max:3, used:0 }, { max:2, used:0 }], spells:["spell:bless", "spell:hold-person", "spell:spiritual-weapon", "spell:sacred-flame"], attacks:[{ name:"Mace", hit:"+5", dmg:"1d6+2" }] },
+    { id:"pb", name:"Bram Birch", level:5, hp:"40", hpMax:"40" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
+  library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:mage", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[[6,1],[7,1]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ const anna = () => root.roster[0], lastLog = () => gameLogList().slice(-1).map(e=>e.text||e.t||JSON.stringify(e))[0] || '';
+ const asks = () => { const el = document.getElementById('concasks'); return el ? el.innerText.replace(/\s+/g, ' ').trim() : 'none'; };
+ const row = () => { const el = document.querySelector('#pane-party [data-concrow="pc:pa"]'); return el ? (el.innerText.replace(/\s+/g, ' ').trim() || 'empty') : 'no row'; };
+ try{
+  loadJSONNow(JSON.stringify(__CC)); await wait(300); setDmMode(true); await wait(60);
+  pane = 'party'; syncTabs(); openDrawer('party'); await wait(40);
+  /* calm: the Action box casts Bless */
+  ta.who = 'pc:pa'; ta.what = 'cast'; ta.spell = 'spell:bless'; ta.slot = 1; renderActionBox(true); await wait(30); logTableAction(); await wait(60);
+  out.push('calm Bless: ' + JSON.stringify({ name:anna().conc && anna().conc.name, rounds:anna().conc && anna().conc.rounds, left:anna().conc && anna().conc.left }) + ' · slot 1 used ' + anna().slots[1].used);
+  renderNamedPane('party'); await wait(30); out.push('card: ' + row());
+  chipsOpen = true; renderChips(); out.push('chip: ' + ((document.querySelector('[data-tchip="pa"] .tconc')||{}).title || 'none')); chipsOpen = false; renderChips();
+  /* a second one: say no, then yes */
+  window.confirm = m => { out.push('asked: "' + m + '" → no'); return false; };
+  ta.spell = 'spell:hold-person'; ta.slot = 2; logTableAction(); await wait(30);
+  out.push('after no: still ' + anna().conc.name + ', slot 2 used ' + anna().slots[2].used);
+  window.confirm = m => { out.push('asked: "' + m + '" → yes'); return true; };
+  logTableAction(); await wait(30);
+  out.push('after yes: ' + anna().conc.name + ' · log "' + gameLogList().slice(-2).map(e=>e.text).join(' / ') + '"');
+  /* damage typed on the sheet: a save in the Action box */
+  const hpIn = () => document.querySelector('#tdrawer input[data-pc="0"][data-f="hp"]');
+  hpIn().value = '18'; hpIn().dispatchEvent(new Event('input', { bubbles:true })); await wait(40);
+  out.push('12 damage: ' + asks());
+  document.querySelector('#concasks [data-concask="made"]').click(); await wait(40);
+  out.push('Made it: still ' + (anna().conc && anna().conc.name) + ' · "' + lastLog() + '" · box now ' + asks());
+  hpIn().value = '0'; hpIn().dispatchEvent(new Event('input', { bubbles:true })); await wait(40);
+  out.push('to 0 HP: concentrating ' + !!anna().conc + ' · "' + lastLog() + '"');
+  anna().hp = 30; anna().conds = []; saveParty();
+  /* the world clock: a minute's spell after an hour */
+  ta.spell = 'spell:bless'; ta.slot = 1; logTableAction(); await wait(30); const w = anna().conc.w;
+  root.hour = (+root.hour || 12) + 1; saveParty(); await wait(30);
+  out.push('an hour later: concentrating ' + !!anna().conc + ' · "' + lastLog() + '"');
+  /* the "now" CR counts a running spell */
+  ta.spell = 'spell:spiritual-weapon'; ta.slot = 2; logTableAction(); await wait(30);
+  const spent = JSON.parse(JSON.stringify(anna())); spent.slots.forEach(s=>{ if(s) s.used = s.max; });
+  out.push('now CR with no slots left: without a running spell ' + charCR(spent, 'now').dpr + ', holding Bless ' + charCR(spent, 'now', { active:["spell:bless"] }).dpr + ' (Bless is a buff: worth its estimate)');
+  /* End it */
+  ta.spell = 'spell:bless'; ta.slot = 1; logTableAction(); await wait(30); renderNamedPane('party'); await wait(30);
+  document.querySelector('#tdrawer [data-concend="pc:pa"]').click(); await wait(40);
+  out.push('End it: concentrating ' + !!anna().conc + ' · "' + lastLog() + '" · card ' + row());
+  /* a fight: cast from the action form, rounds count down, Incapacitated ends it, undo takes the cast back */
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60);
+  act = freshAct('pa'); act.what = 'sp:spell:bless'; act.targets = ['pa', 'pb']; act.lvl = 1; logAction(hall, c); await wait(60);
+  out.push('fight Bless: ' + JSON.stringify({ name:anna().conc && anna().conc.name, left:anna().conc && anna().conc.left }) + ' · token mark ' + document.querySelectorAll('#bsvg .tokconc').length);
+  undoAction(c); await wait(40); out.push('undo: concentrating ' + !!anna().conc);
+  act = freshAct('pa'); act.what = 'sp:spell:bless'; act.targets = ['pa']; act.lvl = 1; logAction(hall, c); await wait(40);
+  newRound(c); newRound(c); newRound(c); renderBattlePanel(); await wait(40);
+  out.push('three rounds on: ' + anna().conc.left + ' left');
+  anna().conds.push('Stunned'); renderBattlePanel(); await wait(40);
+  out.push('Stunned: concentrating ' + !!anna().conc + ' · fight log "' + (c.log||[]).slice(-1)[0].text + '"');
+  anna().conds = [];
+  /* an enemy concentrating: damage, then Roll */
+  const x = c.list[0]; concBegin(x, spellOf('spell:hold-person'), x.hp); renderBattle(); renderBattlePanel(); await wait(40);
+  out.push('enemy: ' + x.label + ' holding ' + x.conc.name + ' · token mark ' + document.querySelectorAll('#bsvg .tokconc').length + ' · Con save ' + signed(conSaveOf(x)));
+  damageFoe(x, 22); renderBattlePanel(); await wait(40);
+  out.push('22 damage: ' + asks());
+  const rnd = Math.random; Math.random = () => 0.5; document.querySelector('#concasks [data-concask="roll"]').click(); Math.random = rnd; await wait(40);   // a d20 of 11
+  out.push('Roll: "' + lastLog().replace(/\d+ against/, 'N against') + '"');
+  /* the TV doesn't show the mark */
+  concBegin(x, spellOf('spell:hold-person'), x.hp); const tv = playerMapScene ? JSON.stringify(playerMapScene()) : '';
+  out.push('TV scene has the mark: ' + /tokconc/.test(tv));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

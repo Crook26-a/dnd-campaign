@@ -667,6 +667,13 @@
   .pccr{display:flex;flex-direction:column;gap:2px;font-size:12px;margin:-2px 0 8px;color:var(--ink)}
   .pccr b{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin-right:4px}
   .pccr small{color:var(--ink-faint);font-size:10.5px;margin-left:4px}
+  /* concentration: on a card, a chip, and the save waiting in the Action box */
+  .concrow:empty{display:none}
+  .concrow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:12px;margin:-2px 0 8px;padding:3px 6px;border:1px dashed var(--r2);border-radius:3px}
+  .concmark{color:var(--r2);font-weight:600}
+  .concask{border:1.5px solid var(--lead);background:var(--paper-lit);border-radius:3px;padding:6px 8px;margin:0 0 8px;font-size:12.5px}
+  .concask p{margin:0 0 6px}
+  .tconc{color:var(--r2);font-weight:600;margin-left:2px}
   .pcrow{display:flex;gap:6px}
   .pcrow .field{min-width:0}
   .pcrow .field input{width:100%}
@@ -2013,11 +2020,14 @@ function charCR(c, mode, opts){
       bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < uses ? die : 0)), conc:false }); }                           // worth its die, like healing: an estimate
     /* one concentration spell at most (one already running counts and blocks the rest) */
     const running = [...active].map(id=>spellOf(id)).find(s=>s && s.conc);
+    /* a spell already running that isn't a bonus-action one (Bless, Spirit Guardians): its worth every round, for free */
+    const runningVal = [...active].map(id=>spellOf(id)).filter(s=>s && !/bonus/i.test(s.time||"")).reduce((a, s)=>a + spellVal(s, r, anyHit), 0);
     let best = 0;
     for(const a of acts) for(const b of bas){
       if(running && ((a.conc && a.id!==running.id) || (b.conc && b.id!==running.id))) continue;
+      if(running && a.id===running.id) continue;                                                  // it's up already: not cast again
       if(a.conc && b.conc) continue;
-      best = Math.max(best, a.v + b.r[0] + 2 * atWill + b.r[1] + b.r[2]); }
+      best = Math.max(best, a.v + b.r[0] + 2 * atWill + b.r[1] + b.r[2] + 3 * runningVal); }
     const surge = lvIn(/fighter/i) >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
     return (best + surge) / 3;
   };
@@ -7007,6 +7017,7 @@ function saveParty(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
   if(typeof refreshLeadersOnTv==="function") refreshLeadersOnTv();     // the leaderboards on the TV keep up
+  if(typeof concSweep==="function") concSweep();                       // concentration: a save to make after damage, or an ending
   if(typeof pcCRRefresh==="function") pcCRRefresh();                   // the cards' strength "now" keeps up with HP, slots and resources
 }
 /* ── taking back a change to the party: damage, healing, slots, rests, coins…
@@ -7395,7 +7406,7 @@ function pcAttacksBlock(c, i){
 /* a character's strength on their card (Joseph, 2026-10-29): CR and its working first, at full and now, the XP small
    beside it, an estimate. "Now" follows their hit points, slots and resources (pcCRRefresh, on every save) */
 function pcCRRow(c, npc){
-  const key = (npc ? "n:" : "") + c.id, f = charCR(c), n = charCR(c, "now");
+  const key = (npc ? "n:" : "") + c.id, f = charCR(c), n = charCR(c, "now", c.conc ? { active:[c.conc.id] } : null);   // a spell they're holding counts now
   const one = (label, r) => `<span><b>${label}</b> ${esc(charCRWords(r))} <small>${r.xp.toLocaleString()} XP · an estimate</small></span>`;
   return `<div class="pccr" data-pccr="${esc(key)}" title="Their strength rated the way a monster's is, from their sheet: our own measure from the SRD monsters, not a rule">${one("At full", f)}${one("Now", n)}</div>`;
 }
@@ -7403,6 +7414,121 @@ function pcCRRefresh(){
   for(const el of document.querySelectorAll("[data-pccr]")){ const c = charById(el.dataset.pccr); if(!c) continue;
     const html = pcCRRow(c, el.dataset.pccr.startsWith("n:")); if(el.outerHTML!==html) el.outerHTML = html; }
 }
+/* ══════════════════════════════════════════════════════════════
+   CONCENTRATION (Joseph, 2026-10-29). Anyone who casts can concentrate: a character, a companion, a person, an enemy
+   in a fight. h.conc = { id, name, rounds (null: no countdown), left (rounds), w (world minutes, for counting outside a
+   fight), hp (the hit points last seen) }, on the character or person, or on an enemy's fight entry.
+   - Casting a concentration spell (the Action box, or the fight's action form) starts it; casting another while
+     concentrating asks first, and yes ends the first.
+   - Hit points going down, however it happens (the action form, the tracker, the sheet), puts a Constitution save in
+     the Action box: DC 10 or half the damage, at most 30 (2024 rules), with Roll, Made it, Lost it. Never silently.
+   - It ends by itself at 0 hit points, on Incapacitated (and Paralyzed, Petrified, Stunned, Unconscious, which include
+     it), and when its time runs out (by rounds in a fight, by the world clock outside one); or with End it. Every
+     ending goes in the game log (and the fight's log).
+   - Shown on their card, their top-bar chip and their battle-map token (DM side only: the TV doesn't show it).
+   - The "now" CR counts a running spell (charCR's active list).
+   concSweep (on every save and render of the boxes) does the asking and the ending, so no path is missed.
+   ══════════════════════════════════════════════════════════════ */
+const CONC_ENDS = ["Incapacitated","Paralyzed","Petrified","Stunned","Unconscious"];
+const worldMin = () => Math.round((campaignDay() * 24 + (+clockHour() || 0)) * 60);
+function concRounds(dur){
+  const m = /(\d+)\s*(round|minute|hour|day)/i.exec(String(dur||"")); if(!m) return null;
+  const n = +m[1], u = m[2].toLowerCase(); return u.startsWith("round") ? n : u.startsWith("minute") ? n * 10 : u.startsWith("hour") ? n * 600 : n * 14400;
+}
+const concLeftWords = L => L == null ? "" : L <= 10 ? `${Math.max(1, Math.ceil(L))} round${Math.ceil(L)===1?"":"s"} left`
+  : L < 600 ? `${Math.ceil(L / 10)} minutes left` : `${Math.round(L / 600 * 10) / 10} hours left`;
+/* everyone who could be concentrating: { key, name, h (where conc lives), hp, conds } */
+function concHolders(){
+  const out = [], seen = new Set();
+  const add = (key, name, h, hp, conds) => { if(!h || seen.has(h)) return; seen.add(h); out.push({ key, name, h, hp, conds:conds||[] }); };
+  for(const p of partyRoster()) add("pc:" + p.id, p.name || "A character", p, numOr(p.hp), p.conds);
+  for(const p of lib().npcs) if(p.conc) add("p:" + p.id, p.name || "Someone", p, numOr(p.hp), p.conds);
+  const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat;
+  if(c) for(const x of c.list||[]) add("x:" + x.id, x.label || "An enemy", x, x.max!=null ? x.hp : null, x.conds);
+  return out;
+}
+const concFind = key => concHolders().find(o=>o.key===key) || (String(key).startsWith("p:") ? (p=>p ? { key, name:p.name||"Someone", h:p, hp:numOr(p.hp), conds:p.conds||[] } : null)(libNpcById(String(key).slice(2))) : null);
+/* a creature's Constitution save: its sheet's or stat block's "Con +N", else its Constitution modifier */
+function conSaveOf(h){
+  const said = t => { const m = /\bCon(?:stitution)?\s*([+-]\d+)/i.exec(String(t||"")); return m ? +m[1] : null; };
+  if(h && h.foe){ const m = foeById(h.foe), v = m && said(m.sav); if(v!=null) return v; return Math.floor(((m && Array.isArray(m.ab) ? +m.ab[2] : 10) - 10) / 2); }
+  const v = said(h && h.saves); return v!=null ? v : Math.floor(((+(h && h.con) || 10) - 10) / 2);
+}
+var concAsks = [];                                  // saves waiting in the Action box: { key, name, spell, dmg, dc }
+/* casting a concentration spell while on another: ask first (true = go ahead; the old one ends) */
+function concOK(h, s, who){
+  if(!h || !s || !s.conc || !h.conc || h.conc.id===s.id) return true;
+  if(!confirm(`This ends ${h.conc.name}. Cast ${s.name} anyway?`)) return false;
+  const o = concHolders().find(q=>q.h===h) || { key:"", name:who || "They", h };
+  concEnd(o, `to cast ${s.name}`); return true;
+}
+function concBegin(h, s, hp){
+  if(!h || !s || !s.conc) return;
+  const R = concRounds(s.dur);
+  h.conc = { id:s.id, name:s.name, rounds:R, left:R, w:worldMin(), hp:hp!=null ? hp : null };
+}
+function concEnd(o, why){
+  const s = o && o.h && o.h.conc; if(!s) return;
+  delete o.h.conc; concAsks = concAsks.filter(a=>a.key!==o.key);
+  const line = `${o.name} stops concentrating on ${s.name}: ${why}`;
+  gameLog("spell", line); flash(line + ".");
+  const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat; if(c){ (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); }
+}
+/* a new round in a fight: everyone in it who's concentrating has a round less */
+function concNewRound(c){
+  for(const t of combatants(c)){ const h = t.kind==="foe" ? t.x : t.p; if(h && h.conc && h.conc.left!=null) h.conc.left -= 1; }
+}
+let concBusy = false;
+function concSweep(){
+  if(concBusy || typeof root==="undefined" || !root) return; concBusy = true; let changed = false;
+  try{
+    const now = worldMin();
+    for(const o of concHolders()){ const s = o.h.conc; if(!s) continue;
+      if(o.hp!=null && o.hp <= 0){ concEnd(o, "dropped to 0 hit points"); changed = true; continue; }
+      const cn = (o.conds||[]).find(k=>CONC_ENDS.includes(k)); if(cn){ concEnd(o, `${cn.toLowerCase()}`); changed = true; continue; }
+      if(s.w!=null && now > s.w){ if(s.left!=null) s.left -= (now - s.w) * 10; s.w = now; }
+      if(s.left!=null && s.left <= 0){ concEnd(o, "its time ran out"); changed = true; continue; }
+      if(o.hp!=null && s.hp!=null && o.hp < s.hp){ const dmg = s.hp - o.hp; concAsks.push({ key:o.key, name:o.name, spell:s.name, dmg, dc:Math.min(30, Math.max(10, Math.floor(dmg / 2))) }); changed = true; }
+      if(o.hp!=null) s.hp = o.hp;
+    }
+  } finally { concBusy = false; }
+  concPaint(); if(changed) concRefreshRows();
+}
+/* on a card: "Concentrating: Bless · 8 rounds left [End it]" (an empty holder when not, so it can fill in later) */
+function concRow(h, key){
+  const s = h && h.conc;
+  return `<div class="concrow" data-concrow="${esc(key)}">${s ? concRowInner(s, key) : ""}</div>`;
+}
+const concRowInner = (s, key) => `<span class="concmark">◎</span> Concentrating: <b>${esc(s.name)}</b>${s.left!=null ? ` · ${concLeftWords(s.left)}` : ""} <button class="btn small" data-concend="${esc(key)}" title="They stop concentrating: it goes in the game log">End it</button>`;
+function concRefreshRows(){
+  for(const el of document.querySelectorAll("[data-concrow]")){ const o = concFind(el.dataset.concrow), s = o && o.h.conc;
+    el.innerHTML = s ? concRowInner(s, el.dataset.concrow) : ""; }
+}
+/* the saves waiting, at the top of the Action box (or the room's panel, without one) */
+function concPaint(){
+  const box = document.getElementById("actionbox") && tableOn() ? document.getElementById("actionbox") : document.getElementById("pane-inspect");
+  let el = document.getElementById("concasks");
+  if(!concAsks.length){ if(el) el.remove(); return; }
+  if(!box) return;
+  if(!el || el.parentNode!==box){ if(el) el.remove(); el = document.createElement("div"); el.id = "concasks"; box.insertBefore(el, box.firstChild); }
+  else if(box.firstChild!==el) box.insertBefore(el, box.firstChild);
+  el.innerHTML = concAsks.map((a, i)=>{ const o = concFind(a.key), b = o ? conSaveOf(o.h) : 0;
+    return `<div class="concask"><p><b>${esc(a.name)}</b> is concentrating on <b>${esc(a.spell)}</b>: Constitution save, DC ${a.dc} <small>(${a.dmg} damage)</small></p>
+      <div class="pcrow"><button class="btn" data-concask="roll" data-i="${i}" title="d20 ${signed(b)}">Roll (${signed(b)})</button><button class="btn" data-concask="made" data-i="${i}">Made it</button><button class="btn danger" data-concask="lost" data-i="${i}">Lost it</button></div></div>`; }).join("");
+}
+function concAfter(){ saveParty(); concRefreshRows(); concPaint(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } else renderActionBox(true); }catch(err){} if(typeof renderChips==="function") renderChips(); }
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-concask],[data-concend]"); if(!b) return;
+  if(b.dataset.concend){ const o = concFind(b.dataset.concend); if(o && o.h.conc) concEnd(o, "they ended it"); concAfter(); return; }
+  const a = concAsks[+b.dataset.i]; if(!a) return; const o = concFind(a.key); concAsks.splice(+b.dataset.i, 1);
+  if(!o || !o.h.conc){ concAfter(); return; }
+  let made = b.dataset.concask==="made", how = "";
+  if(b.dataset.concask==="roll"){ const d = 1 + Math.floor(Math.random() * 20), tot = d + conSaveOf(o.h); made = tot >= a.dc; how = ` (${tot} against DC ${a.dc})`; }
+  else how = ` (DC ${a.dc})`;
+  if(made){ const line = `${o.name} keeps concentrating on ${o.h.conc.name}: made the Constitution save${how}`; gameLog("spell", line); flash(line + "."); }
+  else concEnd(o, `lost it: failed the Constitution save${how}`);
+  concAfter();
+});
 function pcCard(c, i, npc){
   const nx = npc ? null : nextLevelXP(c), ready = !npc && nx!=null && (+c.xp||0) >= nx;
   const f = (k,lab,w,ph) => `<div class="field" style="flex:${w||1}"><label>${lab}</label><input data-pc="${i}" data-f="${k}" type="text" value="${esc(c[k]??"")}" placeholder="${ph||""}"></div>`;
@@ -7432,6 +7558,7 @@ function pcCard(c, i, npc){
     ${npc ? "" : `<div class="pcxp"><span data-xpline="${i}">${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}</span>
       ${ready?`<button class="btn" data-act="levelup" data-pc="${i}">Ready — level up to ${clampLv(c.level)+1}</button>`:""}</div>`}
     ${pcCRRow(c, npc)}
+    ${concRow(c, (npc ? "p:" : "pc:") + c.id)}
     ${pcTracker(c, i)}
     ${pcStatsBlock(c, i)}
     ${sec("sheet", "Character sheet", npc ? `
@@ -9784,6 +9911,7 @@ function enemyCard(x, i, extra, open, noWho){
       const ac = m ? (typeof m.ac==="number" ? m.ac : (String(m.ac||"").match(/\d+/)||[""])[0]) : "";
       return `<div class="fcard${down?" down":""}${x.fled?" fled":""}">
         <div class="fc-h"><span class="libref" data-libopen="${x.npc?`npcs:${x.npc}`:`foes:${x.foe}`}">${esc(x.label)}</span>${x.ally?`<span class="mono allytag">with the party</span>`:""}${x.neutral?`<span class="mono allytag">neutral</span>`:""}${x.fled?`<span class="mono fledtag">fled</span>`:""}${ac?`<span class="mono">AC ${esc(String(ac))}</span>`:""}</div>
+        ${concRow(x, "x:" + x.id)}
         <div class="hpbar"><div style="width:${pct}%;background:${pct>50?"var(--r1)":pct>25?"var(--r3)":"var(--lead)"}"></div></div>
         ${foeQuickStats(m)}
         <div class="fc-row"><span class="mono fc-hp">${x.max!=null?`HP <b>${x.hp}</b>/${x.max}`:`HP <input class="fc-max" data-fi="${i}" type="number" min="1" placeholder="max">`}</span>
@@ -9936,6 +10064,7 @@ function wireFight(n, st){
 }
 function newRound(c){
   c.round++;
+  concNewRound(c);                                 // a round less for everyone concentrating
   for(const y of c.list){ for(const r of foeResources(foeById(y.foe))) if(r.perRound) y.used[r.key] = 0; }
 }
 
@@ -12213,6 +12342,7 @@ function renderBattle(players){
       <circle r="${BS*.4}" fill="${col}" stroke="var(--ink)" stroke-width="1.5"/>
       <text text-anchor="middle" dy=".35em" font-size="${tokFont(tokenText(t))}" font-family="var(--mono)" fill="var(--paper-lit)" style="pointer-events:none">${esc(tokenText(t))}</text>
       ${down?`<path d="M-12 -12 L12 12 M12 -12 L-12 12" stroke="var(--ink)" stroke-width="2.5" style="pointer-events:none"/>`:""}
+      ${!players && (isFoe ? t.x : t.p) && (isFoe ? t.x : t.p).conc ? `<g class="tokconc" transform="translate(${-BS*.36} ${-BS*.34})" style="pointer-events:none"><circle r="6.5" fill="var(--paper-lit)" stroke="var(--r2)" stroke-width="1.5"/><text text-anchor="middle" dy=".35em" font-size="8" font-family="var(--mono)" fill="var(--r2)">C</text></g>` : ""}
       ${(lineup || !isFoe || selB===t.id || (isFoe && (tokPerson(t)||{}).known)) ? `<text text-anchor="middle" y="${BS*.4+11}" font-size="9.5" font-family="var(--serif)" fill="var(--ink)" style="pointer-events:none">${esc(lineup&&isFoe ? tokenText(t)==="?"?t.label:t.label.replace(/^.*?(\d+)$/,"#$1") : t.label.length>22?t.label.slice(0,21)+"…":t.label)}</text>` : ""}
       ${lineup && hp && !players ? `<text text-anchor="middle" y="${BS*.4+22}" font-size="8.5" font-family="var(--mono)" fill="var(--ink-soft)" style="pointer-events:none">${hp}</text>` : ""}${knownEye(players, isFoe ? tokPerson(t) : null)}</g>`;
     if(!lineup) g = danceToken(g, at0, c, t.id, players);
@@ -12733,16 +12863,16 @@ function snapOf(c, ids){
   const s = {};
   for(const id of ids){
     const x = c.list.find(y=>y.id===id);
-    if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled })) };
+    if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null })) };
     const p = partyRoster().find(y=>y.id===id);
-    if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null })) }; }
+    if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null })) }; }
   }
   return s;
 }
 function restoreSnap(c, s){
   for(const id in s){
-    if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x) Object.assign(x, s[id].v); }
-    else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; } }
+    if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; } }     // concentration comes back with the rest
+    else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; } }
   }
 }
 const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
@@ -12780,6 +12910,9 @@ function logAction(n, c){
     act = freshAct(actor.id);
     touch(); renderBattle(); renderBattlePanel(); return;
   }
+  /* a concentration spell: if they're holding another, ask first (yes ends it); it starts once the cast is logged */
+  const concSp = info.spell && info.spell.conc ? info.spell : null, concH = actor.kind==="foe" ? actor.x : actor.p;
+  if(concSp && !concOK(concH, concSp, actor.label)) return;
   const dmg = act.outcome==="miss" ? 0 : Math.max(0, Math.round(+act.dmg||0)), heal = Math.max(0, Math.round(+act.heal||0));
   /* spend what the action costs */
   let slotTxt = "";
@@ -12842,6 +12975,7 @@ function logAction(n, c){
   const reactedBefore = JSON.stringify(c.reacted||{});
   if(act.reaction){ c.reacted = c.reacted || {}; c.reacted[actor.id] = c.round; }
   c.log.push({ id:uid("lg"), round:c.round, text: act.reaction ? line.replace(/\.$/, " — as a reaction.") : line, snap, fled:fledBefore, reacted:reactedBefore, once:onceBefore });
+  if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   act = freshAct(actor.id);
   partySync();                                    // the fight's log has its own undo for this
   touch(); renderBattle(); renderBattlePanel();
@@ -12920,7 +13054,7 @@ function renderBattlePanel(){
       endTheFight(n.site, n, c, true); flash(`${down.join(", ") || "It"} down: calm again.${nextDormant(c) ? " The rest still sleep." : ""}`); return; } }
   const r = keepPaneScroll("pane-inspect", renderBattlePanelNow);
   if(battleSel && battleSel!==lastCardSel){ const card = document.querySelector("#pane-inspect .bt-sel"); if(card && card.textContent.trim()) scrollInPane(card, "start", true); }
-  lastCardSel = battleSel; return r;
+  lastCardSel = battleSel; concSweep(); return r;                // concentration: a save after damage, or an ending (and the saves waiting, on top)
 }
 /* the top of the panel while it's calm: who's here, and the button that starts the battle */
 /* the room's own panel, the same calm or fighting (Joseph, 2026-10-28): starting a battle only starts the battle's
@@ -18993,7 +19127,7 @@ function renderChips(){
   const down = R.filter(c=>{ const hp = numOr(c.hp); return hp!==null && hp<=0; }).length;
   el.innerHTML = `<button class="tchipsbtn${chipsOpen?" open":""}" data-tchipsbtn title="The party: pick one to open their card">${on ? `<span class="dot" style="background:${pcTokColour(on)}${pcTokText(on).length>2?";font-size:8.5px":""}">${esc(pcTokText(on))}</span>${esc((on.name||"Character").split(" ")[0])}` : `Party`}${down ? ` <span class="tdown">${down} down</span>` : ""} <span class="caret">▾</span></button>`
     + (chipsOpen ? `<div class="tchipmenu">${R.map(c=>{ const hp = numOr(c.hp), max = numOr(c.hpMax), nm = c.name||"Character";
-    return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot" style="background:${hp!==null&&hp<=0?"var(--lead)":pcTokColour(c)}${pcTokText(c).length>2?";font-size:8.5px":""}">${esc(pcTokText(c))}</span><span class="nm">${esc(nm)}</span> <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("")}</div>` : "");
+    return `<button class="tchip${cur===c.id?" on":""}${hp!==null&&hp<=0?" down":""}" data-tchip="${c.id}" title="${esc(nm)}: open their card"><span class="dot" style="background:${hp!==null&&hp<=0?"var(--lead)":pcTokColour(c)}${pcTokText(c).length>2?";font-size:8.5px":""}">${esc(pcTokText(c))}</span><span class="nm">${esc(nm)}</span>${c.conc ? `<span class="tconc" title="Concentrating: ${esc(c.conc.name)}">◎</span>` : ""} <span class="hp">${hp??"?"}/${max??"?"}</span></button>`; }).join("")}</div>` : "");
   const m = el.querySelector(".tchipmenu");             // the bar clips what hangs below it, so the menu sits on the page under the button
   if(m){ const r = el.getBoundingClientRect(); m.style.top = (r.bottom + 4) + "px"; m.style.left = Math.max(4, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px"; }
 }
@@ -19036,6 +19170,7 @@ function personCard(p, opts){
   const ac = m ? (typeof m.ac==="number" ? m.ac : (String(m.ac||"").match(/\d+/)||["—"])[0]) : "";
   return `<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(p.name||"Someone")}</p>${cardBtn("npcs", p.id)}<button class="pcbig" data-bigsheet="npc:${p.id}" title="Their whole sheet, big">Big sheet</button></div>
       <p class="empty-note" style="margin:0 0 6px">${esc([p.role, p.align].filter(Boolean).join(" · "))}</p>
+      ${concRow(p, "p:" + p.id)}
       ${tr ? tr : m ? `<div class="tstats"><div><small>AC</small>${esc(String(ac))}</div><div><small>HP</small>${x && x.max!=null ? `${x.hp}/${x.max}` : esc(String(foeMaxHp(m)||"—"))}</div><div><small>FIGHTS AS</small>${esc(stageOf(p) && stageOf(p).fightsAs && stageOf(p).fightsAs!=="sheet" ? ((foeById(stageOf(p).fightsAs)||{}).name||"?") : p.fightsAs==="self" || stageOf(p) ? "their sheet" : m.name)}</div></div>` : ""}
       ${tr ? "" : condChips(p.conds||[], "by:"+p.id)}
       ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
@@ -19267,6 +19402,7 @@ function renderActionBox(force){
     <div class="afr"><input data-ta="other" value="${esc(ta.other)}" placeholder="The innkeeper won't serve the dwarf until she pays her old tab…"><button class="btn" data-taother>Save</button></div>
     <label class="check" style="margin:0"><input type="checkbox" data-ta="otherLog" ${ta.otherLog?"checked":""}> Also in the game log (otherwise just your notes)</label>`;
   if(battleOf && battleActs) el.insertBefore(battleActs, el.children[1] || null);      // calm on a battle map: the battle block under the box's head
+  concPaint();                                                     // a concentration save waiting goes back on top
 }
 var battleActs = null;                                   // the battle block (renderBattlePanel builds it, wired); in table mode it lives in the Action box
 function wireActionBox(){
@@ -19359,8 +19495,10 @@ function logTableAction(){
     ta.item = "";
   } else if(ta.what==="cast"){
     const s = knownSpells(o||{}).find(x=>x.id===ta.spell); if(!s){ flash("Pick a spell."); return; }
+    if(s.conc && !concOK(o, s, name)) return;                     // holding another: ask first
     if(s.lv && ta.slot && o.slots && o.slots[ta.slot]){ partyDoing(`Cast ${s.name}`, o); o.slots[ta.slot].used = Math.min(o.slots[ta.slot].max, o.slots[ta.slot].used + 1); }
     gameLog("spell", `${name} casts ${s.name}${s.lv && ta.slot ? ` (${ORD[ta.slot]})` : ""}${on ? ` on ${on===ta.who ? "themself" : nameOf(on)}` : ""}${N}`);
+    if(s.conc) concBegin(o, s, numOr(o.hp));
   } else if(ta.what==="rest"){
     if(party){ restParty(ta.rest); }
     else if(o){ partyDoing(`${ta.rest==="long"?"Long":"Short"} rest`, o); restPc(o, ta.rest); gameLog("rest", `${name} takes a ${ta.rest} rest${N}`); }
