@@ -1,0 +1,38 @@
+// uses: nothing
+<script>
+/* rooms scale to who's in them (Joseph, 2026-10-28), stage 1: the math. A room built for 4 at level 3 (900 XP of
+   strength at Moderate), against 2 level-3s, 2 level-5s and 5 level-3s; fixed, scaling, dice, "only with 5+",
+   a person, a later stage, the hit-point estimate; the switch off, a room opting out; and who's in a room */
+const __RS = { format:"ordinate-survey-v1", title:"Scale", ppm:10, unit:"mi", party:3, scaleRooms:{ on:true, builtFor:4 },
+  nodes:[{ id:"h", name:"The Hall", kind:"town", x:0, y:0 }, { id:"k", name:"The Kitchen", kind:"town", x:50, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna", level:3 }, { id:"pb", name:"Bram", level:3 }, { id:"pc", name:"Cass", level:5 }],
+  companions:["np2", "np3"],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"survey", node:"h" } }, { id:"g2", members:["pc"], at:{ map:"survey", node:"k" } }],
+  library:{ npcs:[{ id:"np1", name:"Corvin", fightsAs:"srd:bandit-captain" }, { id:"np2", name:"Pip the mule", fightsAs:"srd:wolf", bond:{ to:"pc", kind:"mount" } },
+    { id:"np3", name:"Old Tam", level:2, scaleCounts:false }], foes:[], loot:[], encounters:[], shops:[], factions:[] } };
+const SITE = { level:3, foes:[{ id:"srd:bandit-captain", n:1, scaleHp:true }, { id:"srd:goblin-warrior", n:6 }, { id:"srd:wolf", n:"1d4" },
+  { id:"srd:ghoul", n:1, scale:"with", scaleWith:5 }, { id:"npc:np1", n:1 }], stages:[{ name:"From the cellar", foes:[{ id:"srd:skeleton", n:4 }] }] };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ const show = p => `${p.count} in (${p.levels.join(",")}): strength ${p.strength} vs built ${p.built.size}x${p.built.level} ${p.built.strength}, ratio ${p.ratio}, room ${p.roomXp} → target ${p.target}, now ${p.nowXp} ${p.label}`
+   + ' | ' + p.lines.map(L=>`${L.stage ? 'st' + (L.stage+1) + ' ' : ''}${L.name} ${L.mode}${L.with ? L.with : ''} ${L.wasText}→${L.n}${L.hp ? ' hp×' + L.hp : ''}`).join('; ');
+ const lv = (...L) => L.map((l, i)=>({ id:'x' + i, name:'X' + i, level:l }));
+ try{
+  loadJSONNow(JSON.stringify(__RS)); await wait(300);
+  out.push('modes: ' + SITE.foes.map(f=>scaleMode(f)).join(', ') + ' · strengthOf(3,3,5) ' + strengthOf(lv(3,3,5)));
+  out.push('built for 4: ' + show(roomScalePlan(SITE, lv(3,3,3,3))));
+  out.push('two level-3s: ' + show(roomScalePlan(SITE, lv(3,3))));
+  out.push('two level-5s: ' + show(roomScalePlan(SITE, lv(5,5))));
+  out.push('five level-3s: ' + show(roomScalePlan(SITE, lv(3,3,3,3,3))));
+  out.push('reasons: ' + roomScalePlan(SITE, lv(3,3)).lines.map(L=>L.why).join(' / '));
+  root.scaleRooms.on = false; const offP = roomScalePlan(SITE, lv(3,3)); out.push('switch off: ' + offP.on + ' "' + offP.why + '" ' + offP.lines.map(L=>L.now).join(','));
+  root.scaleRooms.on = true; const noP = roomScalePlan({ ...SITE, noScale:true }, lv(3,3)); out.push('room opts out: ' + noP.on + ' "' + noP.why + '"');
+  out.push('room says 3: built ' + roomScalePlan({ ...SITE, builtFor:3 }, lv(3,3)).built.size + ' · campaign unset: ' + (delete root.scaleRooms.builtFor, roomBuiltFor(SITE).size) + ' (party of 3)');
+  root.scaleRooms.builtFor = 4;
+  const who = r => roomChars("survey", r).map(c=>`${c.name} ${c.level}${c.est ? ' (est)' : ''}`).join(', ') || 'nobody';
+  out.push('in the hall: ' + who("h") + ' · in the kitchen: ' + who("k"));
+  root.groups = [{ id:"g1", members:["pa","pb","pc"], at:{ map:"survey", node:"k" } }]; out.push('together in the kitchen: ' + who("k") + ' · the hall: ' + who("h"));
+  root.groups = [{ id:"g1", members:["pa","pb","pc"], at:{ map:"survey", node:"nowhere" } }]; out.push('together, no room: the hall has ' + who("h"));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

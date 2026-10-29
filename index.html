@@ -1790,6 +1790,77 @@ function checkSite(site, level){
     verdict: eff > hard*1.5 ? "deadly" : eff > hard ? "hard"
            : eff > hard*0.55 ? "fair" : "light" };
 }
+/* ══════════════════════════════════════════════════════════════
+   ROOMS SCALE TO WHO'S IN THEM (Joseph, 2026-10-28). One switch per campaign: root.scaleRooms = { on, builtFor }
+   (builtFor: how many characters the rooms were built for; none = the party's size). A room opts out with
+   site.noScale, and can say its own site.builtFor. Each enemy line (site.foes and each stage's foes) can carry
+   scale: "scales" | "fixed" | "with" (scaleWith: N, it joins only when N or more are in the room) and scaleHp
+   (a fixed one's hit points follow too: an estimate, not an SRD rule). Unset: a group (more than one, or dice)
+   scales, a single foe is fixed, and a person from the library (npc:) is always fixed and never multiplies.
+   A companion counts as one of the people in the room unless p.scaleCounts === false.
+   The room keeps the difficulty it was built at: its own XP × (the strength in the room ÷ the strength it was
+   built for). Fixed lines keep theirs; the scaling lines share what's left in proportion, never below 1 each.
+   ══════════════════════════════════════════════════════════════ */
+const scaleOn = () => !!(root && root.scaleRooms && root.scaleRooms.on);
+/* a group's strength: the SRD 5.2 XP budget per character, added up (by level). One place, so another measure
+   (a character's own CR, from their sheet) can stand in for it later. chars: [{ level }] */
+const strengthOf = (chars, diff) => budgetFor((chars||[]).map(c=>clampLv(c && c.level)))[diff || "mod"];
+/* a line's way of scaling, said or by default */
+function scaleMode(f){
+  if(String(f && f.id || "").startsWith("npc:")) return "fixed";                 // a person never multiplies
+  if(f && (f.scale==="scales" || f.scale==="fixed" || f.scale==="with")) return f.scale;
+  return typeof f.n==="string" && /d/i.test(f.n) || expectedCount(f.n) > 1 ? "scales" : "fixed";
+}
+/* what the room was built for: how many characters, at what level */
+function roomBuiltFor(site, n){
+  const size = Math.max(1, Math.round(+(site && site.builtFor) || +(root && root.scaleRooms && root.scaleRooms.builtFor) || partySize()));
+  return { size, level:clampLv((site && site.level) || (n && n.level) || 1) };
+}
+/* the plan for a room with these characters in it (pure: reads the site, the stat blocks and the budgets, changes nothing).
+   chars: [{ id, name, level }]. Each line: { stage, k, id, name, mode, was, now, xpEach, n (the count to write: as written, or a number), hp?, why } */
+function roomScalePlan(site, chars, n){
+  const B = roomBuiltFor(site, n), inRoom = (chars||[]).filter(Boolean), count = inRoom.length;
+  const built = strengthOf(Array(B.size).fill({ level:B.level })), have = count ? strengthOf(inRoom) : 0;
+  const ratio = built ? have / built : 1;
+  const lines = [];
+  [{ name:"", foes:(site && site.foes) || [] }, ...siteStages(site).map((s, k)=>({ name:s.name || `Stage ${k+2}`, foes:s.foes || [] }))].forEach((s, si)=>
+    s.foes.forEach((f, k)=>{ const m = foeById(f.id), was = expectedCount(f.n), mode = scaleMode(f);
+      lines.push({ stage:si, stageName:s.name, k, id:f.id, name:(m && m.name) || f.id, mode, with:mode==="with" ? Math.max(1, Math.round(+f.scaleWith || 1)) : 0,
+        was, wasText:String(f.n ?? 1), orig:f.n ?? 1, xpEach:((m && m.xp) || 0) * (f.chance==null ? 1 : f.chance), scaleHp:!!f.scaleHp }); }));
+  const xpOf = (L, nn) => L.xpEach * nn;
+  /* the room as built: everything but the lines that need more characters than it was built for */
+  const roomXp = lines.reduce((a, L)=>a + (L.mode!=="with" || L.with <= B.size ? xpOf(L, L.was) : 0), 0);
+  const target = roomXp * ratio;
+  const off = !scaleOn() ? "The campaign doesn't scale rooms." : site && site.noScale ? "This room doesn't scale." : !count ? "Nobody's in the room." : "";
+  let fixedXp = 0, scaleXp = 0;
+  for(const L of lines){
+    L.n = L.orig;                                     // what the line's count becomes: as written, unless it scales
+    if(off){ L.now = L.was; L.why = off; continue; }
+    if(L.mode==="with"){ L.now = count >= L.with ? L.was : 0; if(!L.now) L.n = 0; L.why = count >= L.with ? `${count} in the room: they join (with ${L.with} or more)` : `only with ${L.with} or more; ${count} in the room`; fixedXp += xpOf(L, L.now); }
+    else if(L.mode==="fixed"){ L.now = L.was; L.why = String(L.id).startsWith("npc:") ? "a person: always as written" : "fixed"; fixedXp += xpOf(L, L.now);
+      if(L.scaleHp && Math.abs(ratio - 1) > .01){ L.hp = Math.round(Math.max(.5, Math.min(2, ratio)) * 100) / 100; L.why += `, hit points ×${L.hp} (an estimate)`; } }
+    else scaleXp += xpOf(L, L.was);
+  }
+  const f = off ? 1 : scaleXp > 0 ? Math.max(0, target - fixedXp) / scaleXp : 1;
+  for(const L of lines) if(!off && L.mode==="scales"){
+    if(Math.abs(f - 1) < 1e-6){ L.now = L.was; L.why = "scales: as built, for this many"; continue; }      // dice stay dice
+    L.now = L.n = Math.max(1, Math.round(L.was * f)); L.why = L.now===L.was ? "scales: the same for this many" : `scales: ${L.wasText} → ${L.now}`; }
+  const nowXp = lines.reduce((a, L)=>a + xpOf(L, L.now), 0), b = count ? budgetFor(inRoom.map(c=>c.level)) : null, verdict = b ? gradeAgainst(nowXp, b) : "";
+  return { on:!off, why:off, count, names:inRoom.map(c=>c.name || "Someone"), levels:inRoom.map(c=>clampLv(c.level)), built:{ ...B, strength:built }, strength:have,
+    ratio:Math.round(ratio * 1000) / 1000, roomXp:Math.round(roomXp), target:Math.round(target), nowXp:Math.round(nowXp), verdict, label:verdict ? VERDICT_LABEL[verdict] : "", lines };
+}
+/* who's in a room: the groups standing there (everyone, while the party is together and has no other place), and the
+   companions with them (one bonded to a character goes where they go) that count. Each as { id, name, level }. */
+function roomChars(map, nodeId){
+  const all = partyRoster(), gs = partySize() > 1 ? groupsOf() : [];
+  const there = gs.filter(g=>g.at && g.at.map===map && g.at.node===nodeId);
+  const pcs = partySize() <= 1 ? all : there.length ? all.filter(p=>there.some(g=>g.members.includes(p.id))) : gs.length > 1 ? [] : all;
+  const comps = pcs.length ? companions().filter(p=>p.scaleCounts!==false && (()=>{ const b = bondOf(p); return !b || !memberIds().includes(b.to) || pcs.some(q=>q.id===b.to); })()) : [];
+  /* a companion with no level of their own (a befriended creature) counts at its CR, at least 1: an estimate */
+  return [...pcs.map(p=>({ id:p.id, name:p.name, level:clampLv(p.level) })),
+          ...comps.map(p=>{ const m = !numOr(p.level) && p.fightsAs && p.fightsAs!=="self" ? foeById(p.fightsAs) : null;
+            return { id:"n:"+p.id, name:p.name, level:clampLv(numOr(p.level) || (m ? Math.max(1, Math.round(+m.cr||1)) : 1)), companion:true, est:!numOr(p.level) }; })];
+}
 /* the verdict box's sentence, solo or party */
 function verdictLine(chk, level){
   const head = `${chk.foes} foe${chk.foes===1?"":"s"} · ${chk.raw} xp`;
