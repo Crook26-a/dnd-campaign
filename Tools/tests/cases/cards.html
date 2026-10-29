@@ -28,14 +28,14 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   pane = 'party'; syncTabs(); renderPane(true); await wait(50);
   const btns = [...document.querySelectorAll('#pane-party [data-cardopen]')].map(b=>b.dataset.cardopen); out.push('party tab buttons: ' + btns.join(', '));
   document.querySelector('#pane-party [data-cardopen="loot:srd:bag-of-holding"]').click(); await opened();
-  const cv = document.getElementById('cardview'); out.push('opened: ' + !cv.hidden + ', img ' + !!cv.querySelector('img.cv-img') + ', ' + [...cv.querySelectorAll('[data-cardact]')].map(b=>b.textContent.trim()).join(' / ') + ' · give ' + !!cv.querySelector('[data-cardgive]'));
-  const sel = cv.querySelector('[data-cardgive]'); sel.value = 'pb'; sel.dispatchEvent(new Event('change', { bubbles:true })); await wait(50);
+  const cv = document.getElementById('cardview'); out.push('opened: ' + !cv.hidden + ', img ' + !!cv.querySelector('img.cv-img') + ', ' + [...cv.querySelectorAll('[data-cardact]')].map(b=>b.textContent.trim()).join(' / ') + ' · give ' + !!cv.querySelector('[data-cardto]'));
+  const sel = cv.querySelector('[data-cardto]'); sel.value = 'pb'; cv.querySelector('[data-cardact="give"]').click(); await wait(50);
   out.push('given: Bram has ' + (root.roster[1].inv||[]).map(e=>e.id).join(','));
   cv.querySelector('[data-cardact="tv"]').click(); await wait(300);
   out.push('TV: ' + playerShow.kind + ' ' + playerShow.key + ' (' + playerShow.name + ')');
   document.querySelector('#cardview [data-cardact="close"]').click(); await wait(30); out.push('closed: ' + cv.hidden);
-  openCard('spells:spell:fireball'); await opened(); const s2 = cv.querySelector('[data-cardgive]'); out.push('spell give label: ' + s2.options[0].text);
-  s2.value = 'pb'; s2.dispatchEvent(new Event('change', { bubbles:true })); await wait(50); out.push('taught: Bram knows ' + (root.roster[1].spells||[]).join(','));
+  openCard('spells:spell:fireball'); await opened(); const s2 = cv.querySelector('[data-cardto]'); out.push('spell give label: ' + s2.options[0].text);
+  s2.value = 'pb'; cv.querySelector('[data-cardact="give"]').click(); await wait(50); out.push('taught: Bram knows ' + (root.roster[1].spells||[]).join(','));
   document.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape' })); await wait(30); out.push('Esc closes: ' + cv.hidden);
   pane = 'library'; libTab = 'loot'; libOpen = 'll1'; syncTabs(); renderPane(true); await wait(50);
   out.push('library entry: ' + [...document.querySelectorAll('#pane-library [data-cardopen]')].map(b=>b.dataset.cardopen + ' "' + b.textContent + '"').join(', '));

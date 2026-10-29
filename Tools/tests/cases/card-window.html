@@ -17,11 +17,13 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   openDrawer('party'); await wait(60); openDrawer('library'); await wait(40);
   libTab = 'loot'; libOpen = 'll1'; openDrawer('library'); await wait(80);
   document.querySelector('#tdrawer [data-cardopen="loot:ll1"]').click(); await opened();
-  const cv = document.getElementById('cardview'), sel = cv.querySelector('[data-cardgive]');
+  const cv = document.getElementById('cardview'), sel = cv.querySelector('[data-cardto]');
+  cv.querySelector('[data-cardact="give"]').click(); await wait(40); out.push('Give with nobody picked: "' + document.getElementById('cv-said').textContent + '", inventories ' + root.roster.map(p=>(p.inv||[]).length).join('/'));
+  sel.value = 'pb'; sel.dispatchEvent(new Event('change', { bubbles:true })); await wait(40); out.push('picking alone gives nothing: ' + root.roster.map(p=>(p.inv||[]).length).join('/') + ', box shows ' + sel.options[sel.selectedIndex].text);
   out.push('give box: ' + under(sel) + ' · options ' + [...sel.options].map(o=>o.text).join('/'));
-  sel.value = 'pb'; sel.dispatchEvent(new Event('change', { bubbles:true })); await wait(60);
+  sel.value = 'pb'; cv.querySelector('[data-cardact="give"]').click(); await wait(60);
   const said = document.getElementById('cv-said');
-  out.push('after giving: Bram has ' + (root.roster[1].inv||[]).map(e=>e.id).join(',') + ' · in the window ' + (said.hidden ? 'nothing' : '"' + said.textContent + '"') + ' (' + under(said) + ')');
+  out.push('box still shows ' + sel.options[sel.selectedIndex].text); out.push('after giving: Bram has ' + (root.roster[1].inv||[]).map(e=>e.id).join(',') + ' · in the window ' + (said.hidden ? 'nothing' : '"' + said.textContent + '"') + ' (' + under(said) + ')');
   cv.querySelector('[data-cardact="tv"]').click(); await wait(300);
   const ps = document.getElementById('pscreen');
   out.push('after TV: showing ' + playerShow.kind + ' · card window open ' + !cv.hidden + ' · Players\' screen button ' + under(document.getElementById('pscreenBtn')));

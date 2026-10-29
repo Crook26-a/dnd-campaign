@@ -7,7 +7,7 @@ creature: Small Fey | Goblin Boss | stats false
 faction: Your standing: Neutral | What they want. The harbour trade | how false
 picture: image/png 750x1050, drawn
 party tab buttons: loot:srd:bag-of-holding, spells:spell:fireball
-opened: true, img true, Show on the TV / Save the picture / Copy it / Close · give true
+opened: true, img true, Show on the TV / Save the picture / Copy it / Give / Close · give true
 given: Bram has srd:bag-of-holding
 TV: card loot:srd:bag-of-holding (Bag of Holding)
 closed: true

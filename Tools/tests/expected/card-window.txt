@@ -1,4 +1,7 @@
-give box: reachable · options Give to…/Anna/Bram
+Give with nobody picked: "Pick who gets it first.", inventories 0/0
+picking alone gives nothing: 0/0, box shows Bram
+give box: reachable · options Give it to…/Anna/Bram
+box still shows Bram
 after giving: Bram has ll1 · in the window "✓ Lantern of Ashes is in Bram's inventory, card and all." (reachable)
 after TV: showing card · card window open false · Players' screen button reachable
 panel open true · says "Showing the card for Lantern of Ashes. T" · The map reachable · Open reachable
