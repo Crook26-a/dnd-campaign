@@ -1,0 +1,59 @@
+// uses: nothing
+<script>
+/* rooms scale to who walks in, stage 2: the controls. The campaign's switch and "built for" (Data → This campaign),
+   a room's own (scales or not, built for), each enemy line's way (room and stage), a fixed one's hit-point tick,
+   a companion's tick, and the preview in the room panel while it's calm */
+const __SC = { format:"ordinate-survey-v1", title:"Scale Controls", ppm:10, unit:"mi", party:3,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna", level:5 }, { id:"pb", name:"Bram", level:5 }, { id:"pc", name:"Cass", level:5 }],
+  companions:["np2"], groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }, { id:"g2", members:["pc"], at:{ map:"h", node:"kit" } }],
+  library:{ npcs:[{ id:"np2", name:"Pip", fightsAs:"srd:wolf" }], foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright",
+      foes:[{ id:"srd:goblin-warrior", n:6 }, { id:"srd:bandit-captain", n:1 }], stages:[{ name:"Reinforcements", foes:[{ id:"srd:skeleton", n:2 }] }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[[6,1],[7,1]] } } },
+    { id:"kit", name:"The Kitchen", kind:"hall", x:200, y:100, w:6, d:6 } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = []; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const change = (el, v) => { if(el.type==="checkbox") el.checked = v; else el.value = v; el.dispatchEvent(new Event('change', { bubbles:true })); };
+ try{
+  loadJSONNow(JSON.stringify(__SC)); await wait(300);
+  /* the campaign's switch */
+  pane = 'data'; syncTabs(); renderPane(true); await wait(30);
+  const on = () => document.querySelector('#pane-data [data-sclcamp="on"]');
+  out.push('campaign, off: ticked ' + on().checked + ', size box ' + !!document.querySelector('#pane-data [data-sclcamp="size"]'));
+  change(on(), true); await wait(30);
+  const size = document.querySelector('#pane-data [data-sclcamp="size"]'); out.push('on: ' + JSON.stringify(root.scaleRooms) + ', size placeholder ' + (size && size.placeholder));
+  change(size, '4'); await wait(30); out.push('built for 4: ' + JSON.stringify(root.scaleRooms));
+  /* a room's own, and each line, in the Build panel */
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'), st = hall.site;
+  select('node', 'hall'); setDmMode(false); renderPane(true); await wait(40);
+  const P = '#pane-inspect ';
+  out.push('room row: ' + document.querySelector(P + '.scaleroom').textContent.replace(/\s+/g, ' ').trim().slice(0, 90));
+  out.push('lines: ' + [...document.querySelectorAll(P + '.scalerow')].map(r=>{ const s = r.querySelector('select'); return (s ? s.options[s.selectedIndex].text : txt(r)) + (r.querySelector('[data-k="hp"]') ? ' +hp ' + r.querySelector('[data-k="hp"]').checked : ''); }).join(' | '));
+  change(document.querySelector(P + `[data-scl="hall|f:1"][data-k="hp"]`), false); await wait(30);
+  change(document.querySelector(P + `[data-scl="hall|s:0:0"][data-k="mode"]`), 'with'); await wait(30);
+  out.push('captain hp ' + st.foes[1].scaleHp + ' · skeletons ' + st.stages[0].foes[0].scale + ' with ' + st.stages[0].foes[0].scaleWith + ' · its box ' + !!document.querySelector(P + `[data-scl="hall|s:0:0"][data-k="with"]`));
+  change(document.querySelector(P + `[data-scl="hall|s:0:0"][data-k="with"]`), '3'); await wait(30);
+  change(document.querySelector(P + `[data-sclroom="hall"][data-k="size"]`), '2'); await wait(30);
+  out.push('room built for ' + st.builtFor + ' · skeletons with ' + st.stages[0].foes[0].scaleWith);
+  change(document.querySelector(P + `[data-sclroom="hall"][data-k="on"]`), false); await wait(30);
+  out.push('room off: noScale ' + st.noScale + ', lines still shown ' + document.querySelectorAll(P + '.scalerow').length + ', ' + txt(document.querySelector(P + '.scaleroom')));
+  change(document.querySelector(P + `[data-sclroom="hall"][data-k="on"]`), true); await wait(30);
+  /* the preview: Anna and Bram walk in, with Pip (no level: a wolf, CR 1/4, so level 1) */
+  setDmMode(true); await wait(30); openBattle(hall); await wait(120);
+  const prev = () => document.querySelector('#pane-inspect .scaleprev');
+  out.push('preview: ' + txt(prev().querySelector('summary') || prev()));
+  prev().open = true; out.push('  breakdown: ' + [...prev().querySelectorAll('.sbl')].map(txt).join(' / '));
+  out.push('  note: ' + txt(prev().querySelector('.empty-note')));
+  battleOf.edit = true; renderEditPanel(); await wait(30); out.push('furnishing: lines ' + document.querySelectorAll('#pane-inspect .scalerow').length + ', first "' + (document.querySelector('#pane-inspect .scalerow select') || {}).value + '"'); battleOf.edit = false; renderBattlePanel(); await wait(30);
+  /* Pip doesn't count */
+  pane = 'party'; syncTabs(); renderPane(true); await wait(30);
+  const tick = document.querySelector('#pane-party [data-sclcomp="np2"]'); out.push('companion tick: ' + (tick ? tick.checked + ' "' + txt(tick.closest('label')) + '"' : 'none'));
+  change(tick, false); await wait(60); out.push('  Pip ' + libNpcById('np2').scaleCounts + ' · preview: ' + txt(prev() && (prev().querySelector('summary') || prev())));
+  /* the switch off: nothing shows */
+  root.scaleRooms.on = false; renderBattlePanel(); renderPane(true); await wait(30);
+  out.push('off: preview ' + !!prev() + ', companion tick ' + !!document.querySelector('#pane-party [data-sclcomp]'));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

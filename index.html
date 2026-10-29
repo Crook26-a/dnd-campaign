@@ -1137,6 +1137,13 @@
   #cardview .cv-box{background:var(--paper-lit);color:var(--ink);border:1px solid var(--ink);border-radius:6px;box-shadow:0 14px 40px rgba(0,0,0,.45);padding:14px;max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(440px,100%)}
   #cardview .cv-img{width:100%;max-height:68vh;object-fit:contain}
   #cardview .cv-acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+  /* rooms that scale to who walks in: an enemy line's setting, a room's, and the preview in the room panel */
+  .scalerow{display:flex;flex-wrap:wrap;gap:3px 8px;align-items:center;font-size:11px;margin:0 0 6px}
+  .scalerow .sclab{width:100%;color:var(--ink-faint)}
+  .scalerow select{font-size:11px}
+  .scaleprev{margin:4px 0 8px;font-size:12px}
+  .scaleprev summary{cursor:pointer}
+  p.scaleprev.off{font-size:11px;color:var(--ink-faint)}
   #bigsheet .bs-card{background:var(--paper-lit);color:var(--ink);border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 40px rgba(0,0,0,.45);
     width:min(1180px,100%);max-height:100%;overflow:auto;padding:22px 26px 26px;font-family:var(--serif)}
   #bigsheet .bs-head{display:flex;align-items:flex-start;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:14px}
@@ -1795,7 +1802,7 @@ function checkSite(site, level){
    (builtFor: how many characters the rooms were built for; none = the party's size). A room opts out with
    site.noScale, and can say its own site.builtFor. Each enemy line (site.foes and each stage's foes) can carry
    scale: "scales" | "fixed" | "with" (scaleWith: N, it joins only when N or more are in the room) and scaleHp
-   (a fixed one's hit points follow too: an estimate, not an SRD rule). Unset: a group (more than one, or dice)
+   (a fixed one's hit points follow too, half to double: an estimate, not an SRD rule; on unless scaleHp === false). Unset: a group (more than one, or dice)
    scales, a single foe is fixed, and a person from the library (npc:) is always fixed and never multiplies.
    A companion counts as one of the people in the room unless p.scaleCounts === false.
    The room keeps the difficulty it was built at: its own XP × (the strength in the room ÷ the strength it was
@@ -1826,7 +1833,7 @@ function roomScalePlan(site, chars, n){
   [{ name:"", foes:(site && site.foes) || [] }, ...siteStages(site).map((s, k)=>({ name:s.name || `Stage ${k+2}`, foes:s.foes || [] }))].forEach((s, si)=>
     s.foes.forEach((f, k)=>{ const m = foeById(f.id), was = expectedCount(f.n), mode = scaleMode(f);
       lines.push({ stage:si, stageName:s.name, k, id:f.id, name:(m && m.name) || f.id, mode, with:mode==="with" ? Math.max(1, Math.round(+f.scaleWith || 1)) : 0,
-        was, wasText:String(f.n ?? 1), orig:f.n ?? 1, xpEach:((m && m.xp) || 0) * (f.chance==null ? 1 : f.chance), scaleHp:!!f.scaleHp }); }));
+        was, wasText:String(f.n ?? 1), orig:f.n ?? 1, xpEach:((m && m.xp) || 0) * (f.chance==null ? 1 : f.chance), scaleHp:f.scaleHp!==false }); }));
   const xpOf = (L, nn) => L.xpEach * nn;
   /* the room as built: everything but the lines that need more characters than it was built for */
   const roomXp = lines.reduce((a, L)=>a + (L.mode!=="with" || L.with <= B.size ? xpOf(L, L.was) : 0), 0);
@@ -1856,11 +1863,88 @@ function roomChars(map, nodeId){
   const there = gs.filter(g=>g.at && g.at.map===map && g.at.node===nodeId);
   const pcs = partySize() <= 1 ? all : there.length ? all.filter(p=>there.some(g=>g.members.includes(p.id))) : gs.length > 1 ? [] : all;
   const comps = pcs.length ? companions().filter(p=>p.scaleCounts!==false && (()=>{ const b = bondOf(p); return !b || !memberIds().includes(b.to) || pcs.some(q=>q.id===b.to); })()) : [];
-  /* a companion with no level of their own (a befriended creature) counts at its CR, at least 1: an estimate */
   return [...pcs.map(p=>({ id:p.id, name:p.name, level:clampLv(p.level) })),
-          ...comps.map(p=>{ const m = !numOr(p.level) && p.fightsAs && p.fightsAs!=="self" ? foeById(p.fightsAs) : null;
-            return { id:"n:"+p.id, name:p.name, level:clampLv(numOr(p.level) || (m ? Math.max(1, Math.round(+m.cr||1)) : 1)), companion:true, est:!numOr(p.level) }; })];
+          ...comps.map(p=>({ id:"n:"+p.id, name:p.name, ...compLevel(p), companion:true }))];
 }
+/* a companion's level for a room's strength: their own, or (a befriended creature with none) its CR, at least 1: an estimate */
+function compLevel(p){
+  if(numOr(p.level)) return { level:clampLv(numOr(p.level)), est:false };
+  const m = p.fightsAs && p.fightsAs!=="self" ? foeById(p.fightsAs) : null;
+  return { level:clampLv(m ? Math.max(1, Math.round(+m.cr||1)) : 1), est:true };
+}
+/* the controls (Joseph, 2026-10-28): the campaign's switch and "built for", a room's own, an enemy line's way of
+   scaling, a companion's tick, and the preview in the room panel. Shown only while the campaign's switch is on. */
+const SCALE_MODES = [["scales","More or fewer of them"],["fixed","Always as written"],["with","Only when enough walk in"]];
+function scaleCampBlock(){
+  const S = root.scaleRooms || {}, on = !!S.on;
+  return `<label class="check" style="margin:0 0 4px"><input type="checkbox" data-sclcamp="on" ${on?"checked":""}> Rooms scale to who walks in</label>
+    ${on ? `<div class="pcrow" style="align-items:center;margin:0 0 4px"><label class="mini" style="flex:1">Rooms are built for</label><input data-sclcamp="size" class="mono" type="number" min="1" max="12" value="${S.builtFor||""}" placeholder="${partySize()}" style="width:52px"> <small>characters</small></div>` : ""}
+    <p class="empty-note" style="font-size:11px;margin:0 0 12px">${on ? `A room keeps the difficulty it was built at for whoever walks in: fewer enemies for two, more for five, by the characters' levels (the SRD 5.2 XP budget per character). Each enemy line in a room says how it scales, and a room can opt out. Blank: the party's size, ${partySize()}. Nothing changes until the battle starts.`
+      : "Off: every room is as written, whoever walks in."}</p>`;
+}
+function scaleRoomRow(n, st){
+  if(!scaleOn()) return "";
+  const camp = Math.max(1, Math.round(+(root.scaleRooms||{}).builtFor || partySize())), B = roomBuiltFor(st, n);
+  return `<div class="scaleroom"><label class="check" style="margin:0 0 4px"><input type="checkbox" data-sclroom="${esc(n.id)}" data-k="on" ${st.noScale?"":"checked"}> Scales to who walks in</label>
+    ${st.noScale ? `<p class="empty-note" style="font-size:11px;margin:0 0 8px">As written, whoever walks in.</p>`
+      : `<div class="pcrow" style="align-items:center;margin:0 0 8px"><label class="mini" style="flex:1">Built for</label><input data-sclroom="${esc(n.id)}" data-k="size" class="mono" type="number" min="1" max="12" value="${st.builtFor||""}" placeholder="${camp}" style="width:52px"> <small>characters at level ${B.level} (blank: the campaign's ${camp})</small></div>`}</div>`;
+}
+/* key: "<node id>|f:<i>" for the room's own line, "<node id>|s:<stage>:<i>" for a later stage's */
+function scaleLineRow(f, key){
+  if(!scaleOn() || !f) return "";
+  const mode = scaleMode(f), person = String(f.id||"").startsWith("npc:");
+  return `<div class="scalerow"><span class="sclab">When fewer or more walk in</span>
+    ${person ? `<span>A person: always themselves</span>` : `<select data-scl="${esc(key)}" data-k="mode">${SCALE_MODES.map(([v, l])=>`<option value="${v}" ${mode===v?"selected":""}>${l}</option>`).join("")}</select>`}
+    ${mode==="with" ? `<span>with <input data-scl="${esc(key)}" data-k="with" class="mono" type="number" min="1" max="12" value="${Math.max(1, Math.round(+f.scaleWith||1))}" style="width:44px"> or more</span>` : ""}
+    ${mode==="fixed" ? `<label class="check" style="margin:0" title="Their hit points go up or down with who walks in, from half to double. Not an SRD rule: an estimate, for a boss who'd otherwise be too much or too little"><input type="checkbox" data-scl="${esc(key)}" data-k="hp" ${f.scaleHp!==false?"checked":""}> Hit points follow <small>(an estimate)</small></label>` : ""}</div>`;
+}
+function scaleCompRow(c){
+  if(!scaleOn()) return "";
+  const p = libNpcById(c.id); if(!p) return "";
+  const L = compLevel(p);
+  return `<label class="check" style="margin:2px 0 6px" title="Rooms scale to who walks in: tick to count them as one of the people"><input type="checkbox" data-sclcomp="${esc(p.id)}" ${p.scaleCounts!==false?"checked":""}> Counts when they walk into a room${L.est ? ` <small>(no level: as level ${L.level}, from their CR, an estimate)</small>` : ""}</label>`;
+}
+const andList = a => a.length < 2 ? (a[0] || "") : `${a.slice(0, -1).join(", ")} and ${a[a.length-1]}`;
+const levelsWord = L => !L.length ? "" : L.every(l=>l===L[0]) ? (L.length===1 ? `level ${L[0]}` : `${L.length} × level ${L[0]}`) : `levels ${L.join(", ")}`;
+/* the room panel's preview (calm): what the room would be for who's in it now, and how it's worked out */
+function scalePreview(n, st){
+  if(!scaleOn() || !st || !allSiteFoes(st).length) return "";
+  const chars = roomChars(planOf || "survey", n.id), p = roomScalePlan(st, chars, n);
+  if(!p.on) return `<p class="scaleprev off">${st.noScale ? "This room doesn't scale: as written, whoever walks in." : "Nobody's in the room yet: it scales to whoever walks in."}</p>`;
+  const who = `${andList(p.names)} (${levelsWord(p.levels)})`;
+  const changed = p.lines.filter(L=>String(L.n)!==String(L.orig) || L.hp);
+  const bits = changed.map(L=>L.mode==="with" ? (L.n ? `${L.n} × ${L.name} join` : `no ${L.name}`)
+    : L.mode==="scales" ? `${L.n} × ${L.name} instead of ${L.wasText}` : `${L.name}'s hit points ×${L.hp}`);
+  const head = changed.length ? `Scaled for ${who}: ${bits.join(", ")} · ${p.label}` : `Built for this many: ${who}, as written · ${p.label}`;
+  return `<details class="scaleprev"><summary>${esc(head)}</summary>
+    <div class="sbl">Their strength is ${p.strength.toLocaleString()} XP against the ${p.built.strength.toLocaleString()} it was built for (${levelsWord(Array(p.built.size).fill(p.built.level))}): ${Math.round(p.ratio*100)}%. The room's ${p.roomXp.toLocaleString()} XP becomes ${p.target.toLocaleString()}; in whole creatures, ${p.nowXp.toLocaleString()}.</div>
+    ${p.lines.map(L=>`<div class="sbl"><b>${esc(L.stageName ? `${L.stageName}: ` : "")}${esc(L.name)}</b> ${esc(L.wasText)} → ${esc(String(L.n))} <small>${esc(L.why)}</small></div>`).join("")}
+    ${chars.some(c=>c.est) ? `<p class="empty-note" style="font-size:11px;margin:4px 0 0">${esc(andList(chars.filter(c=>c.est).map(c=>c.name||"A companion")))}: no level, so counted at their CR, an estimate.</p>` : ""}
+    <p class="empty-note" style="font-size:11px;margin:4px 0 0">Strength is the SRD 5.2 XP budget per character, added up. Nothing changes until the battle starts.</p></details>`;
+}
+function scaleRefresh(){
+  try{ if(editingInside()) renderEditPanel(); else if(battleOf) renderBattlePanel(); else renderInspect(); }catch(err){}
+  renderPane(true); const d = document.getElementById("pane-data"); if(d && !d.hidden && typeof renderData==="function") renderData(); }
+document.addEventListener("change", e=>{
+  const t = e.target; if(!t.dataset) return;
+  if(t.dataset.sclcamp){ const S = root.scaleRooms = Object.assign({ on:false }, root.scaleRooms || {});
+    if(t.dataset.sclcamp==="on") S.on = t.checked; else { const v = Math.round(+t.value||0); if(v > 0) S.builtFor = Math.min(12, v); else delete S.builtFor; }
+    if(!S.on && !S.builtFor) delete root.scaleRooms;
+    saveParty(); scaleRefresh(); if(t.dataset.sclcamp==="on") flash(S.on ? "Rooms scale to who walks in. Each room's enemy lines say how." : "Rooms are as written again, whoever walks in."); return; }
+  if(t.dataset.sclcomp){ const p = libNpcById(t.dataset.sclcomp); if(!p) return;
+    if(t.checked) delete p.scaleCounts; else p.scaleCounts = false; saveParty(); scaleRefresh(); return; }
+  if(t.dataset.sclroom){ const n = (doc.nodes||[]).find(x=>x.id===t.dataset.sclroom), st = n && n.site; if(!st) return;
+    if(t.dataset.k==="on"){ if(t.checked) delete st.noScale; else st.noScale = true; }
+    else { const v = Math.round(+t.value||0); if(v > 0) st.builtFor = Math.min(12, v); else delete st.builtFor; }
+    touch(); scaleRefresh(); return; }
+  if(t.dataset.scl){ const [nid, key] = t.dataset.scl.split("|"), n = (doc.nodes||[]).find(x=>x.id===nid), st = n && n.site; if(!st) return;
+    const pp = key.split(":"), f = pp[0]==="f" ? (st.foes||[])[+pp[1]] : ((siteStages(st)[+pp[1]]||{}).foes||[])[+pp[2]]; if(!f) return;
+    const k = t.dataset.k;
+    if(k==="mode"){ f.scale = t.value; if(f.scale==="with"){ if(!f.scaleWith) f.scaleWith = roomBuiltFor(st, n).size + 1; } else delete f.scaleWith; }
+    else if(k==="with") f.scaleWith = Math.max(1, Math.min(12, Math.round(+t.value||1)));
+    else if(k==="hp"){ if(t.checked) delete f.scaleHp; else f.scaleHp = false; }
+    touch(); scaleRefresh(); }
+});
 /* the verdict box's sentence, solo or party */
 function verdictLine(chk, level){
   const head = `${chk.foes} foe${chk.foes===1?"":"s"} · ${chk.raw} xp`;
@@ -6987,7 +7071,7 @@ function pcCard(c, i, npc){
     </div>
     <div class="pcsum mono">${c.shape ? `<b class="wstag">${esc(shapeName(c))}</b> · ` : ""}${npc && (bondOwner(c) || c.role) ? `<b>${esc(bondOwner(c) ? bondLabel(c) : c.role)}</b>${sum?" · ":""}` : ""}${sum}${!npc&&c.player?` · <i>${esc(c.player)}</i>`:""}${!npc ? bondedTo(c.id).map(p=>` · ${esc((p.bond.kind||"companion").toLowerCase())}: ${esc(p.name||"?")}`).join("") : ""}</div>
     ${folded ? "" : `
-    ${npc ? bondRow(c, i) : pcTokRow(c, i)}
+    ${npc ? bondRow(c, i) + scaleCompRow(c) : pcTokRow(c, i)}
     ${npc ? "" : `<div class="pcxp"><span data-xpline="${i}">${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}</span>
       ${ready?`<button class="btn" data-act="levelup" data-pc="${i}">Ready — level up to ${clampLv(c.level)+1}</button>`:""}</div>`}
     ${pcTracker(c, i)}
@@ -7700,7 +7784,8 @@ function campNameBlock(){
     <div class="field" style="margin-bottom:4px"><label>Campaign name</label><input data-fbcamp value="${esc(set ? root.campaign : "")}" placeholder="${esc(String(root.title||"") || "Its name")}"></div>
     <button class="btn wide" data-fbcampsend style="margin-bottom:4px" title="A small file with only this name: bring it into the Field Book and it's in the phone's Campaign dropdown">Send the name to the Field Book</button>
     <p class="empty-note" style="font-size:11px;margin:0 0 12px">${set ? "Saved in the map. On the phone, the Field Book's Campaign dropdown has it once you've sent something from here (Library → Send to the Field Book), and only things for this campaign (or for any) come in here."
-      : `Not set yet: the Field Book uses the map's title, "${esc(String(root.title||""))}". Type the name you want the phone to show.`}</p>`;
+      : `Not set yet: the Field Book uses the map's title, "${esc(String(root.title||""))}". Type the name you want the phone to show.`}</p>
+    ${scaleCampBlock()}`;
 }
 function fieldBookIn(text, quiet){                  // quiet: the inbox — no message, just the counts back
   let o; try{ o = JSON.parse(text); }catch(err){ flash("That isn't a Field Book file."); return; }
@@ -9187,7 +9272,7 @@ function plannedPanel(n){
     <div class="pcrow"><select class="pl-addp" style="flex:1;min-width:0"><option value="">Add a person…</option>${lib().npcs.filter(p=>!(n.npcs||[]).includes(p.id)).map(p=>`<option value="${p.id}">${esc(p.name||"Unnamed")}${p.spare?" · spare":""}</option>`).join("")}</select></div>
     <p class="grouplab">The fight here</p>
     ${(st.foes||[]).map((f,i)=>{ const m = foeById(f.id);
-      return `<div class="foerow"><span style="flex:1;min-width:0">${m?`<span class="libref" data-libopen="foes:${f.id}">${esc(m.name)}</span>`:"<i>unknown</i>"}</span><input class="fnum mono pl-n" data-i="${i}" type="text" value="${esc(String(f.n??1))}" title="How many: a number, or dice like 1d3"><button class="fdel" data-pl="fdel" data-i="${i}" title="Take this row away">×</button></div>
+      return `<div class="foerow"><span style="flex:1;min-width:0">${m?`<span class="libref" data-libopen="foes:${f.id}">${esc(m.name)}</span>`:"<i>unknown</i>"}</span><input class="fnum mono pl-n" data-i="${i}" type="text" value="${esc(String(f.n??1))}" title="How many: a number, or dice like 1d3"><button class="fdel" data-pl="fdel" data-i="${i}" title="Take this row away">×</button></div>${scaleLineRow(f, `${n.id}|f:${i}`)}
         <p class="grouplab" style="margin:2px 0 0;font-size:9px">What each one carries</p>${foeInvBlock(kitView(st, i), "s"+i, false)}`; }).join("")
       || `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No fight here.</p>`}
     <div class="pcrow"><select class="pl-addf" style="flex:1;min-width:0"><option value="">Add a creature…</option>${foeOptions("", true)}</select></div>`;
@@ -12470,6 +12555,7 @@ function calmTop(n, st, c, all){
   const calm = calmOf(c), cur = all.find(t=>t.id===c.turn);
   return `<p class="eyebrow">Here · ${esc(placeLabel(n))}</p>
     <div class="fighthead"><span>${calm ? "Calm, not fighting" : `Fighting · round <b>${c.round}</b>${cur ? ` · ${esc(cur.label)}'s turn` : ""}`}</span><span>${all.length + by.length} here</span></div>
+    ${calm ? scalePreview(n, st) : ""}
     <!--selcard-->
     ${togetherBlock()}
     ${xpDueBlock(st)}
@@ -16772,6 +16858,7 @@ function sitePanel(n){
       <div class="field"><label>Kind</label><input id="st-kind" type="text" value="${esc(st.kind||"")}" placeholder="banditCave"></div>
       <div class="field"><label>Built for level</label><input id="st-level" class="mono" type="number" min="1" max="20" value="${st.level||1}"></div>
     </div>
+    ${scaleRoomRow(n, st)}
     <div class="row2">
       <div class="field"><label>Waves</label><input id="st-waves" class="mono" type="number" min="1" max="6" value="${st.waves||1}"></div>
       <div class="field" style="display:flex;align-items:flex-end;padding-bottom:8px">
@@ -16787,7 +16874,7 @@ function sitePanel(n){
         <input data-foen="${i}" class="fnum mono" type="text" value="${esc(String(f.n??1))}" placeholder="1d3" title="A number, or dice like 1d3">
         <input data-foec="${i}" class="fchance mono" type="text" value="${f.chance==null?"":f.chance}" placeholder="1" title="Chance it's here at all, 0 to 1">
         <button class="fdel" data-foedel="${i}" title="Remove">×</button>
-      </div>${m?`<div class="foenote">${m.xp} xp each${f.chance!=null&&f.chance<1?` · ${Math.round(f.chance*100)}% of the time`:""}${m.boss?" · boss":""}${m.talk?" · can be talked to":""}${(libFoeById(f.id)||SRD_FOE_BY.get(f.id))?` · <span class="libref" data-libopen="foes:${f.id}">stat block</span>`:""}</div>`:""}${m?`<label style="display:block;font-size:11px;margin:2px 0 6px" title="An ambush: they start hidden (the Hide action, so Invisible while hidden), off the players' screen and their turn order until someone finds them. The DC is their Stealth total; blank = in plain sight">Start hidden, DC <input data-foeh="${i}" class="mono" type="number" min="1" value="${f.hide??""}" placeholder="no" style="width:64px"></label>`:""}${m?`<details class="pcset" style="margin:0 0 6px" ${f.guise&&f.guise.as?"open":""}><summary style="font-size:11px">Dormant until it wakes ${f.guise&&f.guise.as?`<small>looks like ${esc(f.guise.as)}</small>`:""}</summary>
+      </div>${scaleLineRow(f, `${n.id}|f:${i}`)}${m?`<div class="foenote">${m.xp} xp each${f.chance!=null&&f.chance<1?` · ${Math.round(f.chance*100)}% of the time`:""}${m.boss?" · boss":""}${m.talk?" · can be talked to":""}${(libFoeById(f.id)||SRD_FOE_BY.get(f.id))?` · <span class="libref" data-libopen="foes:${f.id}">stat block</span>`:""}</div>`:""}${m?`<label style="display:block;font-size:11px;margin:2px 0 6px" title="An ambush: they start hidden (the Hide action, so Invisible while hidden), off the players' screen and their turn order until someone finds them. The DC is their Stealth total; blank = in plain sight">Start hidden, DC <input data-foeh="${i}" class="mono" type="number" min="1" value="${f.hide??""}" placeholder="no" style="width:64px"></label>`:""}${m?`<details class="pcset" style="margin:0 0 6px" ${f.guise&&f.guise.as?"open":""}><summary style="font-size:11px">Dormant until it wakes ${f.guise&&f.guise.as?`<small>looks like ${esc(f.guise.as)}</small>`:""}</summary>
         <label style="display:block;font-size:11px;margin:2px 0" title="A gargoyle on the mantel, a sword in its case: until you wake it from its card on the battle map, the players see only this, and it gets no turn">Looks like <input data-foeg="${i}" data-g="as" type="text" value="${esc((f.guise||{}).as||"")}" placeholder="a sword in a glass case (blank = not dormant)" style="width:100%"></label>
         <label style="display:block;font-size:11px;margin:2px 0" title="One character drawn on its square on the players' screen">Mark on the players' screen <input data-foeg="${i}" data-g="icon" type="text" maxlength="2" value="${esc((f.guise||{}).icon||"")}" placeholder="◆" style="width:40px"></label>
         <label style="display:block;font-size:11px;margin:2px 0">When it wakes <small>read aloud</small><textarea data-foeg="${i}" data-g="wake" rows="2" style="width:100%">${esc((f.guise||{}).wake||"")}</textarea></label></details>`:""}${m?`<label style="display:block;font-size:11px;margin:0 0 6px" title="If the party befriends it, it becomes this person from your library and joins them as a companion. Only once: after that, the others like it won't">Befriended, it becomes <select data-foebf="${i}" style="max-width:60%"><option value="">— can't be —</option>${lib().npcs.filter(q=>q.name).map(q=>`<option value="${q.id}" ${q.id===f.befriend?"selected":""}>${esc(q.name)}</option>`).join("")}</select></label>`:""}${m?`<div style="margin:0 0 6px">${foeInvBlock(kitView(st, i), "s"+i, false)}</div>`:""}`;
@@ -16802,7 +16889,7 @@ function sitePanel(n){
         <select data-stgfoe="${j}:${i}" class="fsel">${foeOptions(f.id)}</select>
         <input data-stgn="${j}:${i}" class="fnum mono" type="text" value="${esc(String(f.n??1))}" placeholder="1d3" title="A number, or dice like 1d3">
         <input data-stgc="${j}:${i}" class="fchance mono" type="text" value="${f.chance==null?"":f.chance}" placeholder="1" title="Chance they come at all, 0 to 1">
-        <button class="fdel" data-stgfdel="${j}:${i}" title="Remove">×</button></div>`).join("")}
+        <button class="fdel" data-stgfdel="${j}:${i}" title="Remove">×</button></div>${scaleLineRow(f, `${n.id}|s:${j}:${i}`)}`).join("")}
       <button class="btn wide" data-stgadd="${j}" style="margin:2px 0 10px">Add a foe to this stage</button></div>`).join("")}
     <button class="btn wide" id="st-addstage">Add a stage</button>
 

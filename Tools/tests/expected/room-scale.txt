@@ -1,9 +1,9 @@
 modes: fixed, scales, scales, with, fixed · strengthOf(3,3,5) 1200
 built for 4: 4 in (3,3,3,3): strength 900 vs built 4x3 900, ratio 1, room 1085 → target 1085, now 1085 High | Bandit Captain fixed 1→1; Goblin Warrior scales 6→6; Wolf scales 1d4→1d4; Ghoul with5 1→0; Corvin fixed 1→1; st2 Skeleton scales 4→4
-two level-3s: 2 in (3,3): strength 450 vs built 4x3 900, ratio 0.5, room 1085 → target 543, now 610 High | Bandit Captain fixed 1→1 hp×0.5; Goblin Warrior scales 6→1; Wolf scales 1d4→1; Ghoul with5 1→0; Corvin fixed 1→1; st2 Skeleton scales 4→1
-two level-5s: 2 in (5,5): strength 1500 vs built 4x3 900, ratio 1.667, room 1085 → target 1808, now 1810 High | Bandit Captain fixed 1→1 hp×1.67; Goblin Warrior scales 6→13; Wolf scales 1d4→5; Ghoul with5 1→0; Corvin fixed 1→1; st2 Skeleton scales 4→9
-five level-3s: 5 in (3,3,3,3,3): strength 1125 vs built 4x3 900, ratio 1.25, room 1085 → target 1356, now 1360 High | Bandit Captain fixed 1→1 hp×1.25; Goblin Warrior scales 6→7; Wolf scales 1d4→3; Ghoul with5 1→1; Corvin fixed 1→1; st2 Skeleton scales 4→4
-reasons: fixed, hit points ×0.5 (an estimate) / scales: 6 → 1 / scales: 1d4 → 1 / only with 5 or more; 2 in the room / a person: always as written / scales: 4 → 1
+two level-3s: 2 in (3,3): strength 450 vs built 4x3 900, ratio 0.5, room 1085 → target 543, now 610 High | Bandit Captain fixed 1→1 hp×0.5; Goblin Warrior scales 6→1; Wolf scales 1d4→1; Ghoul with5 1→0; Corvin fixed 1→1 hp×0.5; st2 Skeleton scales 4→1
+two level-5s: 2 in (5,5): strength 1500 vs built 4x3 900, ratio 1.667, room 1085 → target 1808, now 1810 High | Bandit Captain fixed 1→1 hp×1.67; Goblin Warrior scales 6→13; Wolf scales 1d4→5; Ghoul with5 1→0; Corvin fixed 1→1 hp×1.67; st2 Skeleton scales 4→9
+five level-3s: 5 in (3,3,3,3,3): strength 1125 vs built 4x3 900, ratio 1.25, room 1085 → target 1356, now 1360 High | Bandit Captain fixed 1→1 hp×1.25; Goblin Warrior scales 6→7; Wolf scales 1d4→3; Ghoul with5 1→1; Corvin fixed 1→1 hp×1.25; st2 Skeleton scales 4→4
+reasons: fixed, hit points ×0.5 (an estimate) / scales: 6 → 1 / scales: 1d4 → 1 / only with 5 or more; 2 in the room / a person: always as written, hit points ×0.5 (an estimate) / scales: 4 → 1
 switch off: false "The campaign doesn't scale rooms." 1,6,2.5,1,1,4
 room opts out: false "This room doesn't scale."
 room says 3: built 3 · campaign unset: 3 (party of 3)
