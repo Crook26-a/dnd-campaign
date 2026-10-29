@@ -1,0 +1,11 @@
+item: Rare · magic item | Lantern of Ashes | Requires attunement | Charges 3, 1d3 back at dawn; Use Magic action | foot 2 lb · 400 gp | secret note false
+SRD attunement by: Requires attunement by a Cleric, Druid, or Paladin
+table rows read: 5, rule rows left 0
+spell: Level 3 · Evocation | Casting time, Range, Components, Duration | higher: true | foot Sorcerer, Wizard
+person: Human · Harbourmaster | Salt-white hair, a brass spyglass | The Drowned Bell | secrets false
+creature: Small Fey | Goblin Boss | stats false
+faction: Your standing: Neutral | What they want. The harbour trade | how false
+picture: image/png 750x1050, drawn
+party tab buttons: loot:srd:bag-of-holding, spells:spell:fireball
+opened: false, img false, · give false
+ERR Cannot set properties of null (setting 'value') at file:///C:/Users/josep/AppData/Local/Temp/ordinate-tests/cards.html:18957:62

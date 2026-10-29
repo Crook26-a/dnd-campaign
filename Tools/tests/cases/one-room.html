@@ -44,7 +44,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('fighting: room ' + heads() + ' heads (calm ' + calmRoom + ') · "' + txt(document.querySelector('#pane-inspect .fighthead')) + '" · in the box: turn order ' + box().querySelectorAll('.initrow').length + ', form ' + box().querySelectorAll('#ac-actor').length + ', End ' + box().querySelectorAll('[data-fa="end"]').length + ' · in the room: turn order ' + document.querySelectorAll('#pane-inspect .initrow').length + ', Back to the map ' + document.querySelectorAll('#pane-inspect [data-ba="back"]').length);
   battleSel = vx.id; renderBattle(); renderBattlePanel(); await wait(60);
   const on2 = document.querySelector('#pane-inspect .bt-sel'); out.push('Vane fighting: ' + [...on2.querySelectorAll('.sbl b, .grouplab')].map(e=>e.textContent.trim()).join('/') + ' · in the box: ' + txt(box().querySelector('.bt-selacts .grouplab')));
-  on2.querySelector('[data-toaction]').click(); await wait(40); out.push('  into the box: acting ' + act.actor + ' (' + (act.actor===vx.id) + ')');
+  on2.querySelector('[data-toaction]').click(); await wait(40); out.push('  into the box: acting the selected foe (' + (act.actor===vx.id) + ')');
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  document.title = 'RES ' + out.join(' || ');
 }, 900);

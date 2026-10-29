@@ -5,4 +5,4 @@ Vane on the map: Purse/Carrying/Look/Wants · tracker 1 · who-they-are twice 0 
 Marlowe: card Marlowe · into the turn order in the box 3
 fighting: room 14 heads (calm 14) · "Fighting · round 1 5 here" · in the box: turn order 4, form 1, End 1 · in the room: turn order 0, Back to the map 1
 Vane fighting: Purse/Carrying/Look/Wants · in the box: LADY VANE IN THIS FIGHT
-into the box: acting fxjoifz2 (true)
+into the box: acting the selected foe (true)

@@ -1131,6 +1131,12 @@
   /* the big sheet: one character's whole sheet, large, over the map */
   #bigsheet{position:fixed;inset:0;z-index:58;background:rgba(30,22,12,.6);display:flex;align-items:center;justify-content:center;padding:18px}
   #bigsheet[hidden]{display:none}
+  /* a card for the players, over the screen: the picture and what to do with it */
+  #cardview{position:fixed;inset:0;z-index:59;background:rgba(30,22,12,.66);display:flex;align-items:center;justify-content:center;padding:18px}
+  #cardview[hidden]{display:none}
+  #cardview .cv-box{background:var(--paper-lit);color:var(--ink);border:1px solid var(--ink);border-radius:6px;box-shadow:0 14px 40px rgba(0,0,0,.45);padding:14px;max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(440px,100%)}
+  #cardview .cv-img{width:100%;max-height:68vh;object-fit:contain}
+  #cardview .cv-acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
   #bigsheet .bs-card{background:var(--paper-lit);color:var(--ink);border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 40px rgba(0,0,0,.45);
     width:min(1180px,100%);max-height:100%;overflow:auto;padding:22px 26px 26px;font-family:var(--serif)}
   #bigsheet .bs-head{display:flex;align-items:flex-start;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:14px}
@@ -2157,6 +2163,8 @@ function sendPlayers(now){
       else if(playerShow.kind==="puzzle") msg = { kind:"board", html:pzTvHtml(playerShow.id) };
       else if(playerShow.kind==="say") msg = { kind:"board", html:sayTvHtml(playerShow) };
       else if(playerShow.kind==="tokens") msg = { kind:"board", html:tokensTvHtml() };
+      else if(playerShow.kind==="card"){ const k = playerShow.key, at = k.indexOf(":"), x = cardFind(k.slice(0, at), k.slice(at+1)), blob = x ? await cardBlob(k.slice(0, at), x) : null;
+        msg = blob ? { kind:"picture", blob } : { kind:"blank" }; }
       else if(playerShow.kind==="standing") msg = { kind:"board", html:`<div class="lb lb-tv"><div class="lb-h">Who is where</div>${xpStanding(partyRoster(), true)}</div>` };
       else if(playerShow.kind==="blank") msg = { kind:"blank" };
       else msg = playerMapScene();
@@ -2332,6 +2340,7 @@ function renderPScreen(){
          : `<p class="ps-st">Not open.</p><button class="btn wide" data-ps="open">Open the players' screen</button>`}
     <p class="grouplab">They see</p>
     <div class="adtabs">${showBtn("map", "The map")}${showBtn("blank", "Nothing")}${(lib().factions||[]).length ? showBtn("factions", "Factions") : ""}</div>
+    ${playerShow.kind==="card" ? `<p class="ps-st on">Showing the card for <b>${esc(playerShow.name||"something")}</b>. The map or Nothing above takes it down.</p>` : ""}
     <label class="check" style="margin:2px 0 6px"><input type="checkbox" data-ps="freeze" ${playerFrozen?"checked":""}> Freeze it here while I look around</label>
     <label class="check" style="margin:2px 0 6px" title="The temperature, the wind and what they mean, in a corner of their screen"><input type="checkbox" data-ps="weather" ${root.pshowWeather!==false?"checked":""}> Show them the weather</label>
     ${playerFrozen ? `<button class="btn wide" data-ps="send">Show them what I see now</button>` : ""}
@@ -6850,7 +6859,7 @@ function pcSpellsBlock(c, i){
         ${L ? `<span class="slotpips" title="${ORD[L]}-level spell slots: click to spend or get one back">${slotPips(L) || `<small>no slots</small>`}</span>` : `<small>at will</small>`}</div>
       ${byLv[L].sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`<div class="sprow">
         <div class="sprow-h"><span class="libref" data-spellgo="${s.id}" data-pc="${i}" title="Read the whole spell">${esc(s.name)}</span>
-          <button class="fdel" data-pa="spdel" data-pci="${i}" data-sp="${s.id}" title="Remove">×</button></div>
+          ${cardBtn("spells", s.id)}<button class="fdel" data-pa="spdel" data-pci="${i}" data-sp="${s.id}" title="Remove">×</button></div>
         <div class="sprow-m">${esc(spellMeta(s))}</div>
         <div class="sprow-d">${esc(spellBrief(s))}</div></div>`).join("")}</div>`).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No spells yet.</p>`}
@@ -7558,6 +7567,7 @@ function libForm(cat, x){
           <div class="pcrow">${t("heal","Heals",.8,"2d4+2")}${t("tempHp","Temp HP",.8,"1d4")}<div class="field" style="flex:1.2"><label>Puts on</label><select ${a} data-f="cond"><option value="">No condition</option>${CONDITIONS.map(cn=>`<option ${cn===x.cond?"selected":""}>${cn}</option>`).join("")}</select></div></div>
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Damage above counts too when it's used (a bomb, a wand). Charges come back by themselves: at dawn when the day count moves on (Next, or typing a later day), or when whoever carries it finishes that rest (the Action box's "Takes a rest", or Rest on the Party tab). The game log says so.</p></details>`; })()}`;
   }
+  if(!draft && CARD_CATS.includes(cat)) h += `<div class="pcrow" style="margin:0 0 8px">${cardBtn(cat, x.id, "Card for the players")}</div>`;
   h += ta("notes","Notes");
   if(cat==="spells" && !draft){
     const who = [...partyRoster(), ...lib().npcs].filter(p=>(p.spells||[]).includes(x.id)).map(p=>p.name||"Someone");
@@ -7719,6 +7729,150 @@ function fieldBookOut(nameOnly){
   document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   flash(`${pack.loot.length} items, ${pack.npcs.length} people, ${pack.spells.length} spells, ${pack.shops.length} shop kinds and ${pack.factions.length} factions saved for the Field Book: open it there with Send → Bring a file in.`);
 }
+/* ══════════════════════════════════════════════════════════════
+   CARDS — a handout for the players (Joseph, 2026-10-28): anything in the library (an item, a spell, a person, a
+   creature, a faction) drawn as a card picture with only what the players may see: no notes, wants, secrets,
+   stat blocks or hidden aims. cardOf says what goes on it, cardCanvas draws it on a plain canvas (so a phone can
+   share it too). The one picture goes on the TV, out as a file, and comes back up from a character's inventory or
+   spell list. Field Book draws the same cards: build-fieldbook.ps1 brings cardOf and cardBlob along.
+   ══════════════════════════════════════════════════════════════ */
+const CARD_CATS = ["loot","spells","npcs","foes","factions"];
+const CARD_RARITY = { common:"#5d6168", uncommon:"#2f7d36", rare:"#1f5ba6", "very rare":"#6b3f9c", legendary:"#b4630a", artifact:"#a0231d" };
+const CARD_SCHOOL = { Abjuration:"#2f6f9a", Conjuration:"#a8740f", Divination:"#4f7585", Enchantment:"#a8417a", Evocation:"#ac3d1d", Illusion:"#67479c", Necromancy:"#3e4b3a", Transmutation:"#7a661c" };
+/* what each card leaves off, said under it */
+const CARD_HIDES = { loot:"your notes and where it's sold stay off", spells:"your notes stay off", npcs:"what they want, know and hide stays off", foes:"the stat block stays off", factions:"how they work, and your notes, stay off" };
+/* a description's lines; an SRD table ("| Potion | Hit Points |") read as cells, its rule rows dropped */
+const cardText = t => String(t||"").split(/\n+/).map(l=>l.trim()).filter(l=>l && !/^\|?[\s:|-]+\|?$/.test(l))
+  .map(l=>/^\|/.test(l) ? l.replace(/^\||\|$/g, "").split("|").map(s=>s.trim()).filter(Boolean).join(" · ") : l);
+/* what goes on the card: a coloured band, the name, a line under it, short rows, the text, and a foot */
+function cardOf(cat, x){
+  if(!x) return null;
+  const P = (text, label) => text ? { label:label||"", text:String(text) } : null, body = t => cardText(t).map(l=>P(l));
+  if(cat==="loot"){
+    const rar = x.rarity && x.rarity!=="Mundane" ? x.rarity : "", by = /attunement\s+(by .+?)\.?$/i.exec(String(x.att||""));
+    const back = x.regain ? `, ${x.regain} back ${(REGAIN_WHEN.find(r=>r[0]===regainWhenOf(x))||["", "at dawn"])[1].toLowerCase()}` : "";
+    return { colour:CARD_RARITY[rar.toLowerCase()] || "#7a5a36", band:[rar, x.cat || x.kind || "item"].filter(Boolean).join(" · "), title:x.name || "An item",
+      sub:x.attune || /attunement/i.test(x.att||"") ? `Requires attunement${by ? " " + by[1] : ""}` : "",
+      rows:[["Damage", x.dmg ? `${x.dmg}${x.dtype?` ${x.dtype}`:""}` : ""], ["Bonus", x.hit ? `${x.hit} to attack and damage` : ""], ["Properties", x.props], ["Range", x.range],
+        ["Armor Class", x.ac], ["Charges", x.charges ? `${x.charges}${back}` : ""], ["Use", x.use ? `${x.use}${x.perUse && +x.perUse!==1 ? `, ${x.perUse} charges` : ""}` : ""],
+        ["Heals", x.heal], ["Temp HP", x.tempHp], ["Leaves them", x.cond]].filter(r=>r[1]),
+      body:[...body(x.desc), P(x.effect)].filter(Boolean), foot:[x.wt ? `${x.wt} lb` : "", x.value].filter(Boolean).join(" · ") };
+  }
+  if(cat==="spells") return { colour:CARD_SCHOOL[x.school] || "#3d4f7a", band:`${x.lv ? `Level ${x.lv}` : "Cantrip"}${x.school ? ` · ${x.school}` : ""}`, title:x.name || "A spell",
+    sub:[x.conc ? "Concentration" : "", x.rit ? "Ritual" : ""].filter(Boolean).join(" · "),
+    rows:[["Casting time", String(x.time||"").replace(/-/g, " ")], ["Range", x.range], ["Components", x.comp], ["Duration", x.dur]].filter(r=>r[1]),
+    body:[...body(x.desc), P(x.hi, x.lv ? "Using a higher-level spell slot." : "Cantrip upgrade.")].filter(Boolean), foot:x.cls || "" };
+  if(cat==="npcs") return { colour:"#7b5130", band:[x.species, x.role].filter(Boolean).join(" · ") || "Someone", title:x.name || "Someone",
+    sub:"", rows:[], body:[P(x.look)].filter(Boolean), foot:x.where || "" };
+  if(cat==="foes") return { colour:"#5b2a22", band:[x.size, x.type].filter(Boolean).join(" ") || "A creature", title:x.name || "A creature",
+    sub:"", rows:[], body:[P(x.look)].filter(Boolean), foot:"" };
+  if(cat==="factions"){ let st = ""; try{ st = factionEffects(x).tier.label; }catch(err){}
+    return { colour:"#2d4a5a", band:"Faction", title:x.name || "A faction", sub:st ? `Your standing: ${st}` : "", rows:[],
+      body:[P(x.wants, "What they want.")].filter(Boolean), foot:x.align || "" }; }
+  return null;
+}
+/* the card drawn: 750 × 1050, a playing card's shape; the text shrinks to fit, and stops with "…" past that */
+function cardCanvas(c){
+  const W = 750, H = 1050, cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d"), serif = 'Georgia, "Times New Roman", serif', sans = '"Segoe UI", Roboto, Helvetica, Arial, sans-serif', ink = "#2b2116";
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r); g.arcTo(x+w, y+h, x, y+h, r); g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r); g.closePath(); };
+  const font = (w, size, fam) => `${w.b ? "bold " : ""}${w.i ? "italic " : ""}${size}px ${fam || serif}`;
+  /* words (each with its own bold, italic, colour) into lines no wider than max */
+  const wrap = (words, size, max, fam) => { const out = []; let line = [], w = 0;
+    for(const wd of words){ g.font = font(wd, size, fam); const ww = g.measureText(wd.t).width, sp = g.measureText(" ").width;
+      if(line.length && w + ww > max){ out.push(line); line = []; w = 0; }
+      line.push({ ...wd, w:ww, sp }); w += ww + sp; }
+    if(line.length) out.push(line); return out; };
+  const words = (t, o) => String(t||"").split(/\s+/).filter(Boolean).map(s=>({ t:s, ...(o||{}) }));
+  const draw = (line, y, size, fam, centre) => { let x = centre ? (W - line.reduce((a, w, k)=>a + w.w + (k < line.length-1 ? w.sp : 0), 0)) / 2 : 74;
+    for(const w of line){ g.font = font(w, size, fam); g.fillStyle = w.col || ink; g.fillText(w.t, x, y); x += w.w + w.sp; } };
+  g.textBaseline = "alphabetic";
+  g.fillStyle = c.colour; rr(0, 0, W, H, 36); g.fill();
+  g.fillStyle = "#f5ecd6"; rr(22, 22, W-44, H-44, 22); g.fill();
+  g.strokeStyle = c.colour; g.lineWidth = 3; rr(34, 34, W-68, H-68, 14); g.stroke();
+  /* the band: rarity and kind, a spell's level and school, a person's species and role */
+  g.fillStyle = c.colour; rr(34, 34, W-68, 58, 14); g.fill(); g.fillRect(34, 70, W-68, 22);
+  g.fillStyle = "#fffaf0"; g.font = `bold 22px ${sans}`; if("letterSpacing" in g) g.letterSpacing = "3px";
+  const band = String(c.band||"").toUpperCase(); g.fillText(band, (W - g.measureText(band).width) / 2, 72); if("letterSpacing" in g) g.letterSpacing = "0px";
+  /* the name: as big as two lines allow */
+  let y = 128, ts = 60, tl;
+  for(; ts > 34; ts -= 2){ tl = wrap(words(c.title, { b:true }), ts, W-140); if(tl.length <= 2) break; }
+  for(const l of tl){ y += ts * 1.08; draw(l, y, ts, null, true); }
+  if(c.sub) for(const l of wrap(words(c.sub, { i:true, col:"#5a4630" }), 25, W-150)){ y += 36; draw(l, y, 25, null, true); }
+  /* a rule with a diamond in the middle */
+  y += 30; g.strokeStyle = c.colour; g.lineWidth = 2; g.beginPath(); g.moveTo(80, y); g.lineTo(W/2 - 14, y); g.moveTo(W/2 + 14, y); g.lineTo(W-80, y); g.stroke();
+  g.fillStyle = c.colour; g.beginPath(); g.moveTo(W/2, y-8); g.lineTo(W/2+8, y); g.lineTo(W/2, y+8); g.lineTo(W/2-8, y); g.closePath(); g.fill();
+  y += 12;
+  const footY = H - 84, room = footY - 20;
+  /* the rows and the text together, shrinking until they fit */
+  const blocks = [...(c.rows||[]).map(([k, v])=>({ row:true, w:[...words(k, { b:true, col:c.colour }), ...words(v)] })),
+                  ...(c.body||[]).map(p=>({ w:[...words(p.label, { b:true, i:true }), ...words(p.text)] }))];
+  let size = 28, laid = [];
+  for(; size >= 16; size--){ const lh = size * 1.3; let h = 0; laid = blocks.map((b, k)=>{ const ls = wrap(b.w, size, W-148); const gap = k===0 ? 14 : b.row ? 4 : (blocks[k-1].row ? 18 : 12); h += gap + ls.length * lh; return { ls, gap }; });
+    if(y + h <= room) break; }
+  const lh = size * 1.3; let cut = false;
+  for(const b of laid){ y += b.gap; for(const l of b.ls){ if(y + lh > room){ cut = true; break; } y += lh; draw(l, y - size * .3, size); } if(cut) break; }
+  if(cut){ g.font = `${size}px ${serif}`; g.fillStyle = ink; g.fillText("…", W - 100, room); }
+  /* the foot: weight and value, a spell's classes, where someone is found */
+  if(c.foot){ g.strokeStyle = c.colour; g.lineWidth = 1; g.beginPath(); g.moveTo(80, footY - 6); g.lineTo(W-80, footY - 6); g.stroke();
+    const fl = wrap(words(c.foot, { col:"#5a4630" }), 21, W-160, sans)[0] || []; draw(fl, footY + 30, 21, sans, true); }
+  return cv;
+}
+/* the card as a PNG */
+function cardBlob(cat, x){
+  const c = cardOf(cat, x); if(!c) return Promise.resolve(null);
+  const cv = cardCanvas(c); return new Promise(r=>cv.toBlob(b=>r(b), "image/png"));
+}
+const cardFileName = x => `${String((x && x.name) || "card").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "card"}-card.png`;
+/* the survey's side: find the thing, show the card over the screen, and what can be done with it */
+const cardFind = (cat, id) => cat==="loot" ? libLootById(id) : cat==="spells" ? spellOf(id) : cat==="npcs" ? libNpcById(id) : cat==="foes" ? foeById(id)
+  : cat==="factions" ? (lib().factions||[]).find(f=>f.id===id) || null : null;
+const cardBtn = (cat, id, label) => `<button class="btn small" data-cardopen="${cat}:${esc(String(id))}" title="A card for the players: show it on the TV, save or copy the picture${cat==="loot" || cat==="spells" ? ", or give it to someone" : ""}">${label || "Card"}</button>`;
+var cardKey = null, cardUrl = null, cardBlobNow = null;
+document.body.insertAdjacentHTML("beforeend", `<div id="cardview" hidden><div class="cv-box" role="dialog" aria-modal="true" aria-label="A card for the players"></div></div>`);
+function closeCard(){ $("#cardview").hidden = true; cardKey = null; }
+async function openCard(key){
+  const at = key.indexOf(":"), cat = key.slice(0, at), id = key.slice(at+1), x = cardFind(cat, id);
+  const blob = x ? await cardBlob(cat, x) : null; if(!blob){ flash("Couldn't make that card."); return; }
+  cardKey = key; cardBlobNow = blob; if(cardUrl) URL.revokeObjectURL(cardUrl); cardUrl = URL.createObjectURL(blob);
+  const who = cat==="loot" ? [...partyRoster(), ...companions()] : cat==="spells" ? partyRoster() : [];
+  const onTv = playerShow.kind==="card" && playerShow.key===key;
+  $("#cardview .cv-box").innerHTML = `<img class="cv-img" src="${cardUrl}" alt="${esc(x.name||"")}">
+    <div class="cv-acts"><button class="btn${onTv ? " on" : ""}" data-cardact="tv">${onTv ? "On the TV · take it down" : "Show on the TV"}</button>
+      <button class="btn" data-cardact="save">Save the picture</button>
+      ${navigator.clipboard && typeof ClipboardItem!=="undefined" ? `<button class="btn" data-cardact="copy">Copy it</button>` : ""}
+      ${who.length ? `<select data-cardgive><option value="">${cat==="spells" ? "Teach it to…" : "Give to…"}</option>${who.map(p=>`<option value="${p.id}">${esc(p.name||"Someone")}</option>`).join("")}</select>` : ""}
+      <button class="btn" data-cardact="close">Close</button></div>
+    <p class="empty-note" style="font-size:11px;margin:0;text-align:center">Only what the players may see: ${CARD_HIDES[cat]}.</p>`;
+  $("#cardview").hidden = false;
+}
+document.addEventListener("click", e=>{
+  const o = e.target.closest && e.target.closest("[data-cardopen]");
+  if(o){ e.preventDefault(); e.stopPropagation(); openCard(o.dataset.cardopen); return; }
+  const v = e.target.closest && e.target.closest("#cardview"); if(!v) return;
+  if(e.target===v){ closeCard(); return; }
+  const b = e.target.closest("[data-cardact]"); if(!b || !cardKey) return;
+  const at = cardKey.indexOf(":"), cat = cardKey.slice(0, at), x = cardFind(cat, cardKey.slice(at+1)), act = b.dataset.cardact;
+  if(act==="close"){ closeCard(); return; }
+  if(act==="tv"){
+    if(playerShow.kind==="card" && playerShow.key===cardKey){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); flash("The card is down: they see the map again."); openCard(cardKey); return; }
+    playerShow = { kind:"card", key:cardKey, name:(x && x.name) || "" }; sendPlayers(true); renderPScreen();
+    flash(playersUp() ? "The card is on the players' screen." : "Showing it once the players' screen is open (top bar).");
+    gameLog("pic", `Showed the players the card for ${(x && x.name) || "something"}`); openCard(cardKey); return; }
+  if(act==="save"){ const a = document.createElement("a"); a.href = cardUrl; a.download = cardFileName(x); document.body.appendChild(a); a.click(); a.remove(); flash(`Saved ${cardFileName(x)}: text it or AirDrop it to whoever has it.`); return; }
+  if(act==="copy"){ navigator.clipboard.write([new ClipboardItem({ "image/png":cardBlobNow })]).then(()=>flash("Copied: paste it into a message."), ()=>flash("Couldn't copy it here: Save the picture instead.")); return; }
+}, true);
+document.addEventListener("change", e=>{
+  const s = e.target; if(!s.matches || !s.matches("#cardview [data-cardgive]") || !s.value || !cardKey) return;
+  const at = cardKey.indexOf(":"), cat = cardKey.slice(0, at), id = cardKey.slice(at+1), x = cardFind(cat, id);
+  const c = [...partyRoster(), ...companions()].find(p=>p.id===s.value); if(!c || !x){ s.value = ""; return; }
+  if(cat==="spells"){ c.spells = c.spells || []; if(c.spells.includes(x.id)){ flash(`${c.name||"They"} already know${c.name?"s":""} ${x.name}.`); s.value = ""; return; } c.spells.push(x.id); }
+  else { c.inv = Array.isArray(c.inv) ? c.inv : []; c.inv.push({ id:x.id, qty:1, at:today() }); }
+  saveParty(); renderPane(true);
+  flash(cat==="spells" ? `${c.name||"They"} can cast ${x.name} now (their Spells).` : `${x.name} is in ${c.name||"their"}${c.name?"'s":""} inventory, card and all.`);
+  gameLog("pic", cat==="spells" ? `${c.name||"Someone"} learned ${x.name}` : `${c.name||"Someone"} got ${x.name}`); s.value = "";
+});
+document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("#cardview").hidden) closeCard(); });
 function renderLibList(){
   const box = $("#lib-list"); if(!box) return;
   const q = libQuery.trim().toLowerCase();
@@ -7735,7 +7889,7 @@ function renderLibList(){
         <p class="empty-note" style="margin:0 0 6px">Give a character spells on the Party tab (Spells, slots and resources), or a person on their page. Search a name, "cantrip", "level 3", a school or a class.</p>`
       + page.map(s=>`<div class="libitem std${s.id===libOpen?" open":""}">
           <button class="libhead" data-libtoggle="${s.id}"><span class="nm">${esc(s.name)}</span><span class="sub">${s.lv?ORD[s.lv]:"cantrip"} · ${esc(s.school.toLowerCase())}${s.conc?" · conc.":""}</span></button>
-          ${s.id===libOpen?`<div class="libform">${srdSpellBlock(s)}<button class="btn wide" data-libcopy="${s.id}" style="margin-top:8px">Copy to my library to change it</button></div>`:""}</div>`).join("")
+          ${s.id===libOpen?`<div class="libform">${srdSpellBlock(s)}<div class="pcrow" style="margin-top:8px">${cardBtn("spells", s.id, "Card for the players")}</div><button class="btn wide" data-libcopy="${s.id}" style="margin-top:8px">Copy to my library to change it</button></div>`:""}</div>`).join("")
       + (match.length > page.length ? `<p class="empty-note">${(match.length-page.length).toLocaleString()} more — search to narrow it down.</p>` : "")
       + (match.length ? "" : `<p class="empty-note">No spells match.</p>`);
     return;
@@ -7775,6 +7929,7 @@ function renderLibList(){
               <p class="grouplab">Used at</p>${used.length
                 ? used.map(u=>`<button class="libgo" data-libgo="${u.plan||""}|${u.node}">${esc(u.name)}${u.host?` <small>in ${esc(u.host)}</small>`:""}</button>`).join("")
                 : `<p class="empty-note" style="margin:0 0 8px">Not placed anywhere yet.</p>`}
+              ${CARD_CATS.includes(libTab) ? `<div class="pcrow" style="margin-top:8px">${cardBtn(libTab, x.id, "Card for the players")}</div>` : ""}
               <button class="btn wide" data-libcopy="${x.id}" style="margin-top:8px">Copy to my library to change it</button></div>`:""}</div>`; }).join("")
       + (match.length > page.length ? `<p class="empty-note">${(match.length-page.length).toLocaleString()} more — search to narrow it down${libTab==="foes"?` (try a name, a type like "dragon", or "cr 2")`:` (try a name, "rare", or "weapon")`}.</p>` : "")
       + (match.length ? "" : `<p class="empty-note">No standard ${libTab==="foes"?"foes":"items"} match.</p>`);
@@ -8579,7 +8734,7 @@ function lootHere(n, st, reg){
         + (partySize()>1 ? `<button class="btn wide" id="pl-coinsplit" style="margin:3px 0 6px">Split it among the party</button>` : "") : "")
     + items.map((id,i)=>{ if(n.shop && (n.shop.items||[]).includes(id)) return "";        // for sale, listed under the shop
         const x = libLootById(id), dc = itemDc(st,id), shown = itemShown(st,id);
-        return `<div class="librow${partySize()>1?" give":""}"><span><span class="libref" data-libopen="loot:${baseId(id)}">${x?esc(x.name):"<i>missing from the library</i>"}</span>${x&&lootLabel(x)?` <small>· ${esc(lootLabel(x))}</small>`:""}${lootWhere(n, st, id)}
+        return `<div class="librow${partySize()>1?" give":""}"><span><span class="libref" data-libopen="loot:${baseId(id)}">${x?esc(x.name):"<i>missing from the library</i>"}</span>${x&&lootLabel(x)?` <small>· ${esc(lootLabel(x))}</small>`:""}${lootWhere(n, st, id)}${x ? " " + cardBtn("loot", baseId(id)) : ""}
             ${shown ? (dc?`<small class="ivst found">found</small>`:"") : hidTag(dc)}${dc ? ` <button class="btn small${shown ? " on" : ""}" data-wh="found" data-id="${esc(id)}" title="${shown ? "Not found after all: hidden again" : "They found it"}">${shown ? "Found" : "Mark found"}</button>` : ""}
             <select class="pl-dc" data-gi="${i}" title="How hard it is to find. Plain sight: the players can just take it.">${dcOptions(dc)}</select></span>
           ${partySize()>1 ? (shown ? `<select class="giveto" data-gi="${i}" title="Hand it to a character"><option value="">Give to…</option>${who}</select>` : `<span class="ivst" style="text-align:center">not found</span>`) : ""}
@@ -9310,7 +9465,7 @@ function pcStatsBlock(c, i){
         <span class="ptotal">= ${fmtGp(purseGp(purse))} gp</span></div>
       <label class="grouplab" style="margin-top:6px">Carrying</label>
       ${inv.length ? items.map(({e,x},k)=>`<div class="librow inv${needsAttune(x) || e.attuned ? " att" : ""}"><span${x?` class="libref" data-libopen="loot:${e.id}"`:""}>${x?esc(x.name):esc(e.text||"(missing item)")}${(e.qty||1)>1?` <b>×${e.qty}</b>`:""}${x&&lootLabel(x)?` <small>· ${esc(lootLabel(x))}</small>`:""}${x&&itemStatLine(x)?` <small class="istat">· ${esc(itemStatLine(x))}</small>`:""}${e.from?` <small>from ${esc(e.from)}</small>`:""}</span>
-          ${needsAttune(x) || e.attuned ? `<button class="attbtn${e.attuned?" on":""}" data-pa="attune" data-pci="${i}" data-k="${k}" title="${esc(x && x.att ? x.att.replace(/^requires attunement\s*/i, "Requires attunement. ").trim() : "Requires attunement")} ${e.attuned?"Click to end the attunement.":`Click to attune (${attunedCount(c)} of ${ATTUNE_MAX} in use).`}">${e.attuned?"◉ Attuned":"○ Attune"}</button>` : ""}
+          ${x ? cardBtn("loot", e.id) : ""}${needsAttune(x) || e.attuned ? `<button class="attbtn${e.attuned?" on":""}" data-pa="attune" data-pci="${i}" data-k="${k}" title="${esc(x && x.att ? x.att.replace(/^requires attunement\s*/i, "Requires attunement. ").trim() : "Requires attunement")} ${e.attuned?"Click to end the attunement.":`Click to attune (${attunedCount(c)} of ${ATTUNE_MAX} in use).`}">${e.attuned?"◉ Attuned":"○ Attune"}</button>` : ""}
           <input class="pc-qty" data-pci="${i}" data-k="${k}" type="number" min="1" value="${e.qty||1}" title="How many">
           <button class="fdel" data-pa="invdel" data-pci="${i}" data-k="${k}" title="Remove">×</button></div>`).join("")
         : `<p class="empty-note" style="font-size:11px;margin:0 0 4px">Nothing yet.</p>`}
@@ -18344,7 +18499,7 @@ function personCard(p, opts){
   const fid = npcFightId(p), m = fid && foeById(fid), tr = opts.tracker;
   let x = null; if(m && !tr) for(const [, nodes] of allMapNodes()) for(const nd of nodes){ const c = nd.site && nd.site.combat; const y = c && (c.list||[]).find(q=>q.npc===p.id); if(y) x = y; }
   const ac = m ? (typeof m.ac==="number" ? m.ac : (String(m.ac||"").match(/\d+/)||["—"])[0]) : "";
-  return `<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(p.name||"Someone")}</p><button class="pcbig" data-bigsheet="npc:${p.id}" title="Their whole sheet, big">Big sheet</button></div>
+  return `<div class="pcrow" style="align-items:baseline"><p class="playname" style="flex:1;margin:0">${esc(p.name||"Someone")}</p>${cardBtn("npcs", p.id)}<button class="pcbig" data-bigsheet="npc:${p.id}" title="Their whole sheet, big">Big sheet</button></div>
       <p class="empty-note" style="margin:0 0 6px">${esc([p.role, p.align].filter(Boolean).join(" · "))}</p>
       ${tr ? tr : m ? `<div class="tstats"><div><small>AC</small>${esc(String(ac))}</div><div><small>HP</small>${x && x.max!=null ? `${x.hp}/${x.max}` : esc(String(foeMaxHp(m)||"—"))}</div><div><small>FIGHTS AS</small>${esc(stageOf(p) && stageOf(p).fightsAs && stageOf(p).fightsAs!=="sheet" ? ((foeById(stageOf(p).fightsAs)||{}).name||"?") : p.fightsAs==="self" || stageOf(p) ? "their sheet" : m.name)}</div></div>` : ""}
       ${tr ? "" : condChips(p.conds||[], "by:"+p.id)}

@@ -1,0 +1,43 @@
+// uses: nothing
+<script>
+/* cards for the players (Joseph, 2026-10-28): what goes on each kind (and what never does), the picture itself,
+   the Card buttons, Give to / Teach it to, and the card on the TV */
+const __CD = { format:"ordinate-survey-v1", title:"Gull Isles", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna", level:5, inv:[{ id:"srd:bag-of-holding", qty:1 }], spells:["spell:fireball"] }, { id:"pb", name:"Bram", level:5 }],
+  library:{ npcs:[{ id:"np1", name:"Mira Vell", role:"Harbourmaster", species:"Human", look:"Salt-white hair, a brass spyglass", wants:"SECRET-WANT", knows:"SECRET-KNOW", backstory:"SECRET-PAST", where:"The Drowned Bell" }],
+    foes:[], loot:[{ id:"ll1", name:"Lantern of Ashes", kind:"magic item", rarity:"Rare", value:"400 gp", wt:"2", desc:"While lit, you see invisible creatures within 30 feet.", attune:true, charges:"3", regain:"1d3", notes:"SECRET-NOTE", use:"Magic action" }],
+    encounters:[], shops:[], factions:[{ id:"fa1", name:"The Tide Guild", wants:"The harbour trade", how:"SECRET-HOW", align:"Lawful Neutral" }] } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ const flat = c => JSON.stringify(c);
+ try{
+  loadJSONNow(JSON.stringify(__CD)); await wait(300);
+  const it = cardOf("loot", libLootById("ll1"));
+  out.push('item: ' + it.band + ' | ' + it.title + ' | ' + it.sub + ' | ' + it.rows.map(r=>r.join(' ')).join('; ') + ' | foot ' + it.foot + ' | secret note ' + flat(it).includes('SECRET'));
+  const beads = cardOf("loot", libLootById("srd:necklace-of-prayer-beads")); out.push('SRD attunement by: ' + beads.sub);
+  const pots = cardOf("loot", libLootById("srd:potions-of-healing")); out.push('table rows read: ' + pots.body.filter(p=>p.text.includes(' · ')).length + ', rule rows left ' + pots.body.filter(p=>/^[\s|:-]+$/.test(p.text)).length);
+  const fb = cardOf("spells", spellOf("spell:fireball")); out.push('spell: ' + fb.band + ' | ' + fb.rows.map(r=>r[0]).join(', ') + ' | higher: ' + fb.body.some(p=>p.label) + ' | foot ' + fb.foot);
+  const np = cardOf("npcs", libNpcById("np1")); out.push('person: ' + np.band + ' | ' + np.body.map(p=>p.text).join('') + ' | ' + np.foot + ' | secrets ' + flat(np).includes('SECRET'));
+  const fo = cardOf("foes", foeById("srd:goblin-boss")); out.push('creature: ' + fo.band + ' | ' + fo.title + ' | stats ' + /17|21|Stealth/.test(flat(fo)));
+  const fa = cardOf("factions", lib().factions[0]); out.push('faction: ' + fa.sub + ' | ' + fa.body.map(p=>p.label + ' ' + p.text).join('') + ' | how ' + flat(fa).includes('SECRET'));
+  const blob = await cardBlob("loot", libLootById("ll1")), bmp = await createImageBitmap(blob);
+  out.push('picture: ' + blob.type + ' ' + bmp.width + 'x' + bmp.height + (blob.size > 20000 ? ', drawn' : ', EMPTY ' + blob.size));
+  /* the buttons: the library entry, then a character's inventory and spells */
+  pane = 'party'; syncTabs(); renderPane(true); await wait(50);
+  const btns = [...document.querySelectorAll('#pane-party [data-cardopen]')].map(b=>b.dataset.cardopen); out.push('party tab buttons: ' + btns.join(', '));
+  document.querySelector('#pane-party [data-cardopen="loot:srd:bag-of-holding"]').click(); await wait(300);
+  const cv = document.getElementById('cardview'); out.push('opened: ' + !cv.hidden + ', img ' + !!cv.querySelector('img.cv-img') + ', ' + [...cv.querySelectorAll('[data-cardact]')].map(b=>b.textContent.trim()).join(' / ') + ' · give ' + !!cv.querySelector('[data-cardgive]'));
+  const sel = cv.querySelector('[data-cardgive]'); sel.value = 'pb'; sel.dispatchEvent(new Event('change', { bubbles:true })); await wait(50);
+  out.push('given: Bram has ' + (root.roster[1].inv||[]).map(e=>e.id).join(','));
+  cv.querySelector('[data-cardact="tv"]').click(); await wait(300);
+  out.push('TV: ' + playerShow.kind + ' ' + playerShow.key + ' (' + playerShow.name + ')');
+  document.querySelector('#cardview [data-cardact="close"]').click(); await wait(30); out.push('closed: ' + cv.hidden);
+  openCard('spells:spell:fireball'); await wait(300); const s2 = cv.querySelector('[data-cardgive]'); out.push('spell give label: ' + s2.options[0].text);
+  s2.value = 'pb'; s2.dispatchEvent(new Event('change', { bubbles:true })); await wait(50); out.push('taught: Bram knows ' + (root.roster[1].spells||[]).join(','));
+  document.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape' })); await wait(30); out.push('Esc closes: ' + cv.hidden);
+  pane = 'library'; libTab = 'loot'; libOpen = 'll1'; syncTabs(); renderPane(true); await wait(50);
+  out.push('library entry: ' + [...document.querySelectorAll('#pane-library [data-cardopen]')].map(b=>b.dataset.cardopen + ' "' + b.textContent + '"').join(', '));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
