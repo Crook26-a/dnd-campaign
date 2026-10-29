@@ -1,0 +1,11 @@
+words: 2d6 + 3: 4 + 2 + 3 = 9 | 1d12: 7 | d20 14 + 3 = 17 | d20 9 − 1 = 8 | d20 12
+rollSaid: 1d8 + 2: 5 + 2 = 7 | crit 1d8 + 2 (crit: dice twice): 5 + 3 + 2 = 10
+rollDiceFull: true total matches true
+rollDiceExpr still a number: true
+rollCountFull: true n true | fixed: {"n":3,"said":""}
+rollCoins: true gp true
+till: true coins gp true
+chance: 0 "Goblin Boss: a 50% chance it's here, rolled 91 on a d100, not here" | 1 "Goblin Boss: a 50% chance it's here, rolled 11 on a d100, here; how many, 1d4: 1"
+plain line: ""
+startFight: 5 foes, log "Rolled for who's here: Goblin Boss: how many, 2d4: 3 + 2 = 5" count matches true
+page errors: 0

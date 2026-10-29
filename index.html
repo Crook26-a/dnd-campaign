@@ -3510,6 +3510,7 @@ function journeyBlock(){
       ${encPullRow()}<button class="btn wide" data-encgo="skip" style="margin-top:4px">Not this time</button>`}</div>`;
   return `<div class="travelbox"><p class="eyebrow spaced">On the road to ${esc((to&&to.name)||"somewhere")}</p>
     <p class="empty-note" style="font-size:11px;margin:0 0 6px"><span id="jr-prog">${journeyProgress(J)}</span>${J.coach ? ` · by coach${J.coach.fare ? `, ${cpStr(J.coach.fare)} paid` : ""}` : ` · ${PACES[J.pace].label} pace · Navigation DC ${J.dc}${J.word ? `, ${esc(J.word)}` : ""}`}</p>
+    ${(R => R.length ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Encounter rolls so far (d100): ${R.map(r=>`${r.roll} for ${r.pct}% or under${r.roll <= r.pct ? (r.coin ? ", but the coach line's coin toss kept it away" : ", met one") : ", nothing"}`).join(" · ")}</p>` : "")((J.encRolls||[]).filter(r=>r.at * J.miles <= J.done))}
     <div class="pcrow">${journeyPlay ? `<button class="btn" style="flex:1" data-journey="pause">⏸ Pause</button>` : `<button class="btn" style="flex:1" data-journey="go">▶ ${met ? "Back on the road" : "Go on"}</button>`}
       <select data-travel="mps" title="How fast it plays on the map" style="flex:0 0 120px">${JOURNEY_MPS.map(([v, l])=>`<option value="${v}" ${v===(+t.mps||10)?"selected":""}>${l}</option>`).join("")}</select></div>
     ${journeyPlay ? "" : `<button class="btn wide" data-journey="stop">Stop here, on the road</button><p class="grouplab" style="margin-top:6px">Pull in an encounter</p>${encPullRow()}`}</div>`;
@@ -3547,11 +3548,12 @@ function encChanceAt(x, y){
 }
 /* rolled when they set off: one roll for each day on the road (a part day counts for its part), each at a random point in it */
 function rollRoadEncounters(J, roadHours, hours){
-  J.events = []; if(!encSet().on) return;
+  J.events = []; J.encRolls = []; if(!encSet().on) return;
   const D = Math.max(roadHours / hours, .01);
   for(let k=0; k < Math.ceil(D); k++){
     const a = k / D, b = Math.min(1, (k+1) / D), at = a + Math.random()*(b - a), p = journeyAt({ ...J, done:at*J.miles });
     const pct = Math.round(encChanceAt(p.x, p.y) * (b - a) * D * 100), roll = 1 + Math.floor(Math.random()*100);
+    J.encRolls.push({ at, roll, pct });                                   // every day's roll, met or not: shown once the party gets that far
     if(roll <= pct) J.events.push({ at, roll, pct });
   }
 }
@@ -4373,8 +4375,8 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
   const s = selNode(); if(!isRival(s)) return;
   if(b.dataset.rivalb==="shape"){ courseEdit = courseEdit===s.id ? null : s.id; render(); renderPane(true); }
   else if(b.dataset.rivalb==="roll"){ const A = s.arrive; if(!A) return;
-    const h = rollDiceExpr(A.dice || "1d12") || 0, way = A.way || (Math.random() < .5 ? "after" : "before");
-    A.h = h; A.after = way==="after"; A.rolled = `${A.dice || "1d12"}: ${h} hours ${way}${A.way ? "" : " (a coin toss picked which)"}`;
+    const HR = rollDiceFull(A.dice || "1d12"), h = HR ? HR.total : 0, way = A.way || (Math.random() < .5 ? "after" : "before");
+    A.h = h; A.after = way==="after"; A.rolled = `${HR ? HR.said : A.dice || "1d12"}, so ${h} hours ${way}${A.way ? "" : ` (a coin toss picked which: ${way==="after" ? "heads, after" : "tails, before"})`}`;
     touch(); renderPane(true); flash(`${s.name||"The rival"} gets in ${h} hours ${way} ${(partyShip()||{}).name||"the crew"}.`); }
   else { delete s.course; delete s.follow; if(courseEdit===s.id) courseEdit = null; touch(); renderPane(true); }
 });
@@ -7840,7 +7842,7 @@ document.addEventListener("click", e=>{
   if(!o || !o.h.conc){ concAfter(); return; }
   let made = b.dataset.concask==="made", how = "";
   if(b.dataset.concask==="roll"){ const d1 = 1 + Math.floor(Math.random() * 20), wc = hasWarCaster(o.h), d2 = wc ? 1 + Math.floor(Math.random() * 20) : 0, d = Math.max(d1, d2), tot = d + conSaveOf(o.h);
-    made = tot >= a.dc; how = wc ? ` (War Caster: rolled ${d1} and ${d2}, kept ${d}; ${tot} against DC ${a.dc})` : ` (${tot} against DC ${a.dc})`; }
+    made = tot >= a.dc; how = wc ? ` (War Caster: rolled ${d1} and ${d2}, kept ${d}; ${d20Words(d, conSaveOf(o.h)).replace(/^d20 \d+/, `${d}`)} against DC ${a.dc})` : ` (${d20Words(d, conSaveOf(o.h))} against DC ${a.dc})`; }
   else how = ` (DC ${a.dc})`;
   if(made){ const line = `${o.name} keeps concentrating on ${o.h.conc.name}: made the Constitution save${how}`; gameLog("spell", line); flash(line + "."); }
   else concEnd(o, `lost it: failed the Constitution save${how}`);
@@ -8971,7 +8973,7 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   else { const box = b.closest(".sefadd"), v = k => { const i = box.querySelector(`[data-sefn="${k}"]`); return i ? i.value.trim() : ""; };
     const ef = effectFromForm(v); ef.id = uid("ef"); ef.name = v("name"); if(v("res")) ef.res = v("res");
     if(!ef.name){ flash("Give the effect a name first."); return; }
-    if(ef.hp){ const h = ef.hp, neg = /^[-−]/.test(h), r = /d/i.test(h) ? rollDiceExpr(h.replace(/^[+−-]/, "")) : Math.abs(parseInt(h.replace(/^[+−-]/, ""), 10)||0); ef.hpRoll = (neg ? -1 : 1) * (r||0); }
+    if(ef.hp){ const h = ef.hp, neg = /^[-−]/.test(h), R = /d/i.test(h) ? rollDiceFull(h.replace(/^[+−-]/, "")) : null, r = R ? R.total : Math.abs(parseInt(h.replace(/^[+−-]/, ""), 10)||0); ef.hpRoll = (neg ? -1 : 1) * (r||0); if(R) ef.hpSaid = R.said; }
     s.effects.push(ef); openInv.add(`stgef:${p.id}:${s.id}`); }
   stageFightSync(p); saveParty(); renderLibList(); });
 function setStage(p, sid, quiet){
@@ -9023,7 +9025,7 @@ function effectWords(e){
   const bySave = {}; for(const k of sv){ const v = sgnN(+e.save[k]); (bySave[v] = bySave[v] || []).push(ABN[k]); }
   for(const [v, ks] of Object.entries(bySave)) out.push(`${ks.join(" and ")} saves ${v}`);
   if(+e.dc) out.push(`DCs ${sgnN(+e.dc)}`); if(+e.atk) out.push(`attack rolls ${sgnN(+e.atk)}`);
-  if(+e.hpRoll) out.push(`max HP ${sgnN(+e.hpRoll)}${e.hp && /d/i.test(e.hp) ? ` (${String(e.hp).replace(/^[+-]/, "")})` : ""}`);
+  if(+e.hpRoll) out.push(`max HP ${sgnN(+e.hpRoll)}${e.hp && /d/i.test(e.hp) ? ` (${e.hpSaid || String(e.hp).replace(/^[+-]/, "")})` : ""}`);
   if((e.lose||[]).length) out.push(`doesn't have ${e.lose.join(", ")}`);
   if(e.res) out.push(`resists ${e.res}`);
   if(e.rule) out.push(e.rule);
@@ -9063,7 +9065,7 @@ function effectHpNow(p, d){
 function addEffect(p, e0){
   const e = { id:uid("ef"), on:true, ...JSON.parse(JSON.stringify(e0||{})) };
   const h = String(e.hp||"").trim(), neg = /^-|^−/.test(h);
-  if(h){ const roll = /d/i.test(h) ? rollDiceExpr(h.replace(/^[+−-]/, "")) : Math.abs(parseInt(h.replace(/^[+−-]/, ""), 10) || 0); e.hpRoll = (neg ? -1 : 1) * (roll||0); }
+  if(h){ const R = /d/i.test(h) ? rollDiceFull(h.replace(/^[+−-]/, "")) : null, roll = R ? R.total : Math.abs(parseInt(h.replace(/^[+−-]/, ""), 10) || 0); e.hpRoll = (neg ? -1 : 1) * (roll||0); if(R) e.hpSaid = R.said; }
   (p.effects = Array.isArray(p.effects) ? p.effects : []).push(e);
   effectHpNow(p, +e.hpRoll||0);
   gameLog("note", `${p.name||"Someone"}: ${e.name||"an effect"}${e.from ? ` (${e.from})` : ""}: ${effectWords(e)}`);
@@ -9137,7 +9139,7 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
     if(!ef.name){ flash("Give the effect a name first."); return; }
     if(!effectWords({ ...ef, hpRoll:ef.hp ? 1 : 0 }) && !ef.quick){ flash("It doesn't change anything yet."); return; }
     const done = addEffect(p, ef); openInv.add("effects:" + p.id);
-    flash(`${p.name||"They"}: ${done.name}${done.hpRoll ? `, max HP ${sgnN(done.hpRoll)}` : ""}.`);
+    flash(`${p.name||"They"}: ${done.name}${done.hpRoll ? `, max HP ${sgnN(done.hpRoll)}${done.hpSaid ? ` (${done.hpSaid})` : ""}` : ""}.`);
   }
   if(pane==="library") renderLibList(); if(battleOf){ renderBattle(); renderBattlePanel(); } else if(pane!=="library") renderPane(true);
 });
@@ -9503,12 +9505,23 @@ function placeBits(n){
 const CONDITIONS = ["Blinded","Charmed","Deafened","Exhaustion","Frightened","Grappled","Incapacitated","Invisible",
   "Paralyzed","Petrified","Poisoned","Prone","Restrained","Stunned","Unconscious"];
 /* "2d4", "1d3+1", "3" → a number, rolled */
-function rollCount(n){
-  if(typeof n==="number") return n;
+function rollCount(n){ return rollCountFull(n).n; }
+/* the same, with the dice as words when it was rolled: { n, said } */
+function rollCountFull(n){
+  if(typeof n==="number") return { n, said:"" };
   const m = /^(\d*)d(\d+)(?:\s*\+\s*(\d+))?$/i.exec(String(n||1).trim());
-  if(!m) return Math.max(0, Math.round(+n||1));
-  let t = +(m[3]||0); for(let i=0;i<(m[1]?+m[1]:1);i++) t += 1+Math.floor(Math.random()*+m[2]);
-  return t;
+  if(!m) return { n:Math.max(0, Math.round(+n||1)), said:"" };
+  const rolls = []; for(let i=0;i<(m[1]?+m[1]:1);i++) rolls.push(1+Math.floor(Math.random()*+m[2]));
+  const t = rolls.reduce((a, r)=>a + r, +(m[3]||0));
+  return { n:t, said:diceWords(String(n).trim(), rolls, +(m[3]||0), t) };
+}
+/* a planned line's chance it's there, and how many: rolled, with the numbers for the log ("" when nothing was rolled) */
+function foeLineRoll(f){
+  const m = foeById(f.id), name = (m && m.name) || "Foe";
+  if(f.chance!=null && f.chance<1){ const pct = Math.round(f.chance * 100), r = 1 + Math.floor(Math.random()*100);
+    if(r > pct) return { n:0, said:`${name}: a ${pct}% chance it's here, rolled ${r} on a d100, not here` };
+    const c = rollCountFull(f.n??1); return { n:c.n, said:`${name}: a ${pct}% chance it's here, rolled ${r} on a d100, here${c.said ? `; how many, ${c.said}` : ""}` }; }
+  const c = rollCountFull(f.n??1); return { n:c.n, said:c.said ? `${name}: how many, ${c.said}` : "" };
 }
 const foeMaxHp = m => { if(!m) return null; const v = typeof m.hp==="number" ? m.hp : parseInt((String(m.hp||"").match(/\d+/)||[])[0]); return v>0 ? v : null; };
 /* a stat block's entries as [name, text], standard or your own */
@@ -9728,15 +9741,13 @@ function wireLootHere(el, n, st, redraw){
   /* a place's coin: roll the dice, share it out evenly, odd coins one at a time from the top */
   const pcn = el.querySelector("#pl-coins");
   if(pcn) pcn.onclick = ()=>{
-    const P = PURSES.find(p=>p.cat===pc), m = P && /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|ep|gp|pp)/.exec(P.dice); if(!m) return;
-    let total = 0; for(let k=0;k<+m[1];k++) total += 1 + Math.floor(Math.random()*+m[2]);
-    total *= +(m[3]||1);
-    const unit = m[4], pcs = partyRoster(), each = Math.floor(total/pcs.length), extra = total - each*pcs.length;
-    partyDoing(`Coin split (${total} ${unit})`);
+    const P = PURSES.find(p=>p.cat===pc), R = P && rollCoins(P.dice); if(!R) return;
+    const total = R.total, unit = R.unit, pcs = partyRoster(), each = Math.floor(total/pcs.length), extra = total - each*pcs.length;
+    partyDoing(`Coin split (${total} ${unit})`); gameLog("loot", `Rolled the coin at ${placeLabel(n)}: ${R.said}, split among the party`);
     pcs.forEach((p,k)=>{ const pu = purseOf(p); pu[unit] += each + (k<extra?1:0); });
     delete n.site.loot.purse; delete n.site.loot.coin; delete n.site.coinDc; delete n.site.coinFound;
     saveParty(); touch(); redraw();
-    flash(`Rolled ${total} ${unit}: ${each} each${extra?`, ${extra} odd coin${extra===1?"":"s"} to ${pcs.slice(0,extra).map(p=>p.name||"Character").join(", ")}`:""}.`);
+    flash(`Rolled ${R.said}: ${each} each${extra?`, ${extra} odd coin${extra===1?"":"s"} to ${pcs.slice(0,extra).map(p=>p.name||"Character").join(", ")}`:""}.`);
   };
   /* hidden loot: set how hard each thing is to find, and search the place for it */
   el.querySelectorAll(".pl-dc[data-gi]").forEach(s=>s.onchange = ()=>{ const id = st.items[+s.dataset.gi]; if(!id) return; setItemDc(st, id, +s.value||0); touch(); redraw(); });
@@ -9897,10 +9908,10 @@ function wireInv(el, n, st){
   });
 }
 function startFight(st){
-  const list = [], stealth = {};
+  const list = [], stealth = {}, said = [];
   (st.foes||[]).forEach((f, fi)=>{
-    if(f.chance!=null && f.chance<1 && Math.random() >= f.chance) return;
-    const m = foeById(f.id), count = rollCount(f.n??1), max = foeMaxHp(m);
+    const R = foeLineRoll(f); if(R.said) said.push(R.said); if(!R.n) return;
+    const m = foeById(f.id), count = R.n, max = foeMaxHp(m);
     for(let i=0;i<count;i++){
       const x = { id:uid("fx"), foe:f.id, label:`${m?m.name:"Foe"}${count>1?` ${i+1}`:""}`, hp:max, max, used:{}, spent:{}, conds:[], line:fi };
       /* what Build set up: what each one carries, and the square each one starts on */
@@ -9916,6 +9927,7 @@ function startFight(st){
   /* calm: everyone is here and on the map, but nobody is fighting yet — no initiative, no turns, no rounds. Going into
      any place starts this way, planned encounter or not; the fight begins only from Start the battle (beginBattle) */
   st.combat = { round:1, list, stage:0, calm:true, stealth };     // stage: how many later stages have been brought in
+  if(said.length){ gameLog("fight", `Rolled for who's here: ${said.join("; ")}`); flash(said.join(" · ")); }
 }
 /* is this place calm (here, not fighting)? A place entered before calm existed counts as calm if its fight never got going */
 function calmOf(c){
@@ -10143,7 +10155,9 @@ function intoOpenPlace(place, who){
     if((c.list||[]).some(x=>x.npc===p.id)) continue;
     const x = addToFight(c, `p:${p.id}`, p.side==="ally"); if(x && p.side==="neutral") x.neutral = true;
   }
-  for(const f of who.foes||[]){ const cnt = rollCount(f.n??1); for(let i=0;i<cnt;i++) addToFight(c, f.id, false); }
+  const said = [];
+  for(const f of who.foes||[]){ const R = rollCountFull(f.n??1), m = foeById(f.id); if(R.said) said.push(`${(m && m.name) || "Foe"}: how many, ${R.said}`); for(let i=0;i<R.n;i++) addToFight(c, f.id, false); }
+  if(said.length){ gameLog("fight", `Rolled for who's here: ${said.join("; ")}`); flash(said.join(" · ")); }
   placeTokens(c); renderBattle(); renderBattlePanel(); renderPane(true);
 }
 function addToFight(c, who, ally){
@@ -10344,9 +10358,10 @@ function wireFight(n, st){
       /* the next stage joins: its foes come in against the party, on its own starting squares if it has them */
       const S = siteStages(st), k = c.stage||0, s = S[k]; if(!s) return;
       const added = [];
+      const stageSaid = [];
       (s.foes||[]).forEach((f, li)=>{
-        if(f.chance!=null && f.chance<1 && Math.random() >= f.chance) return;
-        const cnt = rollCount(f.n??1); for(let i=0;i<cnt;i++){ const nx = addToFight(c, f.id, false); if(nx){ nx.line = li; nx.stg = k+1; added.push(nx); } }
+        const R = foeLineRoll(f); if(R.said) stageSaid.push(R.said); if(!R.n) return;
+        const cnt = R.n; for(let i=0;i<cnt;i++){ const nx = addToFight(c, f.id, false); if(nx){ nx.line = li; nx.stg = k+1; added.push(nx); } }
       });
       const scaledWords = scaleStageIn(st, n, k+1);
       if(scaledWords){ added.length = 0; added.push(...c.list.filter(x=>x.stg===k+1)); }
@@ -10357,16 +10372,18 @@ function wireFight(n, st){
         placeTokens(c);
       }
       const nm = s.name || `Stage ${k+2}`;
-      gameLog("fight", `${nm} joined the fight${placeOfSite(st)?` at ${placeOfSite(st)}`:""}: ${added.map(x=>x.label).join(", ")||"nobody"}`);
+      gameLog("fight", `${nm} joined the fight${placeOfSite(st)?` at ${placeOfSite(st)}`:""}: ${added.map(x=>x.label).join(", ")||"nobody"}${stageSaid.length ? ` (rolled: ${stageSaid.join("; ")})` : ""}`);
       if(scaledWords) gameLog("fight", `${nm}, scaled for ${scaleWho(c.scaled.who)}: ${scaledWords}`);
-      flash(`${nm}: ${added.length} join${added.length===1?"s":""} the fight.`);
+      flash(`${nm}: ${added.length} join${added.length===1?"s":""} the fight.${stageSaid.length ? ` ${stageSaid.join(" · ")}` : ""}`);
     }
     else if(a==="round") newRound(c);
     else if(a==="recharge"){
       const back = [];
       for(const y of c.list) for(const r of foeResources(foeById(y.foe)))
-        if(r.kind==="recharge" && r.min<=6 && y.spent[r.key]){ const d = 1+Math.floor(Math.random()*6); if(d>=r.min){ y.spent[r.key] = false; back.push(`${y.label}: ${r.label} (${d})`); } }
-      flash(back.length ? `Recharged — ${back.join(", ")}` : "Nothing recharged.");
+        if(r.kind==="recharge" && r.min<=6 && y.spent[r.key]){ const d = 1+Math.floor(Math.random()*6), ok = d>=r.min; if(ok) y.spent[r.key] = false;
+          back.push(`${y.label}: ${r.label}, d6 ${d} (needs ${r.min}${r.min<6 ? "–6" : ""}): ${ok ? "recharged" : "not yet"}`); }
+      flash(back.length ? back.join(" · ") : "Nothing to recharge.");
+      if(back.length) gameLog("fight", `Recharge rolls: ${back.join("; ")}`);
     }
     else if(a==="reset"){ if(!confirm("Start this fight over at full health?")) return; startFight(st); beginBattle(st); }
     else if(a==="begin"){ beginBattle(st); flash("The battle begins: roll initiative."); }
@@ -12999,6 +13016,15 @@ function rollTerms(T, crit){
   }
   return { total:Math.max(0, total), rolls };
 }
+/* every roll shows its numbers, not just what came of it (Joseph, 2026-10-29): "2d6 + 3: 4 + 2 + 3 = 9", "d20 14 + 3 = 17";
+   one die and nothing added is just "1d12: 7" */
+function diceWords(label, rolls, mod, total){
+  mod = +mod || 0; if(total==null) total = rolls.reduce((a, r)=>a + r, 0) + mod;
+  if(rolls.length===1 && !mod) return `${label}: ${total}`;
+  return `${label}: ${rolls.join(" + ")}${mod ? ` ${mod<0 ? "−" : "+"} ${Math.abs(mod)}` : ""} = ${total}`;
+}
+const rollSaid = (dice, r, crit) => diceWords(`${dice}${crit ? " (crit: dice twice)" : ""}`, r.rolls, diceTerms(dice).filter(x=>!x.d).reduce((a, x)=>a + x.k, 0), r.total);
+const d20Words = (d, mod) => diceWords("d20", [d], mod, d + (+mod || 0)).replace(/^d20: /, "d20 ");
 /* ── a spell's damage, part by part, as its own text gives it: Ice Knife is 1d10 Piercing on a hit, then 2d6 Cold to the
    target and everyone within 5 feet ── */
 function spellParts(s){
@@ -13292,14 +13318,16 @@ function logAction(n, c){
   const verb = info.kind==="spell" ? "casts" : info.kind==="attack" ? "makes a" : "uses";
   const OUT = { hit:"hits", crit:"crits", miss:"misses", fail:"save failed", save:"save made", none:"" }, out = OUT[act.outcome];
   const riders = D.on.length ? ` with ${D.on.map(a=>a.name).join(" and ")}${D.on.some(a=>a.adv)?" (Advantage)":""}` : "";
+  /* the dice the Roll buttons rolled, when the number wasn't changed by hand */
+  const rolledW = (k, v) => { const R = act.rolled && act.rolled[k]; return R && R.v===String(v) ? ` (${R.said})` : ""; };
   const line = `${actor.label} ${verb} ${info.name}${slotTxt}${riders}`
     + (targets.length ? ` on ${hits.map(h=>h.label).join(", ")}` : "")
     + (out ? ` — ${out}` : "")
-    + (dmg && act.outcome!=="miss" ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}` : "")
-    + (healed ? `, healing ${healed}` : "")
+    + (dmg && act.outcome!=="miss" ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}${rolledW("dmg", act.dmg)}` : "")
+    + (healed ? `, healing ${healed}${rolledW("heal", act.heal)}` : "")
     + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
     + (act.note ? ` (${act.note})` : "")
-    + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}` : ""}` : "")
+    + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}${rolledW("dmg2", p2.dmg)}` : ""}` : "")
     + [...hits, ...hits2].filter((h,i,A)=>h.dropped && A.findIndex(x=>x.id===h.id && x.dropped)===i).map(h=>`. ${h.label} drops`).join("") + ".";
   c.log = c.log || [];
   const reactedBefore = JSON.stringify(c.reacted||{});
@@ -13559,7 +13587,8 @@ function renderBattlePanelNow(){
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
     const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit), flat = diceTerms(dice).filter(x=>!x.d).reduce((a,x)=>a+x.k,0);
     if(w==="heal") act.heal = String(r.total); else if(w==="dmg2"){ if(act.p2) act.p2.dmg = String(r.total); } else act.dmg = String(r.total);
-    flash(`${dice}${crit?" (crit: dice twice)":""}: ${r.rolls.join(" + ")}${flat?` ${flat<0?"−":"+"} ${Math.abs(flat)}`:""} = ${r.total}`);
+    (act.rolled = act.rolled || {})[w] = { v:String(r.total), said:rollSaid(dice, r, crit) };     // the dice go in the log too, unless the number is changed by hand
+    flash(act.rolled[w].said);
     renderBattlePanel(); });
   $("#ac-go").onclick = ()=>{ keep(); logAction(n, c); };
   }
@@ -13576,8 +13605,11 @@ function renderBattlePanelNow(){
     if(a==="begin"){ beginBattle(st); battleSel = null; flash("The battle begins: roll initiative."); }
     if(a==="layout"){ c.layout = c.layout==="lineup" ? "map" : "lineup"; bview = { x:-BS, y:-BS, w:(BW+2)*BS, h:(BH+2)*BS }; }
     if(a==="init"){
-      for(const t of all) if((t.kind==="foe" || t.npc) && !t.shared) c.init[t.id] = 1 + Math.floor(Math.random()*20) + (t.kind==="foe" ? initBonus(foeById(t.x.foe)) : numOr(String(t.p.init||"").replace("+",""), 0));
-      c.turn = null; flash("Enemies rolled. Type in the players' initiative.");
+      const said = [];
+      for(const t of all) if((t.kind==="foe" || t.npc) && !t.shared){ const d = 1 + Math.floor(Math.random()*20), b = t.kind==="foe" ? initBonus(foeById(t.x.foe)) : numOr(String(t.p.init||"").replace("+",""), 0);
+        c.init[t.id] = d + b; said.push(`${t.label} ${d20Words(d, b)}`); }
+      c.turn = null; flash(`Enemies rolled: ${said.join(" · ")}. Type in the players' initiative.`);
+      if(said.length) gameLog("fight", `Initiative: ${said.join("; ")}`);
     }
     if(a==="next"){ if(!nextTurn(c)) return; }
     touch(); renderBattle(); renderBattlePanel();
@@ -14415,7 +14447,7 @@ function shopRestock(n){
 /* open a shop: its keeper (and sometimes a hand) rolled as the right kind of person, saved and met here */
 function shopOpen(n, tid){
   const T = shopTpl(tid); if(!T) return;
-  n.shop = { tpl:tid, price:1, items:[], till:rollTill(tid) };
+  const T0 = rollTillFull(tid); n.shop = { tpl:tid, price:1, items:[], till:T0.coins, tillSaid:T0.said };
   const lv = Math.max(1, partyAvgLevel()), met = n.npcs = n.npcs || [], here = met.map(libNpcById).filter(Boolean);
   /* someone already works here: they keep it. Otherwise a keeper of the right kind is rolled */
   let keeper = here[0];
@@ -14494,10 +14526,11 @@ function addCoins(purse, cp){ coinsOf(purse); cp = Math.max(0, Math.round(cp)); 
 /* the shop's till: what it has to buy with (Joseph's table rule: the dice by kind of shop, "4d6×5 gp" unless the kind says) */
 const TILL_DICE = { bakery:"2d6×2 gp", butcher:"2d6×3 gp", fishmonger:"2d6×2 gp", tavern:"3d6×5 gp", general:"4d6×5 gp", chandlery:"4d6×10 gp", smithy:"4d6×10 gp",
   armourer:"6d6×10 gp", bowyer:"4d6×5 gp", tailor:"3d6×5 gp", apothecary:"4d6×5 gp", jeweller:"6d6×20 gp", books:"3d6×5 gp", maps:"4d6×5 gp", stables:"3d6×5 gp" };
-function rollTill(tid){
-  const m = /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|gp)/.exec(TILL_DICE[tid] || "4d6×5 gp"); let t = 0;
-  for(let i=0; i<+m[1]; i++) t += 1 + Math.floor(Math.random()*+m[2]);
-  return { cp:0, sp:0, ep:0, gp:0, pp:0, [m[4]]: t * +(m[3]||1) };
+function rollTill(tid){ return rollTillFull(tid).coins; }
+/* with the dice as words, kept on the shop (n.shop.tillSaid) and shown under the till */
+function rollTillFull(tid){
+  const R = rollCoins(TILL_DICE[tid] || "4d6×5 gp") || rollCoins("4d6×5 gp");
+  return { coins:{ cp:0, sp:0, ep:0, gp:0, pp:0, [R.unit]: R.total }, said:R.said };
 }
 const shopTill = n => coinsOf(n.shop.till = n.shop.till || rollTill(n.shop.tpl));
 /* what the shop pays for something brought in: half its going rate (Joseph's table rule), haggling aside */
@@ -14566,7 +14599,7 @@ function shopSaleRows(n){
 function shopBuyRows(n){
   const R = partyRoster(); if(!R.length) return "";
   const p = R.find(q=>q.id===shopFrom), till = shopTill(n);
-  return `<div class="pcrow" style="align-items:center;margin:2px 0"><label class="mini" style="flex:1">The till <b class="mono">${cpStr(Math.round(purseGp(till)*100))}</b></label><button class="btn small" data-shopb="till" title="Roll what's in the till again">Roll again</button></div>
+  return `<div class="pcrow" style="align-items:center;margin:2px 0"><label class="mini" style="flex:1">The till <b class="mono">${cpStr(Math.round(purseGp(till)*100))}</b></label><button class="btn small" data-shopb="till" title="Roll what's in the till again">Roll again</button></div>${n.shop.tillSaid ? `<p class="empty-note" style="font-size:11px;margin:0 0 4px">Started with ${esc(n.shop.tillSaid)}</p>` : ""}
     <div class="field" style="margin:4px 0"><label>Buy from <small>they offer half the going rate (your table rule)</small></label><select data-shop="from"><option value="">Who's selling?</option>${R.map(q=>`<option value="${q.id}" ${q.id===shopFrom?"selected":""}>${esc(q.name||"Character")}</option>`).join("")}</select></div>
     ${p ? ((p.inv||[]).map((e, k)=>({ e, k, x:e.id ? libLootById(e.id) : null })).filter(r=>r.x && itemGp(r.x) > 0).map(({ e, k, x })=>{ const q = e.qty||1;
         return `<div class="shoprow"><span class="sr-n">${esc(x.name)}${q > 1 ? ` <small>×${q}</small>` : ""} <small class="mono">${cpStr(shopOffer(n, e.id))}${q > 1 ? " each" : ""}</small></span>
@@ -14624,7 +14657,7 @@ document.addEventListener("click", e=>{
   if(bb){ const n = shopNode(); if(!n || !n.shop) return; const q = bb.closest(".shoprow") && bb.closest(".shoprow").querySelector("[data-shopbqty]"); shopBuy(n, shopFrom, +bb.dataset.shopbuy, q ? +q.value : 1); shopRedraw(); return; }
   const b = e.target.closest("[data-shopb]"); if(!b) return; const n = shopNode(); if(!n) return;
   const a = b.dataset.shopb;
-  if(a==="till" && n.shop){ n.shop.till = rollTill(n.shop.tpl); touch(); shopRedraw(); return; }
+  if(a==="till" && n.shop){ const T = rollTillFull(n.shop.tpl); n.shop.till = T.coins; n.shop.tillSaid = T.said; flash(`The till: ${T.said}.`); touch(); shopRedraw(); return; }
   if(a==="haggle" && n.shop){ const i = document.querySelector('[data-haggle="total"]'); if(i) haggle.total = i.value; settleHaggle(n); touch(); shopRedraw(); return; }
   if(a==="open"){ const s = b.parentElement.querySelector('[data-shop="tpl"]'), tid = s && s.value; if(!tid){ flash("Pick a kind of shop first."); return; }
     shopOpen(n, tid); saveParty(); touch(); render(); flash(`${placeLabel(n)} is open: ${(n.shop.items||[]).length} things for sale.`); }
@@ -14670,7 +14703,7 @@ function genPerson(over){
   const cast = CASTING[cls] ? classCaster(sb, cls, lv) : isCaster(sb) ? randomizeSpells(sb, "") : null, arms = randomizeWeapons(cast ? cast.sb : sb);
   const g = { kind:"person", disp, level:lv, roleChoice:o.role||"", align:o.align || rollAlignment(disp),
     name:`${pickOne(genderFirst(sex, TT))}${nick} ${pickOne(TT.family)}`, gender:sex, theme, species:o.species || pickOne(GEN_SPECIES), role:cls, group:groupOfClass(cls),
-    foe:sb.id, hp:rollDiceExpr(sb.hd) || foeMaxHp(sb), hd:sb.hd || "", statBlock:arms.sb, spells:cast ? cast.spells : [], spellClass:cast ? cast.cls : "",
+    ...(HR => ({ hp:HR ? HR.total : foeMaxHp(sb), hpSaid:HR ? HR.said : "" }))(rollDiceFull(sb.hd)), foe:sb.id, hd:sb.hd || "", statBlock:arms.sb, spells:cast ? cast.spells : [], spellClass:cast ? cast.cls : "",
     cast:cast && cast.slots ? cast : null, swaps:arms.swaps, look:kindPick(fitList(K && K.look, sex), fitList([...TT.look, ...(TT["look_"+sex]||[])], sex)), voice:kindPick(K && K.voice, TT.voice), wants:kindPick(K && K.wants, TT.wants[disp], disp==="enemy" ? .75 : .9), secret:kindPick(K && K.secret, TT.secret, .85), backstory:genBackstory(TT),
     ...(K ? { pkind:o.kind, occupation:K.label, knows:pickOne(K.knows||[""]), carries:(K.carries||[]).slice(), wealth:K.wealth } : {}) };
   g.person = buildPerson(g);
@@ -14745,9 +14778,9 @@ function genCreature(o){
   const m = asked || pickOne(near.length ? near : pool.length ? pool : all.slice().sort((a,b)=>a.cr-b.cr).slice(0, 1));
   if(!m) return { kind:"none", level:lv, why:`The SRD has no ${o.type} to meet.` };
   const own = ALIGNMENTS.find(a=>a.toLowerCase()===String(m.align||"").toLowerCase()) || (/unaligned/i.test(m.align||"") ? "Unaligned" : "");
-  const hp = rollDiceExpr(m.hd) || foeMaxHp(m);
+  const HR = rollDiceFull(m.hd), hp = HR ? HR.total : foeMaxHp(m), hpSaid = HR ? HR.said : "";
   const g = { kind:"person", creature:true, disp, level:lv, roleChoice:"", align:o.align || own || rollAlignment(disp),
-    name:`${pickOne(genderFirst("", CT))}${Math.random()<.25 ? ` "${pickOne(CT.nick)}"` : ""}`, species:"", role:m.name, group:"", foe:m.id, hp, hd:m.hd || "",
+    name:`${pickOne(genderFirst("", CT))}${Math.random()<.25 ? ` "${pickOne(CT.nick)}"` : ""}`, species:"", role:m.name, group:"", foe:m.id, hp, hpSaid, hd:m.hd || "",
     statBlock:m, spells:[], spellClass:"", cast:null, swaps:[], look:pickOne(CT.look), voice:pickOne(CT.voice), wants:pickOne(CT.wants[disp]), secret:pickOne(CT.secret), backstory:"", theme:CT.theme };
   const p = personFromCreature(m.id);
   Object.assign(p, { name:g.name, role:`${{enemy:"Enemy",neutral:"Neutral",ally:"Potential ally"}[disp]} · ${m.name}`, align:g.align,
@@ -14767,9 +14800,9 @@ function personPurse(g){
   let cat = cls==="Commoner" ? 1 : lv <= 6 ? 2 : lv <= 10 ? 3 : lv <= 14 ? 4 : 5;
   if(cls==="Noble") cat = Math.min(5, cat + 1);
   if(g.wealth) cat = g.wealth;                                        // a kind of person's own purse
-  const P = PURSES.find(q=>q.cat===cat), m = P && /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|ep|gp|pp)/.exec(P.dice || ""); if(!m) return {};
-  let n = 0; for(let i=0; i<+m[1]; i++) n += 1 + Math.floor(Math.random()*+m[2]);
-  return { [m[4]]: n * +(m[3]||1) };
+  const P = PURSES.find(q=>q.cat===cat), R = P && rollCoins(P.dice); if(!R) return {};
+  g.purseSaid = R.said;                                               // the dice, shown on the rolled card
+  return { [R.unit]: R.total };
 }
 
 /* a rolled person on the same kind of sheet the players have: a card with a summary line and folding
@@ -14801,7 +14834,7 @@ function personSheet(g, key, compact, controls){
   const kit = m ? foeKit(m) : [], purseTxt = COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", ");
   const kitRow = e => { const x = e.id ? libLootById(e.id) : null, nm = x ? x.name : e.text, q = (e.qty||1) > 1 ? ` ×${e.qty}` : "", v = x ? (x.value || (x.gp!=null ? `${x.gp} gp` : "")) : "";
     return `<div class="sbl">${x ? `<span class="libref" data-libopen="loot:${x.id}">${esc(nm)}</span>` : esc(nm)}${q}${v ? ` <small>${esc(v)}</small>` : ""}${e.dc ? ` <small>hidden, DC ${e.dc}</small>` : ""}</div>`; };
-  const invBody = (kit.length ? kit.map(kitRow).join("") : `<p class="empty-note" style="font-size:11px;margin:0">Nothing worth noting.</p>`) + row("Purse", esc(purseTxt || "empty"));
+  const invBody = (kit.length ? kit.map(kitRow).join("") : `<p class="empty-note" style="font-size:11px;margin:0">Nothing worth noting.</p>`) + row("Purse", `${esc(purseTxt || "empty")}${purseTxt && g.purseSaid ? ` <small>(rolled ${esc(g.purseSaid)})</small>` : ""}`);
   return `<div class="pcard npc rolled">
     <div class="pchead"><span class="pcname ro">${esc(p.name)}</span><span class="pclv"><span class="npctag">NPC</span></span></div>
     <div class="pcsum mono"><b>${esc([p.species, String(g.occupation||g.role||"").toLowerCase()].filter(Boolean).join(" "))}</b>${p.gender ? ` · ${esc(String(p.gender).toLowerCase())}` : ""}${g.theme && g.theme!=="neutral" ? ` · ${esc(themeLabel(g.theme).toLowerCase())}` : ""} · ${sum}</div>
@@ -14812,7 +14845,7 @@ function personSheet(g, key, compact, controls){
     ${sec("inv", "Inventory", invBody, String(kit.length + (purseTxt ? 1 : 0)), true)}
     ${sec("sheet", "Character sheet", `${row(g.creature ? "Creature" : "Class", esc(g.role||"") + (p.level ? ` ${esc(p.level)}` : "") + (g.group ? ` <small>(${esc(g.group)})</small>` : ""))}
       ${row("Built from", sb ? `<span class="libref" data-libopen="foes:${sb.id}">${esc(sb.name)}</span> <small>SRD stat block</small>` : "")}
-      ${row("Armor Class", esc(String(m.ac)))}${row("Hit Points", `${esc(String(p.hpMax||m.hp))}${g.hd?` <small>(rolled ${esc(g.hd)}; average ${foeMaxHp(sb)})</small>`:""}`)}
+      ${row("Armor Class", esc(String(m.ac)))}${row("Hit Points", `${esc(String(p.hpMax||m.hp))}${g.hd?` <small>(rolled ${esc(g.hpSaid || g.hd)}; average ${foeMaxHp(sb)})</small>`:""}`)}
       ${row("Speed", esc(m.spd||""))}${row("Initiative", esc(String(m.init||"")))}${row("Passive Perception", esc(p.pp||""))}
       ${row("Difficulty", `CR ${crLabel(m.cr)} · ${(m.xp||0).toLocaleString()} XP <small>toward the encounter budget</small>`)}`, `${esc(String(m.ac))} AC · ${esc(String(p.hpMax||m.hp))} HP`)}
     ${sec("prof", "Abilities, saves, skills and senses", `<div class="abil ro">${ABILITIES.map(([k,l],j)=>`<div class="ab"><label>${l}</label><b class="mono">${ab[j]??"–"}</b><span class="mod">${ab[j]!=null?abMod(ab[j]):""}</span></div>`).join("")}</div>
@@ -15226,11 +15259,20 @@ function fillSheetFromBlock(x){
   return true;
 }
 /* roll dice written like "8d8 + 16" */
-function rollDiceExpr(expr){
+function rollDiceExpr(expr){ const r = rollDiceFull(expr); return r ? r.total : null; }
+/* the same, with the dice as words: { total, said } */
+function rollDiceFull(expr){
   const m = /(\d+)\s*d\s*(\d+)\s*(?:([+-])\s*(\d+))?/i.exec(String(expr||"")); if(!m) return null;
-  let t = 0; for(let k=0; k<+m[1]; k++) t += 1 + Math.floor(Math.random()*+m[2]);
-  if(m[3]) t += (m[3]==="-" ? -1 : 1) * (+m[4]);
-  return Math.max(1, t);
+  const rolls = []; for(let k=0; k<+m[1]; k++) rolls.push(1 + Math.floor(Math.random()*+m[2]));
+  const mod = m[3] ? (m[3]==="-" ? -1 : 1) * (+m[4]) : 0, t = Math.max(1, rolls.reduce((a, r)=>a + r, 0) + mod);
+  return { total:t, said:diceWords(`${m[1]}d${m[2]}${mod ? ` ${mod<0 ? "−" : "+"} ${Math.abs(mod)}` : ""}`, rolls, mod, t) };
+}
+/* coin dice, "4d6×5 gp": { total, unit, said: "4d6×5 gp: (3 + 5 + 1 + 6) × 5 = 75 gp" }, or null */
+function rollCoins(dice){
+  const m = /(\d+)d(\d+)(?:×(\d+))?\s*(cp|sp|ep|gp|pp)/.exec(String(dice||"")); if(!m) return null;
+  const rolls = []; for(let k=0; k<+m[1]; k++) rolls.push(1 + Math.floor(Math.random()*+m[2]));
+  const x = +(m[3]||1), sum = rolls.reduce((a, r)=>a + r, 0), total = sum * x;
+  return { total, unit:m[4], said:`${m[0]}: ${rolls.length > 1 && x > 1 ? `(${rolls.join(" + ")})` : rolls.join(" + ")}${x > 1 ? ` × ${x}` : ""} = ${total} ${m[4]}` };
 }
 /* a stat block's attacks as sheet rows: name, to-hit (or save DC), damage dice and type */
 function attacksFromStatBlock(m){
@@ -15690,11 +15732,13 @@ function wakeOne(n, c, x){
   let began = false;
   if(calmOf(c)){ beginBattle(n.site); c.wakeFight = true; began = true;
     for(const [id, v] of Object.entries(c.partyInit||{})) if(combatants(c).some(t=>t.id===id)) c.init[id] = v; }
-  if((c.init||{})[x.id]==null) (c.init = c.init || {})[x.id] = 1 + Math.floor(Math.random()*20) + initBonus(foeById(x.foe));   // its own initiative
+  let initSaid = "";
+  if((c.init||{})[x.id]==null){ const dd = 1 + Math.floor(Math.random()*20), b = initBonus(foeById(x.foe)); (c.init = c.init || {})[x.id] = dd + b; initSaid = `, initiative ${d20Words(dd, b)}`; }   // its own initiative
   if(began && Object.keys(c.partyInit||{}).length){ c.turn = null; nextTurn(c); }        // everyone has initiative: straight to the first turn
   battleSel = x.id;
-  gameLog("fight", `${x.label} woke${placeLabel(n) ? ` at ${placeLabel(n)}` : ""}`);
+  gameLog("fight", `${x.label} woke${placeLabel(n) ? ` at ${placeLabel(n)}` : ""}${initSaid}`);
   sayNow = d.wake ? { title:`${x.label} wakes`, text:d.wake } : null;
+  if(initSaid) flash(`${x.label}${initSaid}.`);
   touch(); renderBattle(); renderBattlePanel(); sendPlayers(true); showSayPop();
 }
 /* the button: wake the next one still asleep here */
@@ -15969,7 +16013,10 @@ function takeCoach(fromId, toId){
   root.journey = { gid:g.id, from:from.id, fromName:from.name||"where they were", to:to.id, path, cum, miles:trip.miles, hours:trip.clock, done:0, passed:0,
     pace:"normal", dc:0, nav:{}, word:"", parts:[], push:0, coach:{ fare:C.pay ? trip.fare*riders.length : 0, each:C.pay ? trip.fare : 0 } };
   rollRoadEncounters(root.journey, trip.roadHours, C.hours);
-  if(C.trouble==="none") root.journey.events = []; else if(C.trouble==="half") root.journey.events = root.journey.events.filter(()=>Math.random() < .5);
+  /* a coach line's trouble: none, or half the encounters (a coin for each, shown with that day's roll) */
+  const JJ = root.journey;
+  if(C.trouble==="none"){ JJ.events = []; JJ.encRolls = []; }
+  else if(C.trouble==="half") JJ.events = JJ.events.filter(ev=>{ const keep = Math.random() < .5, r = (JJ.encRolls||[]).find(q=>q.at===ev.at); if(r && !keep) r.coin = true; return keep; });
   placeRoadEncounters(root.journey, { pts:path }, {});
   root.trail = { pts:[path[0]] }; select("node", to.id);             // its card shows the trip under way, with Pause
   gameLog("move", `${groupName(g)} took the coach from ${from.name||"where they were"} for ${to.name||"somewhere"}: ${trip.miles} mi, about ${hoursWord(trip.clock)}${C.pay && trip.fare ? `, ${cpStr(trip.fare)} each (${cpStr(trip.fare*riders.length)} in all)` : ""}${trip.tolls.length ? `; through ${trip.tolls.map(t=>t.name||"a toll").join(", ")}` : ""}`);
@@ -16577,10 +16624,10 @@ function fallPrompt(ids, ex){
       <div class="pcrow"><button class="btn" data-fallclose="1">Close</button></div>`;
     pop.hidden = false;
     pop.querySelectorAll("[data-fall]").forEach(b=>b.onclick = ()=>{ const p = (root.roster||[]).find(q=>q.id===b.dataset.fall); left.delete(b.dataset.fall); if(!p) return draw();
-      const dmg = rollDiceExpr(`${n}d6`) || 0; partyDoing("A fall", p); damagePc(p, dmg);
+      const FR = rollDiceFull(`${n}d6`), dmg = FR ? FR.total : 0; partyDoing("A fall", p); damagePc(p, dmg);
       if(dmg > 0 && !p.conds.includes("Prone")) p.conds.push("Prone");
-      saveParty(); gameLog("move", `${memberName(p.id)} fell ${+ex.fall} ft: ${dmg} Bludgeoning damage (${n}d6)${dmg > 0 ? ", and lands Prone" : ""}.`);
-      flash(`${memberName(p.id)}: ${dmg} damage from the fall.`); renderBattle(); renderBattlePanel(); draw(); });
+      saveParty(); gameLog("move", `${memberName(p.id)} fell ${+ex.fall} ft: ${dmg} Bludgeoning damage (${FR ? FR.said : `${n}d6`})${dmg > 0 ? ", and lands Prone" : ""}.`);
+      flash(`${memberName(p.id)}: ${dmg} damage from the fall (${FR ? FR.said : `${n}d6`}).`); renderBattle(); renderBattlePanel(); draw(); });
     pop.querySelectorAll("[data-nofall]").forEach(b=>b.onclick = ()=>{ left.delete(b.dataset.nofall); gameLog("move", `${memberName(b.dataset.nofall)} came down ${+ex.fall} ft without a scratch.`); draw(); });
     const c = pop.querySelector("[data-fallclose]"); if(c) c.onclick = ()=>{ left.clear(); pop.hidden = true; };
   };
@@ -19576,9 +19623,10 @@ function rechargeItems(holders, on, times){
     if(!x.u.charges || !x.u.regain) continue;
     if(!(x.u.when===on || (x.u.when==="rest" && (on==="short" || on==="long")))) continue;
     const was = chargesLeft(x.e, x.u); if(was >= x.u.charges) continue;
-    let got = 0; for(let i=0; i<(times||1); i++) got += x.u.regain==="all" ? x.u.charges : rollTerms(diceTerms(x.u.regain)).total;
+    let got = 0; const rolled = [];
+    for(let i=0; i<(times||1); i++){ if(x.u.regain==="all"){ got += x.u.charges; continue; } const r = rollTerms(diceTerms(x.u.regain)); got += r.total; rolled.push(rollSaid(x.u.regain, r)); }
     x.e.ch = Math.min(x.u.charges, was + got);
-    said.push(`${(o.name||"Someone").split(" ")[0]}'s ${x.it.name} (${x.e.ch}/${x.u.charges})`);
+    said.push(`${(o.name||"Someone").split(" ")[0]}'s ${x.it.name} (${x.e.ch}/${x.u.charges}${rolled.length ? `; regained ${rolled.join(", ")}` : ""})`);
   }
   return said;
 }
@@ -19759,12 +19807,14 @@ function wireActionBox(){
     if(b.dataset.tar){
       const k = b.dataset.tar, d20 = () => 1 + Math.floor(Math.random()*20);
       if(k==="heal"){ const o = taObj(ta.who), src = o && healSources(o).find(x=>x.k===ta.how), dice = taHealDice(o, src); if(!dice) return;
-        const r = rollTerms(diceTerms(dice)); ta.amt = String(r.total); flash(`${dice}: ${r.rolls.join(" + ")} = ${r.total}`); }
+        const r = rollTerms(diceTerms(dice)); ta.amt = String(r.total); ta.rolled = { v:ta.amt, said:rollSaid(dice, r) }; flash(ta.rolled.said); }
       else if(k==="use"){ const o = taObj(ta.who), x = o && (usableOf(o).find(y=>String(y.k)===String(ta.item)) || usableOf(o)[0]), dice = x && (x.u.heal || x.u.tempHp || x.u.dmg); if(!dice) return;
-        const r = rollTerms(diceTerms(dice)); ta.amt = String(r.total); flash(`${dice}: ${r.rolls.join(" + ")} = ${r.total}`); }
+        const r = rollTerms(diceTerms(dice)); ta.amt = String(r.total); ta.rolled = { v:ta.amt, said:rollSaid(dice, r) }; flash(ta.rolled.said); }
       else { const keys = k==="checkall" ? taPeople().filter(x=>ta.who==="party" ? x.key.startsWith("pc:") : x.key===ta.who).map(x=>x.key) : [b.dataset.k];
-        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill); ta.tot[key] = String(r + m); (ta.nat = ta.nat || {})[key] = r; }
-        if(keys.length===1){ const o = taObj(keys[0]); flash(`d20 + ${skillMod(o, k==="hide" ? "Stealth" : ta.skill)} = ${ta.tot[keys[0]]}`); } }
+        const said = [];
+        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill); ta.tot[key] = String(r + m); (ta.nat = ta.nat || {})[key] = r;
+          (ta.d20 = ta.d20 || {})[key] = { v:ta.tot[key], said:d20Words(r, m) }; said.push(`${keys.length > 1 ? `${(o.name || "Someone").split(" ")[0]} ` : ""}${d20Words(r, m)}`); }
+        if(said.length) flash(said.join(" · ")); }
       return renderActionBox(true);
     }
     if(b.dataset.taother!=null){ const t = String(ta.other||"").trim(); if(!t) return; ta.other = "";
@@ -19774,6 +19824,8 @@ function wireActionBox(){
   });
 }
 /* doing it: the change on the sheets, and a line in the game log that says who did it */
+/* the dice a table action's Roll rolled, for the log, unless the amount was changed by hand */
+const taRolledW = v => ta.rolled && ta.rolled.v===String(v) ? ` (${ta.rolled.said})` : "";
 function logTableAction(){
   ta.result = "";                                         // what came of the last one logged (XP), shown under Log it until the next
   const P = taPeople(), party = ta.who==="party", o = party ? null : taObj(ta.who), name = party ? "The party" : (P.find(x=>x.key===ta.who)||{}).name || "Someone";
@@ -19788,7 +19840,7 @@ function logTableAction(){
     if(src.s){ pcState(o); if(src.s.lv && ta.slot && o.slots[ta.slot]) o.slots[ta.slot].used = Math.min(o.slots[ta.slot].max, o.slots[ta.slot].used + 1); how = `${src.s.name}${src.s.lv && ta.slot ? ` (${ORD[ta.slot]}-level slot)` : ""}`; }
     else if(src.x){ if(!spendItem(o, src.x.k)){ flash("No charges left."); return; } how = src.x.it.name + (src.x.u.charges ? ` (${o.inv.includes(src.x.e) ? `${src.x.e.ch}/${src.x.u.charges}` : "used up"})` : ""); }
     else if(src.k==="hd"){ src.r.used = Math.min(src.r.max, src.r.used + 1); how = "a Hit Point Die"; }
-    gameLog("heal", `${name} heals ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${amt} with ${how}${N}`);
+    gameLog("heal", `${name} heals ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${amt} with ${how}${taRolledW(ta.amt)}${N}`); ta.rolled = null;
     /* healing out of a fight counts on the leaderboards too (a Hit Point Die is resting, not healing anyone) */
     if(String(ta.who).startsWith("pc:") && src.k!=="hd"){ const S = statsOf(o); S.healed += Math.max(0, numOr(t.hp, 0) - was); if(src.s) S.spells[src.s.name] = (S.spells[src.s.name]||0) + 1; }
     /* and XP for it, outside a fight (your table rule): so much × level for each hit point actually restored */
@@ -19808,14 +19860,16 @@ function logTableAction(){
       if(cur.u.cond && !t.conds.includes(cur.u.cond)){ t.conds.push(cur.u.cond); did += (did ? ", " : "") + cur.u.cond.toLowerCase(); }
     }
     const still = (o.inv||[]).includes(cur.e), left = cur.u.charges ? (still ? ` (${cur.e.ch}/${cur.u.charges} charges left)` : " (used up)") : (still ? "" : " (the last one)");
-    gameLog("item", `${name} uses ${cur.it.name}${t && tKey!==ta.who ? ` on ${nameOf(tKey)}` : ""}${did ? `: ${did}` : ""}${left}${N}`);
+    gameLog("item", `${name} uses ${cur.it.name}${t && tKey!==ta.who ? ` on ${nameOf(tKey)}` : ""}${did ? `: ${did}${taRolledW(ta.amt)}` : ""}${left}${N}`); ta.rolled = null;
     ta.item = "";
   } else if(ta.what==="check"){
     const who = (party ? P.filter(x=>x.key.startsWith("pc:")) : P.filter(x=>x.key===ta.who)).filter(x=>ta.tot[x.key]!==undefined && ta.tot[x.key]!=="");
     if(!who.length){ flash("Type or roll a total first."); return; }
     const dc = +ta.dc || 0, what = ABIL_NAME[ta.skill] ? `${ABIL_NAME[ta.skill]} check` : `${ta.skill} check`;
-    const res = x => `${x.name.split(" ")[0]} ${ta.tot[x.key]}${dc ? (+ta.tot[x.key] >= dc ? " ✓" : " ✗") : ""}`;
-    gameLog("check", party || who.length>1 ? `${what}${dc?` (DC ${dc})`:""}: ${who.map(res).join(", ")}${N}` : `${name}: ${what} ${ta.tot[who[0].key]}${dc ? ` vs DC ${dc}, ${+ta.tot[who[0].key] >= dc ? "succeeds" : "fails"}` : ""}${N}`);
+    /* the d20 the app rolled, unless the total was changed by hand */
+    const dW = x => { const R = (ta.d20 || {})[x.key]; return R && R.v===String(ta.tot[x.key]) ? ` (${R.said})` : ""; };
+    const res = x => `${x.name.split(" ")[0]} ${ta.tot[x.key]}${dW(x)}${dc ? (+ta.tot[x.key] >= dc ? " ✓" : " ✗") : ""}`;
+    gameLog("check", party || who.length>1 ? `${what}${dc?` (DC ${dc})`:""}: ${who.map(res).join(", ")}${N}` : `${name}: ${what} ${ta.tot[who[0].key]}${dW(who[0])}${dc ? ` vs DC ${dc}, ${+ta.tot[who[0].key] >= dc ? "succeeds" : "fails"}` : ""}${N}`);
     const spot = ta.skill===SEARCH_SKILL && ta.search!==false ? checkSpot() : null;
     if(spot){
       const rolls = who.filter(x=>x.key.startsWith("pc:")).map(x=>({ p:x.o, roll:Math.round(+ta.tot[x.key]) })).filter(r=>isFinite(r.roll));
@@ -19823,7 +19877,7 @@ function logTableAction(){
     }
     const xpSaid = checkXp(who, dc, ta.nat || {}, what); ta.result = xpSaid ? `XP: ${xpSaid}` : (dc ? `${what}: no XP either way` : "");
     ta.nat = {};
-    ta.tot = {};
+    ta.tot = {}; ta.d20 = {};
   } else if(ta.what==="give" || ta.what==="take"){
     const others = P.filter(x=>x.key!==ta.who), oKey = others.some(x=>x.key===ta.to) ? ta.to : (others[0]||{}).key, other = taObj(oKey);
     const from = ta.what==="give" ? o : other, to = ta.what==="give" ? other : o; if(!from || !to){ flash("Pick who."); return; }

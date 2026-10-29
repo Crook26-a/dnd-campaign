@@ -18,5 +18,5 @@ three rounds on: 7 left
 Stunned: concentrating false · fight log "Anna Ash stops concentrating on Bless: stunned."
 enemy: Mage holding Hold Person · token mark 1 · Con save +0
 22 damage: Mage is concentrating on Hold Person: Constitution save, DC 11 (22 damage) Roll (+0) Made it Lost it
-Roll: "Mage keeps concentrating on Hold Person: made the Constitution save (N against DC 11)"
+Roll: "Mage keeps concentrating on Hold Person: made the Constitution save (d20 N against DC 11)"
 TV scene has the mark: false

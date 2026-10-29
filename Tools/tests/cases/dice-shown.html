@@ -1,0 +1,30 @@
+// uses: nothing
+<script>
+/* every roll shows its numbers (Joseph, 2026-10-29): the words for the dice (diceWords, rollSaid, d20Words), the full rolls
+   (rollDiceFull, rollCountFull, rollCoins, rollTillFull), a planned line's chance and count (foeLineRoll), a rolled
+   person's hit points and purse kept on them, and the concentration save showing its d20 */
+setTimeout(async ()=>{
+ const out = [], wait = ms => new Promise(r=>setTimeout(r, ms));
+ try{
+  out.push('words: ' + diceWords('2d6 + 3', [4, 2], 3, 9) + ' | ' + diceWords('1d12', [7], 0) + ' | ' + d20Words(14, 3) + ' | ' + d20Words(9, -1) + ' | ' + d20Words(12, 0));
+  out.push('rollSaid: ' + rollSaid('1d8 + 2', { rolls:[5], total:7 }) + ' | crit ' + rollSaid('1d8 + 2', { rolls:[5, 3], total:10 }, true));
+  const H = rollDiceFull('4d8+4'); out.push('rollDiceFull: ' + /^4d8 \+ 4: \d \+ \d \+ \d \+ \d \+ 4 = \d+$/.test(H.said) + ' total matches ' + (H.said.endsWith('= ' + H.total)));
+  out.push('rollDiceExpr still a number: ' + (typeof rollDiceExpr('2d6') === 'number'));
+  const C = rollCountFull('2d4'); out.push('rollCountFull: ' + /^2d4: \d \+ \d = \d$/.test(C.said) + ' n ' + (C.said.endsWith('= ' + C.n)) + ' | fixed: ' + JSON.stringify(rollCountFull(3)));
+  const K = rollCoins('3d6×10 gp'); out.push('rollCoins: ' + /^3d6×10 gp: \(\d \+ \d \+ \d\) × 10 = \d+ gp$/.test(K.said) + ' ' + K.unit + ' ' + (K.said.includes('= ' + K.total + ' gp')));
+  const T = rollTillFull('x-unknown'); out.push('till: ' + /^4d6×5 gp: /.test(T.said) + ' coins gp ' + (T.coins.gp > 0));
+  const gob = (typeof SRD_FOES !== 'undefined' ? SRD_FOES : []).find(f=>/goblin/i.test(f.name)) || { id:'srd:goblin' };
+  const rnd = Math.random;
+  Math.random = () => 0.9; const miss = foeLineRoll({ id:gob.id, n:'1d4', chance:.5 });
+  Math.random = () => 0.1; const hit = foeLineRoll({ id:gob.id, n:'1d4', chance:.5 });
+  Math.random = rnd; out.push('chance: ' + miss.n + ' "' + miss.said + '" | ' + hit.n + ' "' + hit.said + '"');
+  out.push('plain line: "' + foeLineRoll({ id:gob.id, n:2 }).said + '"');
+  /* a place's planned fight: the count's dice go in the game log */
+  const st = { foes:[{ id:gob.id, n:'2d4' }] }; startFight(st);
+  const L = gameLogList(), last = L[L.length - 1];
+  out.push('startFight: ' + st.combat.list.length + ' foes, log "' + (last ? last.text : '') + '" count matches ' + (last && last.text.endsWith('= ' + st.combat.list.length)));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
