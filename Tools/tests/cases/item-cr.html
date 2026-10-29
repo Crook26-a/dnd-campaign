@@ -1,0 +1,37 @@
+// uses: nothing
+<script>
+/* items in character CR and the Reduces damage box (Joseph, 2026-10-29: Avery's Locket of the Stilled Heart): ability
+   modifiers in an item's dice, the box read off the item, the cap at half, charCR with the locket (a reaction) and with
+   a healing potion (a bonus action) against the same character without, "now" with the charges spent, and using the
+   locket from the Action box (table mode) on someone else and on herself */
+setTimeout(async ()=>{ const out = [], wait = ms => new Promise(r=>setTimeout(r, ms)); try{
+  const locket = { id:"ll_locket", name:"Locket of the Stilled Heart", kind:"magic item", rarity:"Uncommon", attune:true, charges:"3", regain:"1d3", regainWhen:"dawn",
+    use:"Reaction", perUse:"1", reduce:"1d6+Wis", reduceSelf:"Wis", reduceType:"Necrotic", reduceHalf:true };
+  const avery = { id:"pa", name:"Avery de Vonn", cls:"Cleric", level:5, ac:"17", hp:"47", hpMax:"47", wis:20, satk:"+8", dc:"16",
+    attacks:[{ name:"Glaive (reach)", hit:"+6", dmg:"1d10+3", dtype:"slashing" }], spells:[], inv:[{ id:"ll_locket", qty:1, attuned:true }] };
+  const rin = { id:"pb", name:"Rin Amakiir", level:5, hp:"20", hpMax:"40", ac:"15" };
+  loadJSONNow(JSON.stringify({ format:"ordinate-survey-v1", title:"Item CR", nodes:[], roads:[], shapes:[], roster:[avery, rin], party:2,
+    library:{ npcs:[], foes:[], loot:[locket], encounters:[], shops:[], spells:[] } })); await wait(300); setDmMode(true); await wait(60);
+  out.push('abilDice: ' + abilDice('1d6+Wis', { wis:20 }) + ' | ' + abilDice('Wis', { wis:20 }) + ' | ' + abilDice('1d6 + Wisdom modifier', { wis:8 }) + ' | ' + abilDice('2d4+2', {}));
+  const u = itemUse(locket); out.push('itemUse: ' + JSON.stringify({ use:u.use, reduce:u.reduce, self:u.reduceSelf, type:u.reduceType, half:u.reduceHalf, usable:u.usable }));
+  out.push('words: ' + reduceWords(u) + ' | cap: ' + reduceCap(u, 9, 12) + ', ' + reduceCap(u, 4, 12) + ', no hit typed ' + reduceCap(u, 9, 0));
+  const A = root.roster[0], bare = JSON.parse(JSON.stringify(A)); bare.inv = [];
+  const w = charCR(A), wo = charCR(bare); out.push('Avery with the locket: ' + charCRWords(w) + ' · ' + w.dpr + ' a round | without: ' + charCRWords(wo) + ' · ' + wo.dpr + ' a round');
+  const spent = JSON.parse(JSON.stringify(A)); spent.inv[0].ch = 0; out.push('now, no charges: ' + charCR(spent, 'now').dpr + ' (= without: ' + (charCR(spent, 'now').dpr === charCR(bare, 'now').dpr) + ')');
+  const pot = JSON.parse(JSON.stringify(bare)); pot.inv = [{ id:"srd:potion-of-healing", qty:2 }]; out.push('two healing potions: ' + charCR(pot).dpr + ' a round (' + (itemUse(libLootById('srd:potion-of-healing'))||{}).use + ', heals ' + (itemUse(libLootById('srd:potion-of-healing'))||{}).heal + ')');
+  /* the Action box: Avery uses it on Rin, who just took 12 necrotic */
+  const keyOf = id => (taPeople().find(x=>x.key.endsWith(id))||{}).key;
+  Object.assign(ta, { who:keyOf('pa'), what:"use", item:"0", on:keyOf('pb'), took:"12", amt:"" });
+  const rnd = Math.random; Math.random = () => 0.99; renderActionBox(true); await wait(30);
+  document.querySelector('[data-tar="use"]').click(); Math.random = rnd; await wait(30);
+  out.push('rolled into the box: ' + ta.amt + ' (' + (ta.rolled||{}).said + ')');
+  logTableAction(); await wait(30);
+  const L = gameLogList(); out.push('log: "' + L[L.length-1].text + '" · Rin HP ' + root.roster[1].hp + ' · charges ' + root.roster[0].inv[0].ch);
+  /* on herself: her Wisdom modifier only */
+  Object.assign(ta, { who:keyOf('pa'), what:"use", item:"0", on:keyOf('pa'), took:"14", amt:"" }); renderActionBox(true); await wait(30);
+  document.querySelector('[data-tar="use"]').click(); await wait(30); out.push('on herself: ' + ta.amt + ' (' + (ta.rolled||{}).said + ')');
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

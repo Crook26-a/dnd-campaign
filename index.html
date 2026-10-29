@@ -1990,6 +1990,17 @@ function charCR(c, mode, opts){
       const p = s.atk ? crHit(prof + smod, r.ac) : (q=>q + (/half as much/i.test(s.desc||"") ? (1 - q) / 2 : 0))(crHit(prof + smod, r.ac));
       return avg * p * (CR_AREA.test(s.desc||"") ? 2 : 1); }
     return CR_DISABLE.test(s.desc||"") ? (6 + 6 * lvS) * crHit(prof + smod, r.ac) : 0; };
+  /* what they carry that does something when used (the Library page's Heals, Temp HP, Damage, Reduces damage; Joseph,
+     2026-10-29): as an action, a bonus action or a reaction ("No action" too), once a round, as often as its charges (now:
+     the ones left) or how many they have allow. Healing and temp hit points count like healing; damage at their spell
+     hit chance; a damage cut like healing too, no more than that CR's damage a round (half of it with "no more than
+     half"), and half again when it only cuts one type (not every hit is that type: an estimate) */
+  const gear = usableOf(c).map(x=>{ const u = x.u, per = u.perUse || 1;
+    const uses = u.charges ? Math.floor((now ? (x.e.ch ?? u.charges) : u.charges) / per) : u.usedUp ? Math.max(1, +x.e.qty || 1) : 3;
+    const heal = crDiceAvg(abilDice(u.heal, c)) + crDiceAvg(abilDice(u.tempHp, c)), dmg = crDiceAvg(u.dmg), cut = u.reduce ? crDiceAvg(abilDice(u.reduce, c)) : 0;
+    const how = /bonus/i.test(u.use) ? "ba" : /reaction|no action/i.test(u.use) ? "re" : "act";
+    return { how, uses:Math.min(3, uses), v:r => heal + dmg * crHit(prof + smod, r.ac) + (cut ? Math.min(cut, u.reduceHalf ? r.dpr / 2 : r.dpr) * (u.reduceType ? .5 : 1) : 0) }; })
+    .filter(g=>g.uses > 0);
   const expect = r => {
     const n = Math.max(...K.map(k=>crAttacks(k.cls, k.lv)), 1);
     const weap = lines.filter(l=>!l.sp && !l.ba && l.atk!=null && !l.eb), baW = lines.filter(l=>!l.sp && l.ba);
@@ -2007,7 +2018,8 @@ function charCR(c, mode, opts){
     /* round one's action: at will, or a spell from a slot ({ v, conc, id }) */
     const acts = [{ v:atWill, conc:false },
       ...lines.filter(l=>l.sp && +l.sp.lv && !l.ba && castable(+l.sp.lv)).map(l=>({ v:l.avg * lineHit(l, r) * (CR_AREA.test(l.sp.desc||"") ? 2 : 1), conc:!!l.sp.conc, id:l.sp.id })),
-      ...known.filter(s=>+s.lv && castable(+s.lv) && !/bonus|reaction/i.test(s.time||"")).map(s=>({ v:spellVal(s, r, anyHit), conc:!!s.conc, id:s.id }))];
+      ...known.filter(s=>+s.lv && castable(+s.lv) && !/bonus|reaction/i.test(s.time||"")).map(s=>({ v:spellVal(s, r, anyHit), conc:!!s.conc, id:s.id })),
+      ...gear.filter(g=>g.how==="act").map(g=>({ v:g.v(r), conc:false }))];                                        // a carried thing used as the action
     /* the bonus action, as three rounds ([r1, r2, r3]): plain off-hand, or a spell, a rider, a smite, inspiration */
     const baW1 = Math.max(0, ...baW.map(l=>l.avg * lineHit(l, r))), plain = [baW1, baW1, baW1];
     const keeps = s => /later turns|on each of your turns|again on each/i.test((s && s.desc) || "");
@@ -2023,6 +2035,9 @@ function charCR(c, mode, opts){
     const bard = lvIn(/bard/i);
     if(bard){ const die = bard >= 15 ? 6.5 : bard >= 10 ? 5.5 : bard >= 5 ? 4.5 : 3.5, uses = resLeft(/bardic inspiration/i) ?? Math.max(1, chaMod);
       bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < uses ? die : 0)), conc:false }); }                           // worth its die, like healing: an estimate
+    for(const g of gear.filter(g=>g.how==="ba")) bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < g.uses ? g.v(r) : 0)), conc:false });   // a carried thing as the bonus action
+    /* the reaction, each round: the best carried thing still with a use (a damage cut, …) */
+    const react = [0, 1, 2].reduce((a, j)=>a + Math.max(0, ...gear.filter(g=>g.how==="re" && j < g.uses).map(g=>g.v(r))), 0);
     /* one concentration spell at most (one already running counts and blocks the rest) */
     const running = [...active].map(id=>spellOf(id)).find(s=>s && s.conc);
     /* a spell already running that isn't a bonus-action one (Bless, Spirit Guardians): its worth every round, for free */
@@ -2034,7 +2049,7 @@ function charCR(c, mode, opts){
       if(a.conc && b.conc) continue;
       best = Math.max(best, a.v + b.r[0] + 2 * atWill + b.r[1] + b.r[2] + 3 * runningVal); }
     const surge = lvIn(/fighter/i) >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
-    return (best + surge) / 3;
+    return (best + surge + react) / 3;
   };
   const tough = crTough(hp, ac), hits = crHits(expect), cal = CR_CAL[lv - 1] || 0;
   const pos = Math.max(0, Math.min(CR_TABLE.length - 1, (tough + hits) / 2 + cal));
@@ -8526,6 +8541,9 @@ function libForm(cat, x){
           <div class="pcrow">${t("regain","Charges back",.8,"1d4, or all")}<div class="field" style="flex:1.4"><label>When</label><select ${a} data-f="regainWhen">${REGAIN_WHEN.map(([k,l])=>`<option value="${k}" ${k===regainWhenOf(x)?"selected":""}>${l}</option>`).join("")}</select></div></div>
           <label class="check" style="margin:0 0 9px" title="A potion, a scroll, a bomb: gone once its last charge is spent"><input ${a} data-f="usedUp" type="checkbox" ${x.usedUp?"checked":""}> Used up when empty</label>
           <div class="pcrow">${t("heal","Heals",.8,"2d4+2")}${t("tempHp","Temp HP",.8,"1d4")}<div class="field" style="flex:1.2"><label>Puts on</label><select ${a} data-f="cond"><option value="">No condition</option>${CONDITIONS.map(cn=>`<option ${cn===x.cond?"selected":""}>${cn}</option>`).join("")}</select></div></div>
+          <div class="pcrow">${t("reduce","Reduces damage",.9,"1d6+Wis")}${t("reduceSelf","On yourself",.7,"Wis")}<div class="field" style="flex:1"><label>Only this type</label><select ${a} data-f="reduceType"><option value="">Any damage</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===x.reduceType?"selected":""}>${d}</option>`).join("")}</select></div></div>
+          <label class="check" style="margin:0 0 6px"><input ${a} data-f="reduceHalf" type="checkbox" ${x.reduceHalf?"checked":""}> Takes off no more than half the damage</label>
+          <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Reduces damage: used right after a hit (usually a Reaction), it gives back what it takes off. Write an ability for its modifier ("1d6+Wis"); "On yourself" is the amount when the one hit is whoever uses it (empty: the same). Character CR counts it like healing.</p>
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Damage above counts too when it's used (a bomb, a wand). Charges come back by themselves: at dawn when the day count moves on (Next, or typing a later day), or when whoever carries it finishes that rest (the Action box's "Takes a rest", or Rest on the Party tab). The game log says so.</p></details>`; })()}`;
   }
   if(!draft && CARD_CATS.includes(cat)) h += `<div class="pcrow" style="margin:0 0 8px">${cardBtn(cat, x.id, "Card for the players")}</div>`;
@@ -8566,7 +8584,7 @@ function stdMatches(q){
    "Fights as" can come as a stat block's name, matched here to your foes or the SRD's. ── */
 const FB_FIELDS = {
   /* every category also has "campaign": which campaign the phone meant it for */
-  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","notes","soldAt","campaign"],
+  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","reduce","reduceSelf","reduceType","reduceHalf","notes","soldAt","campaign"],
   shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes","campaign"],
   factions:["name","align","wants","how","hidden","notes","campaign"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","gender","known","cls","level","ac","hpMax","speed","init",
@@ -13020,6 +13038,7 @@ function rollTerms(T, crit){
    one die and nothing added is just "1d12: 7" */
 function diceWords(label, rolls, mod, total){
   mod = +mod || 0; if(total==null) total = rolls.reduce((a, r)=>a + r, 0) + mod;
+  if(!rolls.length) return String(label)===String(total) ? String(total) : `${label} = ${total}`;     // no dice, just a number ("Wis" → 5)
   if(rolls.length===1 && !mod) return `${label}: ${total}`;
   return `${label}: ${rolls.join(" + ")}${mod ? ` ${mod<0 ? "−" : "+"} ${Math.abs(mod)}` : ""} = ${total}`;
 }
@@ -13153,7 +13172,7 @@ function actInfo(c, t){
     return { kind:"attack", name:a.name||"an attack", save:/DC/i.test(a.hit||""), hint };
   }
   if(w.startsWith("use:")){ const k = +w.slice(4), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* a carried thing with a use */
-    return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:x ? x.u.heal : "", hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
+    return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : x.u.heal) : "", reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
   if(w.startsWith("atk:")) return { kind:"attack", name:w.slice(4) };
   if(w==="other") return { kind:"other", name:a.otherText||"something" };
   if(w==="flee") return { kind:"flee", name:"flees" };
@@ -13168,7 +13187,9 @@ function actDice(c, t, info){
   const addons = isAtk && t ? attackAddons(t) : [];
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
   const dmgDice = addDice(...(part1 ? [part1.dice] : []), ...on.filter(a=>a.dice).map(a=>a.dice));
-  return { sc, part1, part2, addons, on, dmgDice, healDice:(sc && sc.heal) || (info && info.healDice) || "" };
+  /* a damage-cutting item on whoever uses it: its "on yourself" amount */
+  const selfCut = info && info.reduce && t && t.p && act.targets.length===1 && act.targets[0]===t.id;
+  return { sc, part1, part2, addons, on, dmgDice, healDice:selfCut ? reduceDice(info.reduce, pcState(t.p), true) : (sc && sc.heal) || (info && info.healDice) || "" };
 }
 function actionForm(c, all){
   const t = all.find(x=>x.id===act.actor), info = t ? actInfo(c, t) : null;
@@ -13200,7 +13221,9 @@ function actionForm(c, all){
     <div class="pcrow">
       <div class="field" style="flex:.9"><label>Damage${D.dmgDice?` <i>(${esc(D.dmgDice)})</i>`:""}</label><input id="ac-dmg" type="number" min="0" value="${esc(act.dmg)}"></div>
       <div class="field" style="flex:1.2"><label>Type</label><select id="ac-dtype">${DAMAGE_TYPES.map(d=>`<option value="${d}" ${d===act.dtype?"selected":""}>${d||"—"}</option>`).join("")}</select></div>
-      <div class="field" style="flex:.8"><label>Healing${D.healDice?` <i>(${esc(D.healDice)}${healMod?" + mod":""})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
+      <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)}${healMod?" + mod":""})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
+    ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
+      <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
     ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice.">Roll ${esc(D.dmgDice)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="${healMod?"Rolls the dice; add the caster's spellcasting modifier":"Rolls the dice into the Healing box"}">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
     ${D.part2 ? `<div class="actpart2"><label class="grouplab" style="margin-top:6px">Then: ${esc(D.part2.dtype)} damage (${esc(D.part2.dice)})</label>
       <div class="acttargets">${all.filter(x=>x.id!==act.actor).map(x=>`<button class="chip${p2t.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt2="${x.id}">${esc(x.label)}</button>`).join("")}</div>
@@ -13269,7 +13292,8 @@ function logAction(n, c){
   /* a concentration spell: if they're holding another, ask first (yes ends it); it starts once the cast is logged */
   const concSp = info.spell && info.spell.conc ? info.spell : null, concH = actor.kind==="foe" ? actor.x : actor.p;
   if(concSp && !concOK(concH, concSp, actor.label)) return;
-  const dmg = act.outcome==="miss" ? 0 : Math.max(0, Math.round(+act.dmg||0)), heal = Math.max(0, Math.round(+act.heal||0));
+  const dmg = act.outcome==="miss" ? 0 : Math.max(0, Math.round(+act.dmg||0)), took = Math.max(0, Math.round(+act.took||0));
+  const heal = info.reduce ? reduceCap(info.reduce, Math.max(0, Math.round(+act.heal||0)), took) : Math.max(0, Math.round(+act.heal||0));
   /* spend what the action costs */
   let slotTxt = "";
   if(actor.kind==="pc"){
@@ -13324,7 +13348,8 @@ function logAction(n, c){
     + (targets.length ? ` on ${hits.map(h=>h.label).join(", ")}` : "")
     + (out ? ` — ${out}` : "")
     + (dmg && act.outcome!=="miss" ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}${rolledW("dmg", act.dmg)}` : "")
-    + (healed ? `, healing ${healed}${rolledW("heal", act.heal)}` : "")
+    + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
+      : `, healing ${healed}${rolledW("heal", act.heal)}`) : "")
     + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
     + (act.note ? ` (${act.note})` : "")
     + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}${rolledW("dmg2", p2.dmg)}` : ""}` : "")
@@ -13554,7 +13579,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; touch(); renderBattlePanel(); });
   /* the action form: keep what's typed, redraw only when a choice changes what's shown */
   const keep = () => { const g = id => { const e = $(id); return e ? e.value : undefined; };
-    if(g("#ac-dmg")!==undefined) act.dmg = g("#ac-dmg"); if(g("#ac-heal")!==undefined) act.heal = g("#ac-heal");
+    if(g("#ac-dmg")!==undefined) act.dmg = g("#ac-dmg"); if(g("#ac-heal")!==undefined) act.heal = g("#ac-heal"); if(g("#ac-took")!==undefined) act.took = g("#ac-took");
     if(g("#ac-note")!==undefined) act.note = g("#ac-note"); if(g("#ac-dtype")!==undefined) act.dtype = g("#ac-dtype");
     if(g("#ac-cond")!==undefined) act.cond = g("#ac-cond"); if(g("#ac-spell")!==undefined) act.spellText = g("#ac-spell");
     if(g("#ac-other")!==undefined) act.otherText = g("#ac-other"); const o = document.querySelector('input[name="ac-out"]:checked'); if(o) act.outcome = o.value;
@@ -13585,9 +13610,10 @@ function renderBattlePanelNow(){
     keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
     const D = actDice(c, t, info), w = b.dataset.acroll;
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
-    const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit), flat = diceTerms(dice).filter(x=>!x.d).reduce((a,x)=>a+x.k,0);
-    if(w==="heal") act.heal = String(r.total); else if(w==="dmg2"){ if(act.p2) act.p2.dmg = String(r.total); } else act.dmg = String(r.total);
-    (act.rolled = act.rolled || {})[w] = { v:String(r.total), said:rollSaid(dice, r, crit) };     // the dice go in the log too, unless the number is changed by hand
+    const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
+    const cut = w==="heal" && info.reduce ? reduceCap(info.reduce, r.total, +act.took || 0) : r.total;     // a damage-cutting item: no more than half the hit
+    if(w==="heal") act.heal = String(cut); else if(w==="dmg2"){ if(act.p2) act.p2.dmg = String(r.total); } else act.dmg = String(r.total);
+    (act.rolled = act.rolled || {})[w] = { v:String(cut), said:rollSaid(dice, r, crit) + (cut < r.total ? `, no more than half of ${+act.took}: ${cut}` : "") };     // the dice go in the log too, unless the number is changed by hand
     flash(act.rolled[w].said);
     renderBattlePanel(); });
   $("#ac-go").onclick = ()=>{ keep(); logAction(n, c); };
@@ -19597,10 +19623,19 @@ function itemUse(it){
   const regain = typed ? amt : ((/regains? (all|\d+d\d+(?:\s*\+\s*\d+)?|\d+) expended charges? (?:daily )?at dawn/i.exec(d)||[])[1] || "");
   const usedUp = !!it.usedUp || /^(potion|scroll|poison)$/i.test(it.kind||"");
   const u = { use, heal, tempHp:it.tempHp||"", cond:it.cond||"", charges, perUse:Math.max(1, num(it.perUse)||1), regain:String(regain).replace(/\s+/g,"").toLowerCase(), when:regainWhenOf(it), usedUp,
-    dmg: it.use && it.dmg ? String(it.dmg).replace(/\s+/g,"") : "", dtype:String(it.dtype||"").toLowerCase(), effect:it.effect||"" };
-  u.usable = !!(u.use || u.heal || u.tempHp || u.charges);
+    dmg: it.use && it.dmg ? String(it.dmg).replace(/\s+/g,"") : "", dtype:String(it.dtype||"").toLowerCase(), effect:it.effect||"",
+    /* Reduces damage (Joseph, 2026-10-29: Avery's locket): how much it takes off, on yourself, which type, at most half */
+    reduce:String(it.reduce||"").trim(), reduceSelf:String(it.reduceSelf||"").trim(), reduceType:it.reduceType||"", reduceHalf:!!it.reduceHalf };
+  u.usable = !!(u.use || u.heal || u.tempHp || u.charges || u.reduce);
   return u;
 }
+/* "1d6+Wis", "Wis": the holder's ability modifiers written in, so the dice roll ("1d6+5") */
+const abilDice = (expr, o) => String(expr||"").replace(/\b(str|dex|con|int|wis|cha)[a-z]*(?:\s+mod(?:ifier)?)?\b/gi, (m, k)=>String(modOf((o||{})[k.toLowerCase()]))).replace(/\s+/g, "").replace(/\+-/g, "-");
+/* a damage-cutting item's dice for whoever it's on (on yourself, its own amount if it has one) */
+const reduceDice = (u, o, self) => abilDice(self && u.reduceSelf ? u.reduceSelf : u.reduce, o);
+/* how much it takes off: the amount, no more than half the damage taken when it says so */
+const reduceCap = (u, amt, took) => u.reduceHalf && took > 0 ? Math.min(amt, Math.floor(took / 2)) : amt;
+const reduceWords = u => `takes ${u.reduce} off ${u.reduceType ? `${u.reduceType.toLowerCase()} ` : ""}damage${u.reduceSelf ? ` (on yourself: ${u.reduceSelf})` : ""}${u.reduceHalf ? `, no more than half of it` : ""}`;
 /* the usable things someone carries: [{ e, k, it, u }] */
 const usableOf = o => (o && o.inv || []).map((e,k)=>{ const it = e.id ? libLootById(e.id) : null, u = itemUse(it); return { e, k, it, u }; }).filter(x=>x.u && x.u.usable);
 const chargesLeft = (e, u) => u.charges ? (e.ch==null ? (e.ch = u.charges) : e.ch) : null;
@@ -19747,11 +19782,13 @@ function renderActionBox(force){
       : `<p class="empty-note" style="font-size:12px">${esc(o.name||"They")} has no healing spell, potion or Hit Point Dice on their sheet. Use "Something else happened" below, or heal them on their card.</p>`;
   } else if(ta.what==="use" && o){
     const U = usableOf(o), cur = U.find(x=>String(x.k)===String(ta.item)) || U[0]; if(cur) ta.item = String(cur.k);
-    const dice = cur && (cur.u.heal || cur.u.tempHp || cur.u.dmg);
+    const onKey = ta.on && P.some(y=>y.key===ta.on) ? ta.on : ta.who, red = cur && cur.u.reduce;
+    const dice = cur && (red ? reduceDice(cur.u, o, onKey===ta.who) : (cur.u.heal || cur.u.tempHp || cur.u.dmg));
     body = U.length ? `<div class="afr"><label>Item</label><select data-ta="item">${U.map(x=>opt(String(x.k), usableLabel(x), String(ta.item))).join("")}</select></div>
-        <p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc([cur.u.use, cur.u.heal?`heals ${cur.u.heal}`:"", cur.u.tempHp?`${cur.u.tempHp} temporary HP`:"", cur.u.dmg?`${cur.u.dmg} ${cur.u.dtype} damage`:"", cur.u.cond?cur.u.cond.toLowerCase():"", cur.u.charges?`${cur.u.perUse} charge${cur.u.perUse>1?"s":""} a use${cur.u.regain?`, regains ${cur.u.regain} ${REGAIN_WORD[cur.u.when]}`:""}`:"", cur.u.usedUp?"used up when empty":""].filter(Boolean).join(" · ") || "Uses it.")}</p>
+        <p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc([cur.u.use, red ? reduceWords(cur.u) : "", cur.u.heal?`heals ${cur.u.heal}`:"", cur.u.tempHp?`${cur.u.tempHp} temporary HP`:"", cur.u.dmg?`${cur.u.dmg} ${cur.u.dtype} damage`:"", cur.u.cond?cur.u.cond.toLowerCase():"", cur.u.charges?`${cur.u.perUse} charge${cur.u.perUse>1?"s":""} a use${cur.u.regain?`, regains ${cur.u.regain} ${REGAIN_WORD[cur.u.when]}`:""}`:"", cur.u.usedUp?"used up when empty":""].filter(Boolean).join(" · ") || "Uses it.")}</p>
         <div class="afr"><label>On</label><select data-ta="on">${P.map(x=>opt(x.key, x.name, ta.on && P.some(y=>y.key===ta.on) ? ta.on : ta.who)).join("")}</select></div>
-        ${dice ? `<div class="afr"><label>Amount</label><input data-ta="amt" type="number" min="0" value="${esc(ta.amt)}"><button class="btn" data-tar="use">Roll ${esc(dice)}</button></div>` : ""}`
+        ${red ? `<div class="afr"><label>Damage they took</label><input data-ta="took" type="number" min="0" value="${esc(ta.took||"")}" placeholder="the hit"></div>` : ""}
+        ${dice ? `<div class="afr"><label>${red ? "Takes off" : "Amount"}</label><input data-ta="amt" type="number" min="0" value="${esc(ta.amt)}"><button class="btn" data-tar="use">Roll ${esc(dice)}</button></div>` : ""}`
       : `<p class="empty-note" style="font-size:12px">Nothing usable on ${esc(o.name||"their")} sheet. An item is usable once its Library page says how it's used, or what it heals, or its charges.</p>`;
   } else if(ta.what==="check"){
     const who = party ? P.filter(x=>x.key.startsWith("pc:")) : [P.find(x=>x.key===ta.who)].filter(Boolean);
@@ -19808,8 +19845,11 @@ function wireActionBox(){
       const k = b.dataset.tar, d20 = () => 1 + Math.floor(Math.random()*20);
       if(k==="heal"){ const o = taObj(ta.who), src = o && healSources(o).find(x=>x.k===ta.how), dice = taHealDice(o, src); if(!dice) return;
         const r = rollTerms(diceTerms(dice)); ta.amt = String(r.total); ta.rolled = { v:ta.amt, said:rollSaid(dice, r) }; flash(ta.rolled.said); }
-      else if(k==="use"){ const o = taObj(ta.who), x = o && (usableOf(o).find(y=>String(y.k)===String(ta.item)) || usableOf(o)[0]), dice = x && (x.u.heal || x.u.tempHp || x.u.dmg); if(!dice) return;
-        const r = rollTerms(diceTerms(dice)); ta.amt = String(r.total); ta.rolled = { v:ta.amt, said:rollSaid(dice, r) }; flash(ta.rolled.said); }
+      else if(k==="use"){ const o = taObj(ta.who), x = o && (usableOf(o).find(y=>String(y.k)===String(ta.item)) || usableOf(o)[0]);
+        const onKey = ta.on && taPeople().some(y=>y.key===ta.on) ? ta.on : ta.who;
+        const dice = x && (x.u.reduce ? reduceDice(x.u, o, onKey===ta.who) : (x.u.heal || x.u.tempHp || x.u.dmg)); if(!dice) return;
+        const r = rollTerms(diceTerms(dice)), amt = x.u.reduce ? reduceCap(x.u, r.total, +ta.took || 0) : r.total;
+        ta.amt = String(amt); ta.rolled = { v:ta.amt, said:rollSaid(dice, r) + (amt < r.total ? `, no more than half of ${+ta.took}: ${amt}` : "") }; flash(ta.rolled.said); }
       else { const keys = k==="checkall" ? taPeople().filter(x=>ta.who==="party" ? x.key.startsWith("pc:") : x.key===ta.who).map(x=>x.key) : [b.dataset.k];
         const said = [];
         for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill); ta.tot[key] = String(r + m); (ta.nat = ta.nat || {})[key] = r;
@@ -19848,20 +19888,24 @@ function logTableAction(){
       if(xp > 0){ const said = awardXPPer({ [o.id]:xp }, `healing ${tKey===ta.who ? "themself" : nameOf(tKey)} for ${back} outside a fight`); ta.result = `XP: ${said}`; } }
   } else if(ta.what==="use"){
     const U = usableOf(o||{}), cur = U.find(x=>String(x.k)===String(ta.item)) || U[0]; if(!cur){ flash("Nothing to use."); return; }
-    const tKey = on || ta.who, t = taObj(tKey), amt = Math.max(0, Math.round(+ta.amt||0));
-    if((cur.u.heal || cur.u.tempHp || cur.u.dmg) && !amt){ flash("Type or roll the amount."); return; }
+    const tKey = on || ta.who, t = taObj(tKey), took = Math.max(0, Math.round(+ta.took||0));
+    const amt = cur.u.reduce ? reduceCap(cur.u, Math.max(0, Math.round(+ta.amt||0)), took) : Math.max(0, Math.round(+ta.amt||0));
+    if((cur.u.heal || cur.u.tempHp || cur.u.dmg || cur.u.reduce) && !amt){ flash("Type or roll the amount."); return; }
     if(cur.u.charges && chargesLeft(cur.e, cur.u) < cur.u.perUse){ flash(`${cur.it.name} has no charges left.`); return; }
     partyDoing(`Used ${cur.it.name}`, o); spendItem(o, cur.k);
     let did = "";
     if(t){ pcState(t);
-      if(cur.u.heal){ const max = numOr(t.hpMax), was = numOr(t.hp, 0); t.hp = max!=null ? Math.min(max, was + amt) : was + amt; if(t.hp>0){ t.conds = t.conds.filter(c=>c!=="Unconscious"); t.death = { s:0, f:0 }; } did = `${amt} healing`; }
+      if(cur.u.reduce){ const max = numOr(t.hpMax), was = numOr(t.hp, 0); t.hp = max!=null ? Math.min(max, was + amt) : was + amt;      // the hit is already off: what it takes off comes back
+        if(t.hp>0){ t.conds = t.conds.filter(c=>c!=="Unconscious"); t.death = { s:0, f:0 }; }
+        did = `${took ? `the ${took} ${cur.u.reduceType ? cur.u.reduceType.toLowerCase() + " " : ""}damage cut by ${amt}` : `${amt} taken off the damage`}, back as hit points`; }
+      else if(cur.u.heal){ const max = numOr(t.hpMax), was = numOr(t.hp, 0); t.hp = max!=null ? Math.min(max, was + amt) : was + amt; if(t.hp>0){ t.conds = t.conds.filter(c=>c!=="Unconscious"); t.death = { s:0, f:0 }; } did = `${amt} healing`; }
       else if(cur.u.tempHp){ t.temp = Math.max(numOr(t.temp, 0), amt); did = `${amt} temporary hit points`; }
       else if(cur.u.dmg){ t.hp = Math.max(0, numOr(t.hp, 0) - amt); did = `${amt} ${cur.u.dtype} damage`; }
       if(cur.u.cond && !t.conds.includes(cur.u.cond)){ t.conds.push(cur.u.cond); did += (did ? ", " : "") + cur.u.cond.toLowerCase(); }
     }
     const still = (o.inv||[]).includes(cur.e), left = cur.u.charges ? (still ? ` (${cur.e.ch}/${cur.u.charges} charges left)` : " (used up)") : (still ? "" : " (the last one)");
     gameLog("item", `${name} uses ${cur.it.name}${t && tKey!==ta.who ? ` on ${nameOf(tKey)}` : ""}${did ? `: ${did}${taRolledW(ta.amt)}` : ""}${left}${N}`); ta.rolled = null;
-    ta.item = "";
+    ta.item = ""; ta.took = "";
   } else if(ta.what==="check"){
     const who = (party ? P.filter(x=>x.key.startsWith("pc:")) : P.filter(x=>x.key===ta.who)).filter(x=>ta.tot[x.key]!==undefined && ta.tot[x.key]!=="");
     if(!who.length){ flash("Type or roll a total first."); return; }

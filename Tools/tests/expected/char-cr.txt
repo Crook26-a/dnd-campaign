@@ -12,10 +12,10 @@ L15 budget CR 9 (5400 XP): Fighter 10, Rogue 9, Wizard 7, Cleric 11
 L20 budget CR 15 (13200 XP): Fighter 14, Rogue 15, Wizard 15, Cleric 17
 after calibration, how far the middle of each level lands from its budget (rows): [0,0.09,-0.09,0.05,0.08,0.25,0.18,0.17,-0.06,0.26,-0.06,0.23,0.05,0.07,-0.13,0.11,-0.27,0.01,-0.39,0]
 Avery de Vonn at full: CR 3: tough like CR 2, hits like CR 3 · 684 XP · 16.1 a round
-Avery de Vonn now (20 HP, no slots left): CR 1: tough like CR 1, hits like CR 2 · 254 XP · 9.2 a round
+Avery de Vonn now (20 HP, no slots left): CR 1: tough like CR 1, hits like CR 2 · 300 XP · 10.8 a round
 Avery de Vonn now, untouched = full: true
-Gawain at full: CR 5: tough like CR 3, hits like CR 7 · 1731 XP · 33.6 a round
-Gawain now (12 HP, Action Surge spent): CR 3: tough like CR 1/4, hits like CR 6 · 573 XP · 28.1 a round
+Gawain at full: CR 5: tough like CR 3, hits like CR 8 · 1887 XP · 37.8 a round
+Gawain now (12 HP, Action Surge spent): CR 3: tough like CR 1/4, hits like CR 7 · 729 XP · 31.9 a round
 Gawain now, untouched = full: true
 no sheet: CR 3 by level (no full sheet) · 750 XP
 multiclass: classes [{"cls":"Fighter","lv":3},{"cls":"Wizard","lv":2}] · slots by the rule {"1":3} · attacks a turn 1
@@ -28,7 +28,7 @@ Bard 5, Bardic Inspiration (worth its die): 8.5 a round (CR 2: tough like CR 2, 
 concentration: both 17.6, Hex alone 17.6, Spirit Guardians alone 16.2, neither 13.1 (both = the better one, not the sum)
 a spell already running (opts.active, for concentration tracking later): no slots left 13.1, Hex already up 17.6
 cards: AT FULL CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate NOW CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate
-AT FULL CR 5: tough like CR 3, hits like CR 7 1,731 XP · an estimate NOW CR 5: tough like CR 3, hits like CR 7 1,731 XP · an estimate
-Gawain at 12 HP, typed on his sheet: AT FULL CR 5: tough like CR 3, hits like CR 7 1,731 XP · an estimate NOW CR 3: tough like CR 1/4, hits like CR 7 794 XP · an estimate
+AT FULL CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate NOW CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate
+Gawain at 12 HP, typed on his sheet: AT FULL CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate NOW CR 4: tough like CR 1/4, hits like CR 8 898 XP · an estimate
 Data tab: Level (the SRD 5.2 budget) / [Character CR (our estimate, at full strength)] · campaign set to cr
-strength of Avery and Gawain: by level 1500 XP, by character CR 2415 (High 3542); what a room was built for (2 × level 5, no ids) 1500
+strength of Avery and Gawain: by level 1500 XP, by character CR 2571 (High 3771); what a room was built for (2 × level 5, no ids) 1500

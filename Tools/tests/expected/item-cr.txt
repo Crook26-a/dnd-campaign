@@ -1,0 +1,10 @@
+abilDice: 1d6+5 | 5 | 1d6-1 | 2d4+2
+itemUse: {"use":"Reaction","reduce":"1d6+Wis","self":"Wis","type":"Necrotic","half":true,"usable":true}
+words: takes 1d6+Wis off necrotic damage (on yourself: Wis), no more than half of it | cap: 6, 4, no hit typed 9
+Avery with the locket: CR 2: tough like CR 2, hits like CR 2 · 9.3 a round | without: CR 1: tough like CR 2, hits like CR 1 · 5.7 a round
+now, no charges: 5.7 (= without: true)
+two healing potions: 10.1 a round (Bonus Action, heals 2d4+2)
+rolled into the box: 6 (1d6+5: 6 + 5 = 11, no more than half of 12: 6)
+log: "Avery de Vonn uses Locket of the Stilled Heart on Rin Amakiir: the 12 necrotic damage cut by 6, back as hit points (1d6+5: 6 + 5 = 11, no more than half of 12: 6) (2/3 charges left)" · Rin HP 26 · charges 2
+on herself: 5 (5)
+page errors: 0
