@@ -30,5 +30,5 @@ a spell already running (opts.active, for concentration tracking later): no slot
 cards: AT FULL CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate NOW CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate
 AT FULL CR 5: tough like CR 3, hits like CR 7 1,731 XP · an estimate NOW CR 5: tough like CR 3, hits like CR 7 1,731 XP · an estimate
 Gawain at 12 HP, typed on his sheet: AT FULL CR 5: tough like CR 3, hits like CR 7 1,731 XP · an estimate NOW CR 3: tough like CR 1/4, hits like CR 7 794 XP · an estimate
-Data tab: Level (the SRD 5.2 budget) / [Character CR (our estimate, from their sheets)] · campaign set to cr
+Data tab: Level (the SRD 5.2 budget) / [Character CR (our estimate, at full strength)] · campaign set to cr
 strength of Avery and Gawain: by level 1500 XP, by character CR 2415 (High 3542); what a room was built for (2 × level 5, no ids) 1500
