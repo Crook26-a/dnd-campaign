@@ -1999,7 +1999,9 @@ function charCR(c, mode, opts){
     const uses = u.charges ? Math.floor((now ? (x.e.ch ?? u.charges) : u.charges) / per) : u.usedUp ? Math.max(1, +x.e.qty || 1) : 3;
     const heal = crDiceAvg(abilDice(u.heal, c)) + crDiceAvg(abilDice(u.tempHp, c)), dmg = crDiceAvg(u.dmg), cut = u.reduce ? crDiceAvg(abilDice(u.reduce, c)) : 0;
     const how = /bonus/i.test(u.use) ? "ba" : /reaction|no action/i.test(u.use) ? "re" : "act";
-    return { how, uses:Math.min(3, uses), v:r => heal + dmg * crHit(prof + smod, r.ac) + (cut ? Math.min(cut, u.reduceHalf ? r.dpr / 2 : r.dpr) * (u.reduceType ? .5 : 1) : 0) }; })
+    /* On a hit (Glaive Bite): its dice on a hit that turn, plus half again if it heals the wielder; a Bonus Action one is a bonus plan */
+    const hit = u.onHit ? { avg:crDiceAvg(abilDice(u.onHit, c)) * (u.onHitHeal ? 1.5 : 1), ba:u.onHitBa } : null;
+    return { how, hit, uses:Math.min(3, uses), v:r => heal + dmg * crHit(prof + smod, r.ac) + (cut ? Math.min(cut, u.reduceHalf ? r.dpr / 2 : r.dpr) * (u.reduceType ? .5 : 1) : 0) }; })
     .filter(g=>g.uses > 0);
   const expect = r => {
     const n = Math.max(...K.map(k=>crAttacks(k.cls, k.lv)), 1);
@@ -2036,6 +2038,8 @@ function charCR(c, mode, opts){
     if(bard){ const die = bard >= 15 ? 6.5 : bard >= 10 ? 5.5 : bard >= 5 ? 4.5 : 3.5, uses = resLeft(/bardic inspiration/i) ?? Math.max(1, chaMod);
       bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < uses ? die : 0)), conc:false }); }                           // worth its die, like healing: an estimate
     for(const g of gear.filter(g=>g.how==="ba")) bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < g.uses ? g.v(r) : 0)), conc:false });   // a carried thing as the bonus action
+    for(const g of gear.filter(g=>g.hit && g.hit.ba)) bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < g.uses ? g.hit.avg * anyHit : 0)), conc:false });   // On a hit, as the bonus action
+    const freeHit = [0, 1, 2].reduce((a, j)=>a + Math.max(0, ...gear.filter(g=>g.hit && !g.hit.ba && j < g.uses).map(g=>g.hit.avg * anyHit)), 0);   // On a hit, no action
     /* the reaction, each round: the best carried thing still with a use (a damage cut, …) */
     const react = [0, 1, 2].reduce((a, j)=>a + Math.max(0, ...gear.filter(g=>g.how==="re" && j < g.uses).map(g=>g.v(r))), 0);
     /* one concentration spell at most (one already running counts and blocks the rest) */
@@ -2049,7 +2053,7 @@ function charCR(c, mode, opts){
       if(a.conc && b.conc) continue;
       best = Math.max(best, a.v + b.r[0] + 2 * atWill + b.r[1] + b.r[2] + 3 * runningVal); }
     const surge = lvIn(/fighter/i) >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
-    return (best + surge + react) / 3;
+    return (best + surge + react + freeHit) / 3;
   };
   const tough = crTough(hp, ac), hits = crHits(expect), cal = CR_CAL[lv - 1] || 0;
   const pos = Math.max(0, Math.min(CR_TABLE.length - 1, (tough + hits) / 2 + cal));
@@ -8211,7 +8215,7 @@ function srdSpellBlock(s){
 /* how a carried item is used (the 2024 rules' action names): it decides where the item is offered */
 const ITEM_USES = ["Action","Bonus Action","Magic action","Utilize action","Reaction","No action"];
 /* when spent charges come back: SRD 5.2 items say "regains NdM expended charges daily at dawn"; an item of your own can come back after a rest instead */
-const REGAIN_WHEN = [["dawn","At dawn"],["long","After a Long Rest"],["rest","After a Short or Long Rest"]];
+const REGAIN_WHEN = [["dawn","At dawn"],["long","After a Long Rest"],["rest","After a Short or Long Rest"],["hp","By paying hit points (Charges back: HP a charge)"]];
 const regainWhenOf = it => it.regainWhen || (/long rest/i.test(it.regain||"") ? "long" : /short rest|\brest\b/i.test(it.regain||"") ? "rest" : "dawn");
 const LOOT_KINDS = ["curio","gear","weapon","armor","tool","potion","scroll","poison","magic item","treasure","trade good","mount","vehicle","story"];
 
@@ -8544,6 +8548,10 @@ function libForm(cat, x){
           <div class="pcrow">${t("reduce","Reduces damage",.9,"1d6+Wis")}${t("reduceSelf","On yourself",.7,"Wis")}<div class="field" style="flex:1"><label>Only this type</label><select ${a} data-f="reduceType"><option value="">Any damage</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===String(x.reduceType||"").toLowerCase()?"selected":""}>${d}</option>`).join("")}</select></div></div>
           <label class="check" style="margin:0 0 6px"><input ${a} data-f="reduceHalf" type="checkbox" ${x.reduceHalf?"checked":""}> Takes off no more than half the damage</label>
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Reduces damage: used right after a hit (usually a Reaction), it gives back what it takes off. Write an ability for its modifier ("1d6+Wis"); "On yourself" is the amount when the one hit is whoever uses it (empty: the same). Character CR counts it like healing.</p>
+          <div class="pcrow">${t("onHit","On a hit, for a charge",1,"1d4+Str")}<div class="field" style="flex:1"><label>Its type</label><select ${a} data-f="onHitType"><option value="">Same as the weapon</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===String(x.onHitType||"").toLowerCase()?"selected":""}>${d}</option>`).join("")}</select></div></div>
+          <label class="check" style="margin:0 0 2px"><input ${a} data-f="onHitHeal" type="checkbox" ${x.onHitHeal?"checked":""}> Heals the wielder half of it</label>
+          <label class="check" style="margin:0 0 6px"><input ${a} data-f="onHitBa" type="checkbox" ${x.onHitBa?"checked":""}> Takes the wielder's Bonus Action</label>
+          <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">On a hit: extra damage when whoever carries it hits, once a turn, spending a charge. It's a chip in a fight's action form; Roll rolls it apart, and the log spends the charge and heals them. Charges back "By paying hit points": a button takes that many hit points for each charge.</p>
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Damage above counts too when it's used (a bomb, a wand). Charges come back by themselves: at dawn when the day count moves on (Next, or typing a later day), or when whoever carries it finishes that rest (the Action box's "Takes a rest", or Rest on the Party tab). The game log says so.</p></details>`; })()}`;
   }
   if(!draft && CARD_CATS.includes(cat)) h += `<div class="pcrow" style="margin:0 0 8px">${cardBtn(cat, x.id, "Card for the players")}</div>`;
@@ -8584,7 +8592,7 @@ function stdMatches(q){
    "Fights as" can come as a stat block's name, matched here to your foes or the SRD's. ── */
 const FB_FIELDS = {
   /* every category also has "campaign": which campaign the phone meant it for */
-  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","reduce","reduceSelf","reduceType","reduceHalf","notes","soldAt","campaign"],
+  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","reduce","reduceSelf","reduceType","reduceHalf","onHit","onHitType","onHitHeal","onHitBa","notes","soldAt","campaign"],
   shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes","campaign"],
   factions:["name","align","wants","how","hidden","notes","campaign"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","gender","known","cls","level","ac","hpMax","speed","init",
@@ -13103,6 +13111,11 @@ function attackAddons(t){
     }
   }
   const sb = t.kind==="foe" ? foeById(t.x.foe) : pcStatBlock(t.p);
+  /* a carried thing's On a hit, while it has a charge (Glaive Bite): once a turn, its dice rolled apart (act.bite) */
+  if(t.kind==="pc"){ const c = pcState(t.p);
+    for(const x of usableOf(c)) if(x.u.onHit && (!x.u.charges || chargesLeft(x.e, x.u) >= x.u.perUse))
+      out.push({ key:`itm:${x.k}`, name:x.it.name, dice:abilDice(x.u.onHit, c), dtype:x.u.onHitType, once:true, item:x.k, heal:x.u.onHitHeal,
+        note:`${x.u.charges ? `spends a charge (${chargesLeft(x.e, x.u)}/${x.u.charges} left)` : "on a hit"}${x.u.onHitBa ? ", and the Bonus Action" : ""}${x.u.onHitHeal ? "; heals half of it" : ""}` }); }
   for(const [nm, text] of (sb ? pairs(sb.tr) : [])){
     const s = String(text||""), name = String(nm).replace(/\s*\(.*\)\s*$/,"");
     if(/has Advantage on (an |its )?attack rolls?/i.test(s)) out.push({ key:`tr:${nm}`, name, adv:true, note:s.replace(/^.*?has Advantage/i, "Advantage").replace(/\.$/,"") });
@@ -13336,6 +13349,16 @@ function logAction(n, c){
   }
   /* once-a-turn add-ons (Sneak Attack) are spent for this turn */
   for(const a of D.on) if(a.once){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {})[a.key] = turnStamp(c); }
+  /* a carried thing's On a hit (Glaive Bite): on a hit it spends its charge, and heals the wielder half of its share
+     (known when Roll rolled it; typed by hand, the log says to do it) */
+  let biteWords = "";
+  if(actor.kind==="pc" && dmg && ["hit","crit"].includes(act.outcome)) for(const a of D.on.filter(a=>a.item!=null)){
+    const p = pcState(actor.p), x = usableOf(p).find(y=>y.k===a.item); if(!x) continue;
+    if(x.u.charges) spendItem(p, x.k);
+    const part = act.bite && act.bite.v===String(act.dmg) ? act.bite.part : null;
+    if(a.heal && part!=null){ const back = healAny(actor, Math.floor(part / 2)); biteWords += `; ${a.name}: ${part}${a.dtype ? ` ${a.dtype}` : ""} of it, and ${actor.label} regains ${back}`; }
+    else biteWords += `; ${a.name}${a.heal ? `: ${actor.label} regains half its damage (typed by hand: add it on the card)` : ""}`;
+    if(x.u.charges) biteWords += ` (${chargesLeft(x.e, x.u)}/${x.u.charges} charges left)`; }
   if(actor.kind==="pc"){ const S = statsOf(actor.p), foeHit = h => all.find(x=>x.id===h.id).kind==="foe";
     S.dealt += hits.filter(foeHit).reduce((a,h)=>a+h.dmg,0) + hits2.filter(foeHit).reduce((a,h)=>a+h.dmg,0); S.healed += healed;
     S.kills += new Set([...hits, ...hits2].filter(h=>h.dropped && foeHit(h)).map(h=>h.id)).size; }
@@ -13353,6 +13376,7 @@ function logAction(n, c){
     + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
     + (act.note ? ` (${act.note})` : "")
     + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}${rolledW("dmg2", p2.dmg)}` : ""}` : "")
+    + biteWords
     + [...hits, ...hits2].filter((h,i,A)=>h.dropped && A.findIndex(x=>x.id===h.id && x.dropped)===i).map(h=>`. ${h.label} drops`).join("") + ".";
   c.log = c.log || [];
   const reactedBefore = JSON.stringify(c.reacted||{});
@@ -13610,10 +13634,17 @@ function renderBattlePanelNow(){
     keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
     const D = actDice(c, t, info), w = b.dataset.acroll;
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
-    const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
+    const crit = w==="dmg" && act.outcome==="crit", bites = w==="dmg" ? D.on.filter(a=>a.item!=null && a.dice) : [];
+    let r = rollTerms(diceTerms(dice), crit), biteSaid = "";
+    if(bites.length){ /* a carried thing's On a hit: rolled apart, so the log knows its share (to heal half of it) */
+      const base = addDice(...(D.part1 ? [D.part1.dice] : []), ...D.on.filter(a=>a.item==null && a.dice).map(a=>a.dice)), bd = addDice(...bites.map(a=>a.dice));
+      const rb = base ? rollTerms(diceTerms(base), crit) : { total:0, rolls:[] }, ri = rollTerms(diceTerms(bd), crit);
+      r = { total:rb.total + ri.total, rolls:[...rb.rolls, ...ri.rolls] };
+      act.bite = { v:String(r.total), part:ri.total };
+      biteSaid = `${base ? rollSaid(base, rb, crit) : ""}${base ? " + " : ""}${bites.map(a=>a.name).join(" and ")} ${rollSaid(bd, ri, crit)} = ${r.total}`; }
     const cut = w==="heal" && info.reduce ? reduceCap(info.reduce, r.total, +act.took || 0) : r.total;     // a damage-cutting item: no more than half the hit
     if(w==="heal") act.heal = String(cut); else if(w==="dmg2"){ if(act.p2) act.p2.dmg = String(r.total); } else act.dmg = String(r.total);
-    (act.rolled = act.rolled || {})[w] = { v:String(cut), said:rollSaid(dice, r, crit) + (cut < r.total ? `, no more than half of ${+act.took}: ${cut}` : "") };     // the dice go in the log too, unless the number is changed by hand
+    (act.rolled = act.rolled || {})[w] = { v:String(cut), said:(biteSaid || rollSaid(dice, r, crit)) + (cut < r.total ? `, no more than half of ${+act.took}: ${cut}` : "") };     // the dice go in the log too, unless the number is changed by hand
     flash(act.rolled[w].said);
     renderBattlePanel(); });
   $("#ac-go").onclick = ()=>{ keep(); logAction(n, c); };
@@ -19625,7 +19656,10 @@ function itemUse(it){
   const u = { use, heal, tempHp:it.tempHp||"", cond:it.cond||"", charges, perUse:Math.max(1, num(it.perUse)||1), regain:String(regain).replace(/\s+/g,"").toLowerCase(), when:regainWhenOf(it), usedUp,
     dmg: it.use && it.dmg ? String(it.dmg).replace(/\s+/g,"") : "", dtype:String(it.dtype||"").toLowerCase(), effect:it.effect||"",
     /* Reduces damage (Joseph, 2026-10-29: Avery's locket): how much it takes off, on yourself, which type, at most half */
-    reduce:String(it.reduce||"").trim(), reduceSelf:String(it.reduceSelf||"").trim(), reduceType:it.reduceType||"", reduceHalf:!!it.reduceHalf };
+    reduce:String(it.reduce||"").trim(), reduceSelf:String(it.reduceSelf||"").trim(), reduceType:it.reduceType||"", reduceHalf:!!it.reduceHalf,
+    /* On a hit, for a charge (Joseph, 2026-10-29: Avery's Glaive Bite): extra dice on a hit with it, their type, whether it
+       heals the wielder half of them, whether it takes the Bonus Action */
+    onHit:String(it.onHit||"").trim(), onHitType:String(it.onHitType||"").toLowerCase(), onHitHeal:!!it.onHitHeal, onHitBa:!!it.onHitBa };
   u.usable = !!(u.use || u.heal || u.tempHp || u.charges || u.reduce);
   return u;
 }
@@ -19650,7 +19684,7 @@ function spendItem(o, k){
   return true;
 }
 const usableLabel = x => `${x.it ? x.it.name : invName(x.e)}${x.u.charges ? ` (${chargesLeft(x.e, x.u)}/${x.u.charges})` : (x.e.qty||1)>1 ? ` ×${x.e.qty}` : ""}`;
-const REGAIN_WORD = { dawn:"at dawn", long:"after a Long Rest", rest:"after a Short or Long Rest" };
+const REGAIN_WORD = { dawn:"at dawn", long:"after a Long Rest", rest:"after a Short or Long Rest", hp:"HP a charge, paid by whoever carries it" };
 /* spent charges come back on the holders' items that recharge on this ("dawn", "long" or "short"), `times` over; → ["Rin's Statuette (3/3)", …] */
 function rechargeItems(holders, on, times){
   const said = [];
@@ -19788,7 +19822,8 @@ function renderActionBox(force){
         <p class="empty-note" style="font-size:11px;margin:0 0 4px">${esc([cur.u.use, red ? reduceWords(cur.u) : "", cur.u.heal?`heals ${cur.u.heal}`:"", cur.u.tempHp?`${cur.u.tempHp} temporary HP`:"", cur.u.dmg?`${cur.u.dmg} ${cur.u.dtype} damage`:"", cur.u.cond?cur.u.cond.toLowerCase():"", cur.u.charges?`${cur.u.perUse} charge${cur.u.perUse>1?"s":""} a use${cur.u.regain?`, regains ${cur.u.regain} ${REGAIN_WORD[cur.u.when]}`:""}`:"", cur.u.usedUp?"used up when empty":""].filter(Boolean).join(" · ") || "Uses it.")}</p>
         <div class="afr"><label>On</label><select data-ta="on">${P.map(x=>opt(x.key, x.name, ta.on && P.some(y=>y.key===ta.on) ? ta.on : ta.who)).join("")}</select></div>
         ${red ? `<div class="afr"><label>Damage they took</label><input data-ta="took" type="number" min="0" value="${esc(ta.took||"")}" placeholder="the hit"></div>` : ""}
-        ${dice ? `<div class="afr"><label>${red ? "Takes off" : "Amount"}</label><input data-ta="amt" type="number" min="0" value="${esc(ta.amt)}"><button class="btn" data-tar="use">Roll ${esc(dice)}</button></div>` : ""}`
+        ${dice ? `<div class="afr"><label>${red ? "Takes off" : "Amount"}</label><input data-ta="amt" type="number" min="0" value="${esc(ta.amt)}"><button class="btn" data-tar="use">Roll ${esc(dice)}</button></div>` : ""}
+        ${cur.u.when==="hp" && cur.u.charges && +cur.u.regain && chargesLeft(cur.e, cur.u) < cur.u.charges ? `<button class="btn wide" data-tar="pay" title="Charges back by paying hit points: ${esc(o.name||"they")} loses ${+cur.u.regain} for one charge">Restore a charge: ${esc((o.name||"They").split(" ")[0])} pays ${+cur.u.regain} HP (${chargesLeft(cur.e, cur.u)}/${cur.u.charges})</button>` : ""}`
       : `<p class="empty-note" style="font-size:12px">Nothing usable on ${esc(o.name||"their")} sheet. An item is usable once its Library page says how it's used, or what it heals, or its charges.</p>`;
   } else if(ta.what==="check"){
     const who = party ? P.filter(x=>x.key.startsWith("pc:")) : [P.find(x=>x.key===ta.who)].filter(Boolean);
@@ -19850,6 +19885,11 @@ function wireActionBox(){
         const dice = x && (x.u.reduce ? reduceDice(x.u, o, onKey===ta.who) : abilDice(x.u.heal || x.u.tempHp || x.u.dmg, o)); if(!dice) return;
         const r = rollTerms(diceTerms(dice)), amt = x.u.reduce ? reduceCap(x.u, r.total, +ta.took || 0) : r.total;
         ta.amt = String(amt); ta.rolled = { v:ta.amt, said:rollSaid(dice, r) + (amt < r.total ? `, no more than half of ${+ta.took}: ${amt}` : "") }; flash(ta.rolled.said); }
+      else if(k==="pay"){ const o = taObj(ta.who), x = o && (usableOf(o).find(y=>String(y.k)===String(ta.item)) || usableOf(o)[0]), cost = x ? +x.u.regain || 0 : 0;
+        if(!x || x.u.when!=="hp" || !cost) return; pcState(o); const left = chargesLeft(x.e, x.u); if(left >= x.u.charges) return;
+        partyDoing(`Restored a charge of ${x.it.name}`, o); o.hp = Math.max(0, numOr(o.hp, 0) - cost); x.e.ch = left + 1;
+        const line = `${o.name||"Someone"} gives up ${cost} hit points to restore a charge of ${x.it.name} (${x.e.ch}/${x.u.charges}; ${o.hp} HP left)`;
+        gameLog("item", line); flash(line + "."); saveParty(); }
       else { const keys = k==="checkall" ? taPeople().filter(x=>ta.who==="party" ? x.key.startsWith("pc:") : x.key===ta.who).map(x=>x.key) : [b.dataset.k];
         const said = [];
         for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill); ta.tot[key] = String(r + m); (ta.nat = ta.nat || {})[key] = r;

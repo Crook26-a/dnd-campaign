@@ -1,0 +1,52 @@
+// uses: nothing
+<script>
+/* On a hit, for a charge (Joseph, 2026-10-29: Avery's Glaive Bite, Vampiric Touch through the blade as a Bonus Action):
+   the chip on her attack, Roll rolling its dice apart, the log spending the charge and healing her half the necrotic,
+   a miss spending nothing, no chip once the charges are gone, buying a charge back with 4 hit points (table mode), and
+   character CR with the glaive against the same character without */
+const __GB = { format:"ordinate-survey-v1", title:"Glaive Test", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Avery de Vonn", cls:"Cleric", level:5, hp:"30", hpMax:"47", ac:"17", str:16, wis:20, satk:"+8", dc:"16",
+      attacks:[{ name:"Glaive Bite (reach)", hit:"+6", dmg:"1d10+3", dtype:"slashing" }], inv:[{ id:"ll_glaivebite", qty:1 }] },
+    { id:"pb", name:"Bram Birch", level:5, hp:"40", hpMax:"40" }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
+  library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[{ id:"ll_glaivebite", name:"Glaive Bite", kind:"magic item", rarity:"Uncommon", dmg:"1d10", dtype:"slashing",
+    props:"Heavy, Reach, Two-Handed", charges:"3", regain:"4", regainWhen:"hp", perUse:"1", onHit:"1d4+Str", onHitType:"necrotic", onHitHeal:true, onHitBa:true }] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:ogre", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[[6,1],[7,1]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ const av = () => root.roster[0], lastLog = () => gameLogList().slice(-1).map(e=>e.text)[0] || '', ch = () => av().inv[0].ch;
+ try{
+  loadJSONNow(JSON.stringify(__GB)); await wait(300); setDmMode(true); await wait(60);
+  out.push('itemUse: ' + JSON.stringify((u => ({ onHit:u.onHit, type:u.onHitType, heal:u.onHitHeal, ba:u.onHitBa, when:u.when, regain:u.regain }))(itemUse(libLootById('ll_glaivebite')))));
+  /* table mode, before the fight: buy a charge back with 4 hit points (one spent first) */
+  av().inv[0].ch = 2;
+  const key = (taPeople().find(x=>x.key.endsWith('pa'))||{}).key; Object.assign(ta, { who:key, what:'use', item:'0', on:key, amt:'', took:'' });
+  pane = 'party'; syncTabs(); openDrawer('party'); await wait(40); renderActionBox(true); await wait(30); const pay = document.querySelector('[data-tar="pay"]');
+  out.push('pay button: ' + (pay ? pay.textContent.trim() : 'none · ta ' + JSON.stringify({ who:ta.who, what:ta.what, item:ta.item }) + ' · usable ' + usableOf(av()).map(x=>x.it.name + ':' + x.u.when + ':' + chargesLeft(x.e, x.u)).join(',') + ' · box ' + ((document.querySelector('[data-ta="item"]')||{}).outerHTML||'no item select').slice(0, 200))); const hp1 = av().hp; if(pay){ pay.click(); await wait(30); }
+  out.push('after paying: HP ' + hp1 + ' -> ' + av().hp + ' · charges ' + ch() + ' · "' + lastLog() + '"');
+  av().inv[0].ch = 3; av().hp = 30;
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60);
+  const ogre = c.list[0], A = combatants(c).find(t=>t.id==='pa');
+  out.push('chip: ' + JSON.stringify(attackAddons(A).filter(a=>a.item!=null).map(a=>({ name:a.name, dice:a.dice, dtype:a.dtype, note:a.note }))));
+  /* a hit with the bite on: Roll rolls it apart, Log spends the charge and heals half the necrotic */
+  act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.outcome = 'hit'; act.addons = ['itm:0']; renderBattlePanel(); await wait(40);
+  const rnd = Math.random; Math.random = () => 0.5; document.querySelector('[data-acroll="dmg"]').click(); Math.random = rnd; await wait(40);
+  out.push('rolled: ' + act.dmg + ' · bite part ' + (act.bite||{}).part + ' · "' + (act.rolled.dmg||{}).said + '"');
+  const hp0 = av().hp, ohp = ogre.hp; logAction(hall, c); await wait(60);
+  out.push('log: "' + c.log.slice(-1)[0].text + '" · Avery ' + hp0 + ' -> ' + av().hp + ' · ogre ' + ohp + ' -> ' + ogre.hp + ' · charges ' + ch());
+  /* a miss: nothing spent */
+  c.onceUsed = {}; act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.outcome = 'miss'; act.addons = ['itm:0']; act.dmg = '9'; logAction(hall, c); await wait(40);
+  out.push('miss: charges ' + ch());
+  /* spend the rest: no chip at 0 */
+  av().inv[0].ch = 0; out.push('at 0 charges, chip offered: ' + attackAddons(combatants(c).find(t=>t.id==='pa')).some(a=>a.item!=null));
+  /* character CR with and without */
+  av().inv[0].ch = 3; const w = charCR(av()), bare = JSON.parse(JSON.stringify(av())); bare.inv = []; const wo = charCR(bare);
+  out.push('CR with the glaive: ' + charCRWords(w) + ' · ' + w.dpr + ' a round | without: ' + charCRWords(wo) + ' · ' + wo.dpr);
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
