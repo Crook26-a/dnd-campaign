@@ -1,0 +1,20 @@
+monsters, all: 331 monsters: off by 1.07 CR steps on average, bias -0.72, within 1 step 78%, within 2 85%
+CR 0-1/2: 108 monsters: off by 0.37 CR steps on average, bias 0.11, within 1 step 95%, within 2 100%
+CR 1-10: 176 monsters: off by 0.58 CR steps on average, bias -0.23, within 1 step 87%, within 2 95%
+CR 11-30: 47 monsters: off by 4.51 CR steps on average, bias -4.49, within 1 step 6%, within 2 13%
+furthest off: Tarrasque CR 30 rated 20; Mummy Lord CR 15 rated 7; Sphinx of Valor CR 17 rated 9; Lich CR 21 rated 14; Marilith CR 16 rated 9; Kraken CR 23 rated 16
+L1 budget CR 1/2 (75 XP): Fighter 1/2 [tough like a CR 1/4, hits like a CR 1/2, 7/rd], Rogue 1/2 [tough like a CR 1/8, hits like a CR 1, 7.7/rd], Wizard 1/4 [tough like a CR 0, hits like a CR 1, 9.2/rd], Cleric 1/2 [tough like a CR 1/4, hits like a CR 1, 9/rd]
+L3 budget CR 1 (225 XP): Fighter 1 [tough like a CR 1, hits like a CR 1, 8.6/rd], Rogue 1 [tough like a CR 1, hits like a CR 2, 9.4/rd], Wizard 1 [tough like a CR 1/2, hits like a CR 3, 16/rd], Cleric 2 [tough like a CR 1, hits like a CR 2, 12.8/rd]
+L5 budget CR 3 (750 XP): Fighter 3 [tough like a CR 3, hits like a CR 4, 19.3/rd], Rogue 2 [tough like a CR 2, hits like a CR 3, 13.2/rd], Wizard 3 [tough like a CR 1, hits like a CR 6, 27.4/rd], Cleric 3 [tough like a CR 2, hits like a CR 4, 19.2/rd]
+L8 budget CR 5 (1700 XP): Fighter 5 [tough like a CR 5, hits like a CR 6, 20.9/rd], Rogue 4 [tough like a CR 4, hits like a CR 4, 16.1/rd], Wizard 5 [tough like a CR 2, hits like a CR 7, 27.6/rd], Cleric 5 [tough like a CR 4, hits like a CR 5, 19.9/rd]
+L11 budget CR 7 (2900 XP): Fighter 7 [tough like a CR 6, hits like a CR 9, 31.6/rd], Rogue 6 [tough like a CR 6, hits like a CR 6, 20.8/rd], Wizard 8 [tough like a CR 4, hits like a CR 12, 47.6/rd], Cleric 7 [tough like a CR 6, hits like a CR 8, 29.2/rd]
+L15 budget CR 9 (5400 XP): Fighter 10 [tough like a CR 10, hits like a CR 10, 31.7/rd], Rogue 9 [tough like a CR 8, hits like a CR 9, 25.7/rd], Wizard 7 [tough like a CR 7, hits like a CR 8, 51.3/rd], Cleric 11 [tough like a CR 9, hits like a CR 13, 43.6/rd]
+L20 budget CR 15 (13200 XP): Fighter 14 [tough like a CR 17, hits like a CR 12, 42.7/rd], Rogue 15 [tough like a CR 16, hits like a CR 15, 29.2/rd], Wizard 15 [tough like a CR 12, hits like a CR 17, 56.9/rd], Cleric 17 [tough like a CR 16, hits like a CR 18, 44.6/rd]
+after calibration, how far the middle of each level lands from its budget (rows): [0,0.09,-0.09,0.05,-0.14,0.03,0.06,0.06,-0.15,0.16,-0.24,0.05,0.05,0.07,-0.13,0.11,-0.27,0.01,-0.39,0]
+Avery de Vonn at full: CR 3 (an estimate): tough like a CR 2, hits like a CR 3 · 684 XP · 16.1 a round
+Avery de Vonn now (20 HP, no slots left): CR 1 (an estimate): tough like a CR 1, hits like a CR 2 · 254 XP · 9.2 a round
+Avery de Vonn now, untouched = full: true
+Gawain at full: CR 5 (an estimate): tough like a CR 3, hits like a CR 7 · 1731 XP · 33.6 a round
+Gawain now (12 HP, Action Surge spent): CR 3 (an estimate): tough like a CR 1/4, hits like a CR 6 · 573 XP · 28.1 a round
+Gawain now, untouched = full: true
+no sheet: CR 3 (an estimate): no full sheet: rated by level 5 · 750 XP

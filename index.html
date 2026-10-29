@@ -1799,6 +1799,171 @@ function checkSite(site, level){
            : eff > hard*0.55 ? "fair" : "light" };
 }
 /* ══════════════════════════════════════════════════════════════
+   CHARACTER CR (Joseph, 2026-10-28/29): a character rated the way a monster is, against our own measuring stick,
+   so the party's strength can follow what's on their sheets (items, builds, spent slots), not only their levels.
+   CR_TABLE is ours, measured from the SRD 5.2 monsters (not the DMG's table): for each CR, the middle (median)
+   monster's AC, hit points, best attack bonus, best save DC and damage per round. Damage per round: each action's
+   average damage plus any "plus N (dice)" that isn't conditional, Multiattack counted, a Recharge action averaged with
+   two regular rounds; legendary actions aren't counted (so the measure matches crBlockDpr, which reads stat blocks the
+   same way). A CR with no monster is a straight line between its neighbours; CR 10 and up (a handful of monsters each)
+   is a three-point moving average; every column is made never to go down, and from CR 1 a flat run is turned into an
+   even ramp to the next higher value, so each step means something. Damage per round levels off at 86 from CR 22
+   (the stat blocks' own damage stops growing there; their legendary actions carry the rest). Every number from it is
+   an estimate. [CR, AC, hit points, attack bonus, save DC, damage per round]
+   ══════════════════════════════════════════════════════════════ */
+const CR_TABLE = [[0,12,3,2,12,2],[0.125,12,9,4,12,4],[0.25,12,13,4,12,6],[0.5,12,21,4,12,7],[1,13,26,4.5,12.2,10],[2,14,45,5,12.5,14],
+  [3,14.6,65,5.5,12.8,21],[4,15.2,76,6,13,28],[5,15.8,104,6.8,13.8,33],[6,16.4,123,7.6,14.6,40],[7,16.7,127,8.4,15.4,44],[8,17,136,9.2,16.2,54],
+  [9,17.4,162,9.5,16.6,56],[10,17.7,180,9.8,16.9,57],[11,17.9,185,10.1,17.3,74],[12,18.1,191,10.4,17.6,75],[13,18.3,196,10.7,18.1,76],
+  [14,18.6,202,11,18.5,77],[15,18.8,209,12,19,78],[16,19,229,12.7,19.7,79],[17,19.3,249,13.3,20.3,80],[18,19.5,272,13.8,20.8,81],
+  [19,19.8,297,14.2,21.2,82],[20,20,329,14.6,21.6,83],[21,21,381,15,22,84],[22,21.4,431,16,23,86],[23,21.8,490,16.5,23.5,86],
+  [24,22.2,533,17,24,86],[25,22.6,571,17.5,24.5,86],[26,23,596,17.9,25,86],[27,23.5,622,18.2,25.5,86],[28,24,647,18.6,26,86],
+  [29,24.5,672,19,26.5,86],[30,25,697,19,27,86]].map(([cr, ac, hp, atk, dc, dpr])=>({ cr, ac, hp, atk, dc, dpr, xp:CR_XP[cr] }));
+/* calibration: added to a character's rating (in table rows) by level, so an ordinary by-the-book character of each
+   level lands on their own SRD 5.2 XP budget (Moderate). Measured 2026-10-29 on reference characters (a fighter,
+   rogue, wizard and cleric at each level, standard array, no magic items: the char-cr test builds them): the budget's
+   place on the table less the middle two's rating, then averaged with the levels either side (levels 1 and 20 as
+   measured). Low levels rate a little high; high levels far low, since the budget there counts on class features no
+   sheet line shows. Re-measure if the rater changes. */
+const CR_CAL = [-0.65,-0.59,-0.53,-0.51,-0.32,-0.07,0.24,0.4,0.58,0.7,1.04,1.41,1.92,2.26,2.62,2.92,3.52,4.26,5.64,7.41];
+const crHit = (atk, ac) => Math.max(.05, Math.min(.95, (21 + atk - ac) / 20));
+/* a place on the table as a fractional row (0 = CR 0, 4 = CR 1, 33 = CR 30), and back */
+function crPos(key, v){
+  const T = CR_TABLE; if(!(v > T[0][key])) return 0;
+  for(let i = 1; i < T.length; i++) if(v <= T[i][key]){ const a = T[i-1][key], b = T[i][key]; return i - 1 + (b > a ? (v - a) / (b - a) : 1); }
+  return T.length - 1;
+}
+function crRowAt(pos){
+  const T = CR_TABLE, p = Math.max(0, Math.min(T.length - 1, pos)), i = Math.min(T.length - 2, Math.floor(p)), f = p - i, a = T[i], b = T[i+1];
+  const mix = k => a[k] + (b[k] - a[k]) * f;
+  return { pos:p, cr:mix("cr"), ac:mix("ac"), hp:mix("hp"), atk:mix("atk"), dc:mix("dc"), dpr:mix("dpr"), xp:Math.round(a.xp * Math.pow(b.xp / a.xp, f)) };
+}
+const crNear = pos => CR_TABLE[Math.max(0, Math.min(CR_TABLE.length - 1, Math.round(pos)))].cr;   // the nearest CR, for saying it
+const crSay = pos => crLabel(crNear(pos));
+const crPosOfXp = xp => { const T = CR_TABLE; if(xp <= T[0].xp) return 0;
+  for(let i = 1; i < T.length; i++) if(xp <= T[i].xp) return i - 1 + Math.log(xp / T[i-1].xp) / Math.log(T[i].xp / T[i-1].xp);
+  return T.length - 1; };
+/* the average of a damage expression: "2d6+5 + 2d6" → 19 (what's after a comma or "or" is left out) */
+function crDiceAvg(s){
+  let t = 0; const head = String(s||"").split(/,|\bor\b|\//)[0].replace(/\s+/g, "");
+  for(const m of head.matchAll(/([+-]?)(\d*)d(\d+)|([+-]?)(\d+)/gi)){
+    if(m[3]) t += (m[1]==="-" ? -1 : 1) * (+m[2] || 1) * (+m[3] + 1) / 2; else if(m[5]) t += (m[4]==="-" ? -1 : 1) * +m[5]; }
+  return Math.max(0, t);
+}
+/* toughness: hit points, made more or less by AC against the attackers of that CR → a place on the table */
+function crTough(hp, ac){
+  if(!(hp > 0)) return 0;
+  let pos = crPos("hp", hp);
+  for(let k = 0; k < 5; k++){ const r = crRowAt(pos); pos = crPos("hp", hp * crHit(r.atk, r.ac) / crHit(r.atk, ac)); }
+  return pos;
+}
+/* hitting power: expect(row) = the damage a round it does to a typical creature of that row (hits and misses counted),
+   set against what that row's own monsters do to each other → a place on the table */
+function crHits(expect){
+  let pos = 8;
+  for(let k = 0; k < 6; k++){ const r = crRowAt(pos), e = expect(r); pos = crPos("dpr", e / crHit(r.atk, r.ac)); }
+  return pos;
+}
+/* a stat block's damage per round, read the way the table was measured */
+const CR_WORD = { one:1, two:2, three:3, four:4, five:5, six:6, twice:2, thrice:3 };
+function crBlockDpr(m){
+  const A = Array.isArray(m && m.act) && m.act.length ? (Array.isArray(m.act[0]) ? m.act : [m.act]) : [];
+  const dmgOf = t => { t = String(t||""); if(!/Hit:|Attack Roll:|Saving Throw:|Failure:/i.test(t)) return 0;
+    const first = /(\d+) \([\dd +−-]+\) [A-Z][a-z]+ damage/.exec(t); if(!first) return 0; let s = +first[1];
+    for(const x of t.matchAll(/plus (\d+) \([\dd +−-]+\) [A-Z][a-z]+ damage(?! if| when| while)/g)) s += +x[1]; return s; };
+  const by = {}; let best = 0, recharge = 0;
+  for(const [name, text] of A){ const d = dmgOf(text), nm = String(name).replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();
+    if(/recharge|\/day/i.test(name)) recharge = Math.max(recharge, d); else { by[nm] = d; best = Math.max(best, d); } }
+  const ma = A.find(([n])=>/^multiattack/i.test(n)); let reg = best;
+  if(ma){ let total = 0, counted = 0;
+    for(const x of String(ma[1]).matchAll(/(one|two|three|four|five|six|twice|thrice)\s+([A-Z][\w' -]*?) attacks?/gi)){
+      const nm = x[2].toLowerCase().trim(), d = by[nm] ?? (Object.entries(by).find(([k])=>nm.includes(k) || k.includes(nm)) || [])[1];
+      if(d!=null){ total += CR_WORD[x[1].toLowerCase()] * d; counted++; } }
+    if(!counted){ const n = /makes (one|two|three|four|five|six) (?:attacks|\w+ attacks)/i.exec(ma[1]) || /(two|three|four|five|six) attacks/i.exec(ma[1]); if(n) total = CR_WORD[n[1].toLowerCase()] * best; }
+    if(total) reg = total; }
+  return recharge > reg ? (recharge + 2 * reg) / 3 : reg;
+}
+/* a stat block rated against the table (the check of the table itself: SRD monsters should land near their own CR) */
+function crOfBlock(m){
+  const A = Array.isArray(m && m.act) && m.act.length ? (Array.isArray(m.act[0]) ? m.act : [m.act]) : [];
+  const atk = Math.max(0, ...A.map(([, t])=>{ const x = /Attack Roll: \+(\d+)/.exec(t||""); return x ? +x[1] : 0; }));
+  const dc = Math.max(0, ...A.map(([, t])=>{ const x = /DC (\d+)/.exec(t||""); return x ? +x[1] : 0; }));
+  const hitBy = atk || (dc ? dc - 8 : 0), dpr = crBlockDpr(m);
+  const tough = crTough(+m.hp || foeMaxHp(m) || 0, parseInt(m.ac) || 10), hits = dpr ? crHits(r=>dpr * crHit(hitBy, r.ac)) : 0;
+  return { pos:(tough + hits) / 2, tough, hits };
+}
+/* which classes swing more than once with the Attack action (2024 rules) */
+function crAttacks(cls, lv){
+  if(/fighter/i.test(cls)) return lv >= 20 ? 4 : lv >= 11 ? 3 : lv >= 5 ? 2 : 1;
+  return /barbarian|monk|paladin|ranger/i.test(cls) && lv >= 5 ? 2 : 1;
+}
+const CR_DISABLE = /\b(Paralyzed|Stunned|Incapacitated|Restrained|Frightened|Charmed|Blinded|Unconscious|Prone|Petrified|banish|subtract 1d4|add 1d4|adds 1d4|Disadvantage on attack)/i;
+const CR_AREA = /\b(Sphere|Cone|Cube|Line|Cylinder|Emanation)\b|each creature (in|within)/i;
+/* a character rated: { pos, cr, xp, tough, hits, dpr, fallback, why } — "at full" (full hit points, every slot and
+   resource) or "now" (their hit points, slots and resources as they stand). Pure: reads the character, changes nothing.
+   Our own reading of a sheet (every number an estimate):
+   - toughness: hit points and AC (above);
+   - hitting power over a three-round fight: round one their best (a spell from a slot they have, healing counted like
+     damage, a disabling spell worth 6 + 6 × its level, an area spell counted on two creatures), rounds two and three
+     what they can do at will (the Attack action with Extra Attack, Sneak Attack, Rage, or a cantrip), plus a bonus
+     action each round (an off-hand or bonus-action attack, or a bonus-action spell that keeps attacking), and one
+     Action Surge if they have it;
+   - a character with no hit points or nothing to hit with is rated by level (their XP budget). */
+function charCR(c, mode){
+  const lv = clampLv(c && c.level), now = mode==="now", cls = String((c && c.cls) || ""), prof = profByLevel(lv);
+  const budgetPos = crPosOfXp(PARTY_BUDGET[lv][1]);
+  const hpMax = +c.hpMax || +c.hp || 0, hp = now ? (c.hp!=null && c.hp!=="" ? +c.hp : hpMax) : hpMax, ac = parseInt(c.ac) || 10;
+  const smod = (/^[+-]?\d+$/.test(String(c.satk||"").trim()) ? parseInt(c.satk) - prof : (+c.dc ? +c.dc - 8 - prof : 3));
+  const slotsLeft = L => { const s = c.slots && c.slots[L]; return s ? Math.max(0, (+s.max||0) - (now ? (+s.used||0) : 0)) : 0; };
+  const castable = L => !L || [1,2,3,4,5,6,7,8,9].some(k=>k >= L && slotsLeft(k) > 0);
+  const resLeft = re => { const r = (c.res||[]).find(x=>re.test(x.name||"")); return r ? Math.max(0, (+r.max||0) - (now ? (+r.used||0) : 0)) : null; };
+  const cantripX = lv >= 17 ? 4 : lv >= 11 ? 3 : lv >= 5 ? 2 : 1;
+  /* their attack lines: a weapon, or a spell (by its name) with the numbers they wrote */
+  const lines = (c.attacks||[]).map(a=>{ const h = String(a.hit||"").trim(), base = String(a.name||"").replace(/\s*\(.*$/, "").trim(), sp = spellByName(base);
+    const atk = /^[+-]?\d+$/.test(h) ? parseInt(h) : null, dc = atk==null && /\d/.test(h) ? +(/(\d+)/.exec(h)[1]) : null;
+    return { name:a.name, atk, dc, avg:crDiceAvg(a.dmg), sp, ba:/bonus action|off-hand/i.test(a.name||"") || !!(sp && /bonus/i.test(sp.time||"")), half:!!(sp && /half as much/i.test(sp.desc||"")) }; })
+    .filter(l=>l.avg > 0 && (l.atk!=null || l.dc!=null));
+  const spellIds = new Set(lines.filter(l=>l.sp).map(l=>l.sp.id));
+  const known = (c.spells||[]).map(id=>spellOf(id)).filter(s=>s && !spellIds.has(s.id));
+  if(!(hpMax > 0) || (!lines.length && !known.some(s=>s.dmg || s.heal))){
+    return { pos:budgetPos, cr:crNear(budgetPos), xp:PARTY_BUDGET[lv][1], tough:budgetPos, hits:budgetPos, dpr:0, fallback:true, why:`no full sheet: rated by level ${lv}` };
+  }
+  const lineHit = (l, r) => l.atk!=null ? crHit(l.atk, r.ac) : (p=>p + (l.half ? (1 - p) / 2 : 0))(crHit(l.dc - 8, r.ac));
+  const spellVal = (s, r) => { const lvS = +s.lv || 0;
+    if(s.heal) return crDiceAvg(s.dmg) * (lvS ? 1 : cantripX) + (/spellcasting ability modifier/i.test(s.desc||"") ? smod : 0);
+    if(s.dmg){ const avg = crDiceAvg(s.dmg) * (lvS ? 1 : cantripX) + (/plus your spellcasting ability modifier/i.test(s.desc||"") ? smod : 0);
+      const p = s.atk ? crHit(prof + smod, r.ac) : (q=>q + (/half as much/i.test(s.desc||"") ? (1 - q) / 2 : 0))(crHit(prof + smod, r.ac));
+      return avg * p * (CR_AREA.test(s.desc||"") ? 2 : 1); }
+    return CR_DISABLE.test(s.desc||"") ? (6 + 6 * lvS) * crHit(prof + smod, r.ac) : 0; };
+  const expect = r => {
+    const n = crAttacks(cls, lv), weap = lines.filter(l=>!l.sp && !l.ba && l.atk!=null), baW = lines.filter(l=>!l.sp && l.ba);
+    const saveLines = lines.filter(l=>!l.sp && !l.ba && l.atk==null).map(l=>l.avg * lineHit(l, r));     // a breath, holy water, Divine Spark: one a turn
+    const bestW = weap.reduce((b, l)=>Math.max(b, l.avg * lineHit(l, r)), 0), bestWHit = weap.reduce((b, l)=>Math.max(b, lineHit(l, r)), 0);
+    let attack = n * bestW;
+    if(/rogue/i.test(cls) && bestW) attack += Math.ceil(lv / 2) * 3.5 * (1 - Math.pow(1 - bestWHit, n));                       // Sneak Attack, once a turn
+    if(/barbarian/i.test(cls) && bestW) attack += n * bestWHit * (lv >= 16 ? 4 : lv >= 9 ? 3 : 2);                              // Rage damage
+    const cantrips = [...lines.filter(l=>l.sp && !+l.sp.lv && !l.ba).map(l=>l.avg * lineHit(l, r)), ...known.filter(s=>!+s.lv && !/bonus|reaction/i.test(s.time||"")).map(s=>spellVal(s, r))];
+    const atWill = Math.max(attack, ...cantrips, ...saveLines, 0);
+    const slotSpells = [...lines.filter(l=>l.sp && +l.sp.lv && !l.ba && castable(+l.sp.lv)).map(l=>l.avg * lineHit(l, r) * (CR_AREA.test(l.sp.desc||"") ? 2 : 1)),
+                        ...known.filter(s=>+s.lv && castable(+s.lv) && !/bonus|reaction/i.test(s.time||"")).map(s=>spellVal(s, r))];
+    const best = Math.max(atWill, ...slotSpells, 0);
+    const keeps = l => /later turns|on each of your turns|again on each/i.test((l.sp && l.sp.desc) || "");
+    const baLines = lines.filter(l=>l.ba && (!l.sp || castable(+l.sp.lv || 0)));
+    const baKnown = known.filter(s=>/bonus/i.test(s.time||"") && castable(+s.lv || 0));
+    const baW1 = Math.max(0, ...baW.map(l=>l.avg * lineHit(l, r)));
+    const ba1 = Math.max(baW1, ...baLines.map(l=>l.avg * lineHit(l, r)), ...baKnown.map(s=>spellVal(s, r)));
+    const ba23 = Math.max(baW1, ...baLines.filter(l=>l.sp && keeps(l)).map(l=>l.avg * lineHit(l, r)), ...baKnown.filter(s=>/later turns/i.test(s.desc||"")).map(s=>spellVal(s, r)));
+    const surge = /fighter/i.test(cls) && lv >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
+    return (best + ba1 + 2 * (atWill + ba23) + surge) / 3;
+  };
+  const tough = crTough(hp, ac), hits = crHits(expect), cal = CR_CAL[lv - 1] || 0;
+  const pos = Math.max(0, Math.min(CR_TABLE.length - 1, (tough + hits) / 2 + cal));
+  const t = Math.max(0, Math.min(CR_TABLE.length - 1, tough + cal)), h = Math.max(0, Math.min(CR_TABLE.length - 1, hits + cal));
+  return { pos, cr:crNear(pos), xp:crRowAt(pos).xp, tough:t, hits:h, dpr:Math.round(expect(crRowAt(pos)) * 10) / 10, fallback:false,
+    why:`tough like a CR ${crSay(t)}, hits like a CR ${crSay(h)}` };
+}
+/* "CR 4 (an estimate): tough like a CR 3, hits like a CR 5" */
+const charCRWords = r => `CR ${crSay(r.pos)} (an estimate): ${r.why}`;
+/* ══════════════════════════════════════════════════════════════
    ROOMS SCALE TO WHO'S IN THEM (Joseph, 2026-10-28). One switch per campaign: root.scaleRooms = { on, builtFor }
    (builtFor: how many characters the rooms were built for; none = the party's size). A room opts out with
    site.noScale, and can say its own site.builtFor. Each enemy line (site.foes and each stage's foes) can carry
