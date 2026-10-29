@@ -1,0 +1,4 @@
+edited: look "Old, thin, frost on his breath" · voice cleared true
+kept here: stat block NEW: · stages cv_host,cv_lich · effects 0 · rules 1
+new one whole: Mara, stat block Commoner
+item: Locket of the Stilled Heart · notes cleared true · shopGood kept true

@@ -7903,8 +7903,10 @@ function fieldBookIn(text, quiet){                  // quiet: the inbox — no m
       if(m) x.fightsAs = m.id; else { unmatched.push(`${x.name} (${x.fightsAs})`); delete x.fightsAs; }
     }
     const had = L[cat].find(y=>y.id===x.id);
-    if(had){ for(const k of FB_FIELDS[cat]) if(!(k in x)) delete had[k];    /* cleared on the phone: cleared here */
-      Object.assign(had, x); updated++; }
+    /* one already here takes only what the phone edits (cleared on the phone: cleared here). Its stages, stat block, rules
+       and the rest stay as they are here, so an old copy on the phone can't undo what changed since (Joseph, 2026-10-29:
+       Corvin's stages travel to the phone, which doesn't show them) */
+    if(had){ for(const k of FB_FIELDS[cat]){ if(k in x) had[k] = x[k]; else delete had[k]; } updated++; }
     else { L[cat].unshift(x); added++; }
   }
   saveParty(); renderLibrary();
