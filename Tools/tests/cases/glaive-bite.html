@@ -1,7 +1,7 @@
 // uses: nothing
 <script>
-/* On a hit, for a charge (Joseph, 2026-10-29: Avery's Glaive Bite, Vampiric Touch through the blade as a Bonus Action):
-   the chip on her attack, Roll rolling its dice apart, the log spending the charge and healing her half the necrotic,
+/* On a hit, for a charge (Joseph, 2026-10-29: Avery's Glaive Bite, her dhampir Vampiric Bite through the blade as a Bonus Action):
+   the chip on her attack, Roll rolling its dice apart, the log spending the charge and healing her all of it,
    a miss spending nothing, no chip once the charges are gone, buying a charge back with 4 hit points (table mode), and
    character CR with the glaive against the same character without */
 const __GB = { format:"ordinate-survey-v1", title:"Glaive Test", ppm:10, unit:"mi", party:2,
@@ -11,7 +11,7 @@ const __GB = { format:"ordinate-survey-v1", title:"Glaive Test", ppm:10, unit:"m
     { id:"pb", name:"Bram Birch", level:5, hp:"40", hpMax:"40" }],
   groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }],
   library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[{ id:"ll_glaivebite", name:"Glaive Bite", kind:"magic item", rarity:"Uncommon", dmg:"1d10", dtype:"slashing",
-    props:"Heavy, Reach, Two-Handed", charges:"3", regain:"4", regainWhen:"hp", perUse:"1", onHit:"1d4+Str", onHitType:"necrotic", onHitHeal:true, onHitBa:true }] },
+    props:"Heavy, Reach, Two-Handed", charges:"3", regain:"4", regainWhen:"hp", perUse:"1", onHit:"1d4+Str", onHitType:"piercing", onHitHeal:"all", onHitBa:true }] },
   plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
     { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:ogre", n:"1" }] },
       bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[[6,1],[7,1]] } } } ] } } };
