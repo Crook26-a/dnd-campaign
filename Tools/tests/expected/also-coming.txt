@@ -1,0 +1,12 @@
+before: Cass, Dag, Eve · preview "Scaled for Anna and Bram (2 × level 3): Goblin Boss's hit points ×0.5, 2 × Goblin Warrior instead of 10, 1 × Goblin Warrior instead of 5 · Moderate"
+ticked Cass and Dag: waits at the side door · preview "Scaled for Anna and Bram now (2 × level 3): Goblin Boss's hit points ×0.8, 2 × Goblin Warrior instead of 10, 1 × Goblin Warrior instead of 5 · Moderate · 8 more held back for Cass and Dag (expected)"
+started: 2 goblin warriors placed, held {"0:1":5} · log "Scaled for Anna and Bram (2 × level 3), with Cass and Dag expected: Goblin Boss's hit points ×0.8 (an estimate), 2 × Goblin Warrior instead of 10 (5 more held back). Held back for Cass and Dag: 5 × Goblin Warrior, waiting in the next chamber"
+held panel: HELD BACK ONLY YOU SEE THIS 5 × Goblin Warrior for Cass and Dag, expected, waiting in the next chamber. Their share joins by itself when they walk in. Cass Not coming after all Dag Not coming after all Bring them in now
+marker: the DM 1, the TV 0
+Cass arrives: 5 goblin warriors, held {"0:1":2} · placed near the door 10,1 10,2 10,3 · "Cass arrives, and their share joins: 3 × Goblin Warrior (they were waiting in the next chamber)"
+undo: 2 goblin warriors, held {"0:1":5}, Cass expected again true, not arriving again while she stands there 2
+Bring them in now: 7 goblin warriors, held {"0:1":0} · "The fight got loud: the held-back ones come in now, 5 × Goblin Warrior"
+the stage: 1 reinforcements in, held {"0:1":0,"1:0":3}
+Eve (not ticked): Eve joined. Bring in 3 more Goblin Warrior and 1 more Goblin Warrior? Bring them in Not this time
+ended: "Held back and never came: 3 × Goblin Warrior (Reinforcements) (for Cass and Dag, who didn't arrive)"
+by CR: placed at 5 HP, arrivals at 5 HP (multiplier 0.5)

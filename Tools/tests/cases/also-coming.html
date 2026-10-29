@@ -1,0 +1,62 @@
+// uses: nothing
+<script>
+/* Also coming (Joseph, 2026-10-29): two go in, two are ticked as expected; the room counts them from the start with their
+   share held back at the side door; one walks in and their share joins by itself; undo takes it back; Bring them in now;
+   a stage's share for the one still expected is held too; someone not ticked gets the usual offer; End the battle logs
+   what never came; the DM's marker, never the TV; by CR, the held-back ones keep the hit-point multiplier */
+const mk = (id, name) => ({ id, name, level:3, hp:"28", hpMax:"28", ac:"15", attacks:[{ name:"Sword", hit:"+5", dmg:"1d8+3" }] });
+const __AC = { format:"ordinate-survey-v1", title:"Also Test", ppm:10, unit:"mi", party:5, scaleRooms:{ on:true, builtFor:5 },
+  nodes:[{ id:"h", name:"Keep", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[mk("pa", "Anna"), mk("pb", "Bram"), mk("pc", "Cass"), mk("pd", "Dag"), mk("pe", "Eve")],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }, { id:"g2", members:["pc"], at:{ map:"h", node:"far" } }, { id:"g3", members:["pd"], at:{ map:"h", node:"far" } }, { id:"g4", members:["pe"], at:{ map:"h", node:"far" } }],
+  library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Keep", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:12, d:8,
+      site:{ kind:"", level:3, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright",
+        foes:[{ id:"srd:goblin-boss", n:"1", scale:"fixed" }, { id:"srd:goblin-warrior", n:"10", scale:"scales" }],
+        stages:[{ name:"Reinforcements", foes:[{ id:"srd:goblin-warrior", n:"5", scale:"scales" }] }] },
+      bmap:{ name:"The Hall", rows:["############","#..........#","#..........#","#..........#","############"], exits:[{ x:11, y:2, to:"far", label:"the side door" }],
+        start:{ party:[[2,2],[3,2],[2,3],[3,3],[2,1]], enemy:[[8,1],[9,1],[8,2],[9,2],[8,3],[9,3],[7,1],[7,2],[7,3],[6,1],[6,2],[6,3]] } } },
+    { id:"far", name:"The Next Chamber", kind:"hall", x:200, y:100, w:6, d:6, site:{ kind:"", level:3, loot:{ coin:0 }, items:[], foes:[] } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ const hall = () => doc.nodes.find(n=>n.id==='hall'), gob = c => c.list.filter(x=>x.foe==='srd:goblin-warrior' && !x.stg), lastLog = () => gameLogList().slice(-1)[0].text;
+ const prev = () => { const el = document.querySelector('#pane-inspect .scaleprev'); return el ? (el.querySelector('summary') || el).innerText.replace(/\s+/g, ' ').trim() : 'none'; };
+ try{
+  loadJSONNow(JSON.stringify(__AC)); await wait(300); setDmMode(true); await wait(40); enterPlan('h'); await wait(40); openBattle(hall()); await wait(150);
+  const row = () => document.querySelector('#actionbox .alsocoming');
+  out.push('before: ' + (row() ? [...row().querySelectorAll('label.check')].map(l=>l.innerText.trim()).join(', ') : 'no list') + ' · preview "' + prev() + '"');
+  for(const id of ['pc', 'pd']){ const cb = row().querySelector(`[data-alsocoming="${id}"]`); cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles:true })); await wait(30); }
+  const note = row().querySelector('[data-alsowait="note"]'); note.value = 'in the next chamber'; note.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  out.push('ticked Cass and Dag: waits ' + row().querySelector('[data-alsowait="k"]').selectedOptions[0].text + ' · preview "' + prev() + '"');
+  beginBattle(hall().site); await wait(80); renderBattle(); renderBattlePanel(); await wait(40);
+  const c = hall().site.combat;
+  out.push('started: ' + gob(c).length + ' goblin warriors placed, held ' + JSON.stringify(c.scaled.held) + ' · log "' + gameLogList().filter(e=>/Scaled for/.test(e.text)).slice(-1)[0].text + '"');
+  out.push('held panel: ' + (document.querySelector('#actionbox .heldback') || {}).innerText.replace(/\s+/g, ' ').trim());
+  out.push('marker: the DM ' + document.querySelectorAll('#bsvg .heldmark').length + ', the TV ' + ((JSON.stringify(playerMapScene()).match(/heldmark/g)||[]).length));
+  /* Cass walks in: her share joins by itself, at the side door */
+  root.groups.find(g=>g.id==='g2').at = { map:"h", node:"hall" }; renderBattlePanel(); await wait(40);
+  const newOnes = gob(c).filter(x=>x.scaledIn); out.push('Cass arrives: ' + gob(c).length + ' goblin warriors, held ' + JSON.stringify(c.scaled.held) + ' · placed near the door ' + newOnes.map(x=>c.pos[x.id] ? c.pos[x.id].x + ',' + c.pos[x.id].y : '?').join(' ') + ' · "' + lastLog() + '"');
+  undoAction(c); await wait(30); renderBattlePanel(); await wait(30);
+  out.push('undo: ' + gob(c).length + ' goblin warriors, held ' + JSON.stringify(c.scaled.held) + ', Cass expected again ' + c.scaled.expected.some(w=>w.id==='pc') + ', not arriving again while she stands there ' + gob(c).length);
+  /* Bring them in now */
+  document.querySelector('#actionbox [data-heldnow]').click(); await wait(40);
+  out.push('Bring them in now: ' + gob(c).length + ' goblin warriors, held ' + JSON.stringify(c.scaled.held) + ' · "' + lastLog() + '"');
+  /* the stage comes in: Dag's share of it held back */
+  document.querySelector('#actionbox [data-fa="stage"]').click(); await wait(60);
+  out.push('the stage: ' + c.list.filter(x=>x.stg===1).length + ' reinforcements in, held ' + JSON.stringify(c.scaled.held));
+  /* Eve, not ticked, walks in: the usual offer */
+  root.groups.find(g=>g.id==='g4').at = { map:"h", node:"hall" }; renderBattlePanel(); await wait(40);
+  out.push('Eve (not ticked): ' + ((document.querySelector('.scaleoffer') || {}).innerText || 'no offer').replace(/\s+/g, ' ').trim());
+  /* End the battle: what never came */
+  window.confirm = () => true; endTheFight(hall().site, hall(), c, false); await wait(40);
+  out.push('ended: "' + gameLogList().filter(e=>/never came/.test(e.text)).slice(-1).map(e=>e.text)[0] + '"');
+  /* by character CR: the held-back ones keep the split's hit-point multiplier */
+  loadJSONNow(JSON.stringify(Object.assign({}, __AC, { strengthBy:'cr' }))); await wait(300); setDmMode(true); await wait(40); enterPlan('h'); await wait(40);
+  hall().site.alsoComing = ['pc']; openBattle(hall()); await wait(150); beginBattle(hall().site); await wait(80);
+  const c2 = hall().site.combat, before = gob(c2).map(x=>x.max);
+  root.groups.find(g=>g.id==='g2').at = { map:"h", node:"hall" }; renderBattlePanel(); await wait(40);
+  out.push('by CR: placed at ' + [...new Set(before)].join('/') + ' HP, arrivals at ' + [...new Set(gob(c2).filter(x=>x.scaledIn).map(x=>x.max))].join('/') + ' HP (multiplier ' + (c2.scaled.hpDone['0:1'] || 1) + ')');
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

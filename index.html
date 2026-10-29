@@ -676,6 +676,8 @@
   .tconc{color:var(--r2);font-weight:600;margin-left:2px}
   /* the villains' read: Size them up in the picked-one block, and the result under it */
   .sizeup{margin:2px 0 8px}
+  /* Also coming: the tick list before the battle, and the held-back panel in it (DM only) */
+  .alsocoming,.heldback{margin:2px 0 8px;padding:4px 6px;border:1px dashed var(--rule);border-radius:3px}
   .sizeres{font-size:12px;margin:4px 0 0;padding:4px 6px;background:var(--paper-lit);border-left:3px solid var(--r2)}
   .pcrow{display:flex;gap:6px}
   .pcrow .field{min-width:0}
@@ -2220,6 +2222,9 @@ function scalePreview(n, st){
   if(!scaleOn() || !st || !allSiteFoes(st).length) return "";
   if(st.combat && st.combat.scaled) return `<p class="scaleprev off">Scaled for ${esc(scaleWho(st.combat.scaled.who))} when the battle started (the game log says how).</p>`;
   const chars = roomChars(planOf || "survey", n.id), p = roomScalePlan(st, chars, n);
+  /* Also coming: the counts placed now are for who's here, but the hit points and the difficulty are the full room's */
+  const exp = chars.length ? alsoComingList(st, n, chars) : [], pFull = exp.length ? roomScalePlan(st, [...chars, ...exp], n) : null;
+  if(pFull && p.on){ for(const L of p.lines){ const F = pFull.lines.find(q=>lineKey(q)===lineKey(L)); if(F) L.hp = F.hp; } p.label = pFull.label; p.split = pFull.split || p.split; }
   if(!p.on) return `<p class="scaleprev off">${st.noScale ? "This room doesn't scale: as written, whoever walks in." : "Nobody's in the room yet: it scales to whoever walks in."}</p>`;
   const who = `${andList(p.names)} (${levelsWord(p.levels)})`;
   const changed = p.lines.filter(L=>String(L.n)!==String(L.orig) || L.hp);
@@ -2232,7 +2237,11 @@ function scalePreview(n, st){
   const fixedHp = p.lines.filter(L=>L.mode==="fixed" && L.hp).map(L=>`${L.name}'s hit points ×${L.hp}`);
   const head = S ? `Scaled for ${who}: ${counts.length ? counts.join(", ") : "as many as written"} (to their toughness)${p.lines.some(L=>L.mode!=="fixed" && L.hp) ? ` · enemies' hit points ×${S.hpMul} (to their hitting power, an estimate)` : ""}${fixedHp.length ? ` · ${fixedHp.join(", ")} (an estimate)` : ""} · ${p.label}`
     : changed.length ? `Scaled for ${who}: ${bits.join(", ")} · ${p.label}` : `Built for this many: ${who}, as written · ${p.label}`;
-  return `<details class="scaleprev"><summary>${esc(head)}</summary>
+  /* Also coming: the room counts them from the start; what's placed now is for who's here, their share held back */
+  const heldN = pFull ? pFull.lines.reduce((a, L)=>{ const Pn = p.lines.find(q=>lineKey(q)===lineKey(L)), full = scaleTarget(L, L.was), now = Pn ? Math.min(scaleTarget(Pn, L.was), full) : 0;
+    return a + Math.max(0, Math.round(full - now)); }, 0) : 0;
+  const headX = exp.length ? `${head.replace(/^Scaled for (.*?) \(/, "Scaled for $1 now (").replace(/^Built for this many: (.*?) \(/, "Scaled for $1 now (")} · ${heldN} more held back for ${andList(exp.map(w=>w.name || "someone"))} (expected)` : head;
+  return `<details class="scaleprev"><summary>${esc(headX)}</summary>
     ${S ? `<div class="sbl">Their toughness is ${S.tough.toLocaleString()} XP against the ${S.builtTough.toLocaleString()} it was built for (${levelsWord(Array(p.built.size).fill(p.built.level))}, ordinary characters): ${Math.round(S.rT*100)}%, so the room's ${p.roomXp.toLocaleString()} XP becomes ${p.target.toLocaleString()}; in whole creatures, ${p.nowXp.toLocaleString()}.
       Their hitting power is ${S.hits.toLocaleString()} XP against ${S.builtHits.toLocaleString()}: ${Math.round(S.rH*100)}%, so the enemies' hit points are ×${S.hpMul} (${Math.round(S.rH*100)}% ÷ ${Math.round(S.rT*100)}%, held between ×0.5 and ×2: an estimate), and a fixed one's ×${Math.round(Math.max(.5, Math.min(2, S.rH))*100)/100}.</div>`
       : `<div class="sbl">Their strength is ${p.strength.toLocaleString()} XP against the ${p.built.strength.toLocaleString()} it was built for (${levelsWord(Array(p.built.size).fill(p.built.level))}): ${Math.round(p.ratio*100)}%. The room's ${p.roomXp.toLocaleString()} XP becomes ${p.target.toLocaleString()}; in whole creatures, ${p.nowXp.toLocaleString()}.</div>`}
@@ -2278,47 +2287,175 @@ function dropLineFoes(c, st, present, keep){
   return gone.length;
 }
 /* one line, as the plan says: returns the words for the log ("3 × Goblin Warrior instead of 6"), or "" */
-function scaleLineNow(c, st, n, L){
+/* how many of a line a plan's line X means, from the base on the map */
+const scaleTarget = (X, base) => X.mode==="with" ? (X.n ? base : 0) : X.mode==="scales" ? Math.max(1, Math.round(base * X.now / X.was)) : base;
+/* L: the line for everyone counted (the room's full size); Lnow (with some still to come, "Also coming"): the line for
+   those in the room now. What's placed now is Lnow's share; the rest is held back (c.scaled.held) till they walk in */
+function scaleLineNow(c, st, n, L, Lnow){
   const present = lineFoes(c, L.stage, L), base = present.length; if(!base) return "";     // rolled away (a chance it isn't here)
-  const target = L.mode==="with" ? (L.n ? base : 0) : L.mode==="scales" ? Math.max(1, Math.round(base * L.now / L.was)) : base;
-  c.scaled.lines[lineKey(L)] = { base, target, mode:L.mode };
+  const full = scaleTarget(L, base), target = Lnow ? Math.min(scaleTarget(Lnow, base), full) : full, held = full - target;
+  c.scaled.lines[lineKey(L)] = { base, target, full, mode:L.mode };
+  if(held > 0){ c.scaled.held = c.scaled.held || {}; c.scaled.held[lineKey(L)] = held; }
   if(target < base) dropLineFoes(c, st, present, target); else if(target > base) addLineFoes(c, n, L, target - base, present[present.length-1]);
   let hpWords = "";
   /* hit points: a fixed line's (the strength ratio, or with split scaling the hitting power), and with split scaling the
      rank and file's too (hitting power ÷ toughness); every one of the line, once (later arrivals get it in addLineFoes) */
-  if(L.hp && target && !c.scaled.hpDone[lineKey(L)]){ c.scaled.hpDone[lineKey(L)] = L.hp;
+  if(L.hp && !c.scaled.hpDone[lineKey(L)]){ c.scaled.hpDone[lineKey(L)] = L.hp;
     for(const x of lineFoes(c, L.stage, L)){ if(x.max==null) continue; const was = x.max; x.max = Math.max(1, Math.round(was * L.hp)); x.hp = x.hp>=was ? x.max : Math.max(0, Math.round(x.hp * L.hp)); x.hpScale = L.hp; }
-    hpWords = L.mode==="fixed" ? `${L.name}'s hit points ×${L.hp} (an estimate)` : `their hit points ×${L.hp} (an estimate)`; }
+    if(target) hpWords = L.mode==="fixed" ? `${L.name}'s hit points ×${L.hp} (an estimate)` : `their hit points ×${L.hp} (an estimate)`; }
+  const heldWords = held > 0 ? ` (${held} more held back)` : "";
   if(L.mode==="fixed") return target===base ? hpWords : target ? `${target} × ${L.name} instead of ${base}` : `no ${L.name}`;
-  return [target===base ? "" : target ? `${target} × ${L.name} instead of ${base}` : `no ${L.name}`, hpWords && (target===base ? `${L.name}'s ${hpWords.slice(6)}` : hpWords)].filter(Boolean).join(", ");
+  return [target===base ? (heldWords ? `${target} × ${L.name}${heldWords}` : "") : target ? `${target} × ${L.name} instead of ${base}${heldWords}` : `no ${L.name}${heldWords ? ` yet${heldWords}` : ""}`,
+    hpWords && (target===base && !heldWords ? `${L.name}'s ${hpWords.slice(6)}` : hpWords)].filter(Boolean).join(", ");
 }
 const scaleWho = W => `${andList(W.map(c=>c.name || "Someone"))} (${levelsWord(W.map(c=>clampLv(c.level)))})`;
+/* ══════════════════════════════════════════════════════════════
+   ALSO COMING (Joseph, 2026-10-29): the party goes in together, but some stay back to do something first. Before Start
+   the battle (scaling on, the room scales), tick who's "Also coming" (party members and counted companions not in the
+   room: st.alsoComing). They count toward the room's size from the start, with their share of the enemies HELD BACK
+   (c.scaled.held, per line), waiting at a spot the DM picks (st.alsoWait → c.scaled.wait: an exit, a square picked on the
+   map, or beside the rest; a short note), shown to the DM only (a dimmed marker, and the held-back panel in the Action
+   box), never on the TV. When one walks in, their share joins by itself (heldSweep → heldArrive: no offer), at the
+   waiting spot; Not coming after all lets the room shrink back; Bring them in now brings the rest any time; End the
+   battle logs what never came. Each line keeps the full plan's hit points (and the CR split's multiplier); each stage's
+   share is held back the same way. Someone not ticked still gets the "joined: bring in more?" offer. Undo takes back an
+   arrival (or Bring them in now).
+   ══════════════════════════════════════════════════════════════ */
+var heldPick = null;                                               // the next click on the battle map sets where the expected wait
+function alsoComingList(st, n, here){
+  const ids = new Set(st.alsoComing || []), inRoom = new Set((here || []).map(w=>w.id)); if(!ids.size) return [];
+  const pcs = partyRoster().filter(p=>ids.has(p.id) && !inRoom.has(p.id)).map(p=>({ id:p.id, name:p.name, level:clampLv(p.level) }));
+  const comps = companions().filter(p=>p.scaleCounts!==false && ids.has("n:" + p.id) && !inRoom.has("n:" + p.id)).map(p=>({ id:"n:" + p.id, name:p.name, ...compLevel(p), companion:true }));
+  return [...pcs, ...comps];
+}
+function heldWaitOf(st, n){
+  const W = st.alsoWait || {}, ex = exitsOf(n), k = W.k || (ex.length ? "exit:0" : "side"), note = String(W.note || "").trim();
+  if(k.startsWith("exit:")){ const e = ex[+k.slice(5)] || ex[0]; if(e) return { x:e.x, y:e.y, note, where:`at ${exitLabel(e, planOf || "survey")}` }; }
+  if(k==="pick" && W.x!=null) return { x:W.x, y:W.y, note, where:"at a spot on the map" };
+  return { note, where:"beside the rest of their kind" };
+}
+const heldTotal = c => Object.values((c && c.scaled && c.scaled.held) || {}).reduce((a, v)=>a + (+v || 0), 0);
+function heldWords(c, st, n){
+  return Object.entries(c.scaled.held || {}).filter(([, v])=>v > 0).map(([key, v])=>{ const [stg, k] = key.split(":").map(Number);
+    const f = (stg ? (siteStages(st)[stg-1] || {}).foes || [] : st.foes || [])[k], m = f && foeById(f.id); return `${v} × ${(m && m.name) || "enemy"}${stg ? ` (${(siteStages(st)[stg-1]||{}).name || `stage ${stg+1}`})` : ""}`; }).join(", ");
+}
+/* the full plan's line for a held key (to add more of it) */
+const heldLine = (st, n, c, key) => roomScalePlan(st, [...c.scaled.who, ...(c.scaled.expected || [])], n).lines.find(q=>lineKey(q)===key) || null;
+/* new ones of a line: at the waiting spot, else beside their kind (placeTokens for anyone left without a square) */
+function heldPlace(c, n, xs){
+  const W = c.scaled && c.scaled.wait;
+  if(W && W.x!=null && c.pos && n && bmapOf(n)) for(const x of xs) c.pos[x.id] = freeSquareIn(n, W.x, W.y);
+  if(c.pos) placeTokens(c);
+}
+/* bring some of what's held: { key: count } → the words for the log, and an undo record */
+function heldBring(st, n, c, counts){
+  const added = [], words = [];
+  for(const [key, more] of Object.entries(counts)){ if(!(more > 0)) continue;
+    const L = heldLine(st, n, c, key), r = c.scaled.lines[key]; if(!L || !r) continue;
+    const xs = addLineFoes(c, n, L, more, lineFoes(c, L.stage, L).slice(-1)[0]); heldPlace(c, n, xs);
+    added.push(...xs.map(x=>x.id)); r.target += more; c.scaled.held[key] = Math.max(0, (c.scaled.held[key] || 0) - more); words.push(`${more} × ${L.name}`); }
+  return { added, words };
+}
+const heldBefore = c => ({ held:{ ...(c.scaled.held || {}) }, lines:JSON.parse(JSON.stringify(c.scaled.lines)), expected:JSON.parse(JSON.stringify(c.scaled.expected || [])), who:JSON.parse(JSON.stringify(c.scaled.who)) });
+/* someone expected walks in: their share joins by itself (the last one in brings whatever's left) */
+function heldArrive(st, n, c, w){
+  const before = heldBefore(c);
+  c.scaled.expected = (c.scaled.expected || []).filter(x=>x.id!==w.id); c.scaled.who.push({ ...w });
+  const last = !c.scaled.expected.length, plan = last ? null : roomScalePlan(st, c.scaled.who, n), counts = {};
+  for(const [key, held] of Object.entries(c.scaled.held || {})){ if(!(held > 0)) continue;
+    const r = c.scaled.lines[key], stg = +key.split(":")[0]; if(!r || stg > (c.stage || 0)) continue;     // a stage not in yet keeps its share
+    const P = plan && plan.lines.find(q=>lineKey(q)===key);
+    counts[key] = last ? held : Math.max(0, Math.min(held, (P ? scaleTarget(P, r.base) : r.target) - r.target)); }
+  const { added, words } = heldBring(st, n, c, counts);
+  const where = c.scaled.wait && (c.scaled.wait.note || c.scaled.wait.where);
+  const line = `${w.name || "Someone"} arrives${words.length ? `, and their share joins: ${andList(words)}${where ? ` (they were waiting ${where})` : ""}` : ": nothing was held back for them"}`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + ".", arrival:{ added, before } }); gameLog("fight", line); flash(line + ".");
+}
+/* every redraw of a fight: anyone expected who's now in the room has arrived (unless an undo just sent them back) */
+function heldSweep(st, n){
+  const c = st && st.combat; if(!c || !c.scaled || calmOf(c) || !(c.scaled.expected || []).length) return;
+  const here = new Set(roomChars(planOf || "survey", n.id).map(w=>w.id)), undone = c.scaled.undone = c.scaled.undone || {};
+  for(const id of Object.keys(undone)) if(!here.has(id)) delete undone[id];
+  for(const w of c.scaled.expected.slice()) if(here.has(w.id) && !undone[w.id]) heldArrive(st, n, c, w);
+}
+/* before Start the battle: who's also coming, and where they'll wait */
+function alsoComingRow(n, st){
+  if(!scaleOn() || st.noScale || !allSiteFoes(st).length) return "";
+  const here = new Set(roomChars(planOf || "survey", n.id).map(w=>w.id)); if(!here.size) return "";
+  const all = [...partyRoster().map(p=>({ id:p.id, name:p.name || "Someone" })), ...companions().filter(p=>p.scaleCounts!==false).map(p=>({ id:"n:" + p.id, name:p.name || "Companion" }))].filter(w=>!here.has(w.id));
+  if(!all.length) return "";
+  const on = new Set(st.alsoComing || []), ex = exitsOf(n), W = st.alsoWait || {}, k = W.k || (ex.length ? "exit:0" : "side");
+  return `<div class="alsocoming"><p class="grouplab" style="margin-top:4px">Also coming <small>they'll walk in later; their share of the enemies waits till they do</small></p>
+    ${all.map(w=>`<label class="check" style="margin:0 0 2px"><input type="checkbox" data-alsocoming="${esc(w.id)}" ${on.has(w.id)?"checked":""}> ${esc(w.name)}</label>`).join("")}
+    ${on.size ? `<div class="pcrow" style="align-items:center;margin-top:4px"><label class="mini">Their share waits</label><select data-alsowait="k" style="flex:1;min-width:0">
+        ${ex.map((e, i)=>`<option value="exit:${i}" ${k===`exit:${i}`?"selected":""}>at ${esc(exitLabel(e, planOf || "survey"))}</option>`).join("")}
+        <option value="pick" ${k==="pick"?"selected":""}>${W.x!=null && k==="pick" ? `at the spot I picked` : "at a spot I pick on the map…"}</option>
+        <option value="side" ${k==="side"?"selected":""}>beside the rest of their kind</option></select></div>
+      <input data-alsowait="note" type="text" value="${esc(W.note || "")}" placeholder="a note: in the next chamber" style="width:100%;margin:2px 0 6px">` : ""}</div>`;
+}
+/* in the fight, DM only: what's held back, for whom, where; not coming after all; bring them in now */
+function heldBlock(st, n){
+  const c = st && st.combat, H = heldTotal(c), E = (c && c.scaled && c.scaled.expected) || []; if(!c || !c.scaled || (!H && !E.length)) return "";
+  const W = c.scaled.wait;
+  return `<div class="heldback"><p class="grouplab" style="margin-top:4px">Held back <small>only you see this</small></p>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${H ? `${esc(heldWords(c, st, n))}` : "Nothing left held back"}${E.length ? ` for ${esc(andList(E.map(w=>w.name || "someone")))}, expected` : ""}${W ? `, waiting ${esc(W.note || W.where)}` : ""}. Their share joins by itself when they walk in.</p>
+    ${E.map(w=>`<div class="pcrow" style="align-items:center;margin:0 0 3px"><span style="flex:1">${esc(w.name || "Someone")}</span><button class="btn small" data-heldnot="${esc(w.id)}" title="They won't come after all: the room shrinks back to who's counted">Not coming after all</button></div>`).join("")}
+    ${H ? `<button class="btn wide" data-heldnow title="The fight got loud: the rest come in now, at the waiting spot">Bring them in now</button>` : ""}</div>`;
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || (t.dataset.alsocoming==null && t.dataset.alsowait==null) || !battleOf) return;
+  const n = bnode(), st = n && n.site; if(!st) return;
+  if(t.dataset.alsocoming!=null){ const S = new Set(st.alsoComing || []); if(t.checked) S.add(t.dataset.alsocoming); else S.delete(t.dataset.alsocoming); st.alsoComing = [...S]; if(!S.size) delete st.alsoComing; }
+  else { const W = st.alsoWait = st.alsoWait || {};
+    if(t.dataset.alsowait==="note") W.note = t.value;
+    else if(t.value==="pick"){ W.k = "pick"; heldPick = true; flash("Click the square on the battle map where their share waits."); }
+    else W.k = t.value; }
+  touch(); renderBattle(); renderBattlePanel(); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-heldnow],[data-heldnot]"); if(!b || !battleOf) return;
+  const n = bnode(), st = n && n.site, c = st && st.combat; if(!c || !c.scaled) return;
+  if(b.dataset.heldnow!=null){ const before = heldBefore(c), counts = {};
+    for(const [key, v] of Object.entries(c.scaled.held || {})) if(v > 0 && +key.split(":")[0] <= (c.stage || 0)) counts[key] = v;
+    const { added, words } = heldBring(st, n, c, counts);
+    const line = words.length ? `The fight got loud: the held-back ones come in now, ${andList(words)}` : "Nothing held back to bring in yet";
+    (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + ".", arrival:{ added, before } }); gameLog("fight", line); flash(line + "."); }
+  else { const w = (c.scaled.expected || []).find(x=>x.id===b.dataset.heldnot); if(!w) return;
+    c.scaled.expected = c.scaled.expected.filter(x=>x!==w);
+    const plan = roomScalePlan(st, [...c.scaled.who, ...c.scaled.expected], n); let freed = 0;
+    for(const [key, v] of Object.entries(c.scaled.held || {})){ const r = c.scaled.lines[key], P = plan.lines.find(q=>lineKey(q)===key); if(!r || !P) continue;
+      const full = Math.max(r.target, scaleTarget(P, r.base)); freed += Math.max(0, v - (full - r.target)); c.scaled.held[key] = full - r.target; r.full = full; }
+    const line = `${w.name || "Someone"} isn't coming after all${freed ? `: ${freed} fewer held back` : ""}`; gameLog("fight", line); flash(line + "."); }
+  touch(); renderBattle(); renderBattlePanel(); sendPlayers(); });
 /* Start the battle: scale the room's own lines to who's in the room */
 function applyRoomScale(st){
   const c = st.combat; if(!c || c.scaled || !scaleOn() || st.noScale) return;
   const n = (doc.nodes||[]).find(q=>q.site===st); if(!n) return;
   const who = roomChars(planOf || "survey", n.id); if(!who.length) return;
-  const plan = roomScalePlan(st, who, n); if(!plan.on) return;
-  c.scaled = { who:who.map(w=>({ ...w })), lines:{}, hpDone:{}, declined:[] };
-  const bits = plan.lines.filter(L=>L.stage===0).map(L=>scaleLineNow(c, st, n, L)).filter(Boolean);
+  const exp = alsoComingList(st, n, who);                         // "Also coming": counted from the start, their share held back
+  const plan = roomScalePlan(st, [...who, ...exp], n); if(!plan.on) return;
+  const nowPlan = exp.length ? roomScalePlan(st, who, n) : null;
+  c.scaled = { who:who.map(w=>({ ...w })), expected:exp.map(w=>({ ...w })), lines:{}, hpDone:{}, declined:[], held:{}, wait:exp.length ? heldWaitOf(st, n) : null };
+  const bits = plan.lines.filter(L=>L.stage===0).map(L=>scaleLineNow(c, st, n, L, nowPlan && nowPlan.lines.find(q=>lineKey(q)===lineKey(L)))).filter(Boolean);
   if(battleOf && c.pos) placeTokens(c);
-  gameLog("fight", `Scaled for ${scaleWho(who)}: ${bits.length ? bits.join(", ") : "as written, built for this many"}${plan.split ? ` (by character CR: how many to their toughness, ${Math.round(plan.split.rT*100)}%; hit points to their hitting power, ${Math.round(plan.split.rH*100)}%: an estimate)` : ""}`);
+  delete st.alsoComing;
+  gameLog("fight", `Scaled for ${scaleWho(who)}${exp.length ? `, with ${andList(exp.map(w=>w.name||"someone"))} expected` : ""}: ${bits.length ? bits.join(", ") : "as written, built for this many"}${plan.split ? ` (by character CR: how many to their toughness, ${Math.round(plan.split.rT*100)}%; hit points to their hitting power, ${Math.round(plan.split.rH*100)}%: an estimate)` : ""}${heldTotal(c) ? `. Held back for ${andList(exp.map(w=>w.name||"someone"))}: ${heldWords(c, st, n)}${c.scaled.wait && c.scaled.wait.note ? `, waiting ${c.scaled.wait.note}` : ""}` : ""}`);
 }
 /* a later stage coming in: its lines scaled for whoever the fight is counting */
 function scaleStageIn(st, n, stg){
   const c = st.combat; if(!c || !c.scaled) return "";
-  const plan = roomScalePlan(st, c.scaled.who, n); if(!plan.on) return "";
-  return plan.lines.filter(L=>L.stage===stg).map(L=>scaleLineNow(c, st, n, L)).filter(Boolean).join(", ");
+  const exp = c.scaled.expected || [];                            // the ones still expected: their share of this stage held back too
+  const plan = roomScalePlan(st, [...c.scaled.who, ...exp], n); if(!plan.on) return "";
+  const nowPlan = exp.length ? roomScalePlan(st, c.scaled.who, n) : null;
+  return plan.lines.filter(L=>L.stage===stg).map(L=>scaleLineNow(c, st, n, L, nowPlan && nowPlan.lines.find(q=>lineKey(q)===lineKey(L)))).filter(Boolean).join(", ");
 }
 /* someone walks in mid-fight: what more the room would bring in (an offer in the Action box, never by itself) */
 function scaleJoinOffer(st, n){
   const c = st && st.combat; if(!c || !c.scaled || calmOf(c) || !scaleOn() || st.noScale) return null;
-  const counted = new Set([...c.scaled.who.map(w=>w.id), ...c.scaled.declined]);
+  const exp = c.scaled.expected || [];                            // the expected ones aren't offered: their share joins by itself
+  const counted = new Set([...c.scaled.who.map(w=>w.id), ...c.scaled.declined, ...exp.map(w=>w.id)]);
   const newcomers = roomChars(planOf || "survey", n.id).filter(w=>!counted.has(w.id)); if(!newcomers.length) return null;
-  const plan = roomScalePlan(st, [...c.scaled.who, ...newcomers], n), adds = [];
+  const plan = roomScalePlan(st, [...c.scaled.who, ...exp, ...newcomers], n), adds = [];
   for(const L of plan.lines){ const r = c.scaled.lines[lineKey(L)]; if(!r || L.stage > (c.stage||0)) continue;
-    const want = L.mode==="with" ? (L.n ? r.base : 0) : L.mode==="scales" ? Math.max(1, Math.round(r.base * L.now / L.was)) : r.base;
-    if(want > r.target) adds.push({ L, more:want - r.target }); }
+    const want = scaleTarget(L, r.base), had = r.full ?? r.target;            // against the room's full size (held back included)
+    if(want > had) adds.push({ L, more:want - had }); }
   return { newcomers, adds };
 }
 function scaleOfferHtml(st, n){
@@ -2333,7 +2470,7 @@ document.addEventListener("click", e=>{
   const names = andList(o.newcomers.map(w=>w.name || "Someone"));
   if(b.dataset.scaleoffer==="no"){ c.scaled.declined.push(...o.newcomers.map(w=>w.id)); gameLog("fight", `${names} joined; the room stayed as it was`); }
   else { c.scaled.who.push(...o.newcomers.map(w=>({ ...w })));
-    for(const a of o.adds){ const r = c.scaled.lines[lineKey(a.L)], present = lineFoes(c, a.L.stage, a.L); addLineFoes(c, n, a.L, a.more, present[present.length-1]); r.target += a.more; }
+    for(const a of o.adds){ const r = c.scaled.lines[lineKey(a.L)], present = lineFoes(c, a.L.stage, a.L); addLineFoes(c, n, a.L, a.more, present[present.length-1]); r.target += a.more; if(r.full!=null) r.full += a.more; }
     if(c.pos) placeTokens(c);
     gameLog("fight", `${names} joined${o.adds.length ? `: ${andList(o.adds.map(a=>`${a.more} more ${a.L.name}`))} came in` : ""}`); }
   touch(); renderBattle(); renderBattlePanel(); sendPlayers();
@@ -9814,6 +9951,8 @@ function calmAfterBattle(st){
 function endTheFight(st, n, c, auto){
   const E = c.list.filter(y=>!y.ally && !y.neutral), up = E.filter(y=>!y.dormant), left = up.filter(y=>!(y.max && y.hp<=0) && !y.fled).length, ran = E.filter(y=>y.fled).length, asleep = E.length - up.length;
   if(!auto && !confirm(`End the fight?${left?` ${left} still standing.`:""}${ran?` ${ran} fled.`:""}${asleep?` ${asleep} still dormant.`:""}`)) return false;
+  /* Also coming: whatever was still held back never came */
+  if(heldTotal(c)){ const E = (c.scaled.expected || []).map(w=>w.name || "someone"); gameLog("fight", `Held back and never came: ${heldWords(c, st, n)}${E.length ? ` (for ${andList(E)}, who didn't arrive)` : ""}`); c.scaled.held = {}; }
   /* the fight goes into the session log before it's cleared away */
   if((c.log||[]).length){ const j = journal(); j.log.push({ id:uid("lg"), at:today(), n:j.log.length+1, text:fightSummary(n, c) }); saveParty(); }
   gameLog("fight", fightSummary(n, c).split("\n")[0]);
@@ -12555,6 +12694,11 @@ function renderBattle(players){
       <text text-anchor="middle" dy=".35em" font-size="14" font-family="var(--mono)" fill="var(--paper-lit)" style="pointer-events:none">${esc(init)}</text>
       <text text-anchor="middle" y="${BS*.4+11}" font-size="9.5" font-family="var(--serif)" fill="var(--ink)" style="pointer-events:none">${esc(t.label.length>22?t.label.slice(0,21)+"…":t.label)}</text></g>`;
   }
+  /* Also coming: where the held-back share waits, dimmed, for the DM only (never the TV) */
+  { const c0 = !players && !lineup && n.site && n.site.combat, H = c0 && c0.scaled ? heldTotal(c0) : 0, W = H && c0.scaled.wait;
+    if(W && W.x!=null) g += `<g class="heldmark" transform="translate(${W.x*BS+BS/2} ${W.y*BS+BS/2})" opacity=".55" style="pointer-events:none"><title>${H} held back${W.note ? `, ${esc(W.note)}` : ""}</title>
+      <circle r="${BS*.42}" fill="var(--lead)" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="3 2"/><text text-anchor="middle" dy=".35em" font-size="12" font-family="var(--mono)" fill="var(--paper-lit)">+${H}</text>
+      <text text-anchor="middle" y="${BS*.42+11}" font-size="9" font-family="var(--serif)" fill="var(--ink)">held back</text></g>`; }
   if(players) return g;
   svgB.innerHTML = g;
   sendPlayers();
@@ -12576,6 +12720,9 @@ $("#bsvg").addEventListener("pointerdown", e=>{
   const n = bnode(), lineup = n && n.site && n.site.combat && n.site.combat.layout==="lineup";
   /* a way out: click its marker; Build is picking a square for a new one */
   if(exitPick && n && editingInside() && e.button===0 && !tok){ const p = bpoint(e); bdrag = null; addExitAt(n, Math.floor(p.x/BS), Math.floor(p.y/BS)); return; }
+  /* Also coming: picking the square where their held-back share waits */
+  if(heldPick && n && n.site && e.button===0 && !tok){ const p = bpoint(e); bdrag = null; heldPick = null;
+    n.site.alsoWait = Object.assign(n.site.alsoWait || {}, { k:"pick", x:Math.floor(p.x/BS), y:Math.floor(p.y/BS) }); touch(); renderBattle(); renderBattlePanel(); flash("Their share waits there."); return; }
   const exEl = e.target.closest("[data-exit]");
   if(exEl && n && e.button===0 && !bpaint){ bdrag = null; showExitPop(n, +exEl.dataset.exit); return; }
   /* a light on the floor: drag it to move it, click it to put it out or light it, right-click to take it away */
@@ -13165,6 +13312,12 @@ function logAction(n, c){
 }
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
+  if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
+    c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
+    const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));
+    Object.assign(c.scaled, { held:A.before.held, lines:A.before.lines, expected:A.before.expected, who:A.before.who });
+    c.scaled.undone = c.scaled.undone || {}; for(const w of back) c.scaled.undone[w.id] = true;   // they're still standing there: not again till they leave and come back
+    flash("Took back the arrival."); touch(); renderBattle(); renderBattlePanel(); return; }
   restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   partySync();
   flash("Took back the last action.");
@@ -13231,6 +13384,7 @@ var lastCardSel = null;                                  // whose card was last 
 function renderBattlePanel(){
   if(tcard && tcard.over){ if(battleSel===tcard.sel && battleOf) return renderTCard(); tcard = null; }   // a person's card over the battle panel, till a token is picked
   runRules();                                                  // their hit points may have crossed a rule's line
+  { const n = bnode(); if(n && n.site) heldSweep(n.site, n); }  // someone expected walked in: their held-back share joins
   { const n = bnode(); if(n && n.site && n.site.combat && !calmOf(n.site.combat)){ escapePrompt(n.site.combat); heartbreakCheck(n.site.combat); } }   // someone with a way out just dropped; someone's friend just fell
   { const n = bnode(), c = n && n.site && n.site.combat;        // a waking's fight with nobody awake left standing: over, calm again
     if(wakeFightOver(c)){ const down = c.list.filter(y=>y.woke && y.max!=null && y.hp<=0).map(y=>y.label);
@@ -13309,10 +13463,12 @@ function renderBattlePanelNow(){
   const selActs = acts.trim() ? `<div class="bt-selacts"><p class="grouplab" style="margin-top:8px">${esc(selName)}${calm ? " here" : " in this fight"}</p>${acts}</div>` : "";
   /* the battle block: everything starting a battle adds. In table mode it's the Action box's */
   h += calm ? `<div class="bt-acts">${selActs}${wakeNextBtn(c)}
+      ${alsoComingRow(n, st)}
       <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
       <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p></div>`
     : `<div class="bt-acts"><div class="fighthead"><span>Round <b>${c.round}</b></span><span>${cur?`Turn: <b>${esc(cur.label)}</b>`:"Roll initiative to begin"}</span></div>
     ${scaleOfferHtml(st, n)}
+    ${heldBlock(st, n)}
     ${c.wakeFight ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">Started by a waking: it ends by itself, calm again, once whatever woke is down.</p>` : ""}
     ${wakeNextBtn(c)}
     <div class="pcrow bt-turnctl"><button class="btn" style="flex:1" data-ba="init">Roll initiative</button><button class="btn" style="flex:1" data-ba="next">Next turn</button></div>
