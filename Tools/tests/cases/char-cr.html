@@ -32,7 +32,7 @@ setTimeout(async ()=>{ const out = []; try{
   for(let L = 1; L <= 20; L++){ const target = crPosOfXp(PARTY_BUDGET[L][1]);
     const P = ['Fighter','Rogue','Wizard','Cleric'].map(k=>{ const r = charCR(refChar(k, L)); return { k, pos:r.pos, r }; });
     const med = P.map(p=>p.pos).sort((a,b)=>a-b), m = (med[1] + med[2]) / 2; offs.push(+(target - m).toFixed(2));
-    if([1,3,5,8,11,15,20].includes(L)) out.push('L' + L + ' budget CR ' + crSay(target) + ' (' + PARTY_BUDGET[L][1] + ' XP): ' + P.map(p=>p.k + ' ' + crSay(p.pos) + ' [' + p.r.why + ', ' + p.r.dpr + '/rd]').join(', ')); }
+    if([1,3,5,8,11,15,20].includes(L)) out.push('L' + L + ' budget CR ' + crSay(target) + ' (' + PARTY_BUDGET[L][1] + ' XP): ' + P.map(p=>p.k + ' ' + crSay(p.pos)).join(', ')); }
   out.push('after calibration, how far the middle of each level lands from its budget (rows): ' + JSON.stringify(offs));
   /* Avery and Gawain */
   root.library.spells = __AG.spells;
@@ -41,6 +41,42 @@ setTimeout(async ()=>{ const out = []; try{
     const n2 = JSON.parse(JSON.stringify(c)); hurt[c.name](n2); const n = charCR(n2, 'now'); out.push(c.name + ' now (' + n2.hp + ' HP' + (c.name==="Gawain" ? ', Action Surge spent' : ', no slots left') + '): ' + charCRWords(n) + ' · ' + n.xp + ' XP · ' + n.dpr + ' a round');
     out.push(c.name + ' now, untouched = full: ' + (charCR(c, 'now').pos === f.pos)); }
   const blank = charCR({ level:5, cls:"Fighter" }); out.push('no sheet: ' + charCRWords(blank) + ' · ' + blank.xp + ' XP');
+  /* stage 2: what the not-handled list now handles (each against the same character without it) */
+  const say = (lab, a, b) => out.push(lab + ': ' + a.dpr + ' a round (' + charCRWords(a) + ')' + (b ? ' vs ' + b.dpr + ' without (' + charCRWords(b) + ')' : ''));
+  const base = (cls, extra) => Object.assign({ level:5, cls, hpMax:"40", hp:"40", ac:"16", cha:"18", attacks:[], spells:[], res:[] }, extra || {});
+  const mc = base("Fighter 3 / Wizard 2", { attacks:[{ name:"Longsword", hit:"+6", dmg:"1d8+3" }], satk:"+6", spells:["spell:fire-bolt", "spell:magic-missile", "spell:burning-hands"] });
+  out.push('multiclass: classes ' + JSON.stringify(crClasses(mc)) + ' · slots by the rule ' + JSON.stringify(crSlots(mc, crClasses(mc))) + ' · attacks a turn ' + Math.max(...crClasses(mc).map(k=>crAttacks(k.cls, k.lv))));
+  say('multiclass Fighter 3 / Wizard 2', charCR(mc));
+  out.push('Paladin 2 / Sorcerer 3 slots: ' + JSON.stringify(crSlots({ cls:"Paladin 2 / Sorcerer 3" }, crClasses({ cls:"Paladin 2 / Sorcerer 3" }))) + ' · Warlock 5: ' + JSON.stringify(crSlots({ cls:"Warlock" , level:5 }, crClasses({ cls:"Warlock", level:5 }))) + ' · Paladin 5 alone: ' + JSON.stringify(crSlots({ cls:"Paladin", level:5 }, crClasses({ cls:"Paladin", level:5 }))));
+  const pal = base("Paladin", { attacks:[{ name:"Longsword", hit:"+7", dmg:"1d8+4" }], slots:[null, { max:4, used:0 }, { max:2, used:0 }] });
+  say('Paladin 5, Divine Smite from slots', charCR(pal), charCR(Object.assign({}, pal, { cls:"Fighter", res:[{ name:"Action Surge", max:0, used:0 }] })));
+  const palSpent = JSON.parse(JSON.stringify(pal)); palSpent.slots.forEach(s=>{ if(s) s.used = s.max; }); say('  the same Paladin, slots spent (now)', charCR(palSpent, 'now'));
+  const wl = base("Warlock", { attacks:[{ name:"Eldritch Blast", hit:"+7", dmg:"1d10" }], notes:"Invocations: Agonizing Blast, Repelling Blast." });
+  say('Warlock 5, Eldritch Blast 1d10 written, Agonizing and Repelling in the notes', charCR(wl), charCR(Object.assign({}, wl, { notes:"" })));
+  const bard = base("Bard", { attacks:[{ name:"Rapier", hit:"+5", dmg:"1d8+2" }], res:[{ name:"Bardic Inspiration", max:4, used:0 }] });
+  say('Bard 5, Bardic Inspiration (worth its die)', charCR(bard), charCR(Object.assign({}, bard, { cls:"Cleric", res:[] })));
+  /* one concentration spell: Hex (bonus action) and Spirit Guardians (action) both concentration */
+  const conc = base("Warlock", { attacks:[{ name:"Eldritch Blast", hit:"+7", dmg:"1d10+4" }], satk:"+7", slots:[null, null, null, { max:2, used:0 }], spells:["spell:hex", "spell:spirit-guardians"] });
+  const only = ids => charCR(Object.assign({}, conc, { spells:ids }));
+  out.push('concentration: both ' + charCR(conc).dpr + ', Hex alone ' + only(["spell:hex"]).dpr + ', Spirit Guardians alone ' + only(["spell:spirit-guardians"]).dpr + ', neither ' + only([]).dpr + ' (both = the better one, not the sum)');
+  const concNone = JSON.parse(JSON.stringify(conc)); concNone.slots[3].used = 2;
+  out.push('a spell already running (opts.active, for concentration tracking later): no slots left ' + charCR(concNone, 'now').dpr + ', Hex already up ' + charCR(concNone, 'now', { active:["spell:hex"] }).dpr);
+  /* the card, and "now" following an edit to hit points */
+  loadJSONNow(JSON.stringify({ format:"ordinate-survey-v1", title:"CR", party:2, nodes:[{ id:"h", name:"House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+    roster:JSON.parse(JSON.stringify(__AG.chars)), library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[], spells:__AG.spells } })); await new Promise(r=>setTimeout(r, 300));
+  pane = 'party'; syncTabs(); renderPane(true); await new Promise(r=>setTimeout(r, 60));
+  const card = () => [...document.querySelectorAll('#pane-party .pccr')].map(e=>e.innerText.replace(/\s+/g, ' ').trim());
+  out.push('cards: ' + card().join(' || '));
+  const hpIn = document.querySelector('#pane-party input[data-pc="1"][data-f="hp"]'); hpIn.value = '12'; hpIn.dispatchEvent(new Event('input', { bubbles:true })); await new Promise(r=>setTimeout(r, 60));
+  out.push('Gawain at 12 HP, typed on his sheet: ' + card()[1]);
+  pane = 'data'; syncTabs(); renderPane(true); await new Promise(r=>setTimeout(r, 60));
+  const sb = document.querySelector('#pane-data [data-strengthby]'); sb.value = 'cr'; sb.dispatchEvent(new Event('change', { bubbles:true })); await new Promise(r=>setTimeout(r, 60));
+  out.push('Data tab: ' + [...document.querySelector('#pane-data [data-strengthby]').options].map(o=>(o.selected ? '[' : '') + o.text + (o.selected ? ']' : '')).join(' / ') + ' · campaign set to ' + root.strengthBy);
+  const sb2 = document.querySelector('#pane-data [data-strengthby]'); sb2.value = ''; sb2.dispatchEvent(new Event('change', { bubbles:true })); await new Promise(r=>setTimeout(r, 30));
+  /* room scaling's strength: by level, then by character CR */
+  const two = root.roster.map(p=>({ id:p.id, name:p.name, level:p.level }));
+  const byLevel = strengthOf(two); root.strengthBy = 'cr'; const byCR = strengthOf(two), byCRhi = strengthOf(two, 'hi'), built = strengthOf([{ level:5 }, { level:5 }]); delete root.strengthBy;
+  out.push('strength of Avery and Gawain: by level ' + byLevel + ' XP, by character CR ' + byCR + ' (High ' + byCRhi + '); what a room was built for (2 × level 5, no ids) ' + built);
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  document.title = 'RES ' + out.join(' || ');
 }, 900);

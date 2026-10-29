@@ -663,6 +663,10 @@
   .pcsub{display:flex;align-items:center;gap:8px;margin:-2px 0 4px 18px}
   .pcsub .pclv{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .pcxp{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-bottom:8px;display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+  /* a character's strength, rated like a monster's (at full and now): our estimate */
+  .pccr{display:flex;flex-direction:column;gap:2px;font-size:12px;margin:-2px 0 8px;color:var(--ink)}
+  .pccr b{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin-right:4px}
+  .pccr small{color:var(--ink-faint);font-size:10.5px;margin-left:4px}
   .pcrow{display:flex;gap:6px}
   .pcrow .field{min-width:0}
   .pcrow .field input{width:100%}
@@ -1891,78 +1895,140 @@ function crOfBlock(m){
   const tough = crTough(+m.hp || foeMaxHp(m) || 0, parseInt(m.ac) || 10), hits = dpr ? crHits(r=>dpr * crHit(hitBy, r.ac)) : 0;
   return { pos:(tough + hits) / 2, tough, hits };
 }
-/* which classes swing more than once with the Attack action (2024 rules) */
+/* a character's classes and their levels: "Fighter 3 / Wizard 2" (or "Fighter 3, Wizard 2"), or one class at their level */
+const CR_CLASSES = /barbarian|bard|cleric|druid|fighter|monk|paladin|ranger|rogue|sorcerer|warlock|wizard|artificer/i;
+function crClasses(c){
+  const s = String((c && c.cls) || ""), parts = [...s.matchAll(/([A-Za-z][A-Za-z' ]*?)\s+(\d+)/g)].map(m=>({ cls:m[1].trim(), lv:+m[2] })).filter(p=>CR_CLASSES.test(p.cls) && p.lv > 0);
+  return parts.length ? parts : [{ cls:s, lv:clampLv(c && c.level) }];
+}
+/* which classes swing more than once with the Attack action (2024 rules); a multiclass takes its best, they don't add up */
 function crAttacks(cls, lv){
   if(/fighter/i.test(cls)) return lv >= 20 ? 4 : lv >= 11 ? 3 : lv >= 5 ? 2 : 1;
   return /barbarian|monk|paladin|ranger/i.test(cls) && lv >= 5 ? 2 : 1;
 }
+/* spell slots when the sheet has none: the multiclass rule (2024): full casters' levels, Paladin and Ranger halved
+   rounded up, an Eldritch Knight or Arcane Trickster a third rounded down; one half-caster alone uses its own table.
+   A Warlock's pact slots come on top. [level] = count */
+function crSlots(c, K){
+  const lvIn = re => K.filter(k=>re.test(k.cls)).reduce((a, k)=>a + k.lv, 0), sub = String(c.subcls||"");
+  const full = lvIn(/bard|cleric|druid|sorcerer|wizard/i), half = lvIn(/paladin|ranger|artificer/i), third = /eldritch knight|arcane trickster/i.test(sub) ? lvIn(/fighter|rogue/i) : 0;
+  const out = {}; let row = null;
+  if(full || K.filter(k=>/paladin|ranger|artificer/i.test(k.cls)).length + (third ? 1 : 0) > 1) { const cl = full + Math.ceil(half / 2) + Math.floor(third / 3); if(cl > 0) row = FULL_SLOTS[Math.min(20, cl) - 1]; }
+  else if(half) row = HALF_SLOTS[Math.min(20, half) - 1];
+  else if(third >= 3) row = FULL_SLOTS[Math.floor(third / 3) - 1];
+  (row || []).forEach((n, i)=>{ out[i + 1] = n; });
+  const wl = lvIn(/warlock/i); if(wl){ const L = Math.min(5, Math.ceil(wl / 2)); out[L] = (out[L] || 0) + (wl >= 17 ? 4 : wl >= 11 ? 3 : wl >= 2 ? 2 : 1); }
+  return out;
+}
 const CR_DISABLE = /\b(Paralyzed|Stunned|Incapacitated|Restrained|Frightened|Charmed|Blinded|Unconscious|Prone|Petrified|banish|subtract 1d4|add 1d4|adds 1d4|Disadvantage on attack)/i;
 const CR_AREA = /\b(Sphere|Cone|Cube|Line|Cylinder|Emanation)\b|each creature (in|within)/i;
+const CR_RIDER = /extra (\d+d\d+)[^.]*(whenever you hit|on a hit)/i;               // Hex, Divine Favor, Hunter's Mark: on every hit
+const CR_SMITE = /from the attack|as you hit the target|after (you )?hit/i;            // a smite: on the hit just landed
 /* a character rated: { pos, cr, xp, tough, hits, dpr, fallback, why } — "at full" (full hit points, every slot and
    resource) or "now" (their hit points, slots and resources as they stand). Pure: reads the character, changes nothing.
-   Our own reading of a sheet (every number an estimate):
+   opts.active: ids of spells already running (for concentration tracking later): one keeps going for free, and no
+   other concentration spell is counted. Our own reading of a sheet, every number an estimate:
    - toughness: hit points and AC (above);
-   - hitting power over a three-round fight: round one their best (a spell from a slot they have, healing counted like
-     damage, a disabling spell worth 6 + 6 × its level, an area spell counted on two creatures), rounds two and three
-     what they can do at will (the Attack action with Extra Attack, Sneak Attack, Rage, or a cantrip), plus a bonus
-     action each round (an off-hand or bonus-action attack, or a bonus-action spell that keeps attacking), and one
-     Action Surge if they have it;
+   - hitting power over a three-round fight: round one their best action (a spell from a slot they have, healing
+     counted like damage, a disabling spell worth 6 + 6 × its level, an area spell counted on two creatures), rounds two
+     and three what they can do at will (the Attack action with Extra Attack, Sneak Attack, Rage, a cantrip, Eldritch
+     Blast's beams with Agonizing Blast), plus a bonus action each round (an off-hand attack; a spell that keeps
+     attacking; Hex or Divine Favor, then extra on every hit; a smite on a hit, Divine Smite from the highest slots
+     left; Bardic Inspiration, worth its die like healing), and one Action Surge;
+   - only one concentration spell counts in the fight (the best plan with one);
+   - a multiclass: each class's levels (Extra Attack the best of them, Sneak Attack from Rogue levels, Rage from
+     Barbarian levels, slots by the multiclass rule if the sheet has none); cantrips and proficiency by total level;
    - a character with no hit points or nothing to hit with is rated by level (their XP budget). */
-function charCR(c, mode){
-  const lv = clampLv(c && c.level), now = mode==="now", cls = String((c && c.cls) || ""), prof = profByLevel(lv);
-  const budgetPos = crPosOfXp(PARTY_BUDGET[lv][1]);
+function charCR(c, mode, opts){
+  const lv = clampLv(c && c.level), now = mode==="now", K = crClasses(c), prof = profByLevel(lv), budgetPos = crPosOfXp(PARTY_BUDGET[lv][1]);
+  const lvIn = re => K.filter(k=>re.test(k.cls)).reduce((a, k)=>a + k.lv, 0), active = new Set((opts && opts.active) || []);
   const hpMax = +c.hpMax || +c.hp || 0, hp = now ? (c.hp!=null && c.hp!=="" ? +c.hp : hpMax) : hpMax, ac = parseInt(c.ac) || 10;
   const smod = (/^[+-]?\d+$/.test(String(c.satk||"").trim()) ? parseInt(c.satk) - prof : (+c.dc ? +c.dc - 8 - prof : 3));
-  const slotsLeft = L => { const s = c.slots && c.slots[L]; return s ? Math.max(0, (+s.max||0) - (now ? (+s.used||0) : 0)) : 0; };
+  const chaMod = c.cha!=null && c.cha!=="" ? Math.floor((+c.cha - 10) / 2) : 3;
+  const sheetSlots = c.slots && [1,2,3,4,5,6,7,8,9].some(k=>c.slots[k] && +c.slots[k].max > 0), calcSlots = sheetSlots ? null : crSlots(c, K);
+  const slotsLeft = L => sheetSlots ? (s=>s ? Math.max(0, (+s.max||0) - (now ? (+s.used||0) : 0)) : 0)(c.slots[L]) : (calcSlots[L] || 0);
   const castable = L => !L || [1,2,3,4,5,6,7,8,9].some(k=>k >= L && slotsLeft(k) > 0);
+  const slotList = () => { const a = []; for(let L = 9; L >= 1; L--) for(let j = 0; j < slotsLeft(L); j++) a.push(L); return a; };   // highest first
   const resLeft = re => { const r = (c.res||[]).find(x=>re.test(x.name||"")); return r ? Math.max(0, (+r.max||0) - (now ? (+r.used||0) : 0)) : null; };
   const cantripX = lv >= 17 ? 4 : lv >= 11 ? 3 : lv >= 5 ? 2 : 1;
+  const textAll = [c.notes, c.feats, c.features, c.traits, c.persona, c.skills, ...(c.attacks||[]).map(a=>a.name)].map(x=>String(x||"")).join(" ");
+  const agonizing = lvIn(/warlock/i) && /agonizing blast/i.test(textAll), repelling = lvIn(/warlock/i) && /repelling blast/i.test(textAll);
   /* their attack lines: a weapon, or a spell (by its name) with the numbers they wrote */
   const lines = (c.attacks||[]).map(a=>{ const h = String(a.hit||"").trim(), base = String(a.name||"").replace(/\s*\(.*$/, "").trim(), sp = spellByName(base);
     const atk = /^[+-]?\d+$/.test(h) ? parseInt(h) : null, dc = atk==null && /\d/.test(h) ? +(/(\d+)/.exec(h)[1]) : null;
-    return { name:a.name, atk, dc, avg:crDiceAvg(a.dmg), sp, ba:/bonus action|off-hand/i.test(a.name||"") || !!(sp && /bonus/i.test(sp.time||"")), half:!!(sp && /half as much/i.test(sp.desc||"")) }; })
+    let avg = crDiceAvg(a.dmg); const eb = /eldritch blast/i.test(a.name||"");
+    if(eb){ const dice = [...String(a.dmg||"").matchAll(/(\d*)d10/gi)].reduce((s, m)=>s + (+m[1] || 1), 0), perBeam = dice <= 1;
+      if(perBeam && agonizing && !/[+-]\s*\d+\s*$/.test(String(a.dmg||"").split(/,/)[0])) avg += chaMod;
+      if(perBeam) avg = avg * cantripX + (repelling ? 2 * cantripX : 0); }
+    return { name:a.name, atk, dc, avg, sp, eb, ba:/bonus action|off-hand/i.test(a.name||"") || !!(sp && /bonus/i.test(sp.time||"")), half:!!(sp && /half as much/i.test(sp.desc||"")) }; })
     .filter(l=>l.avg > 0 && (l.atk!=null || l.dc!=null));
   const spellIds = new Set(lines.filter(l=>l.sp).map(l=>l.sp.id));
   const known = (c.spells||[]).map(id=>spellOf(id)).filter(s=>s && !spellIds.has(s.id));
+  const paladin = lvIn(/paladin/i) >= 2 && !known.some(s=>/divine smite/i.test(s.name)) && !spellIds.has("spell:divine-smite") ? spellOf("spell:divine-smite") : null;
   if(!(hpMax > 0) || (!lines.length && !known.some(s=>s.dmg || s.heal))){
     return { pos:budgetPos, cr:crNear(budgetPos), xp:PARTY_BUDGET[lv][1], tough:budgetPos, hits:budgetPos, dpr:0, fallback:true, why:`no full sheet: rated by level ${lv}` };
   }
   const lineHit = (l, r) => l.atk!=null ? crHit(l.atk, r.ac) : (p=>p + (l.half ? (1 - p) / 2 : 0))(crHit(l.dc - 8, r.ac));
-  const spellVal = (s, r) => { const lvS = +s.lv || 0;
-    if(s.heal) return crDiceAvg(s.dmg) * (lvS ? 1 : cantripX) + (/spellcasting ability modifier/i.test(s.desc||"") ? smod : 0);
-    if(s.dmg){ const avg = crDiceAvg(s.dmg) * (lvS ? 1 : cantripX) + (/plus your spellcasting ability modifier/i.test(s.desc||"") ? smod : 0);
+  const isEB = s => /eldritch blast/i.test(s.name||"");
+  const spellVal = (s, r, anyHit) => { const lvS = +s.lv || 0, avgD = crDiceAvg(s.dmg);
+    if(s.heal) return avgD * (lvS ? 1 : cantripX) + (/spellcasting ability modifier/i.test(s.desc||"") ? smod : 0);
+    if(CR_SMITE.test(s.desc||"")) return avgD * anyHit;                                       // on a hit just landed
+    if(s.dmg){ const beams = isEB(s) ? cantripX : 1;
+      const avg = isEB(s) ? (avgD + (agonizing ? chaMod : 0) + (repelling ? 2 : 0)) * beams : avgD * (lvS ? 1 : cantripX) + (/plus your spellcasting ability modifier/i.test(s.desc||"") ? smod : 0);
       const p = s.atk ? crHit(prof + smod, r.ac) : (q=>q + (/half as much/i.test(s.desc||"") ? (1 - q) / 2 : 0))(crHit(prof + smod, r.ac));
       return avg * p * (CR_AREA.test(s.desc||"") ? 2 : 1); }
     return CR_DISABLE.test(s.desc||"") ? (6 + 6 * lvS) * crHit(prof + smod, r.ac) : 0; };
   const expect = r => {
-    const n = crAttacks(cls, lv), weap = lines.filter(l=>!l.sp && !l.ba && l.atk!=null), baW = lines.filter(l=>!l.sp && l.ba);
+    const n = Math.max(...K.map(k=>crAttacks(k.cls, k.lv)), 1);
+    const weap = lines.filter(l=>!l.sp && !l.ba && l.atk!=null && !l.eb), baW = lines.filter(l=>!l.sp && l.ba);
     const saveLines = lines.filter(l=>!l.sp && !l.ba && l.atk==null).map(l=>l.avg * lineHit(l, r));     // a breath, holy water, Divine Spark: one a turn
     const bestW = weap.reduce((b, l)=>Math.max(b, l.avg * lineHit(l, r)), 0), bestWHit = weap.reduce((b, l)=>Math.max(b, lineHit(l, r)), 0);
+    const rogue = lvIn(/rogue/i), barb = lvIn(/barbarian/i);
     let attack = n * bestW;
-    if(/rogue/i.test(cls) && bestW) attack += Math.ceil(lv / 2) * 3.5 * (1 - Math.pow(1 - bestWHit, n));                       // Sneak Attack, once a turn
-    if(/barbarian/i.test(cls) && bestW) attack += n * bestWHit * (lv >= 16 ? 4 : lv >= 9 ? 3 : 2);                              // Rage damage
-    const cantrips = [...lines.filter(l=>l.sp && !+l.sp.lv && !l.ba).map(l=>l.avg * lineHit(l, r)), ...known.filter(s=>!+s.lv && !/bonus|reaction/i.test(s.time||"")).map(s=>spellVal(s, r))];
+    if(rogue && bestW) attack += Math.ceil(rogue / 2) * 3.5 * (1 - Math.pow(1 - bestWHit, n));                       // Sneak Attack, once a turn
+    if(barb && bestW) attack += n * bestWHit * (barb >= 16 ? 4 : barb >= 9 ? 3 : 2);                                  // Rage damage
+    const anyHit = 1 - Math.pow(1 - bestWHit, n), hitsARound = n * bestWHit;
+    const cantrips = [...lines.filter(l=>l.sp && !+l.sp.lv && !l.ba || l.eb).map(l=>l.avg * lineHit(l, r)), ...known.filter(s=>!+s.lv && !/bonus|reaction/i.test(s.time||"")).map(s=>spellVal(s, r, anyHit))];
     const atWill = Math.max(attack, ...cantrips, ...saveLines, 0);
-    const slotSpells = [...lines.filter(l=>l.sp && +l.sp.lv && !l.ba && castable(+l.sp.lv)).map(l=>l.avg * lineHit(l, r) * (CR_AREA.test(l.sp.desc||"") ? 2 : 1)),
-                        ...known.filter(s=>+s.lv && castable(+s.lv) && !/bonus|reaction/i.test(s.time||"")).map(s=>spellVal(s, r))];
-    const best = Math.max(atWill, ...slotSpells, 0);
-    const keeps = l => /later turns|on each of your turns|again on each/i.test((l.sp && l.sp.desc) || "");
-    const baLines = lines.filter(l=>l.ba && (!l.sp || castable(+l.sp.lv || 0)));
-    const baKnown = known.filter(s=>/bonus/i.test(s.time||"") && castable(+s.lv || 0));
-    const baW1 = Math.max(0, ...baW.map(l=>l.avg * lineHit(l, r)));
-    const ba1 = Math.max(baW1, ...baLines.map(l=>l.avg * lineHit(l, r)), ...baKnown.map(s=>spellVal(s, r)));
-    const ba23 = Math.max(baW1, ...baLines.filter(l=>l.sp && keeps(l)).map(l=>l.avg * lineHit(l, r)), ...baKnown.filter(s=>/later turns/i.test(s.desc||"")).map(s=>spellVal(s, r)));
-    const surge = /fighter/i.test(cls) && lv >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
-    return (best + ba1 + 2 * (atWill + ba23) + surge) / 3;
+    const ebLine = lines.find(l=>l.eb), ebHits = ebLine ? cantripX * lineHit(ebLine, r) : known.some(isEB) ? cantripX * crHit(prof + smod, r.ac) : 0;
+    const ridesOn = Math.max(hitsARound, ebHits);                                                                    // hits a round a rider adds to
+    /* round one's action: at will, or a spell from a slot ({ v, conc, id }) */
+    const acts = [{ v:atWill, conc:false },
+      ...lines.filter(l=>l.sp && +l.sp.lv && !l.ba && castable(+l.sp.lv)).map(l=>({ v:l.avg * lineHit(l, r) * (CR_AREA.test(l.sp.desc||"") ? 2 : 1), conc:!!l.sp.conc, id:l.sp.id })),
+      ...known.filter(s=>+s.lv && castable(+s.lv) && !/bonus|reaction/i.test(s.time||"")).map(s=>({ v:spellVal(s, r, anyHit), conc:!!s.conc, id:s.id }))];
+    /* the bonus action, as three rounds ([r1, r2, r3]): plain off-hand, or a spell, a rider, a smite, inspiration */
+    const baW1 = Math.max(0, ...baW.map(l=>l.avg * lineHit(l, r))), plain = [baW1, baW1, baW1];
+    const keeps = s => /later turns|on each of your turns|again on each/i.test((s && s.desc) || "");
+    const bas = [{ r:plain, conc:false }];
+    for(const l of lines.filter(l=>l.sp && l.ba && castable(+l.sp.lv || 0))){ const v = l.avg * lineHit(l, r);
+      bas.push({ r:keeps(l.sp) || active.has(l.sp.id) ? [v, v, v] : [v, baW1, baW1], conc:!!l.sp.conc, id:l.sp.id }); }
+    for(const s of known.filter(s=>/bonus/i.test(s.time||"") && (castable(+s.lv || 0) || active.has(s.id)))){
+      if(CR_RIDER.test(s.desc||"")){ const per = crDiceAvg(CR_RIDER.exec(s.desc)[1]) * ridesOn;                  // Hex, Divine Favor: every hit after
+        bas.push({ r:active.has(s.id) ? [baW1 + per, baW1 + per, baW1 + per] : [per, baW1 + per, baW1 + per], conc:!!s.conc, id:s.id }); continue; }
+      const v = spellVal(s, r, anyHit); bas.push({ r:keeps(s) || active.has(s.id) ? [v, v, v] : [v, baW1, baW1], conc:!!s.conc, id:s.id }); }
+    if(paladin || known.some(s=>/divine smite/i.test(s.name))){                                                      // Divine Smite: the highest slots left
+      const sl = slotList(); bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, sl[j] ? 4.5 * (1 + sl[j]) * anyHit : 0)), conc:false }); }
+    const bard = lvIn(/bard/i);
+    if(bard){ const die = bard >= 15 ? 6.5 : bard >= 10 ? 5.5 : bard >= 5 ? 4.5 : 3.5, uses = resLeft(/bardic inspiration/i) ?? Math.max(1, chaMod);
+      bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < uses ? die : 0)), conc:false }); }                           // worth its die, like healing: an estimate
+    /* one concentration spell at most (one already running counts and blocks the rest) */
+    const running = [...active].map(id=>spellOf(id)).find(s=>s && s.conc);
+    let best = 0;
+    for(const a of acts) for(const b of bas){
+      if(running && ((a.conc && a.id!==running.id) || (b.conc && b.id!==running.id))) continue;
+      if(a.conc && b.conc) continue;
+      best = Math.max(best, a.v + b.r[0] + 2 * atWill + b.r[1] + b.r[2]); }
+    const surge = lvIn(/fighter/i) >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
+    return (best + surge) / 3;
   };
   const tough = crTough(hp, ac), hits = crHits(expect), cal = CR_CAL[lv - 1] || 0;
   const pos = Math.max(0, Math.min(CR_TABLE.length - 1, (tough + hits) / 2 + cal));
   const t = Math.max(0, Math.min(CR_TABLE.length - 1, tough + cal)), h = Math.max(0, Math.min(CR_TABLE.length - 1, hits + cal));
   return { pos, cr:crNear(pos), xp:crRowAt(pos).xp, tough:t, hits:h, dpr:Math.round(expect(crRowAt(pos)) * 10) / 10, fallback:false,
-    why:`tough like a CR ${crSay(t)}, hits like a CR ${crSay(h)}` };
+    why:`tough like CR ${crSay(t)}, hits like CR ${crSay(h)}` };
 }
-/* "CR 4 (an estimate): tough like a CR 3, hits like a CR 5" */
-const charCRWords = r => `CR ${crSay(r.pos)} (an estimate): ${r.why}`;
+/* "CR 5: tough like CR 3, hits like CR 7" */
+const charCRWords = r => r.fallback ? `CR ${crSay(r.pos)} by level (no full sheet)` : `CR ${crSay(r.pos)}: ${r.why}`;
 /* ══════════════════════════════════════════════════════════════
    ROOMS SCALE TO WHO'S IN THEM (Joseph, 2026-10-28). One switch per campaign: root.scaleRooms = { on, builtFor }
    (builtFor: how many characters the rooms were built for; none = the party's size). A room opts out with
@@ -1975,9 +2041,22 @@ const charCRWords = r => `CR ${crSay(r.pos)} (an estimate): ${r.why}`;
    built for). Fixed lines keep theirs; the scaling lines share what's left in proportion, never below 1 each.
    ══════════════════════════════════════════════════════════════ */
 const scaleOn = () => !!(root && root.scaleRooms && root.scaleRooms.on);
-/* a group's strength: the SRD 5.2 XP budget per character, added up (by level). One place, so another measure
-   (a character's own CR, from their sheet) can stand in for it later. chars: [{ level }] */
-const strengthOf = (chars, diff) => budgetFor((chars||[]).map(c=>clampLv(c && c.level)))[diff || "mod"];
+/* a group's strength, added up: by level (the SRD 5.2 XP budget per character), or, when the campaign says so
+   (root.strengthBy === "cr", Data → This campaign), each character's own CR at full strength (our estimate, from their
+   sheet), as XP, moved to Low or High by their level's own budgets. chars: [{ id, level }]: the id finds the character
+   (a companion's "n:<id>"); without one (what a room was built for) or without a sheet, by level. A companion with no
+   level (a befriended creature) by its stat block's rating */
+const strengthByCR = () => !!(typeof root!=="undefined" && root && root.strengthBy==="cr");
+const charById = id => String(id||"").startsWith("n:") ? libNpcById(String(id).slice(2)) : partyRoster().find(p=>p.id===id) || null;
+function strengthOne(c, diff){
+  const lv = clampLv(c && c.level), d = diff || "mod", B = budgetFor([lv]);
+  const real = strengthByCR() && c && c.id ? charById(c.id) : null; if(!real) return B[d];
+  let xp;
+  if(String(c.id).startsWith("n:") && !numOr(real.level)){ const m = real.statBlock || (real.fightsAs && real.fightsAs!=="self" ? foeById(real.fightsAs) : null); xp = m ? crRowAt(crOfBlock(m).pos).xp : B.mod; }
+  else xp = charCR(Object.assign({}, real, { level:lv })).xp;
+  return Math.round(xp * B[d] / B.mod);
+}
+const strengthOf = (chars, diff) => (chars||[]).reduce((a, c)=>a + strengthOne(c, diff), 0);
 /* a line's way of scaling, said or by default */
 function scaleMode(f){
   if(String(f && f.id || "").startsWith("npc:")) return "fixed";                 // a person never multiplies
@@ -2043,7 +2122,10 @@ function compLevel(p){
 const SCALE_MODES = [["scales","More or fewer of them"],["fixed","Always as written"],["with","Only when enough walk in"]];
 function scaleCampBlock(){
   const S = root.scaleRooms || {}, on = !!S.on;
-  return `<label class="check" style="margin:0 0 4px"><input type="checkbox" data-sclcamp="on" ${on?"checked":""}> Rooms scale to who walks in</label>
+  return `<div class="field" style="margin:0 0 6px"><label>Measure strength by</label><select data-strengthby>
+      <option value="" ${strengthByCR()?"":"selected"}>Level (the SRD 5.2 budget)</option>
+      <option value="cr" ${strengthByCR()?"selected":""}>Character CR (our estimate, from their sheets)</option></select></div>
+    <label class="check" style="margin:0 0 4px"><input type="checkbox" data-sclcamp="on" ${on?"checked":""}> Rooms scale to who walks in</label>
     ${on ? `<div class="pcrow" style="align-items:center;margin:0 0 4px"><label class="mini" style="flex:1">Rooms are built for</label><input data-sclcamp="size" class="mono" type="number" min="1" max="12" value="${S.builtFor||""}" placeholder="${partySize()}" style="width:52px"> <small>characters</small></div>` : ""}
     <p class="empty-note" style="font-size:11px;margin:0 0 12px">${on ? `A room keeps the difficulty it was built at for whoever walks in: fewer enemies for two, more for five, by the characters' levels (the SRD 5.2 XP budget per character). Each enemy line in a room says how it scales, and a room can opt out. Blank: the party's size, ${partySize()}. Nothing changes until the battle starts.`
       : "Off: every room is as written, whoever walks in."}</p>`;
@@ -2087,7 +2169,9 @@ function scalePreview(n, st){
     <div class="sbl">Their strength is ${p.strength.toLocaleString()} XP against the ${p.built.strength.toLocaleString()} it was built for (${levelsWord(Array(p.built.size).fill(p.built.level))}): ${Math.round(p.ratio*100)}%. The room's ${p.roomXp.toLocaleString()} XP becomes ${p.target.toLocaleString()}; in whole creatures, ${p.nowXp.toLocaleString()}.</div>
     ${p.lines.map(L=>`<div class="sbl"><b>${esc(L.stageName ? `${L.stageName}: ` : "")}${esc(L.name)}</b> ${esc(L.wasText)} → ${esc(String(L.n))} <small>${esc(L.why)}</small></div>`).join("")}
     ${chars.some(c=>c.est) ? `<p class="empty-note" style="font-size:11px;margin:4px 0 0">${esc(andList(chars.filter(c=>c.est).map(c=>c.name||"A companion")))}: no level, so counted at their CR, an estimate.</p>` : ""}
-    <p class="empty-note" style="font-size:11px;margin:4px 0 0">Strength is the SRD 5.2 XP budget per character, added up. Nothing changes until the battle starts.</p></details>`;
+    <p class="empty-note" style="font-size:11px;margin:4px 0 0">${strengthByCR()
+      ? `Strength is each character's CR at full strength (our estimate, from their sheet: ${esc(chars.map(c=>{ const r = charById(c.id); return `${c.name||"someone"} ${r && !(String(c.id).startsWith("n:") && !numOr(r.level)) ? `CR ${crSay(charCR(Object.assign({}, r, { level:c.level })).pos)}` : "by their stat block"}`; }).join(", "))}), as XP, added up; what the room was built for is by level.`
+      : "Strength is the SRD 5.2 XP budget per character, added up."} Nothing changes until the battle starts.</p></details>`;
 }
 /* stage 3: Start the battle applies the plan. c.scaled = { who:[the people counted], lines:{ "<stage>:<k>":{ base, target, mode } },
    declined:[ids] }. An enemy made from a room's line carries x.line (its index) and x.stg (0 for the room's own, k for stage k);
@@ -2186,6 +2270,8 @@ function scaleRefresh(){
   renderPane(true); const d = document.getElementById("pane-data"); if(d && !d.hidden && typeof renderData==="function") renderData(); }
 document.addEventListener("change", e=>{
   const t = e.target; if(!t.dataset) return;
+  if(t.dataset.strengthby!=null){ if(t.value) root.strengthBy = t.value; else delete root.strengthBy;
+    saveParty(); scaleRefresh(); flash(strengthByCR() ? "Strength goes by each character's CR (our estimate, from their sheets)." : "Strength goes by level (the SRD 5.2 budget)."); return; }
   if(t.dataset.sclcamp){ const S = root.scaleRooms = Object.assign({ on:false }, root.scaleRooms || {});
     if(t.dataset.sclcamp==="on") S.on = t.checked; else { const v = Math.round(+t.value||0); if(v > 0) S.builtFor = Math.min(12, v); else delete S.builtFor; }
     if(!S.on && !S.builtFor) delete root.scaleRooms;
@@ -6921,6 +7007,7 @@ function saveParty(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
   if(typeof refreshLeadersOnTv==="function") refreshLeadersOnTv();     // the leaderboards on the TV keep up
+  if(typeof pcCRRefresh==="function") pcCRRefresh();                   // the cards' strength "now" keeps up with HP, slots and resources
 }
 /* ── taking back a change to the party: damage, healing, slots, rests, coins…
    The map's undo keeps the map's history; the characters get their own. Every
@@ -7305,6 +7392,17 @@ function pcAttacksBlock(c, i){
 }
 /* one character's card. A companion (npc) is a person from the library travelling with the
    party: the same card, with an NPC tag, no XP, crew role or favor, and their library look */
+/* a character's strength on their card (Joseph, 2026-10-29): CR and its working first, at full and now, the XP small
+   beside it, an estimate. "Now" follows their hit points, slots and resources (pcCRRefresh, on every save) */
+function pcCRRow(c, npc){
+  const key = (npc ? "n:" : "") + c.id, f = charCR(c), n = charCR(c, "now");
+  const one = (label, r) => `<span><b>${label}</b> ${esc(charCRWords(r))} <small>${r.xp.toLocaleString()} XP · an estimate</small></span>`;
+  return `<div class="pccr" data-pccr="${esc(key)}" title="Their strength rated the way a monster's is, from their sheet: our own measure from the SRD monsters, not a rule">${one("At full", f)}${one("Now", n)}</div>`;
+}
+function pcCRRefresh(){
+  for(const el of document.querySelectorAll("[data-pccr]")){ const c = charById(el.dataset.pccr); if(!c) continue;
+    const html = pcCRRow(c, el.dataset.pccr.startsWith("n:")); if(el.outerHTML!==html) el.outerHTML = html; }
+}
 function pcCard(c, i, npc){
   const nx = npc ? null : nextLevelXP(c), ready = !npc && nx!=null && (+c.xp||0) >= nx;
   const f = (k,lab,w,ph) => `<div class="field" style="flex:${w||1}"><label>${lab}</label><input data-pc="${i}" data-f="${k}" type="text" value="${esc(c[k]??"")}" placeholder="${ph||""}"></div>`;
@@ -7333,6 +7431,7 @@ function pcCard(c, i, npc){
     ${npc ? bondRow(c, i) + scaleCompRow(c) : pcTokRow(c, i)}
     ${npc ? "" : `<div class="pcxp"><span data-xpline="${i}">${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}</span>
       ${ready?`<button class="btn" data-act="levelup" data-pc="${i}">Ready — level up to ${clampLv(c.level)+1}</button>`:""}</div>`}
+    ${pcCRRow(c, npc)}
     ${pcTracker(c, i)}
     ${pcStatsBlock(c, i)}
     ${sec("sheet", "Character sheet", npc ? `
