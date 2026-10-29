@@ -171,6 +171,7 @@ $caveRows = @(
   "aaaaaaaaaaaaaaaaaaaaaaaaaa")
 $doc = [ordered]@{
   format = "ordinate-survey-v1"; title = "The Gull Isles (demo)"; ppm = 10; compass = 8; unit = "mi"; party = 4
+  scaleRooms = [ordered]@{ on = $true; builtFor = 4 }     # rooms scale to who walks in (Thornback Cave shows it)
   xpLog = @()
   regions = @(
     [ordered]@{ id = "r1"; name = "The Gull Isles"; threat = 1; hex = $hex.t; notes = 'Home waters: fishing grounds and small islands.' }
@@ -179,7 +180,7 @@ $doc = [ordered]@{
   nodes = @(
     (SNode "kbrind" "Brindleport" "town" 0 0 "r1" 'A fishing harbor on Brindle Isle, where the demo begins. Open its plan for the streets.' @{ origin = $true; seat = $true; charted = $true; services = [ordered]@{ inn = 1; store = 1; market = 1; temple = 1; healer = 1 } })
     (SNode "kgannet" "The Merry Gannet" "ship" (-8) 12 "r1" 'The party''s ship: a stout little two-master. Click her to plan a voyage.')
-    (SNode "kthorn" "Thornback Cave" "cave" 440 362 "r1" 'A sea cave on Thornback Isle, about a day and a half''s sail southeast. Goblins have moved in, and a fisher named Finch hasn''t come home.' @{ charted = $true })
+    (SNode "kthorn" "Thornback Cave" "cave" 440 362 "r1" 'A sea cave on Thornback Isle, about a day and a half''s sail southeast. Goblins have moved in, and a fisher named Finch hasn''t come home. This room scales to who walks in: built for four, so send fewer in and there are fewer goblins (the boss stays, with fewer hit points: an estimate). Its panel shows it before the fight, and Start the battle applies it.' @{ charted = $true })
     (SNode "kchapel" "The Sunken Chapel" "ruin" (-380) 430 "r2" 'An old chapel that slid into the sea a hundred years ago. Its bell tower shows at low tide. Hidden on the sea chart until the ship sails within sight of it.' @{ hidden = $true })
   )
   roads = @()
@@ -199,7 +200,7 @@ $cave = $doc.nodes | Where-Object id -eq 'kthorn'
 $cave.bmap = IMap "Thornback Cave" $caveRows "6,2.4,the goblins' fire;19,1.6,the hoard;6,8.4,a pool" "8,12 7,12 9,12 6,12" "5,3 7,3 6,4 4,2 9,2 17,3 18,4" 'A sea cave: a door of driftwood across the mouth, a campfire in the main cavern, a pool, and a back chamber with the goblins'' hoard. No daylight gets past the door.'
 $cave.site = [ordered]@{
   kind = ""; level = 3; once = $true; waves = 1
-  foes = @([ordered]@{ id = "srd:goblin-boss"; n = "1" }, [ordered]@{ id = "srd:goblin-warrior"; n = "6" })
+  foes = @([ordered]@{ id = "srd:goblin-boss"; n = "1"; scale = "fixed" }, [ordered]@{ id = "srd:goblin-warrior"; n = "6"; scale = "scales" })
   loot = [ordered]@{ coin = 0 }
   items = @((SrdItem "Cloak of Protection"), (SrdItem "Potion of Healing"), (SrdItem "Potion of Healing"), "scroll:spell:misty-step")
   where = [ordered]@{ (SrdItem "Cloak of Protection") = "19,3"; (SrdItem "Potion of Healing") = "19,3" }

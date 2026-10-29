@@ -70,7 +70,7 @@ Go back out to the sea chart and click [[place:kgannet|the Merry Gannet]]. Her p
 
 ## A fight {10 min} {place: kthorn}
 
-Click [[place:kthorn|Thornback Cave]]. Its panel shows who's there (a goblin boss and six goblin warriors), how dangerous that is for this party under the 2024 rules, and what XP it's worth.
+Click [[place:kthorn|Thornback Cave]]. Its panel shows who's there (a goblin boss and six goblin warriors), how dangerous that is for this party under the 2024 rules, and what XP it's worth. The demo scales rooms to who walks in (**Data → This campaign**): send only two in and the panel shows fewer goblins; **Start the battle** makes it so.
 
 1. Press **Enter this place**. Going in is always calm: the goblins are on the map where they stand, but nobody is fighting yet, and the Action box is still the one for outside a fight. Talk your way through if you can.
 2. Press **Start the battle** when it comes to blows, then **Roll initiative.** The turn order shows on both screens.
