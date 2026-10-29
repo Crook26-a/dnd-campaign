@@ -1,0 +1,11 @@
+Avery: {"tough":542,"hits":867} · Gawain: {"tough":634,"hits":2957} · an ordinary level-5 character: {"tough":402,"hits":1242}
+as built (for four at level 5): 1 Bandit Captain, 12 Hobgoblin Warrior, 3 Bugbear Warrior · enemy damage a round 187, enemy hit points 283
+Avery + Gawain, rooms by level (unchanged): 1 Bandit Captain (HP ×0.5), 5 Hobgoblin Warrior, 1 Bugbear Warrior · enemy damage a round 85, enemy hit points 114 · strength 50%
+Avery + Gawain, by CR the old way (one ratio): 1 Bandit Captain (HP ×0.81), 9 Hobgoblin Warrior, 2 Bugbear Warrior · enemy damage a round 142, enemy hit points 207
+Avery + Gawain, by CR split: 1 Bandit Captain (HP ×0.77), 8 Hobgoblin Warrior (HP ×1.05), 2 Bugbear Warrior (HP ×1.05) · enemy damage a round 130, enemy hit points 206 · toughness 73%, hitting power 77%, ×1.05
+an ordinary party of four: 1 Bandit Captain, 12 Hobgoblin Warrior, 3 Bugbear Warrior · enemy damage a round 187, enemy hit points 283 · toughness 100%, hitting power 100%, ×1
+a tough-but-soft pair: 1 Bandit Captain (HP ×0.5), 24 Hobgoblin Warrior (HP ×0.5), 6 Bugbear Warrior (HP ×0.5) · enemy damage a round 358, enemy hit points 272 · toughness 406%, hitting power 5%, ×0.5
+preview, Gawain alone: Scaled for Gawain (level 5): 3 × Hobgoblin Warrior instead of 12, 1 × Bugbear Warrior instead of 3 (to their toughness) · enemies' hit points ×1.51 (to their hitting power, an estimate) · Bandit Captain's hit points ×0.6 (an estimate) · High
+battle started: 3 hobgoblins at 17 HP each (SRD 11) · log "Scaled for Gawain (level 5): Bandit Captain's hit points ×0.6 (an estimate), 3 × Hobgoblin Warrior instead of 12, their hit points ×1.51 (an estimate), 1 × Bugbear Warrior instead of 3, their hit points ×1.51 (an estimate) (by character CR: how many to their toughness, 39%; hit points to their hitting power, 60%: an estimate)"
+Avery joins: Avery de Vonn joined. Bring in 5 more Hobgoblin Warrior and 1 more Bugbear Warrior? Bring them in Not this time
+brought in: 8 hobgoblins, the new ones at 17 HP

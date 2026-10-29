@@ -2042,6 +2042,37 @@ function charCR(c, mode, opts){
 }
 /* "CR 5: tough like CR 3, hits like CR 7" */
 const charCRWords = r => r.fallback ? `CR ${crSay(r.pos)} by level (no full sheet)` : `CR ${crSay(r.pos)}: ${r.why}`;
+/* the ordinary characters the calibration was measured on: a fighter, rogue, wizard and cleric of a level, standard
+   array, no magic items (by the book, 2024 rules) */
+function crRefChar(cls, L){
+  const prof = profByLevel(L), pm = L >= 8 ? 5 : L >= 4 ? 4 : 3, con = 2, hd = { Fighter:10, Rogue:8, Wizard:6, Cleric:8 }[cls];
+  const hp = hd + con + (L - 1) * (hd / 2 + 1 + con);
+  const c = { level:L, cls, hpMax:String(hp), hp:String(hp), attacks:[], spells:[], slots:[], res:[] };
+  if(cls==="Fighter"){ c.ac = L >= 5 ? "18" : "16"; c.attacks = [{ name:"Greatsword", hit:"+" + (prof + pm), dmg:"2d6+" + pm }]; c.res = [{ name:"Action Surge", max:1, used:0 }]; }
+  if(cls==="Rogue"){ c.ac = String(12 + pm); c.attacks = [{ name:"Rapier", hit:"+" + (prof + pm), dmg:"1d8+" + pm }]; }
+  if(cls==="Wizard" || cls==="Cleric"){
+    c.ac = cls==="Wizard" ? "13" : "18"; c.attacks = [{ name:cls==="Wizard" ? "Dagger" : "Mace", hit:"+" + (prof + 2), dmg:(cls==="Wizard" ? "1d4" : "1d6") + "+2" }];
+    c.satk = "+" + (prof + pm); c.dc = String(8 + prof + pm);
+    const sl = FULL_SLOTS[L - 1]; sl.forEach((n, i)=>{ c.slots[i + 1] = { max:n, used:0 }; });
+    c.spells = SRD_SPELLS.filter(s=>new RegExp(cls).test(s.cls||"") && (+s.lv||0) <= sl.length).map(s=>s.id); }
+  return c;
+}
+/* an ordinary character's two halves at a level, as XP (the average of the four references; worked out once a level) */
+const CR_REF_HALVES = {};
+function crRefHalves(L){
+  L = clampLv(L); if(CR_REF_HALVES[L]) return CR_REF_HALVES[L];
+  const R = ["Fighter","Rogue","Wizard","Cleric"].map(k=>charCR(crRefChar(k, L)));
+  return CR_REF_HALVES[L] = { tough:R.reduce((a, r)=>a + crRowAt(r.tough).xp, 0) / R.length, hits:R.reduce((a, r)=>a + crRowAt(r.hits).xp, 0) / R.length };
+}
+/* a character's two halves at full strength, as XP: { tough, hits } (a companion with no level: its stat block's; no sheet: an ordinary one's) */
+function charHalvesXP(c){
+  const lv = clampLv(c && c.level), real = c && c.id ? charById(c.id) : null;
+  if(!real) return crRefHalves(lv);
+  let r;
+  if(String(c.id).startsWith("n:") && !numOr(real.level)){ const m = real.statBlock || (real.fightsAs && real.fightsAs!=="self" ? foeById(real.fightsAs) : null); if(!m) return crRefHalves(lv); r = crOfBlock(m); }
+  else { r = charCR(Object.assign({}, real, { level:lv })); if(r.fallback) return crRefHalves(lv); }
+  return { tough:crRowAt(r.tough).xp, hits:crRowAt(r.hits).xp };
+}
 /* ══════════════════════════════════════════════════════════════
    ROOMS SCALE TO WHO'S IN THEM (Joseph, 2026-10-28). One switch per campaign: root.scaleRooms = { on, builtFor }
    (builtFor: how many characters the rooms were built for; none = the party's size). A room opts out with
@@ -2085,8 +2116,16 @@ function roomBuiltFor(site, n){
    chars: [{ id, name, level }]. Each line: { stage, k, id, name, mode, was, now, xpEach, n (the count to write: as written, or a number), hp?, why } */
 function roomScalePlan(site, chars, n){
   const B = roomBuiltFor(site, n), inRoom = (chars||[]).filter(Boolean), count = inRoom.length;
+  /* split scaling (Joseph, 2026-10-29), only when rooms scale by character CR: how MANY enemies follows the party's
+     toughness (theirs against ordinary characters of the built-for level), and the enemies' HIT POINTS its hitting
+     power against its toughness, so a hard hitter doesn't bring extra attackers down on the softer ones. By level
+     stays as it was: one ratio, the counts by it, a fixed line's hit points by it */
+  const split = strengthByCR() && count ? (()=>{ const ref = crRefHalves(B.level), H = inRoom.map(charHalvesXP);
+    const t = H.reduce((a, h)=>a + h.tough, 0), h = H.reduce((a, x)=>a + x.hits, 0), bt = ref.tough * B.size, bh = ref.hits * B.size;
+    const rT = bt ? t / bt : 1, rH = bh ? h / bh : 1;
+    return { tough:Math.round(t), hits:Math.round(h), builtTough:Math.round(bt), builtHits:Math.round(bh), rT, rH, hpMul:Math.round(Math.max(.5, Math.min(2, rH / rT)) * 100) / 100 }; })() : null;
   const built = strengthOf(Array(B.size).fill({ level:B.level })), have = count ? strengthOf(inRoom) : 0;
-  const ratio = built ? have / built : 1;
+  const ratio = split ? split.rT : built ? have / built : 1;
   const lines = [];
   [{ name:"", foes:(site && site.foes) || [] }, ...siteStages(site).map((s, k)=>({ name:s.name || `Stage ${k+2}`, foes:s.foes || [] }))].forEach((s, si)=>
     s.foes.forEach((f, k)=>{ const m = foeById(f.id), was = expectedCount(f.n), mode = scaleMode(f);
@@ -2103,16 +2142,22 @@ function roomScalePlan(site, chars, n){
     if(off){ L.now = L.was; L.why = off; continue; }
     if(L.mode==="with"){ L.now = count >= L.with ? L.was : 0; if(!L.now) L.n = 0; L.why = count >= L.with ? `${count} in the room: they join (with ${L.with} or more)` : `only with ${L.with} or more; ${count} in the room`; fixedXp += xpOf(L, L.now); }
     else if(L.mode==="fixed"){ L.now = L.was; L.why = String(L.id).startsWith("npc:") ? "a person: always as written" : "fixed"; fixedXp += xpOf(L, L.now);
-      if(L.scaleHp && Math.abs(ratio - 1) > .01){ L.hp = Math.round(Math.max(.5, Math.min(2, ratio)) * 100) / 100; L.why += `, hit points ×${L.hp} (an estimate)`; } }
+      const hr = split ? split.rH : ratio;                                       // split: a boss soaks a strong party's swings
+      if(L.scaleHp && Math.abs(hr - 1) > .01){ L.hp = Math.round(Math.max(.5, Math.min(2, hr)) * 100) / 100; L.why += `, hit points ×${L.hp} (${split ? "to their hitting power, " : ""}an estimate)`; } }
     else scaleXp += xpOf(L, L.was);
   }
   const f = off ? 1 : scaleXp > 0 ? Math.max(0, target - fixedXp) / scaleXp : 1;
   for(const L of lines) if(!off && L.mode==="scales"){
     if(Math.abs(f - 1) < 1e-6){ L.now = L.was; L.why = "scales: as built, for this many"; continue; }      // dice stay dice
-    L.now = L.n = Math.max(1, Math.round(L.was * f)); L.why = L.now===L.was ? "scales: the same for this many" : `scales: ${L.wasText} → ${L.now}`; }
+    const n0 = Math.max(1, Math.round(L.was * f)), cap = split ? Math.max(1, Math.round(L.was * 2)) : Infinity;   // split: never more than double (our cap: a very tough party mustn't bring a horde)
+    L.now = L.n = Math.min(n0, cap); L.why = L.now===L.was ? "scales: the same for this many" : `scales: ${L.wasText} → ${L.now}${n0 > cap ? " (at most double: our cap)" : ""}`; }
+  /* split: the rank and file (scaling lines, and "only with N" ones that come) take hitting power ÷ toughness for their hit points */
+  if(split && !off && Math.abs(split.hpMul - 1) > .01) for(const L of lines) if((L.mode==="scales" || (L.mode==="with" && L.now)) && L.scaleHp!==false){
+    L.hp = split.hpMul; L.why += `, hit points ×${L.hp} (to their hitting power against their toughness, an estimate)`; }
   const nowXp = lines.reduce((a, L)=>a + xpOf(L, L.now), 0), b = count ? budgetFor(inRoom.map(c=>c.level)) : null, verdict = b ? gradeAgainst(nowXp, b) : "";
   return { on:!off, why:off, count, names:inRoom.map(c=>c.name || "Someone"), levels:inRoom.map(c=>clampLv(c.level)), built:{ ...B, strength:built }, strength:have,
-    ratio:Math.round(ratio * 1000) / 1000, roomXp:Math.round(roomXp), target:Math.round(target), nowXp:Math.round(nowXp), verdict, label:verdict ? VERDICT_LABEL[verdict] : "", lines };
+    ratio:Math.round(ratio * 1000) / 1000, roomXp:Math.round(roomXp), target:Math.round(target), nowXp:Math.round(nowXp), verdict, label:verdict ? VERDICT_LABEL[verdict] : "", lines,
+    split:split && !off ? split : null };
 }
 /* who's in a room: the groups standing there (everyone, while the party is together and has no other place), and the
    companions with them (one bonded to a character goes where they go) that count. Each as { id, name, level }. */
@@ -2180,9 +2225,17 @@ function scalePreview(n, st){
   const changed = p.lines.filter(L=>String(L.n)!==String(L.orig) || L.hp);
   const bits = changed.map(L=>L.mode==="with" ? (L.n ? `${L.n} × ${L.name} join` : `no ${L.name}`)
     : L.mode==="scales" ? `${L.n} × ${L.name} instead of ${L.wasText}` : `${L.name}'s hit points ×${L.hp}`);
-  const head = changed.length ? `Scaled for ${who}: ${bits.join(", ")} · ${p.label}` : `Built for this many: ${who}, as written · ${p.label}`;
+  const S = p.split;
+  /* split (rooms scale by character CR): "Scaled for Avery and Gawain: 5 goblins instead of 6 (to their toughness) ·
+     enemies' hit points ×1.4 (to their hitting power, an estimate) · Moderate" */
+  const counts = p.lines.filter(L=>L.mode!=="fixed" && String(L.n)!==String(L.orig)).map(L=>L.mode==="with" ? (L.n ? `${L.n} × ${L.name} join` : `no ${L.name}`) : `${L.n} × ${L.name} instead of ${L.wasText}`);
+  const fixedHp = p.lines.filter(L=>L.mode==="fixed" && L.hp).map(L=>`${L.name}'s hit points ×${L.hp}`);
+  const head = S ? `Scaled for ${who}: ${counts.length ? counts.join(", ") : "as many as written"} (to their toughness)${p.lines.some(L=>L.mode!=="fixed" && L.hp) ? ` · enemies' hit points ×${S.hpMul} (to their hitting power, an estimate)` : ""}${fixedHp.length ? ` · ${fixedHp.join(", ")} (an estimate)` : ""} · ${p.label}`
+    : changed.length ? `Scaled for ${who}: ${bits.join(", ")} · ${p.label}` : `Built for this many: ${who}, as written · ${p.label}`;
   return `<details class="scaleprev"><summary>${esc(head)}</summary>
-    <div class="sbl">Their strength is ${p.strength.toLocaleString()} XP against the ${p.built.strength.toLocaleString()} it was built for (${levelsWord(Array(p.built.size).fill(p.built.level))}): ${Math.round(p.ratio*100)}%. The room's ${p.roomXp.toLocaleString()} XP becomes ${p.target.toLocaleString()}; in whole creatures, ${p.nowXp.toLocaleString()}.</div>
+    ${S ? `<div class="sbl">Their toughness is ${S.tough.toLocaleString()} XP against the ${S.builtTough.toLocaleString()} it was built for (${levelsWord(Array(p.built.size).fill(p.built.level))}, ordinary characters): ${Math.round(S.rT*100)}%, so the room's ${p.roomXp.toLocaleString()} XP becomes ${p.target.toLocaleString()}; in whole creatures, ${p.nowXp.toLocaleString()}.
+      Their hitting power is ${S.hits.toLocaleString()} XP against ${S.builtHits.toLocaleString()}: ${Math.round(S.rH*100)}%, so the enemies' hit points are ×${S.hpMul} (${Math.round(S.rH*100)}% ÷ ${Math.round(S.rT*100)}%, held between ×0.5 and ×2: an estimate), and a fixed one's ×${Math.round(Math.max(.5, Math.min(2, S.rH))*100)/100}.</div>`
+      : `<div class="sbl">Their strength is ${p.strength.toLocaleString()} XP against the ${p.built.strength.toLocaleString()} it was built for (${levelsWord(Array(p.built.size).fill(p.built.level))}): ${Math.round(p.ratio*100)}%. The room's ${p.roomXp.toLocaleString()} XP becomes ${p.target.toLocaleString()}; in whole creatures, ${p.nowXp.toLocaleString()}.</div>`}
     ${p.lines.map(L=>`<div class="sbl"><b>${esc(L.stageName ? `${L.stageName}: ` : "")}${esc(L.name)}</b> ${esc(L.wasText)} → ${esc(String(L.n))} <small>${esc(L.why)}</small></div>`).join("")}
     ${chars.some(c=>c.est) ? `<p class="empty-note" style="font-size:11px;margin:4px 0 0">${esc(andList(chars.filter(c=>c.est).map(c=>c.name||"A companion")))}: no level, so counted at their CR, an estimate.</p>` : ""}
     <p class="empty-note" style="font-size:11px;margin:4px 0 0">${strengthByCR()
@@ -2207,6 +2260,8 @@ function addLineFoes(c, n, L, count, like){
     if(like && like.dormant) x.dormant = { ...like.dormant };
     if(like && like.befriend) x.befriend = like.befriend;
     if(like && c.stealth && c.stealth[like.id]) c.stealth[x.id] = { ...c.stealth[like.id] };
+    const mul = c.scaled && c.scaled.hpDone && c.scaled.hpDone[lineKey(L)];          // the line's hit points already scaled: these come the same
+    if(mul && x.max!=null){ x.max = Math.max(1, Math.round(x.max * mul)); x.hp = x.max; x.hpScale = mul; }
     c.list.push(x); out.push(x);
     if(sib && n && bmapOf(n)) c.pos[x.id] = freeSquareIn(n, sib.x, sib.y);
   }
@@ -2229,10 +2284,13 @@ function scaleLineNow(c, st, n, L){
   c.scaled.lines[lineKey(L)] = { base, target, mode:L.mode };
   if(target < base) dropLineFoes(c, st, present, target); else if(target > base) addLineFoes(c, n, L, target - base, present[present.length-1]);
   let hpWords = "";
-  if(L.mode==="fixed" && L.hp && !c.scaled.hpDone[lineKey(L)]){ c.scaled.hpDone[lineKey(L)] = L.hp;
-    for(const x of present){ if(x.max==null) continue; const was = x.max; x.max = Math.max(1, Math.round(was * L.hp)); x.hp = x.hp>=was ? x.max : Math.max(0, Math.round(x.hp * L.hp)); x.hpScale = L.hp; }
-    hpWords = `${L.name}'s hit points ×${L.hp} (an estimate)`; }
-  return target===base ? hpWords : target ? `${target} × ${L.name} instead of ${base}` : `no ${L.name}`;
+  /* hit points: a fixed line's (the strength ratio, or with split scaling the hitting power), and with split scaling the
+     rank and file's too (hitting power ÷ toughness); every one of the line, once (later arrivals get it in addLineFoes) */
+  if(L.hp && target && !c.scaled.hpDone[lineKey(L)]){ c.scaled.hpDone[lineKey(L)] = L.hp;
+    for(const x of lineFoes(c, L.stage, L)){ if(x.max==null) continue; const was = x.max; x.max = Math.max(1, Math.round(was * L.hp)); x.hp = x.hp>=was ? x.max : Math.max(0, Math.round(x.hp * L.hp)); x.hpScale = L.hp; }
+    hpWords = L.mode==="fixed" ? `${L.name}'s hit points ×${L.hp} (an estimate)` : `their hit points ×${L.hp} (an estimate)`; }
+  if(L.mode==="fixed") return target===base ? hpWords : target ? `${target} × ${L.name} instead of ${base}` : `no ${L.name}`;
+  return [target===base ? "" : target ? `${target} × ${L.name} instead of ${base}` : `no ${L.name}`, hpWords && (target===base ? `${L.name}'s ${hpWords.slice(6)}` : hpWords)].filter(Boolean).join(", ");
 }
 const scaleWho = W => `${andList(W.map(c=>c.name || "Someone"))} (${levelsWord(W.map(c=>clampLv(c.level)))})`;
 /* Start the battle: scale the room's own lines to who's in the room */
@@ -2244,7 +2302,7 @@ function applyRoomScale(st){
   c.scaled = { who:who.map(w=>({ ...w })), lines:{}, hpDone:{}, declined:[] };
   const bits = plan.lines.filter(L=>L.stage===0).map(L=>scaleLineNow(c, st, n, L)).filter(Boolean);
   if(battleOf && c.pos) placeTokens(c);
-  gameLog("fight", `Scaled for ${scaleWho(who)}: ${bits.length ? bits.join(", ") : "as written, built for this many"}`);
+  gameLog("fight", `Scaled for ${scaleWho(who)}: ${bits.length ? bits.join(", ") : "as written, built for this many"}${plan.split ? ` (by character CR: how many to their toughness, ${Math.round(plan.split.rT*100)}%; hit points to their hitting power, ${Math.round(plan.split.rH*100)}%: an estimate)` : ""}`);
 }
 /* a later stage coming in: its lines scaled for whoever the fight is counting */
 function scaleStageIn(st, n, stg){
