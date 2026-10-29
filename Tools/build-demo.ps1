@@ -200,7 +200,7 @@ $cave = $doc.nodes | Where-Object id -eq 'kthorn'
 $cave.bmap = IMap "Thornback Cave" $caveRows "6,2.4,the goblins' fire;19,1.6,the hoard;6,8.4,a pool" "8,12 7,12 9,12 6,12" "5,3 7,3 6,4 4,2 9,2 17,3 18,4" 'A sea cave: a door of driftwood across the mouth, a campfire in the main cavern, a pool, and a back chamber with the goblins'' hoard. No daylight gets past the door.'
 $cave.site = [ordered]@{
   kind = ""; level = 3; once = $true; waves = 1
-  foes = @([ordered]@{ id = "srd:goblin-boss"; n = "1"; scale = "fixed" }, [ordered]@{ id = "srd:goblin-warrior"; n = "6"; scale = "scales" })
+  foes = @([ordered]@{ id = "npc:ln_skrag"; n = "1" }, [ordered]@{ id = "srd:goblin-warrior"; n = "6"; scale = "scales" })   # Skrag, a person: always himself, his hit points follow
   loot = [ordered]@{ coin = 0 }
   items = @((SrdItem "Cloak of Protection"), (SrdItem "Potion of Healing"), (SrdItem "Potion of Healing"), "scroll:spell:misty-step")
   where = [ordered]@{ (SrdItem "Cloak of Protection") = "19,3"; (SrdItem "Potion of Healing") = "19,3" }
@@ -219,6 +219,7 @@ $library = [ordered]@{
     (LNpc "ln_mira" "Sister Mira" "Keeper of the Shrine of the Tide" "Shrine of the Tide" 'Young, barefoot, salt-white robes, a shell on a cord around her neck.' 'Quiet, then suddenly very direct.' 'To find the Sunken Chapel and ring its bell again.' 'The old story of the chapel, and roughly where it went down.')
     (LNpc "ln_tamsin" "Tamsin Wick" "Shopkeeper, Wick & Wax" "Wick & Wax" 'Ink-stained fingers, three pencils in her hair.' 'Haggles out loud with herself before you can.' 'Customers who argue the price; it''s the best part.' 'What everyone in town has bought this month.')
     (LNpc "ln_finch" "Finch" "A fisher, held by the goblins" "Thornback Cave" 'Wiry, sunburned, tied up by the pool and very glad to see anyone.' 'Talks fast when scared; swears by "the Gulls."' 'To go home.' 'How many goblins there are, and that their boss keeps the key to the chest on his belt.')
+    (LNpc "ln_skrag" "Skrag" "The goblin boss of Thornback Cave" "Thornback Cave" 'Scarred and twitchy, a gull-skull helmet, the chest key on a thong at his belt.' 'Shrill; counts his warriors out loud.' 'More boats to raid, and nobody to tell him no.' 'That the townsfolk will pay to get Finch back.')
   )
   loot = @(
     (LLoot "ll_shell" "A whistling seashell" "curio" "2 gp" 'Hums a different note for every wind. Made up for the demo.')
@@ -232,8 +233,11 @@ SheetFromSrd ($library.npcs | Where-Object id -eq 'ln_tamsin') "Commoner"
 SheetFromSrd ($library.npcs | Where-Object id -eq 'ln_finch') "Commoner"
 ($library.npcs | Where-Object id -eq 'ln_finch').fightsAs = ""      # he's tied up: not in the fight
 ($library.npcs | Where-Object id -eq 'ln_finch').Remove('statBlock')
+# Skrag: the cave's boss as a person (a demo villain with Tactics filled in; Size them up reads the party from his card)
+$skrag = $library.npcs | Where-Object id -eq 'ln_skrag'; SheetFromSrd $skrag "Goblin Boss"
+$skrag.tactics = 'Hangs back by the fire and sends his warriors at whoever looks weakest; once two have fallen he slips away (Nimble Escape) toward the hoard.'
 foreach ($n in $library.npcs) { if ($n.id -in @('ln_bess', 'ln_odo')) { $n.key = $true } }
-$alignOf = @{ ln_bess = "Neutral Good"; ln_odo = "Lawful Neutral"; ln_mira = "Neutral Good"; ln_tamsin = "Chaotic Good"; ln_finch = "Neutral" }
+$alignOf = @{ ln_bess = "Neutral Good"; ln_odo = "Lawful Neutral"; ln_mira = "Neutral Good"; ln_tamsin = "Chaotic Good"; ln_finch = "Neutral"; ln_skrag = "Chaotic Evil" }
 foreach ($n in $library.npcs) { $n.align = $alignOf[$n.id] }
 $doc.library = $library
 $npcAt = @{ pgull = @("ln_bess"); pharbor = @("ln_odo"); pshrine = @("ln_mira"); pshop = @("ln_tamsin") }

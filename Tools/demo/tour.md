@@ -70,13 +70,15 @@ Go back out to the sea chart and click [[place:kgannet|the Merry Gannet]]. Her p
 
 ## A fight {10 min} {place: kthorn}
 
-Click [[place:kthorn|Thornback Cave]]. Its panel shows who's there (a goblin boss and six goblin warriors), how dangerous that is for this party under the 2024 rules, and what XP it's worth. The demo scales rooms to who walks in (**Data → This campaign**): send only two in and the panel shows fewer goblins; **Start the battle** makes it so.
+Click [[place:kthorn|Thornback Cave]]. Its panel shows who's there (Skrag, the goblin boss, and six goblin warriors), how dangerous that is for this party under the 2024 rules, and what XP it's worth. The demo scales rooms to who walks in (**Data → This campaign**): send only two in and the panel shows fewer goblins; **Start the battle** makes it so.
 
 1. Press **Enter this place**. Going in is always calm: the goblins are on the map where they stand, but nobody is fighting yet, and the Action box is still the one for outside a fight. Talk your way through if you can.
 2. Press **Start the battle** when it comes to blows, then **Roll initiative.** The turn order shows on both screens.
 3. The **Action box** becomes the fight's own: whoever's turn it is, their attacks and spells, add-ons like Sneak Attack, and **Roll** for the damage (dice doubled on a crit). Click any token or name in the turn order for their card, whoever's turn it is.
 4. The cave is dark: only the goblins' campfire lights it. Each character sees only what their eyes can.
 5. The chest at the back is locked. Click it: the panel shows how hard the lock is, and a search with a Perception check can turn up what's hidden.
+6. Click **Skrag**. His card has **Tactics and what they know** (only you see it): how he fights, already filled in. With him picked, the Action box has **Size them up**: what he makes of the party, at full strength (his Investigation) or as they are now (his Insight). Press **Roll**, or type the d20 you rolled at the table; what he believes (true, partly true, or plain wrong) goes on his card under **What they know about the party**, and in the game log.
+7. Cast a concentration spell (Hilde Copperbraid's Bless, say): her card says **Concentrating: Bless** with the rounds left, and her token gets a small **C**, on the TV too, as a reminder. When she takes damage, the Action box asks for her Constitution save; at 0 hit points, or Incapacitated, it ends by itself.
 
 **Next turn** moves the fight along. **End the battle** lays the fallen out to search and leaves the cave calm again, and the place's panel offers the party the XP.
 
@@ -86,6 +88,7 @@ While you paint a map in Build, hold **Space** and drag (or drag with the middle
 
 The party is along the top bar: click one for their card, with hit points, spell slots, resources, conditions, death saves and rests. **☰ More** › **Party & XP** awards XP. They're built to the 2024 rules from the free SRD 5.2: a fighter, a rogue, a cleric and a wizard.
 
+- Under each name, their strength rated like a monster's, **at full** and **now**: "CR 2: tough like CR 2, hits like CR 3", with its XP. It's our own estimate from their sheet (their hit points, AC, attacks and spells), and "now" drops as they're hurt and spend their slots. **Data → This campaign** chooses whether rooms scale, and villains read the party, by level or by this CR.
 - **Big sheet** on any of them shows the whole character sheet, large.
 - **Short rest** and **Long rest** bring back what each rest brings back.
 - Their inventory tracks coins, items and attunement.
