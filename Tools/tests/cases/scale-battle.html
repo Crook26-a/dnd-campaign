@@ -1,0 +1,49 @@
+// uses: nothing
+<script>
+/* rooms scale to who walks in, stage 3: Start the battle applies it. Built for 4 at level 5; Anna and Bram walk in:
+   fewer goblins (the last ones go, their gear stays with the rest), the "only with 3+" ghoul doesn't come (its gear
+   stays in the room), the captain's hit points halve (an estimate); the log says so; the stage comes in scaled; Cass
+   walking in gets an offer, not a change; XP is what was fought; the switch off or the room opted out: as written */
+const __SB = { format:"ordinate-survey-v1", title:"Scale Battle", ppm:10, unit:"mi", party:3, scaleRooms:{ on:true, builtFor:4 },
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna", level:5 }, { id:"pb", name:"Bram", level:5 }, { id:"pc", name:"Cass", level:5 }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }, { id:"g2", members:["pc"], at:{ map:"h", node:"kit" } }],
+  library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright",
+      foes:[{ id:"srd:goblin-warrior", n:6 }, { id:"srd:bandit-captain", n:1 }, { id:"srd:ghoul", n:1, scale:"with", scaleWith:3 }], stages:[{ name:"Reinforcements", foes:[{ id:"srd:skeleton", n:4 }] }] },
+      bmap:{ name:"The Hall", rows:["##############","#............#","#............#","#............#","#............#","#............#","##############"], start:{ party:[[2,2],[3,2]], enemy:[[8,1],[9,1],[10,1],[8,2],[9,2],[10,2],[8,3],[9,3]] } } },
+    { id:"kit", name:"The Kitchen", kind:"hall", x:200, y:100, w:6, d:6 } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = []; const txt = el => el ? el.innerText.replace(/\s+/g,' ').trim() : 'none';
+ const count = c => { const o = {}; for(const x of c.list.filter(x=>!x.ally && !x.neutral)) o[(foeById(x.foe)||{}).name] = (o[(foeById(x.foe)||{}).name]||0) + 1; return JSON.stringify(o); };
+ const gear = (c, id) => c.list.filter(x=>x.foe===id).reduce((a, x)=>a + (x.inv||[]).length, 0);
+ const logs = k => root.gameLog.slice(-k).map(e=>e.text).join(' / ');
+ try{
+  loadJSONNow(JSON.stringify(__SB)); await wait(300); setDmMode(true); await wait(50);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'), st = hall.site; openBattle(hall); await wait(120);
+  const c = st.combat, cap = c.list.find(x=>x.foe==='srd:bandit-captain');
+  const gobGear = gear(c, 'srd:goblin-warrior'), ghoulGear = c.list.find(x=>x.foe==='srd:ghoul').inv.map(e=>e.id).filter(Boolean);
+  out.push('calm: ' + count(c) + ' · lines tagged ' + c.list.every(x=>x.line!=null) + ' · captain hp ' + cap.hp + '/' + cap.max);
+  beginBattle(st); renderBattlePanel(); await wait(60);
+  out.push('started: ' + count(c) + ' · goblin gear kept ' + (gear(c, 'srd:goblin-warrior')===gobGear) + ' (' + gobGear + ') · ghoul gear in the room ' + ghoulGear.every(id=>(st.items||[]).some(t=>baseId(t)===id)) + ' · captain hp ' + cap.hp + '/' + cap.max + ' (×' + cap.hpScale + ')');
+  out.push('  on the map: ' + c.list.every(x=>c.pos[x.id]) + ' · log: ' + logs(2));
+  /* the stage comes in, scaled for the two */
+  const stageBtn = document.querySelector('[data-fa="stage"]'); if(stageBtn) stageBtn.click(); await wait(60);
+  out.push('stage: ' + (stageBtn ? 'clicked' : 'NO BUTTON') + ' · ' + count(c) + ' · log: ' + logs(2));
+  /* Cass walks in: an offer, nothing changes until it's taken */
+  root.groups[1].at = { map:"h", node:"hall" }; renderBattlePanel(); await wait(40);
+  const offer = () => document.querySelector('.scaleoffer');
+  out.push('Cass in: offer "' + txt(offer()) + '" · still ' + count(c));
+  offer().querySelector('[data-scaleoffer="yes"]').click(); await wait(60);
+  out.push('  taken: ' + count(c) + ' · offer gone ' + !offer() + ' · counted ' + c.scaled.who.map(w=>w.name).join(', ') + ' · new ones on the map ' + c.list.every(x=>c.pos[x.id]) + ' carry ' + c.list.filter(x=>x.scaledIn).reduce((a, x)=>a + x.inv.length + purseGp(x.purse), 0) + ' · log: ' + logs(1));
+  /* XP: what was fought */
+  for(const x of c.list) x.hp = 0;
+  const pool = c.list.reduce((a, x)=>a + (foeById(x.foe).xp||0), 0); endTheFight(st, hall, c, true); await wait(30);
+  out.push('XP pool ' + (st.xpDue && st.xpDue.pool) + ' = fought ' + pool);
+  /* off, and a room opting out: as written */
+  root.scaleRooms.on = false; startFight(st); beginBattle(st); out.push('switch off: ' + count(st.combat) + ' · scaled ' + !!st.combat.scaled);
+  root.scaleRooms.on = true; st.noScale = true; startFight(st); beginBattle(st); out.push('room opted out: ' + count(st.combat) + ' · scaled ' + !!st.combat.scaled);
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

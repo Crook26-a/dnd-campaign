@@ -1,0 +1,9 @@
+calm: {"Goblin Warrior":6,"Bandit Captain":1,"Ghoul":1} · lines tagged true · captain hp 52/52
+started: {"Goblin Warrior":2,"Bandit Captain":1} · goblin gear kept true (12) · ghoul gear in the room true · captain hp 26/26 (×0.5)
+on the map: true · log: Scaled for Anna and Bram (2 × level 5): 2 × Goblin Warrior instead of 6, Bandit Captain's hit points ×0.5 (an estimate), no Ghoul / A fight began at The Hall: 2 × Goblin Warrior, Bandit Captain
+stage: clicked · {"Goblin Warrior":2,"Bandit Captain":1,"Skeleton":1} · log: Reinforcements joined the fight at The Hall: Skeleton / Reinforcements, scaled for Anna and Bram (2 × level 5): 1 × Skeleton instead of 4
+Cass in: offer "Cass joined. Bring in 1 more Goblin Warrior, 1 more Ghoul and 1 more Skeleton? Bring them in Not this time" · still {"Goblin Warrior":2,"Bandit Captain":1,"Skeleton":1}
+taken: {"Goblin Warrior":3,"Bandit Captain":1,"Skeleton":2,"Ghoul":1} · offer gone true · counted Anna, Bram, Cass · new ones on the map true carry 0 · log: Cass joined: 1 more Goblin Warrior, 1 more Ghoul and 1 more Skeleton came in
+XP pool 900 = fought 900
+switch off: {"Goblin Warrior":6,"Bandit Captain":1,"Ghoul":1} · scaled false
+room opted out: {"Goblin Warrior":6,"Bandit Captain":1,"Ghoul":1} · scaled false

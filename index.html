@@ -1144,6 +1144,7 @@
   .scaleprev{margin:4px 0 8px;font-size:12px}
   .scaleprev summary{cursor:pointer}
   p.scaleprev.off{font-size:11px;color:var(--ink-faint)}
+  .scaleoffer{border:1px solid var(--r3);border-radius:4px;padding:6px 8px;margin:4px 0 8px;font-size:12px;background:var(--paper)}
   #bigsheet .bs-card{background:var(--paper-lit);color:var(--ink);border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 40px rgba(0,0,0,.45);
     width:min(1180px,100%);max-height:100%;overflow:auto;padding:22px 26px 26px;font-family:var(--serif)}
   #bigsheet .bs-head{display:flex;align-items:flex-start;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:14px}
@@ -1909,6 +1910,7 @@ const levelsWord = L => !L.length ? "" : L.every(l=>l===L[0]) ? (L.length===1 ? 
 /* the room panel's preview (calm): what the room would be for who's in it now, and how it's worked out */
 function scalePreview(n, st){
   if(!scaleOn() || !st || !allSiteFoes(st).length) return "";
+  if(st.combat && st.combat.scaled) return `<p class="scaleprev off">Scaled for ${esc(scaleWho(st.combat.scaled.who))} when the battle started (the game log says how).</p>`;
   const chars = roomChars(planOf || "survey", n.id), p = roomScalePlan(st, chars, n);
   if(!p.on) return `<p class="scaleprev off">${st.noScale ? "This room doesn't scale: as written, whoever walks in." : "Nobody's in the room yet: it scales to whoever walks in."}</p>`;
   const who = `${andList(p.names)} (${levelsWord(p.levels)})`;
@@ -1922,6 +1924,98 @@ function scalePreview(n, st){
     ${chars.some(c=>c.est) ? `<p class="empty-note" style="font-size:11px;margin:4px 0 0">${esc(andList(chars.filter(c=>c.est).map(c=>c.name||"A companion")))}: no level, so counted at their CR, an estimate.</p>` : ""}
     <p class="empty-note" style="font-size:11px;margin:4px 0 0">Strength is the SRD 5.2 XP budget per character, added up. Nothing changes until the battle starts.</p></details>`;
 }
+/* stage 3: Start the battle applies the plan. c.scaled = { who:[the people counted], lines:{ "<stage>:<k>":{ base, target, mode } },
+   declined:[ids] }. An enemy made from a room's line carries x.line (its index) and x.stg (0 for the room's own, k for stage k);
+   one from a fight entered before lines were tagged matches its line by creature. More of a line come in beside their own
+   group carrying nothing (loot doesn't scale); fewer: the last ones go, and what they carried stays with the rest of their
+   line (or in the room, when the whole line goes). A fixed line's hit points follow when ticked (an estimate). */
+const lineKey = L => `${L.stage}:${L.k}`;
+function lineFoes(c, stg, L){ return c.list.filter(x=>!x.ally && !x.neutral && (x.stg||0)===stg && (x.line===L.k || (x.line==null && x.foe===L.id))); }
+/* bring `count` more of a line in, beside its own group */
+function addLineFoes(c, n, L, count, like){
+  const m = foeById(L.id); if(!m || count < 1) return [];
+  const max = foeMaxHp(m), mates = c.list.filter(x=>x.foe===L.id), out = [];
+  if(mates.length===1 && mates[0].label===m.name) mates[0].label = `${m.name} 1`;              // one becomes one of several
+  const sib = like && c.pos && c.pos[like.id];
+  for(let i=0; i<count; i++){
+    const x = foeBelongings({ id:uid("fx"), foe:L.id, label:`${m.name} ${mates.length + i + 1}`, hp:max, max, used:{}, spent:{}, conds:[], inv:[], purse:{}, line:L.k, stg:L.stage, scaledIn:true });
+    if(like && like.dormant) x.dormant = { ...like.dormant };
+    if(like && like.befriend) x.befriend = like.befriend;
+    if(like && c.stealth && c.stealth[like.id]) c.stealth[x.id] = { ...c.stealth[like.id] };
+    c.list.push(x); out.push(x);
+    if(sib && n && bmapOf(n)) c.pos[x.id] = freeSquareIn(n, sib.x, sib.y);
+  }
+  return out;
+}
+/* take the last ones of a line away; what they carried goes to the rest of their line, or into the room */
+function dropLineFoes(c, st, present, keep){
+  const gone = present.slice(keep), stay = present[keep-1];
+  for(const x of gone){
+    if(stay){ stay.inv = [...(stay.inv||[]), ...(x.inv||[])]; for(const [k] of COINS) if((x.purse||{})[k]) stay.purse[k] = (+stay.purse[k]||0) + x.purse[k]; }
+    else { for(const e of x.inv||[]) if(e.id) placeItem(st, e.id); const p = x.purse||{}; if(purseGp(p)){ st.coins = st.coins || {}; for(const [k] of COINS) if(p[k]) st.coins[k] = (+st.coins[k]||0) + p[k]; } }
+    c.list = c.list.filter(y=>y!==x); if(c.pos) delete c.pos[x.id]; if(c.stealth) delete c.stealth[x.id];
+  }
+  return gone.length;
+}
+/* one line, as the plan says: returns the words for the log ("3 × Goblin Warrior instead of 6"), or "" */
+function scaleLineNow(c, st, n, L){
+  const present = lineFoes(c, L.stage, L), base = present.length; if(!base) return "";     // rolled away (a chance it isn't here)
+  const target = L.mode==="with" ? (L.n ? base : 0) : L.mode==="scales" ? Math.max(1, Math.round(base * L.now / L.was)) : base;
+  c.scaled.lines[lineKey(L)] = { base, target, mode:L.mode };
+  if(target < base) dropLineFoes(c, st, present, target); else if(target > base) addLineFoes(c, n, L, target - base, present[present.length-1]);
+  let hpWords = "";
+  if(L.mode==="fixed" && L.hp && !c.scaled.hpDone[lineKey(L)]){ c.scaled.hpDone[lineKey(L)] = L.hp;
+    for(const x of present){ if(x.max==null) continue; const was = x.max; x.max = Math.max(1, Math.round(was * L.hp)); x.hp = x.hp>=was ? x.max : Math.max(0, Math.round(x.hp * L.hp)); x.hpScale = L.hp; }
+    hpWords = `${L.name}'s hit points ×${L.hp} (an estimate)`; }
+  return target===base ? hpWords : target ? `${target} × ${L.name} instead of ${base}` : `no ${L.name}`;
+}
+const scaleWho = W => `${andList(W.map(c=>c.name || "Someone"))} (${levelsWord(W.map(c=>clampLv(c.level)))})`;
+/* Start the battle: scale the room's own lines to who's in the room */
+function applyRoomScale(st){
+  const c = st.combat; if(!c || c.scaled || !scaleOn() || st.noScale) return;
+  const n = (doc.nodes||[]).find(q=>q.site===st); if(!n) return;
+  const who = roomChars(planOf || "survey", n.id); if(!who.length) return;
+  const plan = roomScalePlan(st, who, n); if(!plan.on) return;
+  c.scaled = { who:who.map(w=>({ ...w })), lines:{}, hpDone:{}, declined:[] };
+  const bits = plan.lines.filter(L=>L.stage===0).map(L=>scaleLineNow(c, st, n, L)).filter(Boolean);
+  if(battleOf && c.pos) placeTokens(c);
+  gameLog("fight", `Scaled for ${scaleWho(who)}: ${bits.length ? bits.join(", ") : "as written, built for this many"}`);
+}
+/* a later stage coming in: its lines scaled for whoever the fight is counting */
+function scaleStageIn(st, n, stg){
+  const c = st.combat; if(!c || !c.scaled) return "";
+  const plan = roomScalePlan(st, c.scaled.who, n); if(!plan.on) return "";
+  return plan.lines.filter(L=>L.stage===stg).map(L=>scaleLineNow(c, st, n, L)).filter(Boolean).join(", ");
+}
+/* someone walks in mid-fight: what more the room would bring in (an offer in the Action box, never by itself) */
+function scaleJoinOffer(st, n){
+  const c = st && st.combat; if(!c || !c.scaled || calmOf(c) || !scaleOn() || st.noScale) return null;
+  const counted = new Set([...c.scaled.who.map(w=>w.id), ...c.scaled.declined]);
+  const newcomers = roomChars(planOf || "survey", n.id).filter(w=>!counted.has(w.id)); if(!newcomers.length) return null;
+  const plan = roomScalePlan(st, [...c.scaled.who, ...newcomers], n), adds = [];
+  for(const L of plan.lines){ const r = c.scaled.lines[lineKey(L)]; if(!r || L.stage > (c.stage||0)) continue;
+    const want = L.mode==="with" ? (L.n ? r.base : 0) : L.mode==="scales" ? Math.max(1, Math.round(r.base * L.now / L.was)) : r.base;
+    if(want > r.target) adds.push({ L, more:want - r.target }); }
+  return { newcomers, adds };
+}
+function scaleOfferHtml(st, n){
+  const o = scaleJoinOffer(st, n); if(!o) return "";
+  const names = andList(o.newcomers.map(w=>w.name || "Someone"));
+  return `<div class="scaleoffer"><p style="margin:0 0 4px"><b>${esc(names)} joined.</b> ${o.adds.length ? `Bring in ${esc(andList(o.adds.map(a=>`${a.more} more ${a.L.name}`)))}?` : "The room needs nothing more for them."}</p>
+    <div class="pcrow">${o.adds.length ? `<button class="btn" style="flex:1" data-scaleoffer="yes">Bring them in</button><button class="btn" style="flex:1" data-scaleoffer="no">Not this time</button>` : `<button class="btn wide" data-scaleoffer="yes">Count them in</button>`}</div></div>`;
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-scaleoffer]"); if(!b || !battleOf) return;
+  const n = bnode(), st = n && n.site, c = st && st.combat, o = st && scaleJoinOffer(st, n); if(!o) return;
+  const names = andList(o.newcomers.map(w=>w.name || "Someone"));
+  if(b.dataset.scaleoffer==="no"){ c.scaled.declined.push(...o.newcomers.map(w=>w.id)); gameLog("fight", `${names} joined; the room stayed as it was`); }
+  else { c.scaled.who.push(...o.newcomers.map(w=>({ ...w })));
+    for(const a of o.adds){ const r = c.scaled.lines[lineKey(a.L)], present = lineFoes(c, a.L.stage, a.L); addLineFoes(c, n, a.L, a.more, present[present.length-1]); r.target += a.more; }
+    if(c.pos) placeTokens(c);
+    gameLog("fight", `${names} joined${o.adds.length ? `: ${andList(o.adds.map(a=>`${a.more} more ${a.L.name}`))} came in` : ""}`); }
+  touch(); renderBattle(); renderBattlePanel(); sendPlayers();
+});
+
 function scaleRefresh(){
   try{ if(editingInside()) renderEditPanel(); else if(battleOf) renderBattlePanel(); else renderInspect(); }catch(err){}
   renderPane(true); const d = document.getElementById("pane-data"); if(d && !d.hidden && typeof renderData==="function") renderData(); }
@@ -9084,7 +9178,7 @@ function startFight(st){
     if(f.chance!=null && f.chance<1 && Math.random() >= f.chance) return;
     const m = foeById(f.id), count = rollCount(f.n??1), max = foeMaxHp(m);
     for(let i=0;i<count;i++){
-      const x = { id:uid("fx"), foe:f.id, label:`${m?m.name:"Foe"}${count>1?` ${i+1}`:""}`, hp:max, max, used:{}, spent:{}, conds:[] };
+      const x = { id:uid("fx"), foe:f.id, label:`${m?m.name:"Foe"}${count>1?` ${i+1}`:""}`, hp:max, max, used:{}, spent:{}, conds:[], line:fi };
       /* what Build set up: what each one carries, and the square each one starts on */
       if(f.kit && f.kit.foe===f.id && Array.isArray(f.kit.inv)){ x.inv = JSON.parse(JSON.stringify(f.kit.inv)); x.purse = { ...(f.kit.purse||{}) }; if(f.kit.pdc!=null) x.pdc = f.kit.pdc; }
       if(st.at && st.at[`f:${fi}:${i}`]) x.at = { ...st.at[`f:${fi}:${i}`] };
@@ -9110,6 +9204,7 @@ const calmHere = () => { const n = battleOf ? bnode() : null; return !!(n && n.s
 function beginBattle(st){
   if(!st.combat) startFight(st);
   const c = st.combat; c.calm = false; c.round = c.round || 1;
+  applyRoomScale(st);                                  // rooms scale to who walks in (the campaign's switch)
   c.statsAt = statSnap();                               // where everyone's tallies stood: the fight's XP card counts from here
   const foesNow = c.list.filter(x=>!x.ally && !x.neutral && !(x.max && x.hp<=0) && !x.fled && !x.dormant), by = {};
   for(const x of foesNow){ const nm = (foeById(x.foe)||{}).name||"foe"; by[nm] = (by[nm]||0)+1; }
@@ -9521,10 +9616,12 @@ function wireFight(n, st){
       /* the next stage joins: its foes come in against the party, on its own starting squares if it has them */
       const S = siteStages(st), k = c.stage||0, s = S[k]; if(!s) return;
       const added = [];
-      for(const f of (s.foes||[])){
-        if(f.chance!=null && f.chance<1 && Math.random() >= f.chance) continue;
-        const cnt = rollCount(f.n??1); for(let i=0;i<cnt;i++){ const nx = addToFight(c, f.id, false); if(nx) added.push(nx); }
-      }
+      (s.foes||[]).forEach((f, li)=>{
+        if(f.chance!=null && f.chance<1 && Math.random() >= f.chance) return;
+        const cnt = rollCount(f.n??1); for(let i=0;i<cnt;i++){ const nx = addToFight(c, f.id, false); if(nx){ nx.line = li; nx.stg = k+1; added.push(nx); } }
+      });
+      const scaledWords = scaleStageIn(st, n, k+1);
+      if(scaledWords){ added.length = 0; added.push(...c.list.filter(x=>x.stg===k+1)); }
       c.stage = k+1;
       if(c.pos){
         const taken = new Set(Object.values(c.pos).map(p=>p.x+","+p.y)), spots = (s.start||[]).filter(([x,y])=>!taken.has(x+","+y));
@@ -9533,6 +9630,7 @@ function wireFight(n, st){
       }
       const nm = s.name || `Stage ${k+2}`;
       gameLog("fight", `${nm} joined the fight${placeOfSite(st)?` at ${placeOfSite(st)}`:""}: ${added.map(x=>x.label).join(", ")||"nobody"}`);
+      if(scaledWords) gameLog("fight", `${nm}, scaled for ${scaleWho(c.scaled.who)}: ${scaledWords}`);
       flash(`${nm}: ${added.length} join${added.length===1?"s":""} the fight.`);
     }
     else if(a==="round") newRound(c);
@@ -12618,6 +12716,7 @@ function renderBattlePanelNow(){
       <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
       <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p></div>`
     : `<div class="bt-acts"><div class="fighthead"><span>Round <b>${c.round}</b></span><span>${cur?`Turn: <b>${esc(cur.label)}</b>`:"Roll initiative to begin"}</span></div>
+    ${scaleOfferHtml(st, n)}
     ${c.wakeFight ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">Started by a waking: it ends by itself, calm again, once whatever woke is down.</p>` : ""}
     ${wakeNextBtn(c)}
     <div class="pcrow bt-turnctl"><button class="btn" style="flex:1" data-ba="init">Roll initiative</button><button class="btn" style="flex:1" data-ba="next">Next turn</button></div>
