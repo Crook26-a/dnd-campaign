@@ -1,0 +1,35 @@
+// uses: nothing
+<script>
+/* the card window in table mode (Joseph, 2026-10-28): Give to says so in the window itself and the drawer's party card
+   shows it; Show on the TV opens the players' screen if need be, steps aside, and opens its panel (it used to cover the
+   top bar, so the players' screen couldn't be opened) */
+const __DG = { format:"ordinate-survey-v1", title:"Diag", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Anna", level:5 }, { id:"pb", name:"Bram", level:5 }],
+  library:{ npcs:[], foes:[], loot:[{ id:"ll1", name:"Lantern of Ashes", kind:"magic item", rarity:"Rare", desc:"Sees the invisible." }], encounters:[], shops:[], factions:[] } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ const opened = async () => { for(let i = 0; i < 60 && document.getElementById('cardview').hidden; i++) await wait(50); await wait(30); };   // the picture takes its time to draw
+ const under = el => { if(!el) return 'missing'; const r = el.getBoundingClientRect(); if(!r.width) return 'not drawn'; const h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+   return h===el || el.contains(h) ? 'reachable' : 'COVERED by ' + (h ? (h.id || h.className || h.tagName) : 'nothing'); };
+ try{
+  window.open = () => null;          // no real second window in a test: the players' screen counts as blocked
+  loadJSONNow(JSON.stringify(__DG)); await wait(300); setDmMode(true); await wait(80);
+  openDrawer('party'); await wait(60); openDrawer('library'); await wait(40);
+  libTab = 'loot'; libOpen = 'll1'; openDrawer('library'); await wait(80);
+  document.querySelector('#tdrawer [data-cardopen="loot:ll1"]').click(); await opened();
+  const cv = document.getElementById('cardview'), sel = cv.querySelector('[data-cardgive]');
+  out.push('give box: ' + under(sel) + ' · options ' + [...sel.options].map(o=>o.text).join('/'));
+  sel.value = 'pb'; sel.dispatchEvent(new Event('change', { bubbles:true })); await wait(60);
+  const said = document.getElementById('cv-said');
+  out.push('after giving: Bram has ' + (root.roster[1].inv||[]).map(e=>e.id).join(',') + ' · in the window ' + (said.hidden ? 'nothing' : '"' + said.textContent + '"') + ' (' + under(said) + ')');
+  cv.querySelector('[data-cardact="tv"]').click(); await wait(300);
+  const ps = document.getElementById('pscreen');
+  out.push('after TV: showing ' + playerShow.kind + ' · card window open ' + !cv.hidden + ' · Players\' screen button ' + under(document.getElementById('pscreenBtn')));
+  out.push('panel open ' + !ps.hidden + ' · says "' + (ps.querySelector('.ps-st.on') ? ps.querySelector('.ps-st.on').textContent.slice(0, 40) : '-') + '" · The map ' + under(ps.querySelector('[data-ps="show"][data-k="map"]')) + ' · Open ' + under(ps.querySelector('[data-ps="open"]')));
+  ps.querySelector('[data-ps="show"][data-k="map"]').click(); await wait(60); out.push('The map: showing ' + playerShow.kind);
+  openDrawer('party'); await wait(80);
+  out.push('party card in the drawer: ' + [...document.querySelectorAll('#tdrawer [data-cardopen]')].map(b=>b.dataset.cardopen).join(', '));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

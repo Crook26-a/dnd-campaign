@@ -9,8 +9,10 @@ const __CD = { format:"ordinate-survey-v1", title:"Gull Isles", ppm:10, unit:"mi
     foes:[], loot:[{ id:"ll1", name:"Lantern of Ashes", kind:"magic item", rarity:"Rare", value:"400 gp", wt:"2", desc:"While lit, you see invisible creatures within 30 feet.", attune:true, charges:"3", regain:"1d3", notes:"SECRET-NOTE", use:"Magic action" }],
     encounters:[], shops:[], factions:[{ id:"fa1", name:"The Tide Guild", wants:"The harbour trade", how:"SECRET-HOW", align:"Lawful Neutral" }] } };
 setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ const opened = async () => { for(let i = 0; i < 60 && document.getElementById('cardview').hidden; i++) await wait(50); await wait(30); };   // the picture takes its time to draw
  const flat = c => JSON.stringify(c);
  try{
+  window.open = () => null;          // no real second window in a test
   loadJSONNow(JSON.stringify(__CD)); await wait(300);
   const it = cardOf("loot", libLootById("ll1"));
   out.push('item: ' + it.band + ' | ' + it.title + ' | ' + it.sub + ' | ' + it.rows.map(r=>r.join(' ')).join('; ') + ' | foot ' + it.foot + ' | secret note ' + flat(it).includes('SECRET'));
@@ -25,14 +27,14 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   /* the buttons: the library entry, then a character's inventory and spells */
   pane = 'party'; syncTabs(); renderPane(true); await wait(50);
   const btns = [...document.querySelectorAll('#pane-party [data-cardopen]')].map(b=>b.dataset.cardopen); out.push('party tab buttons: ' + btns.join(', '));
-  document.querySelector('#pane-party [data-cardopen="loot:srd:bag-of-holding"]').click(); await wait(300);
+  document.querySelector('#pane-party [data-cardopen="loot:srd:bag-of-holding"]').click(); await opened();
   const cv = document.getElementById('cardview'); out.push('opened: ' + !cv.hidden + ', img ' + !!cv.querySelector('img.cv-img') + ', ' + [...cv.querySelectorAll('[data-cardact]')].map(b=>b.textContent.trim()).join(' / ') + ' · give ' + !!cv.querySelector('[data-cardgive]'));
   const sel = cv.querySelector('[data-cardgive]'); sel.value = 'pb'; sel.dispatchEvent(new Event('change', { bubbles:true })); await wait(50);
   out.push('given: Bram has ' + (root.roster[1].inv||[]).map(e=>e.id).join(','));
   cv.querySelector('[data-cardact="tv"]').click(); await wait(300);
   out.push('TV: ' + playerShow.kind + ' ' + playerShow.key + ' (' + playerShow.name + ')');
   document.querySelector('#cardview [data-cardact="close"]').click(); await wait(30); out.push('closed: ' + cv.hidden);
-  openCard('spells:spell:fireball'); await wait(300); const s2 = cv.querySelector('[data-cardgive]'); out.push('spell give label: ' + s2.options[0].text);
+  openCard('spells:spell:fireball'); await opened(); const s2 = cv.querySelector('[data-cardgive]'); out.push('spell give label: ' + s2.options[0].text);
   s2.value = 'pb'; s2.dispatchEvent(new Event('change', { bubbles:true })); await wait(50); out.push('taught: Bram knows ' + (root.roster[1].spells||[]).join(','));
   document.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape' })); await wait(30); out.push('Esc closes: ' + cv.hidden);
   pane = 'library'; libTab = 'loot'; libOpen = 'll1'; syncTabs(); renderPane(true); await wait(50);

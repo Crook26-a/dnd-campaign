@@ -1,0 +1,6 @@
+give box: reachable · options Give to…/Anna/Bram
+after giving: Bram has ll1 · in the window "✓ Lantern of Ashes is in Bram's inventory, card and all." (reachable)
+after TV: showing card · card window open false · Players' screen button reachable
+panel open true · says "Showing the card for Lantern of Ashes. T" · The map reachable · Open reachable
+The map: showing map
+party card in the drawer: loot:ll1

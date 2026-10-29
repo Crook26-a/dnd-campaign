@@ -8093,9 +8093,12 @@ async function openCard(key){
       ${navigator.clipboard && typeof ClipboardItem!=="undefined" ? `<button class="btn" data-cardact="copy">Copy it</button>` : ""}
       ${who.length ? `<select data-cardgive><option value="">${cat==="spells" ? "Teach it to…" : "Give to…"}</option>${who.map(p=>`<option value="${p.id}">${esc(p.name||"Someone")}</option>`).join("")}</select>` : ""}
       <button class="btn" data-cardact="close">Close</button></div>
+    <p class="cv-said" id="cv-said" role="status" style="margin:0;text-align:center;font-weight:600" hidden></p>
     <p class="empty-note" style="font-size:11px;margin:0;text-align:center">Only what the players may see: ${CARD_HIDES[cat]}.</p>`;
   $("#cardview").hidden = false;
 }
+/* what just happened, said in the card's own window: the top bar's message sits behind it */
+function cardSay(msg){ const p = $("#cv-said"); if(p){ p.textContent = "✓ " + msg; p.hidden = false; } flash(msg); }
 document.addEventListener("click", e=>{
   const o = e.target.closest && e.target.closest("[data-cardopen]");
   if(o){ e.preventDefault(); e.stopPropagation(); openCard(o.dataset.cardopen); return; }
@@ -8106,9 +8109,14 @@ document.addEventListener("click", e=>{
   if(act==="close"){ closeCard(); return; }
   if(act==="tv"){
     if(playerShow.kind==="card" && playerShow.key===cardKey){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); flash("The card is down: they see the map again."); openCard(cardKey); return; }
-    playerShow = { kind:"card", key:cardKey, name:(x && x.name) || "" }; sendPlayers(true); renderPScreen();
-    flash(playersUp() ? "The card is on the players' screen." : "Showing it once the players' screen is open (top bar).");
-    gameLog("pic", `Showed the players the card for ${(x && x.name) || "something"}`); openCard(cardKey); return; }
+    /* the players' screen opens if it isn't up (this click is allowed to open it), and the card window steps aside for
+       its panel, which says which card is up and takes it down (Joseph, 2026-10-28: the window used to cover the top bar) */
+    playerShow = { kind:"card", key:cardKey, name:(x && x.name) || "" };
+    if(!playersUp()) openPlayerScreen();
+    sendPlayers(true); gameLog("pic", `Showed the players the card for ${(x && x.name) || "something"}`);
+    closeCard(); const ps = $("#pscreen"); if(ps) ps.hidden = false; renderPScreen();
+    if(playersUp()) flash(`${(x && x.name) || "The card"} is on the players' screen. The map, in this panel, takes it down.`);
+    return; }
   if(act==="save"){ const a = document.createElement("a"); a.href = cardUrl; a.download = cardFileName(x); document.body.appendChild(a); a.click(); a.remove(); flash(`Saved ${cardFileName(x)}: text it or AirDrop it to whoever has it.`); return; }
   if(act==="copy"){ navigator.clipboard.write([new ClipboardItem({ "image/png":cardBlobNow })]).then(()=>flash("Copied: paste it into a message."), ()=>flash("Couldn't copy it here: Save the picture instead.")); return; }
 }, true);
@@ -8116,10 +8124,10 @@ document.addEventListener("change", e=>{
   const s = e.target; if(!s.matches || !s.matches("#cardview [data-cardgive]") || !s.value || !cardKey) return;
   const at = cardKey.indexOf(":"), cat = cardKey.slice(0, at), id = cardKey.slice(at+1), x = cardFind(cat, id);
   const c = [...partyRoster(), ...companions()].find(p=>p.id===s.value); if(!c || !x){ s.value = ""; return; }
-  if(cat==="spells"){ c.spells = c.spells || []; if(c.spells.includes(x.id)){ flash(`${c.name||"They"} already know${c.name?"s":""} ${x.name}.`); s.value = ""; return; } c.spells.push(x.id); }
+  if(cat==="spells"){ c.spells = c.spells || []; if(c.spells.includes(x.id)){ cardSay(`${c.name||"They"} already know${c.name?"s":""} ${x.name}.`); s.value = ""; return; } c.spells.push(x.id); }
   else { c.inv = Array.isArray(c.inv) ? c.inv : []; c.inv.push({ id:x.id, qty:1, at:today() }); }
-  saveParty(); renderPane(true);
-  flash(cat==="spells" ? `${c.name||"They"} can cast ${x.name} now (their Spells).` : `${x.name} is in ${c.name||"their"}${c.name?"'s":""} inventory, card and all.`);
+  saveParty(); renderPane(true); if(drawerPane) renderNamedPane(drawerPane);
+  cardSay(cat==="spells" ? `${c.name||"They"} can cast ${x.name} now (their Spells).` : `${x.name} is in ${c.name||"their"}${c.name?"'s":""} inventory, card and all.`);
   gameLog("pic", cat==="spells" ? `${c.name||"Someone"} learned ${x.name}` : `${c.name||"Someone"} got ${x.name}`); s.value = "";
 });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !$("#cardview").hidden) closeCard(); });

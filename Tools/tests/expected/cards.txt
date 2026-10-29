@@ -7,5 +7,11 @@ creature: Small Fey | Goblin Boss | stats false
 faction: Your standing: Neutral | What they want. The harbour trade | how false
 picture: image/png 750x1050, drawn
 party tab buttons: loot:srd:bag-of-holding, spells:spell:fireball
-opened: false, img false, · give false
-ERR Cannot set properties of null (setting 'value') at file:///C:/Users/josep/AppData/Local/Temp/ordinate-tests/cards.html:18957:62
+opened: true, img true, Show on the TV / Save the picture / Copy it / Close · give true
+given: Bram has srd:bag-of-holding
+TV: card loot:srd:bag-of-holding (Bag of Holding)
+closed: true
+spell give label: Teach it to…
+taught: Bram knows spell:fireball
+Esc closes: true
+library entry: loot:ll1 "Card for the players"
