@@ -1,0 +1,5 @@
+tables: look, look_man, look_woman · men 105, women 105
+neutral: shared 70, men 15, women 15
+gothic: shared 95, men 30, women 30
+wilderness: shared 95, men 30, women 30
+600 rolls: other gender's look 0, beards on women 0, own-gender looks drawn yes

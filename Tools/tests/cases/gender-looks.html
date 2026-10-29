@@ -1,0 +1,21 @@
+// uses: nothing
+<script>
+/* looks by gender (Joseph, 2026-10-28): each theme has look_man and look_woman beside the shared looks; a man rolls
+   the shared ones plus the men's, a woman the shared ones plus the women's, never the other's (and no beards) */
+setTimeout(()=>{ const out = [];
+ try{
+  const own = s => new Set(Object.values(GEN_THEMES_DATA).flatMap(t=>t["look_"+s]||[]));
+  const M = own("man"), W = own("woman");
+  out.push('tables: ' + THEME_TABLES.filter(k=>/^look/.test(k)).join(', ') + ' · men ' + M.size + ', women ' + W.size);
+  for(const th of ["neutral","gothic","wilderness"]){ const T = themeTables(th); out.push(th + ': shared ' + T.look.length + ', men ' + T.look_man.length + ', women ' + T.look_woman.length); }
+  let wrong = 0, mine = { man:0, woman:0 }, beard = 0;
+  for(let i = 0; i < 600; i++){ const sex = i % 2 ? "woman" : "man";
+    const g = genPerson({ level:3, disp:"neutral", type:"Humanoid", species:"Human", gender:sex, theme:"any", role:"", align:"" });
+    if((sex==="man" ? W : M).has(g.look)) wrong++;
+    if((sex==="man" ? M : W).has(g.look)) mine[sex]++;
+    if(sex==="woman" && /beard/i.test(g.look)) beard++; }
+  out.push('600 rolls: other gender\'s look ' + wrong + ', beards on women ' + beard + ', own-gender looks drawn ' + (mine.man > 20 && mine.woman > 20 ? 'yes' : 'no ' + JSON.stringify(mine)));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
