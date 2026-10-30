@@ -13755,10 +13755,10 @@ function itemExtras(o){
 function extraFits(a, what, rowName){ return !a.weapon || what===`itm:${a.id}` || (!!a.words && String(rowName||"").toLowerCase().includes(a.words)); }
 /* how a target takes a type of damage (2026-10-30): immune none, resists half (rounded down), vulnerable double; from a
    creature's Immune / Resists / Vulnerable (its stage's too) or a character's Defenses. A line with a condition ("from
-   nonmagical attacks") is left to the DM */
+   nonmagical attacks") is left to the DM; the types a bracket leaves out ("(everything but radiant and force)") aren't in it */
 function dmgTakes(t, dtype){
   const d = String(dtype||"").toLowerCase().trim(); if(!t || !/^[a-z]+$/.test(d)) return "";
-  const has = (s, word) => String(s||"").toLowerCase().split(/[;\n.]/).some(part=>!/nonmagical|aren't|isn't|except|while|\bif\b/.test(part) && new RegExp(`\\b${d}\\b`).test(part) && (!word || new RegExp(word).test(part)));
+  const has = (s, word) => String(s||"").toLowerCase().replace(/\((?:everything |all )?(?:but|other than|except)\b[^)]*\)/g, "").split(/[;\n.]/).some(part=>!/nonmagical|aren't|isn't|except|while|\bif\b/.test(part) && new RegExp(`\\b${d}\\b`).test(part) && (!word || new RegExp(word).test(part)));
   const m = t.kind==="foe" ? foeById(t.x.foe) : null;
   if(m) return has(m.imm) ? "immune" : has(m.res) ? "resists" : has(m.vul) ? "vulnerable" : "";
   const def = t.p ? t.p.defenses : "";
