@@ -7,6 +7,9 @@ Dash: Moved 25 of 60 ft (Dash) · turn order: ↦ 25/60 ft · "Gawain takes the 
 typed 45: Moved 45 of 60 ft (Dash) · turn order: ↦ 45/60 ft
 undo the Dash: Moved 25 of 30 ft · turn order: ↦ 25/30 ft · actions left 1
 the ogre pushed on Gawain's turn: ogre moved 0
+dragged next to the ogre: at 8,4, the form says 35
+dragged away from it: at 6,4, the form says 45 · opportunity attack offered: true
+after the ogre's opportunity attack: the form is on pa, moved 45
 Wren's turn: Moved 10 of 25 ft · turn order: ↦ 10/25 ft
 Wren grappled: speed 0
 Gawain's next turn: moved 0 · Moved 0 of 30 ft · turn order: -

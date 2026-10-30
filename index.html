@@ -13341,7 +13341,8 @@ const bend = e=>{
       battleSpot = t && (t.box || t.notice) ? s : null; renderBattle(); renderBattlePanel(); } return; }
   if(d.tok && ((bnode() && bnode().site && bnode().site.combat && bnode().site.combat.ups) || []).some(u=>u.id===d.tok)){ if(d.moved){ touch(); renderBattle(); } return; }     // a spell's token: just moved
   if(d.tok){
-    if(d.moved && !d.fixed){ touch(); { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ stopDance(cc, d.tok); moveTrack(cc, d.tok, d.from); } }     /* their own move, counted (2026-10-30) */ if(exitDrop(d.tok, e.shiftKey)) return; askOpportunity(d.tok, d.from); }
+    if(d.moved && !d.fixed){ { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ stopDance(cc, d.tok); moveTrack(cc, d.tok, d.from); } }     /* their own move, counted first, so the redraw shows it (Joseph, 2026-10-30: it lagged a move behind) */
+      touch(); renderBattlePanel(); if(exitDrop(d.tok, e.shiftKey)) return; askOpportunity(d.tok, d.from); }
     else { battleSel = battleSel===d.tok ? null : d.tok; renderBattle(); renderPane(true); }
   }
 };
@@ -14145,7 +14146,7 @@ function logAction(n, c){
     if(B.onFail) on = on.filter(t=>{ const sv = svOf(t); return sv ? !sv.made : act.outcome!=="save"; });
     const by = (concHolders().find(o=>o.h===hOfT(actor)) || {}).key || "";
     if(fxCast(info.spell, by, on.map(hOfT), actor.kind==="pc" ? pcState(actor.p) : null)) c.log[c.log.length - 1].text = c.log[c.log.length - 1].text.replace(/\.$/, "") + `. ${info.spell.name} is on ${on.map(t=>t.id===actor.id ? "themself" : t.label).join(", ")}.`; }
-  act = freshAct(actor.id);
+  act = freshAct(act.reaction && c.turn && c.turn!==actor.id ? c.turn : actor.id);     // after a reaction (an opportunity attack), back to whoever's turn it is
   partySync();                                    // the fight's log has its own undo for this
   touch(); renderBattle(); renderBattlePanel();
 }

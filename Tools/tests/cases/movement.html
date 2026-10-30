@@ -28,6 +28,17 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   { const i = document.querySelector('#ac-moved'); i.value = '45'; i.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); } out.push('typed 45: ' + line());
   undoAction(c); await wait(20); act = freshAct('pa'); out.push('undo the Dash: ' + line() + ' · actions left ' + actionsLeft(c, 'pa'));
   drag(ogre.id, 12, 2); out.push('the ogre pushed on Gawain\'s turn: ogre moved ' + movedOf(c, ogre.id).ft);
+  /* a real drag on the map: the form shows it straight away (it lagged a move behind); an opportunity attack on the way out doesn't lose it */
+  { act = freshAct('pa'); renderBattlePanel(); await wait(20); const svgEl = document.getElementById('bsvg'); renderBattle(); await wait(20);
+    const scr = (x, y) => { const p = svgEl.createSVGPoint(); p.x = (x + .5) * BS; p.y = (y + .5) * BS; return p.matrixTransform(svgEl.getScreenCTM()); };
+    const ev = (type, tgt, q) => tgt.dispatchEvent(new PointerEvent(type, { bubbles:true, clientX:q.x, clientY:q.y, button:0, pointerId:1, pointerType:'mouse' }));
+    const real = async (x, y) => { const a = c.pos.pa, tok = svgEl.querySelector('[data-tok="pa"]'), s = scr(a.x, a.y), e = scr(x, y); ev('pointerdown', tok, s);
+      for(let i = 1; i <= 8; i++){ ev('pointermove', svgEl, { x:s.x + (e.x - s.x) * i / 8, y:s.y + (e.y - s.y) * i / 8 }); await wait(5); } ev('pointerup', svgEl, e); await wait(40);
+      const i = document.querySelector('#ac-moved'); return `at ${c.pos.pa.x},${c.pos.pa.y}, the form says ${i ? i.value : '-'}`; };
+    c.pos[ogre.id] = { x:9, y:3 }; out.push('dragged next to the ogre: ' + await real(8, 4));
+    out.push('dragged away from it: ' + await real(6, 4) + ' · opportunity attack offered: ' + !document.getElementById('bt-pop').hidden);
+    const oa = document.querySelector('#bt-pop [data-oa]:not([data-oa=""])'); if(oa){ oa.click(); await wait(20); act.outcome = 'miss'; logAction(hall, c); await wait(30); }
+    renderBattlePanel(); await wait(20); out.push('after the ogre\'s opportunity attack: the form is on ' + act.actor + ', moved ' + (document.querySelector('#ac-moved')||{}).value); }
   nextTurn(c); renderBattlePanel(); await wait(20); drag('pb', 1, 1); out.push('Wren\'s turn: ' + line());
   T('pb').p.conds = ['Grappled']; pcState(root.roster[1]).conds = ['Grappled']; out.push('Wren grappled: speed ' + speedOf(T('pb')));
   nextTurn(c); nextTurn(c); act = freshAct('pa'); out.push('Gawain\'s next turn: moved ' + movedOf(c, 'pa').ft + ' · ' + line());
