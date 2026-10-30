@@ -41,10 +41,24 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('rolled: ' + act.dmg + ' · "' + (act.rolled.dmg||{}).said + '"');
   const hp0 = av().hp, ohp = ogre.hp; logAction(hall, c); await wait(60);
   out.push('bite: "' + c.log.slice(-1)[0].text + '" · Avery ' + hp0 + ' -> ' + av().hp + ' · ogre ' + ohp + ' -> ' + ogre.hp + ' · charges ' + ch());
+  /* bonus actions tracked like reactions: the bite used hers; a second one this turn asks (the test says no); her next turn clears it */
+  out.push('bonus used after the bite: ' + bonusUsed(c, 'pa') + ' · the glaive hit alone was one: ' + bonusActOf(A, actInfo(c, A), 'pca:0'));
+  const asked = []; window.confirm = m => { asked.push(m); return false; };
+  const n1 = c.log.length; act = freshAct('pa'); act.what = 'bite:0'; act.targets = [ogre.id]; act.outcome = 'hit'; act.dmg = '5'; logAction(hall, c); await wait(30);
+  out.push('a second bonus action: asked "' + asked[0] + '" · logged ' + (c.log.length > n1) + ' · charges still ' + ch());
+  window.confirm = () => false;
+  c.turn = 'pa'; if(c.bonused) delete c.bonused[c.turn]; out.push('her next turn: bonus used ' + bonusUsed(c, 'pa'));
+  /* it ticks itself for a bonus-action spell and an off-hand attack row; the tick by hand wins */
+  av().spells = ['spell:spiritual-weapon', 'spell:bless']; av().attacks.push({ name:"Dagger (off-hand, bonus action)", hit:"+4", dmg:"1d4", dtype:"piercing" });
+  out.push('ticks itself: Spiritual Weapon ' + bonusActOf(A, actInfo(c, Object.assign({}, A)), 'sp:spell:spiritual-weapon') + ' · Bless ' + bonusActOf(A, { kind:'spell', spell:spellOf('spell:bless'), name:'Bless' }, 'sp:spell:bless') + ' · off-hand row ' + bonusActOf(A, { kind:'attack', name:'Dagger (off-hand, bonus action)' }, 'pca:1'));
+  c.bonused = { pa:c.round }; renderBattlePanel(); await wait(30); out.push('turn order shows: ' + [...document.querySelectorAll('.rused')].map(e=>e.textContent.trim()).join(', '));
+  /* undo takes the bonus back */
+  c.bonused = { pa:c.round }; c.log.push({ id:'x', round:c.round, text:'t', snap:snapOf(c, ['pa']), bonused:'{}' }); undoAction(c); out.push('undo: bonus used ' + bonusUsed(c, 'pa'));
   /* out of charges: the log refuses */
   av().inv[0].ch = 0; const n0 = c.log.length; act = freshAct('pa'); act.what = 'bite:0'; act.targets = [ogre.id]; act.outcome = 'hit'; act.dmg = '5'; logAction(hall, c); await wait(30);
   out.push('at 0 charges, logged: ' + (c.log.length > n0));
-  /* character CR with and without */
+  /* character CR with and without (her sheet as it was) */
+  av().spells = []; av().attacks = av().attacks.slice(0, 1);
   av().inv[0].ch = 3; const w = charCR(av()), bare = JSON.parse(JSON.stringify(av())); bare.inv = []; const wo = charCR(bare);
   out.push('CR with the glaive: ' + charCRWords(w) + ' · ' + w.dpr + ' a round | without: ' + charCRWords(wo) + ' · ' + wo.dpr);
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }

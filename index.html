@@ -9980,7 +9980,7 @@ function calmAfterBattle(st){
   const c = st.combat; if(!c) return;
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
-  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.onceUsed; delete c.fled;
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.onceUsed; delete c.fled;
 }
 /* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
    calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking
@@ -12957,6 +12957,19 @@ let act = null;                                          // the action being fil
 const freshAct = actor => ({ actor, what:"", lvl:null, spellText:"", otherText:"", targets:[], outcome:"hit", dmg:"", dtype:"", heal:"", cond:"", note:"", reaction:false, addons:[], p2:null });
 /* ── reactions: one per creature per round, back when its own turn starts ── */
 const reactedThisRound = (c, id) => !!(c.reacted && c.reacted[id]!=null);
+/* bonus actions, tracked like reactions (Joseph, 2026-10-30): one a turn, c.bonused[id] set when one is logged, cleared
+   when their turn starts. bonusActOf: is this action one? A bonus-action spell, an off-hand / "bonus action" attack row,
+   a stat block's bonus action, an item used as one (its use, or an On a hit that takes it); the form's tick can say otherwise */
+const bonusUsed = (c, id) => !!(c.bonused && c.bonused[id]!=null);
+function bonusActOf(t, info, what){
+  if(!info) return false;
+  if(info.ba) return true;
+  if(info.spell && /bonus/i.test(info.spell.time||"")) return true;
+  if(/bonus action|off-hand/i.test(info.name||"")) return true;
+  if(/^(fa|pca):Bonus: /.test(what||"")) return true;
+  if(String(what||"").startsWith("fa:") && t && t.kind==="foe"){ const m = foeById(t.x.foe), nm = what.slice(3); if(m && pairs(m.bon).some(([n])=>n===nm)) return true; }
+  return false;
+}
 /* how far a creature can reach, in squares: from "reach 10 ft." in its attacks; characters 5 ft */
 function reachSq(t){
   const sb = t.kind==="foe" ? foeById(t.x.foe) : pcStatBlock(t.p);    // a druid in Wild Shape (or a companion's stat block) sets the reach
@@ -13183,9 +13196,9 @@ function actInfo(c, t){
     return { kind:"attack", name:a.name||"an attack", save:/DC/i.test(a.hit||""), hint };
   }
   if(w.startsWith("bite:")){ const k = +w.slice(5), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* On a hit: its own roll, after the hit */
-    return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:"", bite:x ? x.u : null, hint:x ? { dice:abilDice(x.u.onHit, o), dtype:x.u.onHitType } : null, cond:"", save:false }; }
+    return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:"", bite:x ? x.u : null, ba:!!(x && x.u.onHitBa), hint:x ? { dice:abilDice(x.u.onHit, o), dtype:x.u.onHitType } : null, cond:"", save:false }; }
   if(w.startsWith("use:")){ const k = +w.slice(4), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* a carried thing with a use */
-    return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : abilDice(x.u.heal, o)) : "", reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
+    return { kind:"item", name:x ? x.it.name : "an item", useK:k, ba:!!(x && /bonus/i.test(x.u.use||"")), healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : abilDice(x.u.heal, o)) : "", reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
   if(w.startsWith("atk:")) return { kind:"attack", name:w.slice(4) };
   if(w==="other") return { kind:"other", name:a.otherText||"something" };
   if(w==="flee") return { kind:"flee", name:"flees" };
@@ -13247,6 +13260,7 @@ function actionForm(c, all){
       <div class="field" style="flex:1"><label>Puts on</label><select id="ac-cond"><option value="">no condition</option>${CONDITIONS.map(cn=>`<option ${cn===act.cond?"selected":""}>${cn}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Note</label><input id="ac-note" type="text" value="${esc(act.note)}" placeholder="knocked prone, pushed 10 ft…"></div></div>
     <label class="check" style="margin:0 0 7px"><input type="checkbox" id="ac-react" ${act.reaction?"checked":""}> As a reaction${t&&reactedThisRound(c,t.id)?` <i class="rused">— already used one this round</i>`:""}</label>
+    <label class="check" style="margin:-4px 0 7px" title="Ticks itself for a bonus-action spell, attack, item or stat-block bonus action; untick or tick it to say otherwise"><input type="checkbox" id="ac-bonus" ${(act.bonus ?? bonusActOf(t, info, act.what))?"checked":""}> As a bonus action${t&&bonusUsed(c,t.id)?` <i class="rused">— already used one this turn</i>`:""}</label>
     <button class="btn wide" id="ac-go" ${act.what?"":"disabled"}>Log it</button>
   </div>`;
 }
@@ -13305,6 +13319,9 @@ function logAction(n, c){
   /* a concentration spell: if they're holding another, ask first (yes ends it); it starts once the cast is logged */
   const concSp = info.spell && info.spell.conc ? info.spell : null, concH = actor.kind==="foe" ? actor.x : actor.p;
   if(concSp && !concOK(concH, concSp, actor.label)) return;
+  /* a bonus action: one a turn (asks first if they've had theirs) */
+  const isBonus = !act.reaction && (act.bonus ?? bonusActOf(actor, info, act.what));
+  if(isBonus && bonusUsed(c, actor.id) && !confirm(`${actor.label} has already used a Bonus Action this turn. Log this one anyway?`)) return;
   const dmg = act.outcome==="miss" ? 0 : Math.max(0, Math.round(+act.dmg||0)), took = Math.max(0, Math.round(+act.took||0));
   const heal = info.reduce ? reduceCap(info.reduce, Math.max(0, Math.round(+act.heal||0)), took) : Math.max(0, Math.round(+act.heal||0));
   /* spend what the action costs */
@@ -13375,9 +13392,11 @@ function logAction(n, c){
     + biteWords
     + [...hits, ...hits2].filter((h,i,A)=>h.dropped && A.findIndex(x=>x.id===h.id && x.dropped)===i).map(h=>`. ${h.label} drops`).join("") + ".";
   c.log = c.log || [];
-  const reactedBefore = JSON.stringify(c.reacted||{});
+  const reactedBefore = JSON.stringify(c.reacted||{}), bonusBefore = JSON.stringify(c.bonused||{});
   if(act.reaction){ c.reacted = c.reacted || {}; c.reacted[actor.id] = c.round; }
-  c.log.push({ id:uid("lg"), round:c.round, text: act.reaction ? line.replace(/\.$/, " — as a reaction.") : line, snap, fled:fledBefore, reacted:reactedBefore, once:onceBefore });
+  if(isBonus){ c.bonused = c.bonused || {}; c.bonused[actor.id] = c.round; }
+  const asWhat = act.reaction ? " — as a reaction." : isBonus && !/as a Bonus Action/.test(line) ? " — as a bonus action." : ".";
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, once:onceBefore });
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   act = freshAct(actor.id);
   partySync();                                    // the fight's log has its own undo for this
@@ -13391,7 +13410,7 @@ function undoAction(c){
     Object.assign(c.scaled, { held:A.before.held, lines:A.before.lines, expected:A.before.expected, who:A.before.who });
     c.scaled.undone = c.scaled.undone || {}; for(const w of back) c.scaled.undone[w.id] = true;   // they're still standing there: not again till they leave and come back
     flash("Took back the arrival."); touch(); renderBattle(); renderBattlePanel(); return; }
-  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.once!=null) c.onceUsed = JSON.parse(e.once);
+  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   partySync();
   flash("Took back the last action.");
   touch(); renderBattle(); renderBattlePanel();
@@ -13549,7 +13568,7 @@ function renderBattlePanelNow(){
     <p class="grouplab">Turn order${Array.isArray(c.order)&&c.order.length?` <i>· arranged by hand</i>`:""}</p>
     ${all.map((t,k)=>`<div class="initrow${c.turn===t.id?" cur":""}${battleSel===t.id?" sel":""}${t.side==="party"?" pc":""}${t.fled?" fled":""}">
         <input class="init-in" data-bid="${t.id}" type="number" value="${t.init??""}" placeholder="–" ${t.shared?`disabled title="Goes right after its owner"`:`title="Initiative"`}>
-        <span class="ir-name" data-bsel="${t.id}">${esc(t.label)}${reactedThisRound(c,t.id)?` <small class="rused" title="Used their reaction this round">⚡ used</small>`:""}</span><span class="mono">${hpText(t)}</span>
+        <span class="ir-name" data-bsel="${t.id}">${esc(t.label)}${reactedThisRound(c,t.id)?` <small class="rused" title="Used their reaction this round">⚡ used</small>`:""}${bonusUsed(c,t.id)?` <small class="rused" title="Used their bonus action this turn">◑ bonus used</small>`:""}</span><span class="mono">${hpText(t)}</span>
         <span class="ir-ctl"><button data-breact="${t.id}" title="Take a reaction (opportunity attack…)">⚡</button><button data-bturn="${t.id}" title="Their turn now">▶</button><button data-bmove="${k}" data-dir="-1" title="Move up" ${k?"":"disabled"}>▲</button><button data-bmove="${k}" data-dir="1" title="Move down" ${k<all.length-1?"":"disabled"}>▼</button></span></div>`).join("")}
     ${Array.isArray(c.order)&&c.order.length?`<button class="btn wide" data-ba="initorder" style="margin-top:4px">Back to initiative order</button>`:""}
     ${selActs}
@@ -13585,7 +13604,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-spellopen]").forEach(s=>s.onclick = ()=>{ closeBattle(true); openLib("spells", s.dataset.spellopen); });
   el.querySelectorAll("[data-bsel]").forEach(s=>s.onclick = ()=>{ battleSel = s.dataset.bsel; renderBattle(); renderBattlePanel(); });
   /* breaking initiative: jump the turn to someone, or move them in the order by hand */
-  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; battleSel = c.turn; act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
+  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-breact]").forEach(b=>b.onclick = ()=>{
     startReaction(c, b.dataset.breact, null); renderBattle(); renderBattlePanel();
     const box = document.querySelector(".actbox"); if(box) scrollInPane(box, "center");
@@ -13608,8 +13627,9 @@ function renderBattlePanelNow(){
   const redraw = () => { keep(); renderBattlePanel(); };
   if(!calm){                                      // the battle's action form: only once the battle has begun
   $("#ac-actor").onchange = e=>{ act = freshAct(e.target.value); renderBattlePanel(); };
+  { const bo = $("#ac-bonus"); if(bo) bo.onchange = ()=>{ act.bonus = bo.checked; }; }     // said by hand: kept till the action changes
   $("#ac-what").onchange = e=>{
-    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null;
+    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.bonus;
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
     if(info){ act.outcome = (info.spell && info.spell.atk) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
@@ -16101,7 +16121,7 @@ function nextTurn(c){
   if(!order.length) return false;
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; battleSel = c.turn; act = freshAct(c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn);
   return true;
 }
 document.addEventListener("click", e=>{
@@ -16110,7 +16130,7 @@ document.addEventListener("click", e=>{
   const a = b.dataset.ts;
   if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
   if(a==="next"){ if(!nextTurn(c)) return; }
-  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; battleSel = c.turn; act = freshAct(c.turn); }
+  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn); }
   touch(); renderBattle(); renderBattlePanel();
 });
 
@@ -16721,7 +16741,7 @@ function walkThrough(ids, ex, from){
     if(!calmOf(c) && ids.includes(c.turn)){
       const order = combatants(c).filter(x=>!(x.kind==="foe" && x.x.max!=null && x.x.hp<=0) && !x.fled), k = order.findIndex(x=>x.id===c.turn);
       let next = null; for(let j=1; j<=order.length; j++){ const q = order[(k+j) % order.length]; if(!ids.includes(q.id)){ if(k+j >= order.length) newRound(c); next = q; break; } }
-      c.turn = next ? next.id : null; if(next && c.reacted) delete c.reacted[next.id]; battleSel = null;
+      c.turn = next ? next.id : null; if(next && c.reacted) delete c.reacted[next.id]; if(next && c.bonused) delete c.bonused[next.id]; battleSel = null;
     }
     if(c.pos) for(const id of ids) delete c.pos[id];
   }
