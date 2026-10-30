@@ -8688,6 +8688,7 @@ function libForm(cat, x){
       ${t("voice","Voice","1","Calls everyone \"minnow\"")}
       ${ta("wants","Wants")}${ta("knows","Knows")}
       ${ta("tactics","Tactics: how they fight <small>DM only</small>","Wades in front, picks the biggest threat and holds the line…")}
+      ${!draft && libNpcById(x.id) ? `<details class="pcset pcsec"><summary>Tactics dials <small>${esc(tacWords(Object.assign({}, tacDefault(x.statBlock || (x.fightsAs && x.fightsAs!=="self" ? foeById(x.fightsAs) : null)), x.tac || {})))}</small></summary>${tacEditor(x, "p:" + x.id)}</details>` : ""}
       ${x.partyRead ? ta("partyRead","What they know about the party <small>DM only, newest read on top</small>","", 4) : ""}
       ${draft ? "" : stagesBlock(x)}
       ${draft ? "" : effectsBlock(x)}
@@ -8817,7 +8818,7 @@ const FB_FIELDS = {
   shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes","campaign"],
   factions:["name","align","wants","how","hidden","notes","campaign"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","gender","known","cls","level","ac","hpMax","speed","init",
-    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells","pkind","campaign"],
+    "str","dex","con","int","wis","cha","saves","skills","senses","langs","defenses","attacks","persona","purse","carries","notes","pp","dc","satk","spells","pkind","tactics","tac","campaign"],
   spells:["name","lv","school","time","range","comp","dur","conc","rit","cls","save","atk","dmg","dtype","desc","hi","notes","campaign"] };
 /* this copy of the app's campaign, as the Field Book knows it: root.campaign if it's been set, else the map's title */
 const campName = () => String((root && (root.campaign || root.title)) || "").trim();
@@ -15129,7 +15130,7 @@ function personSheet(g, key, compact, controls){
       return `<div class="splv"><div class="splvh"><b>${L ? `${ORD[L]} level` : "Cantrips"}</b>${sl ? ` <small class="mono">${sl.n} slot${sl.n>1?"s":""}</small>` : ""}</div>
     ${byLv[L].map(s=>`<div class="sprow"><div class="sprow-h"><span class="libref" data-rollspell="${s.id}" title="Read the whole spell">${esc(s.name)}</span>${uses[s.name.toLowerCase()]?`<small class="mono">${esc(uses[s.name.toLowerCase()])}</small>`:""}</div>
       <div class="sprow-m">${esc(spellMeta(s))}</div><div class="sprow-d">${esc(spellBrief(s))}</div></div>`).join("")}</div>`; }).join("");
-  const tactics = (/Tactics:\s*([^\n]+)/.exec(p.notes||"") || [])[1] || "";
+  const tactics = p.tactics || (/Tactics:\s*([^\n]+)/.exec(p.notes||"") || [])[1] || "";     // their own field since 2026-10-29
   /* what they have on them: the weapons they fight with, what their kind carries, their purse */
   const kit = m ? foeKit(m) : [], purseTxt = COINS.filter(([k])=>(p.purse||{})[k]).map(([k])=>`${p.purse[k]} ${k}`).join(", ");
   const kitRow = e => { const x = e.id ? libLootById(e.id) : null, nm = x ? x.name : e.text, q = (e.qty||1) > 1 ? ` ×${e.qty}` : "", v = x ? (x.value || (x.gp!=null ? `${x.gp} gp` : "")) : "";
@@ -15431,11 +15432,32 @@ function completeSheet(x, who){
   }
   if(who===false) return n;
   if(blank("persona")){ x.persona = rollPersona(x.align); n++; }
+  const grp = groupOfClass(x.cls) || (b && /^(Beast|Monstrosity)/.test(b.type||"") ? "" : "Warriors");
+  if(!x.tac){ x.tac = rollTac(b, grp, (x.spells||[]).length > 0); n++; }      // the dials (2026-10-30)
   if(!x.tactics && !/Tactics:/.test(x.notes||"")){                 // their own field now (2026-10-29); one already in their notes stays there
-    const grp = groupOfClass(x.cls) || (b && /^(Beast|Monstrosity)/.test(b.type||"") ? "" : "Warriors");
-    x.tactics = `${GROUP_TACTICS[grp] || "Acts on instinct — fights when cornered or hungry."} ${pickOne(GEN_MORALE)}`; n++;
+    x.tactics = tacWords(x.tac); n++;                                // written from the dials, so the two agree
   }
   return n;
+}
+/* tactics for someone rolled (Joseph, 2026-10-30): the dials from their stat block (tacDefault: who they go for comes
+   from Intelligence), their kind of person leaning the role, a roll for how firmly they hold to it, and one for how
+   brave they are from their kind's range (the fearless stay fearless); the written line is made from the dials */
+const TAC_GROUP_ROLE = { Warriors:["front","front","skirm"], Experts:["skirm","lurker","ranged"], Mages:["caster"], Priests:["support","support","caster"], Folk:["front"] };
+const TAC_GROUP_COURAGE = { Warriors:[3,4,4,5], Experts:[2,3,3,4], Mages:[2,2,3,4], Priests:[3,4,4,5], Folk:[1,1,2,2] };
+function rollTac(b, grp, casts){
+  const T = tacDefault(b), L = TAC_GROUP_ROLE[grp], canCast = casts || /spellcasting/i.test(tacText(b));
+  if(L) T.role = pickOne(L);
+  if((T.role==="caster" || T.role==="support") && !canCast) T.role = "front";            // no spells: no caster, no healer
+  T.rigid = pickOne([1, 2, 2, 3]);
+  const C = TAC_GROUP_COURAGE[grp]; T.courage = T.courage >= 5 ? 5 : C ? pickOne(C) : Math.max(1, Math.min(5, T.courage + pickOne([-1, 0, 0, 1])));
+  return T;
+}
+function tacWords(T){
+  if(!T) return "";
+  const role = ((TAC_ROLES.find(x=>x[0]===T.role)||[])[1] || "").replace(/^[^:]+: /, ""), cour = ((TAC_COURAGE.find(x=>x[0]===+T.courage)||[])[1] || "").replace(/^\d /, "");
+  const aim = { nearest:"goes for the nearest", grudge:"goes for whoever hurts it most", weakest:"picks off the weakest unless the strongest closes in", strongest:"goes for the strongest in reach" }[T.aim] || "";
+  const hold = T.aim==="nearest" ? "" : T.rigid==1 ? ", easily distracted" : T.rigid==3 ? ", single-minded" : "";
+  return `${role[0] ? role[0].toUpperCase() + role.slice(1) : ""}; ${aim}${hold}. ${cour}.`;
 }
 /* a saved person of a casting class gets a fresh set of spells for their class and level (their sheet's numbers count) */
 function respellPerson(x){

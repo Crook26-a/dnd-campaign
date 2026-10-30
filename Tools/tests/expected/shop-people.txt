@@ -1,6 +1,6 @@
 Build panel: people here true, add panel true, kind select true
-rolled: Fabien Silvanus (Fence)
-people here now ["Fabien Silvanus"] | listed true
-keeper set Fabien Silvanus
+rolled: Lorca Cravenhurst (Fence)
+people here now ["Lorca Cravenhurst"] | listed true
+keeper set Lorca Cravenhurst
 from the library: Captain Callomay here true | listed true
-rerolled with choices: Vale "the Quiet" Varga | Neutral · Elf priest · keeps Silvanus's Apothecary | Lawful Good
+rerolled with choices: Morgan Marin | Neutral · Elf priest · keeps Cravenhurst's Apothecary | Lawful Good

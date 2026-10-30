@@ -3,7 +3,7 @@ every list is a list: true
 GEN_FAMILY has every theme: true, has Tidewell true, GEN_WANTS.enemy true
 gothic campaign: themes gothic, surnames all gothic or neutral true, any nautical surname false
 backstories from gothic+neutral true, e.g. Pim Applewhite: Grew up in a walled city and never saw a field until twenty, and was pressed int
-70/30 mix of 400: gothic 266, courtly 134, other 0 (about right: true)
+70/30 mix of 400: gothic 293, courtly 107, other 0 (about right: true)
 neutral only: neutral, surnames all neutral true
 any: 6 themes seen
 roll override nautical: nautical
