@@ -25,7 +25,9 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('Gawain with the cloak: Dex save ' + saveBonusOf(combatants(c).find(t=>t.id==='pa'), 'Dexterity') + ', Wren Wis save (on her sheet) ' + saveBonusOf(combatants(c).find(t=>t.id==='pb'), 'Wisdom') + ', AC to hit ' + acOf(combatants(c).find(t=>t.id==='pa')));
   /* Bless and Guidance aren't attacks or damage (Joseph, 2026-10-30: "guidance took away hit points and bless was making me do an attack roll") */
   await choose('pb', 'sp:spell:bless', ['pa', 'pb']); out.push('Bless form: roll to hit ' + !!document.querySelector('[data-acroll="hit"]') + ', damage roll ' + !!document.querySelector('[data-acroll="dmg"]') + ', outcome ' + act.outcome);
-  await choose('pb', 'sp:spell:guidance', ['pa']); out.push('Guidance form: damage roll ' + !!document.querySelector('[data-acroll="dmg"]')); { const hp = G.hp; logAction(hall, c); await wait(30); out.push('Guidance on Gawain: hp ' + hp + ' -> ' + G.hp + ' · ' + line() + ' · on him: ' + fxOf(G, false).map(f=>f.name + fxSay(f.b)).join(' · ')); }
+  await choose('pb', 'sp:spell:guidance', ['pa']); out.push('Guidance form: damage roll ' + !!document.querySelector('[data-acroll="dmg"]') + ', skill picker ' + !!document.querySelector('#ac-fxskill'));
+  { const fs = document.querySelector('#ac-fxskill'); fs.value = 'Stealth'; fs.dispatchEvent(new Event('change', { bubbles:true })); await wait(10); }
+  { const hp = G.hp; logAction(hall, c); await wait(30); out.push('Guidance on Gawain: hp ' + hp + ' -> ' + G.hp + ' · ' + line() + ' · on him: ' + fxOf(G, false).map(f=>f.name + fxSay(f.b)).join(' · ') + ' · a Stealth check rolls ' + (fxRoll(G, 'check', 'Stealth').said || 'nothing') + ', Athletics ' + (fxRoll(G, 'check', 'Athletics').said || 'nothing')); }
   W.conc = null;
   /* Bless on both */
   await choose('pb', 'sp:spell:bless', ['pa', 'pb']); act.outcome = 'none'; logAction(hall, c); await wait(30);

@@ -1,7 +1,7 @@
 Gawain with the cloak: Dex save 1, Wren Wis save (on her sheet) 6, AC to hit 17
 Bless form: roll to hit false, damage roll false, outcome none
-Guidance form: damage roll false
-Guidance on Gawain: hp 40 -> 40 · "Wren casts Guidance on Gawain. Guidance is on Gawain." · on him: Guidance (checks +1d4 (its chosen skill))
+Guidance form: damage roll false, skill picker true
+Guidance on Gawain: hp 40 -> 40 · "Wren casts Guidance on Gawain. Guidance is on Gawain." · on him: Guidance (Stealth checks +1d4) · a Stealth check rolls + 1d4 (Guidance) 3, Athletics nothing
 Bless: "Guidance (Wren) ends: concentration ended." · on Gawain: Bless (attacks +1d4, saves +1d4) · Cloak of Protection (saves +1, AC +1)
 the form for Gawain: On Gawain: Bless (attacks +1d4, saves +1d4) · Cloak of Protection (saves +1, AC +1), worn
 to hit: To hit: d20 10 + 8 + 1d4 (Bless) 3 = 21 vs AC 11 (Ogre): hit

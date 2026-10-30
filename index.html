@@ -7916,7 +7916,7 @@ function concPaint(){
 const SPELL_FX = {
   "spell:bless":{ atk:"1d4", save:"1d4" },
   "spell:bane":{ atk:"-1d4", save:"-1d4", onFail:true },
-  "spell:guidance":{ check:"1d4", note:"its chosen skill" },
+  "spell:guidance":{ skillDie:"1d4" },     // to checks with the skill chosen when cast (Joseph, 2026-10-30)
   "spell:shield-of-faith":{ ac:2 },
   "spell:haste":{ ac:2, saveAdv:["dex"] },
   "spell:slow":{ ac:-2, saveAb:{ dex:-2 }, onFail:true },
@@ -7959,9 +7959,9 @@ function fxNum(h, kind, sub, items){
   return n;
 }
 /* the dice ones, rolled: " + 1d4 (Bless) 3" */
-function fxRoll(h, kind){
+function fxRoll(h, kind, sub){
   let n = 0; const said = [];
-  for(const f of fxOf(h, false)){ const v = f.b[kind]; if(typeof v!=="string") continue;
+  for(const f of fxOf(h, false)){ const v = typeof f.b[kind]==="string" ? f.b[kind] : kind==="check" && sub && f.b.skillDice && f.b.skillDice[sub] ? f.b.skillDice[sub] : null; if(!v) continue;     /* Guidance: its skill only */
     const neg = v.trim().startsWith("-"), r = rollTerms(diceTerms(v.replace(/^\s*-/, "")), false);
     n += neg ? -r.total : r.total; said.push(` ${neg ? "−" : "+"} ${v.replace(/^\s*-/, "")} (${f.name}${f.b.note ? `, ${f.b.note}` : ""}) ${r.total}`); }
   return { n, said:said.join("") };
@@ -7974,15 +7974,16 @@ const hOfT = t => !t ? null : t.kind==="foe" ? t.x : t.p;
 function fxSay(b){
   const sg = v => typeof v==="number" ? (v < 0 ? `−${-v}` : `+${v}`) : v.trim().startsWith("-") ? `−${v.replace(/^\s*-/, "")}` : `+${v}`;
   const w = [b.atk!=null ? `attacks ${sg(b.atk)}` : "", b.save!=null ? `saves ${sg(b.save)}` : "", b.check!=null ? `checks ${sg(b.check)}${b.note ? ` (${b.note})` : ""}` : "",
-    ...Object.entries(b.skill||{}).map(([k, v])=>`${k} ${sg(v)}`), ...Object.entries(b.saveAb||{}).map(([k, v])=>`${ABN[k] || k} saves ${sg(v)}`),
+    ...Object.entries(b.skill||{}).map(([k, v])=>`${k} ${sg(v)}`), ...Object.entries(b.skillDice||{}).map(([k, v])=>`${k} checks ${sg(v)}`), ...Object.entries(b.saveAb||{}).map(([k, v])=>`${ABN[k] || k} saves ${sg(v)}`),
     b.ac ? `AC ${sg(b.ac)}` : "", (b.saveAdv||[]).length ? `Advantage on ${b.saveAdv.map(k=>ABN[k] || k).join(", ")} saves` : "", b.vsAdv ? "attacks on them have Advantage" : "",
     b.temp ? `${b.temp} temp HP each turn` : ""].filter(Boolean);
   return w.length ? ` (${w.join(", ")})` : "";
 }
 /* a spell cast: its effect on each of them (casting it again replaces theirs) */
-function fxCast(s, by, hs, caster){
+function fxCast(s, by, hs, caster, opts){
   const B = s && SPELL_FX[s.id]; if(!B || !hs.length) return 0;
   const b = { ...B }; if(b.temp==="mod") b.temp = Math.max(1, spellModOf(caster || {}));
+  if(b.skillDie){ const k = opts && opts.skill; if(k) b.skillDice = { [k]:b.skillDie }; else { b.check = b.skillDie; b.note = "no skill picked: any check"; } delete b.skillDie; }     /* Guidance: the skill chosen */
   const R = s.id==="spell:shield" ? 1 : concRounds(s.dur);
   for(const h of hs){ if(!h) continue; h.fx = (h.fx||[]).filter(f=>f.sp!==s.id); h.fx.push({ id:uid("fx"), sp:s.id, name:s.name, by, conc:!!s.conc, left:R, w:worldMin(), b }); }
   return hs.length;
@@ -13953,6 +13954,7 @@ function actionForm(c, all){
     ${t && fxOf(hOfT(t), true).length ? `<p class="actspell">On ${esc(t.label)}: ${fxOf(hOfT(t), true).map(f=>esc(f.name + fxSay(f.b) + (f.item ? ", worn" : ""))).join(" · ")}</p>` : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
+    ${info && info.spell && SPELL_FX[info.spell.id] && SPELL_FX[info.spell.id].skillDie && !info.free ? `<div class="field"><label>Skill <small>(its 1d4 goes on checks with it)</small></label><select id="ac-fxskill"><option value="">Any check</option>${TA_SKILLS.map(k=>`<option ${k===act.fxSkill?"selected":""}>${k}</option>`).join("")}</select></div>` : ""}
     ${lvls.length?`<div class="field"><label>Slot used</label><select id="ac-lvl">${lvls.map(L=>{ const s = pcState(t.p).slots[L]; return `<option value="${L}" ${L===act.lvl?"selected":""}>${ORD[L]} level (${s.max-s.used} left)</option>`; }).join("")}</select></div>`:""}
     ${info&&info.spell?`<p class="actspell">${esc(info.spell.name)} · ${info.spell.lv?ORD[info.spell.lv]+" level":"cantrip"} ${esc(info.spell.school.toLowerCase())} · ${esc(info.spell.range)}${info.spell.save?` · ${esc(info.spell.save)} save`:""}${info.spell.atk?" · spell attack":""}${info.spell.dmg?` · ${esc(info.spell.dmg)} ${esc(info.spell.dtype)}`:""}${info.spell.conc?" · concentration":""} <span class="libref" data-spellopen="${info.spell.id}">text</span></p>`:""}
     ${info&&info.hint&&!info.spell?`<p class="actspell">${esc(info.hint.dice)} ${esc(info.hint.dtype)}${info.save?" · saving throw":""}</p>`:""}
@@ -14175,7 +14177,7 @@ function logAction(n, c){
     let on = B.self ? [actor] : B.aura ? [actor, ...targets.filter(t=>t.id!==actor.id)] : targets;
     if(B.onFail) on = on.filter(t=>{ const sv = svOf(t); return sv ? !sv.made : act.outcome!=="save"; });
     const by = (concHolders().find(o=>o.h===hOfT(actor)) || {}).key || "";
-    if(fxCast(info.spell, by, on.map(hOfT), actor.kind==="pc" ? pcState(actor.p) : null)) c.log[c.log.length - 1].text = c.log[c.log.length - 1].text.replace(/\.$/, "") + `. ${info.spell.name} is on ${on.map(t=>t.id===actor.id ? "themself" : t.label).join(", ")}.`; }
+    if(fxCast(info.spell, by, on.map(hOfT), actor.kind==="pc" ? pcState(actor.p) : null, { skill:act.fxSkill })) c.log[c.log.length - 1].text = c.log[c.log.length - 1].text.replace(/\.$/, "") + `. ${info.spell.name} is on ${on.map(t=>t.id===actor.id ? "themself" : t.label).join(", ")}.`; }
   const prev = { what:act.what, targets:act.targets.slice(), queue:act.queue, lvl:act.lvl, reaction:act.reaction, addons:(act.addons||[]).slice() };
   act = freshAct(act.reaction && c.turn && c.turn!==actor.id ? c.turn : actor.id);     // after a reaction (an opportunity attack), back to whoever's turn it is
   /* the next attack of the action, set up (2026-10-30): a Multiattack's next, the next beam or ray, Extra Attack's next
@@ -14482,6 +14484,7 @@ function renderBattlePanelNow(){
       M.dash = true; const a = (c.acted = c.acted || {})[t.id] = c.acted[t.id] || { n:0, more:0 }; a.n++; a.swings = 0;
       const line = `${t.label} takes the Dash action (${moveAllow(c, t)} ft this turn).`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap:{}, acted:actedBefore, moved:movedBefore }); flash(line); }
     touch(); renderBattle(); renderBattlePanel(); });
+  { const fs = $("#ac-fxskill"); if(fs) fs.onchange = ()=>{ act.fxSkill = fs.value; }; }     // Guidance's skill
   el.querySelectorAll("[data-qdone]").forEach(b=>b.onclick = ()=>{ const a = (c.acted||{})[act.actor]; if(a) a.swings = 0; act = freshAct(act.actor); renderBattlePanel(); });     // the rest of a Multiattack (or Extra Attack) not made
   el.querySelectorAll("[data-upend]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.upend); if(!u) return;     // ending a spell that's up, by hand
     upEnd(c, u, "ended"); if(String(act.what||"")===`again:${u.id}`) act = freshAct(act.actor); touch(); renderBattle(); renderBattlePanel(); });
@@ -20912,7 +20915,8 @@ function renderActionBox(force){
     const sl = slotChoices(o, s); if(sl.length && !sl.includes(ta.slot)) ta.slot = sl.find(L=>o.slots[L].used < o.slots[L].max) ?? sl[0];
     body = S.length ? `<div class="afr"><label>Spell</label><select data-ta="spell">${S.map(x=>opt(x.id, `${x.name} (${x.lv?ORD[x.lv]:"cantrip"})`, ta.spell)).join("")}</select></div>
         ${sl.length ? `<div class="afr"><label>Slot</label><select data-ta="slot">${sl.map(L=>opt(String(L), `${ORD[L]} level (${o.slots[L].max - o.slots[L].used} left)`, String(ta.slot))).join("")}</select></div>` : ""}
-        <div class="afr"><label>On</label><select data-ta="on">${opt("", "No one in particular", on)}${P.map(x=>opt(x.key, x.name, on)).join("")}</select></div>`
+        <div class="afr"><label>On</label><select data-ta="on">${opt("", "No one in particular", on)}${P.map(x=>opt(x.key, x.name, on)).join("")}</select></div>
+        ${s && SPELL_FX[s.id] && SPELL_FX[s.id].skillDie ? `<div class="afr"><label>Skill</label><select data-ta="fxSkill">${opt("", "Any check", ta.fxSkill||"")}${TA_SKILLS.map(k=>opt(k, k, ta.fxSkill||"")).join("")}</select></div>` : ""}`
       : `<p class="empty-note" style="font-size:12px">No spells on ${esc(o.name||"their")} sheet.</p>`;
   } else if(ta.what==="rest"){
     body = `<div class="adtabs">${[["short","Short rest"],["long","Long rest"]].map(([k,l])=>`<button class="${ta.rest===k?"on":""}" data-tarest="${k}">${l}</button>`).join("")}</div>`;
@@ -20961,7 +20965,7 @@ function wireActionBox(){
         gameLog("item", line); flash(line + "."); saveParty(); }
       else { const keys = k==="checkall" ? taPeople().filter(x=>ta.who==="party" ? x.key.startsWith("pc:") : x.key===ta.who).map(x=>x.key) : [b.dataset.k];
         const said = [];
-        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill), F = fxRoll(o, "check");     // Guidance's die
+        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill), F = fxRoll(o, "check", k==="hide" ? "Stealth" : ta.skill);     // Guidance's die, on its skill
           const w = F.said ? `d20 ${r}${m ? ` ${m < 0 ? "−" : "+"} ${Math.abs(m)}` : ""}${F.said} = ${r + m + F.n}` : d20Words(r, m);
           ta.tot[key] = String(r + m + F.n); (ta.nat = ta.nat || {})[key] = r;
           (ta.d20 = ta.d20 || {})[key] = { v:ta.tot[key], said:w }; said.push(`${keys.length > 1 ? `${(o.name || "Someone").split(" ")[0]} ` : ""}${w}`); }
@@ -21051,7 +21055,7 @@ function logTableAction(){
     /* what it does while it lasts (2026-10-30): Pass without Trace on the whole party (the caster's aura), Shield on
        themself, the rest on who it's cast on */
     { const B = SPELL_FX[s.id], hs = !B ? [] : B.aura ? [o, ...P.filter(x=>x.key.startsWith("pc:") && x.o!==o).map(x=>x.o)] : B.self || !on ? [o] : [taObj(on) || o];
-      if(B && fxCast(s, (concHolders().find(q=>q.h===o) || {}).key || "", hs, o)) gameLog("spell", `${s.name} is on ${hs.map(h=>h===o ? "themself" : (h.name || "someone").split(" ")[0]).join(", ")}${N}`); }
+      if(B && fxCast(s, (concHolders().find(q=>q.h===o) || {}).key || "", hs, o, { skill:ta.fxSkill })) gameLog("spell", `${s.name} is on ${hs.map(h=>h===o ? "themself" : (h.name || "someone").split(" ")[0]).join(", ")}${N}`); }
   } else if(ta.what==="rest"){
     if(party){ restParty(ta.rest); }
     else if(o){ partyDoing(`${ta.rest==="long"?"Long":"Short"} rest`, o); restPc(o, ta.rest); gameLog("rest", `${name} takes a ${ta.rest} rest${N}`); }
