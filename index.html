@@ -7295,6 +7295,7 @@ $("#tabs").addEventListener("click", e=>{
   render();                                       // the session's numbered places show only while its tab is open
 });
 function syncTabs(){
+  { const tb = document.querySelector('button[data-pane="session"]'); if(tb) tb.textContent = isArena() ? "Arena" : "Session"; }     // the Test Arena's room picker (2026-10-30)
   for(const b of $("#tabs").children) b.classList.toggle("on", b.dataset.pane===pane);
   /* table mode: the card stays in the panel, the script on the left, any other tab in the drawer */
   if(typeof buildOn==="function" && buildOn()){
@@ -19162,7 +19163,34 @@ function keyPeopleRow(){
   return `<div class="keyppl"><span class="mini">Their cards</span>${K.map(p=>`<button class="btn small${tcard && tcard.kind==="npc" && tcard.id===p.id ? " on" : ""}" data-keyp="${p.id}" title="${esc(p.name||"")}: their card on the side (stage, what's been done to them, what they fight with), wherever they are">${esc((p.name||"Someone").replace(/^(Lord|Lady|Sir|Dame|Baron)\s+/i, "").split(" ")[0])}</button>`).join("")}</div>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-keyp]"); if(!b) return; openPersonCard("npc", b.dataset.keyp); });
+/* ══ THE ARENA (Joseph, 2026-10-30): a map file with root.arena (the Test Arena) has "Arena" in place of the Session
+   tab, and no session notes: pick where a room comes from (any place with rooms), then the room (by floor), see what's
+   planned there, and Open it goes in and opens its battle map. ══ */
+var arenaPick = { from:"", room:"" };
+const isArena = () => !!(typeof root!=="undefined" && root && root.arena);
+const arenaFoeName = id => { const s = String(id||""); return s.startsWith("npc:") ? ((libNpcById(s.slice(4))||{}).name || "someone") : ((foeById(s)||{}).name || s); };
+function arenaPanel(){
+  const places = (root.nodes||[]).filter(n=>plans[n.id] && (plans[n.id].nodes||[]).length);
+  if(!places.some(p=>p.id===arenaPick.from)) arenaPick.from = places.length ? places[0].id : "";
+  const pl = plans[arenaPick.from], rooms = pl ? (pl.nodes||[]).filter(r=>r.name) : [];
+  if(!rooms.some(r=>r.id===arenaPick.room)) arenaPick.room = rooms.length ? rooms[0].id : "";
+  const floors = pl && Array.isArray(pl.floors) && pl.floors.length ? pl.floors : null;
+  const groups = floors ? [...floors.map(f=>[f.name || f.id, rooms.filter(r=>r.floor===f.id)]), ["Elsewhere", rooms.filter(r=>!floors.some(f=>f.id===r.floor))]].filter(g=>g[1].length) : [["", rooms]];
+  const r = rooms.find(x=>x.id===arenaPick.room), st = r && r.site, lines = st ? [...(st.foes||[]), ...siteStages(st).flatMap(s=>s.foes||[])] : [];
+  const opt = x => `<option value="${esc(x.id)}" ${x.id===arenaPick.room?"selected":""}>${esc(x.name)}</option>`;
+  return `<p class="eyebrow spaced">Arena</p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">Pick a room and open it; then Fill with enemies, the Roll tab or Build adds more.</p>
+    <div class="field"><label>From</label><select data-arena="from">${places.map(p=>`<option value="${esc(p.id)}" ${p.id===arenaPick.from?"selected":""}>${esc(p.name)} (${(plans[p.id].nodes||[]).length} rooms)</option>`).join("")}</select></div>
+    <div class="field"><label>Room</label><select data-arena="room">${groups.map(([g, L])=>g ? `<optgroup label="${esc(g)}">${L.map(opt).join("")}</optgroup>` : L.map(opt).join("")).join("")}</select></div>
+    ${r ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${lines.length ? `Planned: ${esc(lines.map(f=>`${f.n && f.n!=="1" ? f.n + " × " : ""}${arenaFoeName(f.id)}`).join(", "))}` : "Nothing planned: empty."}</p>` : ""}
+    <button class="btn wide calmgo" data-arena="open" ${r ? "" : "disabled"}>Open it</button>`;
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.arena) return; arenaPick[t.dataset.arena] = t.value; if(t.dataset.arena==="from") arenaPick.room = ""; renderSession(); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arena="open"]'); if(!b) return;
+  if(!plans[arenaPick.from]) return; enterPlan(arenaPick.from); const n = (doc.nodes||[]).find(x=>x.id===arenaPick.room); if(n) openBattle(n); });
 function renderSession(){
+  const tb = document.querySelector('button[data-pane="session"]'); if(tb) tb.textContent = isArena() ? "Arena" : "Session";
+  if(isArena()){ $("#pane-session").innerHTML = arenaPanel(); return; }
   const S = sessionDocs(), el = $("#pane-session");
   if(!S.find(d=>d.id===sessOpen)) sessOpen = S.length ? S[S.length-1].id : null;
   const d = docById(sessOpen);

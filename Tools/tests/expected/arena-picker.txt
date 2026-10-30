@@ -1,0 +1,6 @@
+arena true · tab "Arena" · docs 0 · countdown false
+From: Ashgrave Manor (16 rooms) | Template rooms (40 rooms) | Kalatecha fights (7 rooms)
+Ashgrave floors: Cellars 3, Ground floor 7, Upper floor 5, Attic 1
+picked: Kalatecha: The Lantern Room · Planned: 2 × Wrecker, Wrecker Bruiser, Raven Heartgrove
+opened: Kalatecha: The Lantern Room · in the room Wrecker 1, Wrecker 2, Wrecker Bruiser, Raven Heartgrove
+page errors: 0
