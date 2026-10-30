@@ -9,6 +9,6 @@ line with + 2: 2d6 + 7 · Frost Axe (+1, Str): 1d8 + 6 · Spiritual Weapon (Wren
 the + box (3): 2d6 + 8
 to-hit with ±2: Roll to hit vs AC 11 → hit · "To hit: d20 10 + 8 + 2 (modifier) = 20 vs AC 11 (Ogre): hit"
 Second Wind: targets ["pa"] · heal dice 1d10+5 · chip "themself (Gawain)"
-logged: Gawain 40 -> 50 · "Gawain uses Second Wind (1d10+5) on Gawain, healing 10."
+logged: Gawain 40 -> 50 · "Gawain uses Second Wind (1d10+5) on Gawain, healing 10 — as a bonus action."
 logged: "Gawain makes a Greatsword on Ogre — hits (to hit: d20 13 + 8 = 21 vs AC 11 (Ogre): hit), 12 damage."
 page errors: 0

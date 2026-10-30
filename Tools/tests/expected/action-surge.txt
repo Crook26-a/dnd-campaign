@@ -1,0 +1,13 @@
+attacks in an Attack action: Gawain 2, Wren 1, the ogre 1
+swing 1: Gawain makes a Greatsword on Ogre — hits, 5 damage. · marks: ● 1 attack left in it / 1 more attack with this action (Extra Attack, Multiattack) · no other action left
+the off-hand dagger (bonus action): Gawain makes a Dagger (off-hand, bonus action) on Ogre — hits, 5 damage — as a bonus action.
+swing 2 (Extra Attack, the same action): Gawain makes a Greatsword on Ogre — hits, 5 damage. · asked: nothing · marks: ● action used / Their action this turn is used
+swing 3: not logged · asked: Gawain has already used their action this turn. Log this one anyway?
+Action Surge in his list: true
+Action Surge: "Gawain uses Action Surge on Gawain. One more action this turn." · uses left 0 · marks: ● 1 action left / 1 action left this turn
+swing 3 after the surge: Gawain makes a Greatsword on Ogre — hits, 5 damage. · asked: nothing · marks: ● 1 attack left in it / 1 more attack with this action (Extra Attack, Multiattack) · no other action left
+swing 4: Gawain makes a Greatsword on Ogre — hits, 5 damage. · asked: nothing
+swing 5: not logged · asked: Gawain has already used their actions this turn. Log this one anyway?
+undo swing 4: marks ● 1 attack left in it / 1 more attack with this action (Extra Attack, Multiattack) · no other action left
+round 2, Gawain's turn again (pa): marks none
+page errors: 0

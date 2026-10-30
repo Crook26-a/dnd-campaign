@@ -10,7 +10,7 @@ bonus used after the bite: true · the glaive hit alone was one: false
 a second bonus action: asked "Avery de Vonn has already used a Bonus Action this turn. Log this one anyway?" · logged false · charges still 2
 her next turn: bonus used false
 ticks itself: Spiritual Weapon true · Bless false · off-hand row true
-turn order shows: ◑ bonus used, — already used one this turn
+turn order shows: ● action used, ◑ bonus used, — already used one this turn, Their action this turn is used
 undo: bonus used false
 at 0 charges, logged: false
 CR with the glaive: CR 3: tough like CR 2, hits like CR 3 · 12.4 a round | without: CR 1: tough like CR 2, hits like CR 1 · 5.7
