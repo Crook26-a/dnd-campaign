@@ -7765,7 +7765,9 @@ function goBackFromLib(){
 function pcAttacksBlock(c, i){
   const A = Array.isArray(c.attacks) ? c.attacks : [];
   const inp = (a, j, k, ph) => `<input data-pcatk="${i}" data-k="${j}" data-af="${k}" type="text" value="${esc(a[k]||"")}" placeholder="${ph}">`;
+  const per = pcAttacksPer(c);     // how many attacks their Attack action makes (Extra Attack)
   return `<div class="field">
+    <p class="empty-note" style="margin:0 0 4px;font-size:11px">Attack action: ${per} attack${per > 1 ? "s (Extra Attack)" : ""}</p>
     ${A.length ? `<div class="atkrow head"><span>Hit / DC</span><span>Damage</span><span title="Added to the damage roll">+</span><span>Type</span><span></span></div>` : ""}
     ${A.map((a,j)=>`<div class="atkrow"><span class="atkname">${inp(a,j,"name","Attack name, e.g. Rapier")}</span>${inp(a,j,"hit","+4")}${inp(a,j,"dmg","1d8+2")}${inp(a,j,"mod","0")}
       <select data-pcatk="${i}" data-k="${j}" data-af="dtype"><option value="">—</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===a.dtype?"selected":""}>${d}</option>`).join("")}</select>
@@ -13483,7 +13485,15 @@ function attacksPerAction(t){
   if(!t) return 1;
   if(t.kind==="foe"){ const m = foeById(t.x.foe), mt = (pairs(m && m.act).find(([n])=>/^Multiattack/i.test(n)) || [])[1]; if(!mt) return 1;
     const n = [...String(mt).matchAll(/\b(one|two|three|four|five|six)\b/gi)].reduce((a, x)=>a + NUM_WORDS[x[1].toLowerCase()], 0); return Math.max(2, n); }
-  const o = t.p ? pcState(t.p) : null; return o ? Math.max(1, ...crClasses(o).map(k=>crAttacks(k.cls, k.lv))) : 1;
+  return pcAttacksPer(t.p ? pcState(t.p) : null);
+}
+function pcAttacksPer(o){ return o ? Math.max(1, ...crClasses(o).map(k=>crAttacks(k.cls, k.lv))) : 1; }
+/* in words (Joseph, 2026-10-30: "it tells me how many attack a character has"): "Attack action: 2 attacks (Extra Attack)",
+   a creature's "Multiattack: 3 attacks" */
+function attacksWords(t){
+  const n = attacksPerAction(t);
+  if(t && t.kind==="foe"){ const m = foeById(t.x.foe); return pairs(m && m.act).some(([nm])=>/^Multiattack/i.test(nm)) ? `Multiattack: ${n} attacks` : "1 attack an action"; }
+  return `Attack action: ${n} attack${n > 1 ? "s (Extra Attack)" : ""}`;
 }
 /* is this one attack of the Attack action (a weapon, a creature's attack), not a spell or an ability */
 const isSwing = (info, what) => !!info && !info.spell && (info.kind==="attack" || isAttackAct(info)) && !/^fa:Multiattack/i.test(what||"");
@@ -13875,6 +13885,7 @@ function actionForm(c, all){
       <div class="field" style="flex:1"><label>Who</label><select id="ac-actor">${all.map(x=>`<option value="${x.id}" ${x.id===act.actor?"selected":""}>${esc(x.label)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
     ${t ? tacticsHtml(c, t) : ""}
+    ${t && (t.kind==="foe" || t.p) ? `<p class="actspell">${esc(attacksWords(t))}</p>` : ""}
     ${(c.ups||[]).length ? `<p class="actspell">Up now: ${c.ups.map(u=>{ const o = all.find(x=>x.id===u.owner); return `${esc(u.name)}${o ? ` (${esc(o.label)})` : ""}${u.left!=null ? `, ${esc(concLeftWords(u.left))}` : ""}${u.thing && c.pos && c.pos[u.id] ? "" : ` <button class="btn small" data-uptok="${u.id}" title="Put a token for it on the battle map, next to its caster">Token</button>`} <button class="btn small" data-upend="${u.id}" title="End it now: its token goes">End</button>`; }).join(" · ")}</p>` : ""}
     ${t && fxOf(hOfT(t), true).length ? `<p class="actspell">On ${esc(t.label)}: ${fxOf(hOfT(t), true).map(f=>esc(f.name + fxSay(f.b) + (f.item ? ", worn" : ""))).join(" · ")}</p>` : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
