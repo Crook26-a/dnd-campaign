@@ -13315,7 +13315,8 @@ function logAction(n, c){
     if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used+1); }
     if(info.kind==="item"){ const x = usableOf(p).find(y=>y.k===info.useK);                 /* using a carried thing spends a charge (or the thing) */
       if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } spendItem(p, x.k);
-        slotTxt = x.u.charges ? ` (${p.inv.includes(x.e) ? `${x.e.ch}/${x.u.charges} charges left` : "used up"})` : (p.inv.includes(x.e) ? "" : " (the last one)"); } }
+        slotTxt = x.u.charges ? ` (${p.inv.includes(x.e) ? `${x.e.ch}/${x.u.charges} charges left` : "used up"})` : (p.inv.includes(x.e) ? "" : " (the last one)");
+        if(info.bite && info.bite.onHitBa) slotTxt += " as a Bonus Action"; } }
     if(info.kind==="spell") S.spells[info.name] = (S.spells[info.name]||0)+1;
     else if(info.kind==="attack"){ S.attacks++; if(act.outcome==="hit"||act.outcome==="crit") S.hits++; }
     else S.abilities[info.name] = (S.abilities[info.name]||0)+1;

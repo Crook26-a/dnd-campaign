@@ -5,7 +5,7 @@ the choice: [{"v":"bite:0","label":"Glaive Bite (3/3) · Bonus Action, after a h
 glaive: "Avery de Vonn makes a Glaive Bite (reach) on Ogre — hits, 9 damage." · charges 3
 roll button: Roll 1d4 + 3
 rolled: 6 · "1d4 + 3: 3 + 3 = 6"
-bite: "Avery de Vonn uses Glaive Bite (2/3 charges left) on Ogre — hits, 6 damage (1d4 + 3: 3 + 3 = 6), and Avery de Vonn regains 6." · Avery 30 -> 36 · ogre 59 -> 53 · charges 2
+bite: "Avery de Vonn uses Glaive Bite (2/3 charges left) as a Bonus Action on Ogre — hits, 6 damage (1d4 + 3: 3 + 3 = 6), and Avery de Vonn regains 6." · Avery 30 -> 36 · ogre 59 -> 53 · charges 2
 at 0 charges, logged: false
 CR with the glaive: CR 3: tough like CR 2, hits like CR 3 · 12.4 a round | without: CR 1: tough like CR 2, hits like CR 1 · 5.7
 page errors: 0
