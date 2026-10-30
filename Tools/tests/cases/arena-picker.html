@@ -28,6 +28,7 @@
     const g = document.querySelector('#pane-session [data-arena="fight"]'); g.value = fight; g.dispatchEvent(new Event('change', { bubbles:true })); await wait(20);
     const said = [...document.querySelectorAll('#pane-session .empty-note')].map(p=>p.textContent.trim()).find(t=>/^In it/.test(t)); document.querySelector('[data-arena="open"]').click(); await wait(150);
     const n = bnode(); return `${placeLabel(n)} + ${fight} → ${said} → in the room: ${n.site.combat.list.map(x=>x.label).join(', ') || 'nobody'}`; };
+  window.confirm = () => true;     // "Start this room fresh?" yes
   out.push('fights to pick: ' + (root.arenaFights||[]).map(f=>f.name).join(' | '));
   out.push(await pick('ktemplates', /Camp: forest/, 'af_finale'));
   out.push(await pick('kmanor', /armory/i, 'af_pdining'));
@@ -54,7 +55,7 @@
   /* the roll, with the Field Book's choices */
   Object.assign(arenaAdd, { roll:'', kind:'', role:'Priest', species:'Elf', gender:'woman', theme:'gothic', disp:'ally', level:'3', side:'ally' }); renderSession(); await wait(20);
   out.push('roll form: ' + [...document.querySelectorAll('#pane-session [data-arenaadd]')].map(s=>s.dataset.arenaadd).filter((v, i, a)=>a.indexOf(v)===i).join(','));
-  document.querySelector('[data-arena="roll"]').click(); await wait(40); { const t = gameLogList().slice(-1)[0].text, nm = (/: ([^(]+) (/.exec(t)||[])[1], p = lib().npcs.find(q=>q.name===String(nm).trim()) || {}; out.push(`rolled: ${t.slice(0, 90)} · ${p.species} · ${p.gender} · ${p.cls} · ${p.align} · ${p.theme}`); }
+  document.querySelector('[data-arena="roll"]').click(); await wait(40); { const t = gameLogList().slice(-1)[0].text, nm = (/: ([^(]+) \(/.exec(t)||[])[1], p = lib().npcs.find(q=>q.name===String(nm).trim()) || {}; out.push(`rolled: ${t.slice(0, 90)} · ${p.species} · ${p.gender} · ${p.cls} · ${p.align} · ${p.theme}`); }
   Object.assign(arenaAdd, { roll:'Undead', foe:'srd:ghoul', side:'enemy', disp:'' }); renderSession(); await wait(20); document.querySelector('[data-arena="roll"]').click(); await wait(40);
   out.push('rolled a creature: ' + gameLogList().slice(-1)[0].text.slice(0, 110));
   const n = bnode(); out.push('opened: ' + (battleOf ? placeLabel(n) : 'nothing') + ' · in the room ' + (n && n.site && n.site.combat ? n.site.combat.list.map(x=>x.label).join(', ') : '-'));

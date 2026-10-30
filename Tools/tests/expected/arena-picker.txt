@@ -1,5 +1,9 @@
 opens in: Template: blank · pane inspect
 arena true · tab "Arena" · docs 0 · countdown false
+party in at first: nobody · Fill row: false · buttons: Bring in/Bring in/Bring in/Bring in
+brought in Gawain and Avery: Avery de Vonn, Gawain · tokens true/true · Fill with enemies (3,201 XP)
+a goblin goes for: Avery de Vonn
+took Avery out: Gawain · Avery de Vonn left Template: blank
 From: Ashgrave Manor (16 rooms) | Template rooms (40 rooms) | Kalatecha fights (7 rooms)
 Ashgrave floors: Cellars 3, Ground floor 7, Upper floor 5, Attic 1
 picked: Kalatecha: The Lantern Room · In it: 2 × Wrecker, Wrecker Bruiser, Raven Heartgrove
@@ -11,7 +15,14 @@ The armory + own → In it: 6 × Animated Armor, 6 × Animated Flying Sword, 2 �
 listed in the room: 14
 after ×: 13 left
 added: Brought into The armory: Goblin Warrior, Goblin Warrior 2, Goblin Warrior 3 / Brought into The armory: Mara Fenwick
-rolled: Rolled into The armory: Briar (Enemy · Wight). Tactics: Hits and moves; picks off the weakest unless the strongest close / Rolled into The armory: Faye Oakshade (Enemy · Tiefling druid). Tactics: Stays back, opens big; goes for the strongest i
-the room now: Animated Armor 2, Animated Armor 3, Animated Armor 4, Animated Armor 5, Animated Armor 6, Animated Flying Sword 1, Animated Flying Sword 2, Animated Flying Sword 3, Animated Flying Sword 4, Animated Flying Sword 5, Animated Flying Sword 6, Minotaur Skeleton 1, Minotaur Skeleton 2, Goblin Warrior, Goblin Warrior 2, Goblin Warrior 3, Briar, Faye Oakshade · Mara with the party: true
-opened: The armory · in the room Animated Armor 1, Animated Armor 2, Animated Armor 3, Animated Armor 4, Animated Armor 5, Animated Armor 6, Animated Flying Sword 1, Animated Flying Sword 2, Animated Flying Sword 3, Animated Flying Sword 4, Animated Flying Sword 5, Animated Flying Sword 6, Minotaur Skeleton 1, Minotaur Skeleton 2
+rolled: Rolled into The armory: Ellis (Enemy · Wight). Tactics: Hits and moves; picks off the weakest unless the strongest close / Rolled into The armory: Faye Oakshade (Enemy · Tiefling druid). Tactics: Stays back, opens big; goes for the strongest i
+the room now: Animated Armor 2, Animated Armor 3, Animated Armor 4, Animated Armor 5, Animated Armor 6, Animated Flying Sword 1, Animated Flying Sword 2, Animated Flying Sword 3, Animated Flying Sword 4, Animated Flying Sword 5, Animated Flying Sword 6, Minotaur Skeleton 1, Minotaur Skeleton 2, Goblin Warrior, Goblin Warrior 2, Goblin Warrior 3, Ellis, Faye Oakshade · Mara with the party: true
+search rooms "lab": The laboratory Ashgrave Manor
+picked: kmanor / plab
+search who "gob": Goblin Boss SRD, CR 1 | Goblin Minion SRD, CR 1/8 | Goblin Warrior SRD, CR 1/4 | Hobgoblin Captain SRD, CR 3 | Hobgoblin Warrior SRD, CR 1/2
+chosen to add: srd:goblin-boss · the dropdown shows srd:goblin-boss
+roll form: who,n,side,level,disp,roll,kind,role,species,gender,theme,align
+rolled: Rolled into The armory: Una Thackery (Potential ally · Elf commoner). Tactics: Wades in; p · Elf · Woman · Commoner · Lawful Good · undefined
+rolled a creature: Rolled into The armory: Florentine (Enemy · Ghoul). Tactics: Hits and moves; goes for whoever hurts it most, e
+opened: The armory · in the room Animated Armor 2, Animated Armor 3, Animated Armor 4, Animated Armor 5, Animated Armor 6, Animated Flying Sword 1, Animated Flying Sword 2, Animated Flying Sword 3, Animated Flying Sword 4, Animated Flying Sword 5, Animated Flying Sword 6, Minotaur Skeleton 1, Minotaur Skeleton 2, Goblin Warrior, Goblin Warrior 2, Goblin Warrior 3, Mara Fenwick, Ellis, Faye Oakshade, Una Thackery, Florentine
 page errors: 0

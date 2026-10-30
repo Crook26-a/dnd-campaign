@@ -1969,6 +1969,8 @@ function charCR(c, mode, opts){
   const lines = (c.attacks||[]).map(a=>{ const h = String(a.hit||"").trim(), base = String(a.name||"").replace(/\s*\(.*$/, "").trim(), sp = spellByName(base);
     const atk = /^[+-]?\d+$/.test(h) ? parseInt(h) : null, dc = atk==null && /\d/.test(h) ? +(/(\d+)/.exec(h)[1]) : null;
     let avg = crDiceAvg(a.dmg) + (Math.round(+a.mod) || 0); const eb = /eldritch blast/i.test(a.name||"");     // the line's own + (2026-10-30)
+    /* extra damage their weapon adds (Flame Tongue's 2d6 fire, counted lit), unless the line already has that type */
+    avg += itemExtras(c).filter(x=>extraFits(x, "", a.name) && !new RegExp(`\\b${x.dtype}\\b`, "i").test(String(a.dtype||""))).reduce((s, x)=>s + crDiceAvg(x.dice), 0);
     if(eb){ const dice = [...String(a.dmg||"").matchAll(/(\d*)d10/gi)].reduce((s, m)=>s + (+m[1] || 1), 0), perBeam = dice <= 1;
       if(perBeam && agonizing && !/[+-]\s*\d+\s*$/.test(String(a.dmg||"").split(/,/)[0])) avg += chaMod;
       if(perBeam) avg = avg * cantripX + (repelling ? 2 * cantripX : 0); }
@@ -10764,7 +10766,7 @@ const fmtGp = v => v>=100 ? Math.round(v).toLocaleString() : (Math.round(v*100)/
 /* attunement: 2024 free rules (Rules Glossary): "A creature can have Attunement with no more than three magic items
    at a time." An item needs it when its entry says so (x.att); a carried item marked attuned holds e.attuned */
 const ATTUNE_MAX = 3;
-const needsAttune = x => !!(x && /attunement/i.test(x.att||""));
+function needsAttune(x){ return !!(x && /attunement/i.test(x.att||"")); }
 const attunedCount = c => (Array.isArray(c.inv) ? c.inv : []).filter(e=>e.attuned).length;
 function pcStatsBlock(c, i){
   const S = c.stats || {}, inv = Array.isArray(c.inv) ? c.inv : [], purse = purseOf(c);
@@ -13461,6 +13463,7 @@ function attackAddons(t){
       if(m) out.push({ key:`spell:${s.id}`, name:s.name, dice:m[1], dtype:m[2].toLowerCase(), note:"while the spell lasts" });
     }
   }
+  if(t.kind==="pc") out.push(...itemExtras(pcState(t.p)));
   const sb = t.kind==="foe" ? foeById(t.x.foe) : pcStatBlock(t.p);
   for(const [nm, text] of (sb ? pairs(sb.tr) : [])){
     const s = String(text||""), name = String(nm).replace(/\s*\(.*\)\s*$/,"");
@@ -13470,6 +13473,29 @@ function attackAddons(t){
   }
   return out;
 }
+/* extra damage what they carry adds (Joseph, 2026-10-30: "additional damage, like flame tongue, should be showing up in the
+   damage thing on a hit"): "deals an extra 2d6 Fire damage on a hit" in an item's text, attuned if it needs it. A weapon's
+   goes with its own line or item (Flame Tongue Greatsword: a line named "Flame Tongue…"); one that says "while", "against"
+   or "if" (lit, Undead only) waits to be ticked, and once ticked stays on for them that fight */
+function itemExtras(o){
+  return (o && o.inv || []).flatMap(e=>{ const x = e && e.id ? libLootById(e.id) : null; if(!x || ((needsAttune(x) || x.attune) && !e.attuned)) return [];
+    const m = /[^.]*\bextra (\d+d\d+) ([A-Za-z]+) damage[^.]*/i.exec(String(x.desc||"")); if(!m) return [];
+    const weapon = /weapon/i.test(String(x.cat||"")) || !!x.dmg, words = String(x.name||"").toLowerCase().replace(/\s+\S+$/, w=>/weapon/i.test(String(x.cat||"")) ? "" : w).trim();
+    return [{ key:`inv:${x.id}`, id:x.id, name:x.name, dice:m[1], dtype:m[2].toLowerCase(), note:m[0].trim(), weapon, words, cond:/\b(while|against|if|when)\b/i.test(m[0]) }]; });
+}
+function extraFits(a, what, rowName){ return !a.weapon || what===`itm:${a.id}` || (!!a.words && String(rowName||"").toLowerCase().includes(a.words)); }
+/* how a target takes a type of damage (2026-10-30): immune none, resists half (rounded down), vulnerable double; from a
+   creature's Immune / Resists / Vulnerable (its stage's too) or a character's Defenses. A line with a condition ("from
+   nonmagical attacks") is left to the DM */
+function dmgTakes(t, dtype){
+  const d = String(dtype||"").toLowerCase().trim(); if(!t || !/^[a-z]+$/.test(d)) return "";
+  const has = (s, word) => String(s||"").toLowerCase().split(/[;\n.]/).some(part=>!/nonmagical|aren't|isn't|except|while|\bif\b/.test(part) && new RegExp(`\\b${d}\\b`).test(part) && (!word || new RegExp(word).test(part)));
+  const m = t.kind==="foe" ? foeById(t.x.foe) : null;
+  if(m) return has(m.imm) ? "immune" : has(m.res) ? "resists" : has(m.vul) ? "vulnerable" : "";
+  const def = t.p ? t.p.defenses : "";
+  return has(def, "immun") ? "immune" : has(def, "resist") ? "resists" : has(def, "vulnerab") ? "vulnerable" : "";
+}
+function dmgAfter(n, how){ return how==="immune" ? 0 : how==="resists" ? Math.floor(n / 2) : how==="vulnerable" ? n * 2 : n; }
 const turnStamp = c => `${c.round}|${c.turn||""}`;
 const addonUsed = (c, actorId, key) => !!(c.onceUsed && c.onceUsed[actorId] && c.onceUsed[actorId][key]===turnStamp(c));
 /* a character's spell that one of their attack rows stands for ("Thunderwave (15 ft cube)" is Thunderwave): so the
@@ -13497,7 +13523,12 @@ function condFromText(text){
 }
 function hintFromText(text){
   const m = /\((\d+d\d+(?:\s*[+-]\s*\d+)?)\)\s*([A-Za-z]+) damage/.exec(String(text||""));
-  return m ? { dice:m[1].replace(/\s+/g,""), dtype:m[2].toLowerCase() } : null;
+  if(!m) return null;
+  /* what rides on the same hit (2026-10-30): "… Slashing damage plus 7 (2d6) Fire damage" */
+  const more = [];
+  for(let rest = String(text).slice(m.index + m[0].length), x; (x = /^\s*,?\s*(?:plus|and)\s+\d+\s*\((\d+d\d+(?:\s*[+-]\s*\d+)?)\)\s*([A-Za-z]+) damage/i.exec(rest)); rest = rest.slice(x[0].length))
+    more.push({ dice:x[1].replace(/\s+/g,""), dtype:x[2].toLowerCase() });
+  return { dice:m[1].replace(/\s+/g,""), dtype:m[2].toLowerCase(), ...(more.length ? { more } : {}) };
 }
 function actInfo(c, t){
   /* what the chosen action is: its name, kind, any spell, level, and hints */
@@ -13547,7 +13578,7 @@ function actDice(c, t, info){
   const sc = info && info.spell ? scaledSpell(info.spell, act.lvl, t && t.kind==="pc" ? clampLv(t.p.level) : 0) : null;
   const part1 = sc && sc.parts[0] ? sc.parts[0] : (info && info.hint) || null, part2 = (sc && sc.parts[1]) || null;
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
-  const addons = isAtk && t ? attackAddons(t) : [];
+  const addons = t && (isAtk || part1) ? attackAddons(t) : [];     // on any damage, not just attacks (Joseph, 2026-10-30)
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
   /* the modifier the rules add (Joseph, 2026-10-30: "a plus modifier for spiritual weapon and just in general"): a spell
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
@@ -13555,13 +13586,21 @@ function actDice(c, t, info){
   const desc = String((info && info.spell && info.spell.desc) || ""), sMod = t && t.kind==="pc" ? spellModOf(pcState(t.p)) : 0;
   const dmgMod = (sMod && /damage[^.]*plus your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0);
   const healMod = sMod && /(Hit Points|regains?)[^.]*plus your spellcasting ability modifier/i.test(desc) ? sMod : 0;
-  let dmgDice = addDice(...(part1 ? [part1.dice] : []), ...on.filter(a=>a.dice).map(a=>a.dice));
-  if(dmgDice && dmgMod) dmgDice = addDice(dmgDice, String(dmgMod));
+  /* the damage, a part for each type (2026-10-30): its own, what rides on the same hit ("plus 7 (2d6) Fire"), what's ticked */
+  const baseType = String(act.dtype || (part1 && part1.dtype) || "").toLowerCase(), parts = [];
+  const put = (dice, dtype) => { if(!dice) return; const k = String(dtype || baseType).toLowerCase(), p = parts.find(x=>x.dtype===k);
+    if(p) p.dice = addDice(p.dice, dice); else parts.push({ dice, dtype:k }); };
+  if(part1) put(part1.dice, baseType);
+  if(!(info && info.spell)) ((info && info.hint && info.hint.more) || []).forEach(x=>put(x.dice, x.dtype));
+  on.filter(a=>a.dice).forEach(a=>put(a.dice, a.dtype));
+  if(parts.length && dmgMod) parts[0].dice = addDice(parts[0].dice, String(dmgMod));
+  const dmgDice = addDice(...parts.map(p=>p.dice));
+  const dmgLabel = parts.length > 1 ? parts.map(p=>`${p.dice}${p.dtype ? ` ${p.dtype}` : ""}`).join(" + ") : dmgDice;
   /* a damage-cutting item on whoever uses it: its "on yourself" amount */
   const selfCut = info && info.reduce && t && t.p && act.targets.length===1 && act.targets[0]===t.id;
   let healDice = selfCut ? reduceDice(info.reduce, pcState(t.p), true) : (sc && sc.heal) || (info && info.healDice) || "";
   if(healDice && healMod && sc && sc.heal) healDice = addDice(healDice, String(healMod));
-  return { sc, part1, part2, addons, on, dmgDice, healDice };
+  return { sc, part1, part2, addons, on, dmgDice, dmgLabel, parts, healDice };
 }
 function actionForm(c, all){
   const t = all.find(x=>x.id===act.actor), info = t ? actInfo(c, t) : null;
@@ -13593,13 +13632,13 @@ function actionForm(c, all){
     <div class="actout">${OUTCOMES.map(([v,l])=>`<label><input type="radio" name="ac-out" value="${v}" ${act.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
     ${toHitRow(c, t, info, all)}
     <div class="pcrow">
-      <div class="field" style="flex:.9"><label>Damage${D.dmgDice?` <i>(${esc(D.dmgDice)})</i>`:""}</label><input id="ac-dmg" type="number" min="0" value="${esc(act.dmg)}"></div>
+      <div class="field" style="flex:.9"><label>Damage${D.dmgDice?` <i>(${esc(D.dmgLabel)})</i>`:""}</label><input id="ac-dmg" type="number" min="0" value="${esc(act.dmg)}"></div>
       <div class="field" style="flex:.45" title="Add (or take) this much on the damage roll: a modifier the app doesn't know about"><label>+</label><input id="ac-dmgmod" class="mono" type="number" value="${esc(act.dmgMod||"")}" placeholder="0"></div>
       <div class="field" style="flex:1.2"><label>Type</label><select id="ac-dtype">${DAMAGE_TYPES.map(d=>`<option value="${d}" ${d===act.dtype?"selected":""}>${d||"—"}</option>`).join("")}</select></div>
       <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
     ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
       <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
-    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice.">Roll ${esc(D.dmgDice)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
+    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice. Each type is rolled on its own, and a target that resists, is immune to or is vulnerable to one takes half, none or double of that part.">Roll ${esc(D.dmgLabel)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
     ${D.part2 ? `<div class="actpart2"><label class="grouplab" style="margin-top:6px">Then: ${esc(D.part2.dtype)} damage (${esc(D.part2.dice)})</label>
       <div class="acttargets">${all.filter(x=>x.id!==act.actor).map(x=>`<button class="chip${p2t.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt2="${x.id}">${esc(x.label)}</button>`).join("")}</div>
       <div class="actout">${[["fail","Save failed"],["save","Save made"],["hit","Hit"],["none","—"]].map(([v,l])=>`<label><input type="radio" name="ac-out2" value="${v}" ${act.p2.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
@@ -13701,12 +13740,15 @@ function logAction(n, c){
   /* a character some hits miss anyway (Joseph, 2026-10-30: Bathilda, the Gentleman's protection): an enemy's hit on
      them rolls a d100; at or under their "Hits on them miss" % it turns into a miss (no damage, no condition). Not in CR */
   const turned = [];
+  /* rolled by type, each target's resistances worked out (2026-10-30): their own amount, unless the box was changed by hand */
+  const byT = act.rolled && act.rolled.dmg && act.rolled.dmg.by && act.rolled.dmg.v===String(act.dmg) ? act.rolled.dmg.by : null;
   for(const t of targets){
     let dropped = false, got = 0, hl = 0, off = false;
     const mp = actor.side!=="party" && ["hit","crit"].includes(act.outcome) && t.kind==="pc" ? Math.max(0, Math.min(100, Math.round(+pcState(t.p).hitsMiss || 0))) : 0;
     if(mp){ const r = 1 + Math.floor(Math.random()*100), why = String(pcState(t.p).hitsMissWhy||"").trim(); off = r <= mp;
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
-    if(dmg && !off){ got = dmg; dropped = t.kind==="foe" ? damageFoe(t.x, dmg) : damagePc(t.p, dmg); dealt += dmg; if(t.kind==="pc") statsOf(t.p).taken += dmg; }
+    const dm = byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg;
+    if(dm && !off){ got = dm; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(heal){ hl = healAny(t, heal); healed += hl; }
     if(act.cond && !off && !["miss","save"].includes(act.outcome) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
     if(dropped) kills++;
@@ -13737,14 +13779,16 @@ function logAction(n, c){
     S.kills += new Set([...hits, ...hits2].filter(h=>h.dropped && foeHit(h)).map(h=>h.id)).size; }
   const verb = info.kind==="spell" ? "casts" : info.kind==="attack" ? "makes a" : "uses";
   const OUT = { hit:"hits", crit:"crits", miss:"misses", fail:"save failed", save:"save made", none:"" }, out = OUT[act.outcome];
-  const riders = D.on.length ? ` with ${D.on.map(a=>a.name).join(" and ")}${D.on.some(a=>a.adv)?" (Advantage)":""}` : "";
+  const named = D.on.filter(a=>!String(info.name||"").toLowerCase().includes(String(a.name||"").toLowerCase()));     // not "Flame Tongue Greatsword with Flame Tongue Greatsword"
+  const riders = named.length ? ` with ${named.map(a=>a.name).join(" and ")}${D.on.some(a=>a.adv)?" (Advantage)":""}` : "";
   /* the dice the Roll buttons rolled, when the number wasn't changed by hand */
+  const dtypeW = D.parts && D.parts.length > 1 ? D.parts.map(p=>p.dtype).filter(Boolean).join(" and ") : act.dtype;
   const rolledW = (k, v) => { const R = act.rolled && act.rolled[k]; return R && R.v===String(v) ? ` (${R.said})` : ""; };
   const line = `${actor.label} ${verb} ${info.name}${slotTxt}${riders}`
     + (targets.length ? ` on ${hits.map(h=>h.label).join(", ")}` : "")
     + (out ? ` — ${out}` : "")
     + (act.toHit && act.toHit.v===act.outcome ? ` (${act.toHit.said.replace(/^To hit: /, "to hit: ")})` : "")
-    + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}${rolledW("dmg", act.dmg)}` : "")
+    + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${byT ? hits.map(h=>`${h.label} ${h.dmg}`).join(", ") : dmg}${dtypeW ? ` ${dtypeW}` : ""} damage${targets.length>1 && !byT ? " each" : ""}${rolledW("dmg", act.dmg)}` : "")
     + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
       : `, healing ${healed}${rolledW("heal", act.heal)}`) : "")
     + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
@@ -13999,7 +14043,11 @@ function renderBattlePanelNow(){
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
       /* a new choice brings its own damage type (Ice Knife is piercing, not the radiant of the Starry Form picked before it) */
       act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; if(info.cond) act.cond = info.cond;
-      if(selfOnly(info, t)){ act.targets = [act.actor]; act.outcome = "none"; } }     // only its user (Joseph, 2026-10-30: Second Wind)
+      if(selfOnly(info, t)){ act.targets = [act.actor]; act.outcome = "none"; }     // only its user (Joseph, 2026-10-30: Second Wind)
+      /* what they carry that adds to it: on by itself on its own weapon (a "while lit" one once ticked this fight), not
+         when the line already counts that type ("2d6+5 + 2d6", "slashing + fire") */
+      const lit = (c.lit || {})[act.actor] || {}, rowDt = String((info.hint && info.hint.dtype) || "");
+      act.addons = attackAddons(t).filter(a=>a.key.startsWith("inv:") && extraFits(a, act.what, info.name) && (!a.cond || lit[a.key]) && !new RegExp(`\\b${a.dtype}\\b`, "i").test(rowDt)).map(a=>a.key); }
     renderBattlePanel();
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
@@ -14009,7 +14057,9 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-actt2]").forEach(b=>b.onclick = ()=>{ keep(); if(!act.p2) return; const id = b.dataset.actt2, T = act.p2.targets || [...act.targets];
     act.p2.targets = T.includes(id) ? T.filter(x=>x!==id) : [...T, id]; renderBattlePanel(); });
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];
-    act.addons = A.includes(k) ? A.filter(x=>x!==k) : [...A, k]; renderBattlePanel(); });
+    act.addons = A.includes(k) ? A.filter(x=>x!==k) : [...A, k];
+    if(k.startsWith("inv:")){ const L = (c.lit = c.lit || {})[act.actor] = c.lit[act.actor] || {}; if(act.addons.includes(k)) L[k] = true; else delete L[k]; }     // lit stays lit
+    renderBattlePanel(); });
   /* rolling: the dice shown into the box (a crit rolls every damage die twice) */
   el.querySelectorAll("[data-acroll]").forEach(b=>b.onclick = ()=>{
     keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
@@ -14022,6 +14072,17 @@ function renderBattlePanelNow(){
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
       act.outcome = out; act.toHit = { v:out, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
+    if(w==="dmg" && D.parts.length){     /* each type on its own, then what each target takes of it (2026-10-30) */
+      const crit = act.outcome==="crit", R = D.parts.map(p=>({ ...p, r:rollTerms(diceTerms(p.dice), crit) })), raw = R.reduce((a, p)=>a + p.r.total, 0);
+      const said = R.length > 1 ? `${R.map(p=>diceWords(`${p.dice} ${p.dtype}`, p.r.rolls, diceTerms(p.dice).filter(x=>!x.d).reduce((a, x)=>a + x.k, 0), p.r.total)).join(" · ")} · in all ${raw}${crit ? " (crit: dice twice)" : ""}`
+        : rollSaid(`${R[0].dice}${R[0].dtype ? ` ${R[0].dtype}` : ""}`, R[0].r, crit);
+      const by = {}, notes = [], HOW = { resists:"resists", immune:"is immune to", vulnerable:"is vulnerable to" };
+      for(const x of act.targets.map(id=>all.find(y=>y.id===id)).filter(Boolean)){ let n = 0; const why = [];
+        for(const p of R){ const how = dmgTakes(x, p.dtype); n += dmgAfter(p.r.total, how); if(how) why.push(`${HOW[how]} ${p.dtype}`); }
+        by[x.id] = n; if(why.length) notes.push(`${x.label} ${why.join(", ")}: ${n}`); }
+      const vals = [...new Set(Object.values(by))], v = vals.length===1 ? vals[0] : raw;
+      act.dmg = String(v); (act.rolled = act.rolled || {}).dmg = { v:String(v), by:vals.length > 1 ? by : null, said:said + (notes.length ? `; ${notes.join("; ")}` : "") };
+      flash(act.rolled.dmg.said); renderBattlePanel(); return; }
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
     const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
     const cut = w==="heal" && info.reduce ? reduceCap(info.reduce, r.total, +act.took || 0) : r.total;     // a damage-cutting item: no more than half the hit
