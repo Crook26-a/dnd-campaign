@@ -1,0 +1,5 @@
+row: Fill with enemies (4,591 XP)
+Filled Template: blank for Avery de Vonn, Gawain, Bathilda and Gnick (Low, by Full Day CR): budget 3,060 XP; 1 × Night Hag (CR 5, 1,800 XP), 1 × Specter (CR 1, 200 XP), 1 × Druid (CR 2, 450 XP) and 1 × Gargoyle (CR 2, 450 XP) = 2,900 XP · in the room 4 · within budget true, at least 80% true
+Filled Template: blank for Avery de Vonn, Gawain, Bathilda and Gnick (Moderate, by Full Day CR): budget 4,591 XP; 1 × Xorn (CR 5, 1,800 XP), 1 × Werewolf (CR 3, 700 XP), 1 × Mimic (CR 2, 450 XP), 1 × Swarm of Crawling Claws (CR 3, 700 XP), 1 × Ghast (CR 2, 450 XP) and 1 × Tiger (CR 1, 200 XP) = 4,300 XP · in the room 6 · within budget true, at least 80% true
+Filled Template: blank for Avery de Vonn, Gawain, Bathilda and Gnick (High, by Full Day CR): budget 6,693 XP; 1 × Vampire Spawn (CR 5, 1,800 XP), 2 × Wraith (CR 5, 1,800 XP each), 1 × Wight (CR 3, 700 XP) and 1 × Will-o'-Wisp (CR 2, 450 XP) = 6,550 XP · in the room 5 · within budget true, at least 80% true
+page errors: 0

@@ -27,7 +27,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('round 1: ' + [arm, gar, spe].map(sug).join(' | '));
   /* Gawain hits the gargoyle hard: its grudge outweighs 50 ft? (normal: 2 a step) */
   act = freshAct(G.id); act.what = 'pca:0'; act.targets = [gar.x.id]; act.outcome = 'hit'; act.dmg = '30'; logAction(hall, c); await wait(30);
-  out.push('after Gawain hits the gargoyle for 30: ' + sug(gar) + ' · tallies ' + JSON.stringify({ dealt:c.dealt, hurt:c.hurt }));
+  out.push('after Gawain hits the gargoyle for 30: ' + sug(gar) + ' · tallies ' + JSON.stringify({ dealt:c.dealt, hurt:c.hurt }).replace(/fx[a-z0-9]+/g, 'gargoyle'));
   /* the strongest bears down on the specter: Gawain moves next to it */
   c.pos[G.id] = { x:6, y:2 }; out.push('Gawain beside the specter: ' + sug(spe));
   /* clever: the strongest within 1.5 × movement, Now CR for two rounds, then damage dealt */
@@ -52,7 +52,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   Math.random = () => 0.9; act = freshAct(gar.id); act.what = 'fa:Claw'; act.targets = [W.id]; act.outcome = 'hit'; act.dmg = '7'; logAction(hall, c); await wait(20); Math.random = rnd0;
   out.push('lands: "' + c.log.slice(-1)[0].text + '" · Wren HP ' + wren.hp + ' · in her CR? ' + (charCR(wren).xp === charCR(Object.assign({}, wren, { hitsMiss:'0' })).xp ? 'no' : 'yes'));
   c.log.pop(); c.log.pop();
-  const before = JSON.stringify(c.dealt); undoAction(c); out.push('undo: dealt ' + before + ' -> ' + JSON.stringify(c.dealt));
+  const before = JSON.stringify(c.dealt); undoAction(c); out.push(('undo: dealt ' + before + ' -> ' + JSON.stringify(c.dealt)).replace(/fx[a-z0-9]+/g, 'gargoyle'));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
  document.title = 'RES ' + out.join(' || ');

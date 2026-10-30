@@ -2532,6 +2532,44 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
       const full = Math.max(r.target, scaleTarget(P, r.base)); freed += Math.max(0, v - (full - r.target)); c.scaled.held[key] = full - r.target; r.full = full; }
     const line = `${w.name || "Someone"} isn't coming after all${freed ? `: ${freed} fewer held back` : ""}`; gameLog("fight", line); flash(line + "."); }
   touch(); renderBattle(); renderBattlePanel(); sendPlayers(); });
+/* ══════════════════════════════════════════════════════════════
+   FILL WITH ENEMIES (Joseph, 2026-10-30: "fill npc's in based on the cr of the pcs selected"): calm in a room, its
+   enemies picked for the characters in it (roomChars; nobody placed: the party): the budget is each one's Full Day
+   CR (charCRDay XP, moved to Low or High by their level's own budget ratio; no sheet: by level), filled with random
+   SRD creatures (any, or one type): a leader at 30-60% of it if there is one, then smaller ones, at most 8. They
+   come in like anything rolled into an open room (intoOpenPlace), with their own tactics; the log says the sums.
+   ══════════════════════════════════════════════════════════════ */
+var fillOpts = { diff:"mod", type:"" };
+const FILL_DIFFS = [["lo","Low"],["mod","Moderate"],["hi","High"]];
+function fillWho(n){ const R = roomChars(planOf || "survey", n.id); return R.length ? R : partyRoster().map(p=>({ id:p.id, name:p.name, level:clampLv(p.level) })); }
+function fillBudget(who, diff){
+  return who.reduce((a, w)=>{ const lv = clampLv(w.level), B = budgetFor([lv]), real = w.id ? charById(w.id) : null;
+    const xp = real ? charCRDay(Object.assign({}, real, { level:lv })).xp : B.mod; return a + Math.round(xp * B[diff] / B.mod); }, 0);
+}
+function fillPick(budget, type){
+  const pool = SRD_FOES.filter(m=>(+m.xp||0) > 0 && (!type || String(m.type||"").toLowerCase().startsWith(type.toLowerCase())));
+  const out = []; let left = budget;
+  const lead = pool.filter(m=>m.xp >= budget * .3 && m.xp <= budget * .6); if(lead.length){ const m = pickOne(lead); out.push(m); left -= m.xp; }
+  for(let k = 0; k < 20 && out.length < 8 && left >= budget * .08; k++){ const fit = pool.filter(m=>m.xp <= left && m.xp >= Math.max(10, left * .15)); if(!fit.length) break; const m = pickOne(fit); out.push(m); left -= m.xp; }
+  const g = new Map(); for(const m of out) g.set(m.id, (g.get(m.id) || 0) + 1);
+  return { lines:[...g].map(([id, n])=>({ id, n })), xp:budget - left };
+}
+function fillRow(n, st){
+  const who = fillWho(n); if(!who.length) return "";
+  const b = fillBudget(who, fillOpts.diff), types = typeof CREATURE_TYPES!=="undefined" ? CREATURE_TYPES : [];
+  return `<div class="pcrow" style="align-items:center;margin:0 0 6px" title="Random SRD creatures for ${esc(andList(who.map(w=>w.name || "someone")))}, by their Full Day CR">
+    <select data-fillopt="diff" style="flex:1">${FILL_DIFFS.map(([k, l])=>`<option value="${k}" ${k===fillOpts.diff?"selected":""}>${l}</option>`).join("")}</select>
+    <select data-fillopt="type" style="flex:1.2"><option value="">Any creature</option>${types.map(t=>`<option ${t===fillOpts.type?"selected":""}>${esc(t)}</option>`).join("")}</select>
+    <button class="btn" data-fill style="flex:1.4">Fill with enemies <small>(${b.toLocaleString()} XP)</small></button></div>`;
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.fillopt) return; fillOpts[t.dataset.fillopt] = t.value; renderBattlePanel(); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fill]"); if(!b || !battleOf) return;
+  const n = bnode(); if(!n || !n.site) return; const who = fillWho(n), budget = fillBudget(who, fillOpts.diff), P = fillPick(budget, fillOpts.type);
+  if(!P.lines.length){ flash("No SRD creature of that kind fits the budget."); return; }
+  intoOpenPlace(n, { foes:P.lines });
+  const words = P.lines.map(L=>{ const m = foeById(L.id); return `${L.n} × ${m.name} (CR ${crLabel(m.cr)}, ${(+m.xp).toLocaleString()} XP${L.n > 1 ? " each" : ""})`; });
+  const line = `Filled ${placeLabel(n)} for ${andList(who.map(w=>w.name || "someone"))} (${(FILL_DIFFS.find(x=>x[0]===fillOpts.diff)||[])[1]}, by Full Day CR): budget ${budget.toLocaleString()} XP; ${andList(words)} = ${P.xp.toLocaleString()} XP`;
+  gameLog("fight", line); flash(line + "."); touch(); renderBattle(); renderBattlePanel(); });
 /* Start the battle: scale the room's own lines to who's in the room */
 function applyRoomScale(st){
   const c = st.combat; if(!c || c.scaled || !scaleOn() || st.noScale) return;
@@ -7691,7 +7729,7 @@ function pcSpellsBlock(c, i){
         <div class="sprow-m">${esc(spellMeta(s))}</div>
         <div class="sprow-d">${esc(spellBrief(s))}</div></div>`).join("")}</div>`).join("")
       : `<p class="empty-note" style="font-size:11px;margin:0 0 4px">No spells yet.</p>`}
-    <div class="pcrow" style="margin-top:6px"><input class="pc-spname" data-pci="${i}" list="dl-spells" type="text" placeholder="Add a spell…" style="flex:1"><button class="btn" data-pa="spadd" data-pci="${i}">Add</button></div>
+    <div class="pcrow" style="margin-top:6px"><input class="pc-spname" data-pci="${i}" list="dl-spells" type="text" placeholder="Search the SRD and your spells, or type a new one…" style="flex:1"><button class="btn" data-pa="spadd" data-pci="${i}">Add</button></div>
   </div>`;
 }
 /* going into the library from somewhere, and back to exactly there */
@@ -8648,7 +8686,7 @@ function npcSheet(x, a, t, ta){
             <button class="fdel" ${a} data-libact="spdel" data-sp="${s.id}" title="Remove">×</button></div>
             <div class="sprow-m">${esc(spellMeta(s))}</div><div class="sprow-d">${esc(spellBrief(s))}</div></div>`).join("")}</div>`; }).join("")
           : `<p class="empty-note" style="font-size:11px;margin:0 0 4px">None.</p>`); })()}
-      <div class="pcrow" style="margin-top:4px"><input class="lib-spname" data-for="${x.id}" list="dl-spells" type="text" placeholder="Add a spell…" style="flex:1"><button class="btn" ${a} data-libact="spadd">Add</button></div>
+      <div class="pcrow" style="margin-top:4px"><input class="lib-spname" data-for="${x.id}" list="dl-spells" type="text" placeholder="Search the SRD and your spells, or type a new one…" style="flex:1"><button class="btn" ${a} data-libact="spadd">Add</button></div>
       ${CASTING[x.cls] ? `<button class="btn wide" ${a} data-libact="respell" style="margin-top:4px" title="Their spells, slots, spell DC and attack worked out again from the 2024 ${esc(x.cls)} table for their level — replaces the spells above">${numOr(x.level) ? `New ${esc(x.cls)} spells for level ${numOr(x.level)}` : `Set their level to pick ${esc(x.cls)} spells for it`}</button>` : ""}`,
       (x.spells||[]).length ? String(x.spells.length) : "")
     + sec("rp", "Personality and appearance", `${ta("persona","Personality, ideals, bonds, flaws","What drives them…",4)}`)
@@ -9678,8 +9716,8 @@ $("#pane-library").addEventListener("click", e=>{
     if(a==="atkadd"){ x.attacks = Array.isArray(x.attacks) ? x.attacks : []; x.attacks.push({ name:"", hit:"", dmg:"", dtype:"" }); }
     else if(a==="atkdel"){ (x.attacks||[]).splice(+b.dataset.k, 1); }
     else if(a==="spadd"){
-      const inp = $(`#pane-library .lib-spname[data-for="${x.id}"]`), nm = (inp&&inp.value||"").trim().toLowerCase();
-      const s = spellByName(nm); if(!s){ flash("Pick a spell from the list."); return; }
+      const inp = $(`#pane-library .lib-spname[data-for="${x.id}"]`);
+      const s = spellPick(inp && inp.value); if(!s){ flash("Type a spell's name."); return; }     // a new name: added as your own (2026-10-30)
       x.spells = x.spells||[]; if(!x.spells.includes(s.id)) x.spells.push(s.id);
     }
     else if(a==="spdel"){ x.spells = (x.spells||[]).filter(q=>q!==b.dataset.sp); }
@@ -10677,6 +10715,31 @@ const spellOf = id => SPELL_BY.get(id) || ownSpells().find(s=>s.id===id) || null
 const allSpells = () => [...SRD_SPELLS, ...ownSpells()];
 const spellByName = nm => { const n = String(nm||"").trim().replace(/\.$/,"").toLowerCase(); return ownSpells().find(s=>String(s.name).toLowerCase()===n) || SRD_SPELLS.find(s=>s.name.toLowerCase()===n) || null; };
 /* the list of spell names to pick from, kept up to date as you make your own */
+/* the spell picker (Joseph, 2026-10-30, everywhere a sheet adds a spell): the "Add a spell" box searches the SRD and
+   your own spells as you type (name, level, school, SRD or yours; click one to add it), and a name that's neither is
+   added as your own new spell (spellPick), blank, to fill in on the Library's Spells tab */
+function spellPick(nm){
+  const name = String(nm||"").trim(); if(!name) return null;
+  const s = spellByName(name); if(s) return s;
+  const L = lib(); L.spells = Array.isArray(L.spells) ? L.spells : [];
+  const x = { id:uid("lsp"), name, lv:0, school:"", time:"Action", range:"", comp:"", dur:"", conc:false, rit:false, cls:"", save:"", atk:false, dmg:"", dtype:"", desc:"", hi:"", notes:"Added by name from a sheet: fill it in here." };
+  L.spells.push(x); refreshSpellList(); saveParty(); flash(`"${name}" added as your own spell: fill it in on the Library's Spells tab.`); return x;
+}
+const SPELL_BOXES = ".pc-spname, .lib-spname";
+function spellResults(inp){
+  const row = inp.parentElement; let box = row.nextElementSibling;
+  if(!box || !box.classList.contains("spres")){ box = document.createElement("div"); box.className = "spres"; box.style.cssText = "display:grid;gap:2px;margin:2px 0 6px"; row.after(box); }
+  const q = inp.value.trim().toLowerCase(); if(!q){ box.innerHTML = ""; return; }
+  const own = new Set(ownSpells().map(s=>s.id)), starts = s => s.name.toLowerCase().startsWith(q) ? 0 : 1;
+  const hits = allSpells().filter(s=>String(s.name||"").toLowerCase().includes(q)).sort((a, b)=>starts(a) - starts(b) || a.name.localeCompare(b.name)).slice(0, 8);
+  const exact = hits.some(s=>s.name.toLowerCase()===q), it = (nm, html) => `<button type="button" class="btn small" style="text-align:left" data-spres="${esc(nm)}">${html}</button>`;
+  box.innerHTML = hits.map(s=>it(s.name, `${esc(s.name)} <small>${+s.lv ? `${ORD[+s.lv]} level` : "cantrip"}${s.school ? ` ${esc(String(s.school).toLowerCase())}` : ""} · ${own.has(s.id) ? "yours" : "SRD"}</small>`)).join("")
+    + (exact ? "" : it(inp.value.trim(), `<b>+ Add “${esc(inp.value.trim())}”</b> <small>as your own new spell</small>`));
+}
+document.addEventListener("input", e=>{ const t = e.target; if(t.matches && t.matches(SPELL_BOXES)) spellResults(t); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-spres]"); if(!b) return; e.preventDefault();
+  const box = b.closest(".spres"), row = box && box.previousElementSibling, inp = row && row.querySelector(SPELL_BOXES), add = row && row.querySelector("button");
+  if(!inp || !add) return; inp.value = b.dataset.spres; box.innerHTML = ""; add.click(); });
 function refreshSpellList(){ const d = document.getElementById("dl-spells"); if(d) d.innerHTML = allSpells().map(s=>`<option value="${esc(s.name)}">`).join(""); }
 /* what a character has done and carries: built up from logged actions and loot handed over */
 /* coins, in their five denominations, and what they come to in gold */
@@ -11091,9 +11154,9 @@ function wirePc(box, rerender){
     else if(a==="ds"){ const k = b.dataset.k, j = +b.dataset.j; c.death[k] = c.death[k]===j+1 ? j : j+1; }
     else if(a==="uncond"){ c.conds = c.conds.filter(cn=>cn!==b.dataset.k); }
     else if(a==="spadd"){
-      const inp = box.querySelector(`.pc-spname[data-pci="${b.dataset.pci}"]`), nm = (inp&&inp.value||"").trim().toLowerCase();
-      const s = spellByName(nm);
-      if(!s){ flash("Pick a spell from the list."); return; }
+      const inp = box.querySelector(`.pc-spname[data-pci="${b.dataset.pci}"]`);
+      const s = spellPick(inp && inp.value);                          // a name that isn't a spell yet: added as your own (2026-10-30)
+      if(!s){ flash("Type a spell's name."); return; }
       c.spells = c.spells||[]; if(!c.spells.includes(s.id)) c.spells.push(s.id);
     }
     else if(a==="spdel"){ c.spells = (c.spells||[]).filter(x=>x!==b.dataset.sp); }
@@ -13790,6 +13853,7 @@ function renderBattlePanelNow(){
   const selActs = acts.trim() ? `<div class="bt-selacts"><p class="grouplab" style="margin-top:8px">${esc(selName)}${calm ? " here" : " in this fight"}</p>${acts}</div>` : "";
   /* the battle block: everything starting a battle adds. In table mode it's the Action box's */
   h += calm ? `<div class="bt-acts">${selActs}${wakeNextBtn(c)}
+      ${fillRow(n, st)}
       ${alsoComingRow(n, st)}
       <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
       <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p></div>`
