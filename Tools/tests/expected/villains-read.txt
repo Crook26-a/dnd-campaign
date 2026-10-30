@@ -15,12 +15,12 @@ reads kept: 9 · game log: Lord Corvin Ashgrave sizes up the party, as they are 
 on his card: TACTICS: HOW THEY FIGHT / WHAT THEY KNOW ABOUT THE PARTY NEWEST READ ON TOP · open true
 the Mage picked: SIZE THEM UP BY LEVEL · DM ONLY At full strength · Investigation As they are now · Insight DC Roll (+3) or the d20 you rolled at the table Use it · notes on its card 1
 its read is kept on its fight entry: true (true)
-Data tab: ROOMS SCALE BY: Level (the SRD 5.2 budget) / Character CR (our estimate, at full strength)
+Data tab: ROOMS SCALE BY: Level (the SRD 5.2 budget) / Character CR (our estimate, for the full day)
 VILLAINS READ THE PARTY BY: Level (the SRD 5.2 budget; now, by hit points left) / Character CR (our estimate, at full or now)
 set by CR: reads cr, rooms level
 the roller: tactics "Wades in front, picks the biggest threat and holds the line." · in the notes false
 the save, War Caster: Roll (+3, War Caster)
-rolled: Avery de Vonn keeps concentrating on Bless: made the Constitution save (War Caster: rolled 3 and 19, kept 19; 22 against DC 10)
+rolled: Avery de Vonn keeps concentrating on Bless: made the Constitution save (War Caster: rolled 3 and 19, kept 19; 19 + 3 = 22 against DC 10)
 typed 0: Type what the d20 showed, 1 to 20.
 typed 1: Day 1, 8 am · at full strength, by character CR (our estimate) · Investigation 2 (d20 1 +1) against DC 15, a natural 1: believes 1. Avery de Vonn, 2. Gawain. DM only: a false read: the reverse (the real order: 1. Gawain, 2. Avery de Vonn).
 marks: on the map for the DM 2, on the TV 1 (Avery only: the Mage stays on the DM side)

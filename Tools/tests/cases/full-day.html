@@ -1,0 +1,29 @@
+// uses: nothing
+<script>
+/* Full Day CR (Joseph, 2026-10-30): a fight's share of what runs out over the day's fights and short rests (Data → This
+   campaign); a one-fight day matches At full; the references stay on budget; slots wear thin over a long day, at-will
+   doesn't; a short rest brings back a fighter's Action Surge and a warlock's pact slots, not a wizard's slots; the
+   settings' boxes; the card's line */
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  loadJSONNow(JSON.stringify({ format:"ordinate-survey-v1", title:"Day", nodes:[], roads:[], shapes:[], roster:[], library:{ npcs:[], foes:[], loot:[], encounters:[], shops:[], spells:[] } })); await wait(300);
+  const K = ['Fighter','Rogue','Wizard','Cleric'], wl = { level:5, cls:"Warlock", hpMax:"38", hp:"38", ac:"13", cha:"18", satk:"+7", dc:"15", attacks:[{ name:"Eldritch Blast", hit:"+7", dmg:"1d10+4" }],
+    slots:[null, { max:0, used:0 }, { max:0, used:0 }, { max:2, used:0 }], spells:["spell:hypnotic-pattern"], res:[] };
+  const row = (f, s) => { root.dayFights = f; root.dayShorts = s; return `${f} fights, ${s} short: ` + [...K.map(k=>[k, crRefChar(k, 5)]), ['Warlock', wl]].map(([k, c])=>{ const d = charCRDay(c); return `${k} ${d.xp} (${Math.round(d.share*100)}%)`; }).join(', '); };
+  out.push('at full: ' + K.map(k=>k + ' ' + charCR(crRefChar(k, 5)).xp).join(', ') + ', Warlock ' + charCR(wl).xp);
+  out.push(row(1, 0)); out.push(row(4, 0)); out.push(row(7, 0)); out.push(row(7, 2));
+  const mid = (f, s) => { root.dayFights = f; root.dayShorts = s; const P = K.map(k=>charCRDay(crRefChar(k, 5)).pos).sort((a, b)=>a - b); return crRowAt((P[1] + P[2]) / 2).xp; };
+  out.push('the references\' middle pair, every day: ' + [[1,0],[4,0],[7,0],[7,2]].map(([f, s])=>mid(f, s)).join(', ') + ' (budget ' + PARTY_BUDGET[5][1] + ')');
+  /* the settings: Data → This campaign, and a card */
+  delete root.dayFights; delete root.dayShorts; out.push('defaults: ' + JSON.stringify(daySet()));
+  pane = 'data'; syncTabs(); renderPane(true); await wait(40);
+  const f = document.querySelector('[data-dayset="fights"]'), s = document.querySelector('[data-dayset="shorts"]');
+  if(f){ f.value = '7'; f.dispatchEvent(new Event('change', { bubbles:true })); } await wait(30);
+  const s2 = document.querySelector('[data-dayset="shorts"]'); if(s2){ s2.value = '1'; s2.dispatchEvent(new Event('change', { bubbles:true })); } await wait(30);
+  out.push('boxes: ' + !!f + ' ' + !!s + ' · set ' + JSON.stringify(daySet()) + ' · root ' + root.dayFights + '/' + root.dayShorts);
+  out.push('card: ' + pcCRRow(Object.assign({ id:'pw', name:'W' }, wl)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

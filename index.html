@@ -2055,16 +2055,76 @@ function charCR(c, mode, opts){
     const surge = lvIn(/fighter/i) >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
     return (best + surge + react + freeHit) / 3;
   };
+  if(opts && opts.wantExpect) return expect;                     // Full Day blends two of these (charCRDay)
   const tough = crTough(hp, ac), hits = crHits(expect), cal = CR_CAL[lv - 1] || 0;
   const pos = Math.max(0, Math.min(CR_TABLE.length - 1, (tough + hits) / 2 + cal));
   const t = Math.max(0, Math.min(CR_TABLE.length - 1, tough + cal)), h = Math.max(0, Math.min(CR_TABLE.length - 1, hits + cal));
-  return { pos, cr:crNear(pos), xp:crRowAt(pos).xp, tough:t, hits:h, dpr:Math.round(expect(crRowAt(pos)) * 10) / 10, fallback:false,
+  return { pos, cr:crNear(pos), xp:crRowAt(pos).xp, tough:t, hits:h, rawTough:tough, dpr:Math.round(expect(crRowAt(pos)) * 10) / 10, fallback:false,
     why:`tough like CR ${crSay(t)}, hits like CR ${crSay(h)}` };
 }
 /* "CR 5: tough like CR 3, hits like CR 7" */
 const charCRWords = r => r.fallback ? `CR ${crSay(r.pos)} by level (no full sheet)` : `CR ${crSay(r.pos)}: ${r.why}`;
 /* the ordinary characters the calibration was measured on: a fighter, rogue, wizard and cleric of a level, standard
    array, no magic items (by the book, 2024 rules) */
+/* ══════════════════════════════════════════════════════════════
+   FULL DAY CR (Joseph, 2026-10-30): "Now" and "At full" rate one fresh three-round fight; over a long day without rest
+   that overrates whoever spends slots and underrates whoever doesn't need them. Full Day rates a fight's share of the
+   day: what runs out (spell slots, Action Surge, Bardic Inspiration, item charges; short-rest ones again after each
+   short rest, a warlock's pact slots too) is spread over the day's fights (Data → This campaign: fights before a long
+   rest, root.dayFights, default 4; short rests, root.dayShorts, default 0). A fight that has its usual three limited
+   uses fights as at full; one with none fights with everything spent; between, in proportion (an estimate). Its own
+   calibration (dayCal): the four by-the-book references rated the same way land on their level's Moderate budget,
+   so an ordinary party rates the same and only the extremes move. Rooms scale by it (strengthOne, charHalvesXP).
+   ══════════════════════════════════════════════════════════════ */
+const daySet = () => ({ fights:Math.max(1, Math.round(+(root && root.dayFights) || 4)), shorts:Math.max(0, Math.round(+(root && root.dayShorts) || 0)) });
+const DAY_USES = 3;                                                   // limited uses a fight's plan takes (round one's spell and a couple more)
+/* how much of a fight's limited plan the day can pay for: 0..1 */
+function dayShare(c){
+  const D = daySet(), K = crClasses(c), again = D.shorts + 1;
+  const sheetSlots = c.slots && [1,2,3,4,5,6,7,8,9].some(k=>c.slots[k] && +c.slots[k].max > 0);
+  const slots = sheetSlots ? [1,2,3,4,5,6,7,8,9].reduce((a, k)=>a + (+(c.slots[k] || {}).max || 0), 0) : Object.values(crSlots(c, K) || {}).reduce((a, n)=>a + (+n || 0), 0);
+  const pact = K.length && K.every(k=>/warlock/i.test(k.cls));        // pact magic comes back on a short rest
+  /* the uses in a day (n = refills: 1, or again for short-rest things) */
+  const uses = n => slots * (pact ? n : 1)
+    + (c.res||[]).filter(r=>/action surge|bardic inspiration/i.test(r.name||"")).reduce((a, r)=>a + (+r.max || 0) * (/short|one/i.test(r.rest||"") || (!r.rest && /action surge/i.test(r.name||"")) ? n : 1), 0)     // Action Surge: always a short rest
+    + usableOf(c).reduce((a, x)=>a + (x.u.charges ? Math.floor(x.u.charges / (x.u.perUse || 1)) * (x.u.when==="rest" ? n : 1) : x.u.usedUp ? (+x.e.qty || 1) : 0), 0);
+  const U = uses(again), U1 = uses(1); if(!(U1 > 0)) return 1;      // nothing runs out: every fight as at full
+  return Math.min(1, U / D.fights / Math.min(DAY_USES, U1));         // a fight's plan needs no more than one refill holds (one Action Surge: one)
+}
+/* everything that runs out, spent (and hit points full): the at-will end of the blend */
+function spentAll(c){
+  const s = JSON.parse(JSON.stringify(c)); s.hp = s.hpMax; delete s.conc;
+  if(Array.isArray(s.slots)) s.slots.forEach(x=>{ if(x) x.used = +x.max || 0; }); else s.slots = [];
+  if(!s.slots.some(x=>x && +x.max > 0)) s.slots = [null, { max:1, used:1 }];   // no slots left (the rater works its own out when a sheet has none)
+  (s.res||[]).forEach(r=>{ r.used = +r.max || 0; });
+  s.inv = (s.inv||[]).filter(e=>{ const u = e.id ? itemUse(libLootById(e.id)) : null; if(u && u.charges) e.ch = 0; return !(u && u.usedUp && !u.charges); });
+  return s;
+}
+/* the raw day rating (no calibration): { tough, hits, expect } or null with no full sheet */
+function charCRDayRaw(c){
+  const F = charCR(c, "full"); if(F.fallback) return null;
+  const eF = charCR(c, "full", { wantExpect:true }), eN = charCR(spentAll(c), "now", { wantExpect:true });
+  if(typeof eF!=="function") return null;
+  const s = dayShare(c), e = typeof eN==="function" ? (r => eN(r) + (eF(r) - eN(r)) * s) : eF;
+  return { tough:F.rawTough, hits:crHits(e), expect:e, share:s };
+}
+/* the day's calibration goes on hitting power only: toughness keeps the usual one (a long day doesn't make anyone
+   tougher), and the day's offset is what puts the references' middle pair on the budget with it */
+const DAY_CAL = {};
+function dayCal(L){
+  const D = daySet(), key = `${L}|${D.fights}|${D.shorts}`; if(DAY_CAL[key]!=null) return DAY_CAL[key];
+  const cal = CR_CAL[L - 1] || 0;
+  const P = ["Fighter","Rogue","Wizard","Cleric"].map(k=>{ const r = charCRDayRaw(crRefChar(k, L)); return r ? (r.tough + cal + r.hits) / 2 : 0; }).sort((a, b)=>a - b);
+  return DAY_CAL[key] = 2 * (crPosOfXp(PARTY_BUDGET[L][1]) - (P[1] + P[2]) / 2);
+}
+/* Full Day: like charCR's result; no full sheet = by level, as there */
+function charCRDay(c){
+  const R = charCRDayRaw(c); if(!R) return charCR(c, "full");
+  const L = clampLv(c.level), M = CR_TABLE.length - 1, clamp = v => Math.max(0, Math.min(M, v));
+  const t = clamp(R.tough + (CR_CAL[L - 1] || 0)), h = clamp(R.hits + dayCal(L)), pos = clamp((t + h) / 2);
+  return { pos, cr:crNear(pos), xp:crRowAt(pos).xp, tough:t, hits:h, dpr:Math.round(R.expect(crRowAt(pos)) * 10) / 10, fallback:false, share:R.share,
+    why:`tough like CR ${crSay(t)}, hits like CR ${crSay(h)}` };
+}
 function crRefChar(cls, L){
   const prof = profByLevel(L), pm = L >= 8 ? 5 : L >= 4 ? 4 : 3, con = 2, hd = { Fighter:10, Rogue:8, Wizard:6, Cleric:8 }[cls];
   const hp = hd + con + (L - 1) * (hd / 2 + 1 + con);
@@ -2081,9 +2141,9 @@ function crRefChar(cls, L){
 /* an ordinary character's two halves at a level, as XP (the average of the four references; worked out once a level) */
 const CR_REF_HALVES = {};
 function crRefHalves(L){
-  L = clampLv(L); if(CR_REF_HALVES[L]) return CR_REF_HALVES[L];
-  const R = ["Fighter","Rogue","Wizard","Cleric"].map(k=>charCR(crRefChar(k, L)));
-  return CR_REF_HALVES[L] = { tough:R.reduce((a, r)=>a + crRowAt(r.tough).xp, 0) / R.length, hits:R.reduce((a, r)=>a + crRowAt(r.hits).xp, 0) / R.length };
+  L = clampLv(L); const D = daySet(), key = `${L}|${D.fights}|${D.shorts}`; if(CR_REF_HALVES[key]) return CR_REF_HALVES[key];
+  const R = ["Fighter","Rogue","Wizard","Cleric"].map(k=>charCRDay(crRefChar(k, L)));     // rooms scale by Full Day (Joseph, 2026-10-30)
+  return CR_REF_HALVES[key] = { tough:R.reduce((a, r)=>a + crRowAt(r.tough).xp, 0) / R.length, hits:R.reduce((a, r)=>a + crRowAt(r.hits).xp, 0) / R.length };
 }
 /* a character's two halves at full strength, as XP: { tough, hits } (a companion with no level: its stat block's; no sheet: an ordinary one's) */
 function charHalvesXP(c){
@@ -2091,7 +2151,7 @@ function charHalvesXP(c){
   if(!real) return crRefHalves(lv);
   let r;
   if(String(c.id).startsWith("n:") && !numOr(real.level)){ const m = real.statBlock || (real.fightsAs && real.fightsAs!=="self" ? foeById(real.fightsAs) : null); if(!m) return crRefHalves(lv); r = crOfBlock(m); }
-  else { r = charCR(Object.assign({}, real, { level:lv })); if(r.fallback) return crRefHalves(lv); }
+  else { r = charCRDay(Object.assign({}, real, { level:lv })); if(r.fallback) return crRefHalves(lv); }
   return { tough:crRowAt(r.tough).xp, hits:crRowAt(r.hits).xp };
 }
 /* ══════════════════════════════════════════════════════════════
@@ -2118,7 +2178,7 @@ function strengthOne(c, diff){
   const real = strengthByCR() && c && c.id ? charById(c.id) : null; if(!real) return B[d];
   let xp;
   if(String(c.id).startsWith("n:") && !numOr(real.level)){ const m = real.statBlock || (real.fightsAs && real.fightsAs!=="self" ? foeById(real.fightsAs) : null); xp = m ? crRowAt(crOfBlock(m).pos).xp : B.mod; }
-  else xp = charCR(Object.assign({}, real, { level:lv })).xp;
+  else xp = charCRDay(Object.assign({}, real, { level:lv })).xp;      // rooms scale by Full Day (Joseph, 2026-10-30)
   return Math.round(xp * B[d] / B.mod);
 }
 const strengthOf = (chars, diff) => (chars||[]).reduce((a, c)=>a + strengthOne(c, diff), 0);
@@ -2203,7 +2263,9 @@ function scaleCampBlock(){
   const S = root.scaleRooms || {}, on = !!S.on;
   return `<div class="field" style="margin:0 0 6px"><label>Rooms scale by</label><select data-strengthby>
       <option value="" ${strengthByCR()?"":"selected"}>Level (the SRD 5.2 budget)</option>
-      <option value="cr" ${strengthByCR()?"selected":""}>Character CR (our estimate, at full strength)</option></select></div>
+      <option value="cr" ${strengthByCR()?"selected":""}>Character CR (our estimate, for the full day)</option></select></div>
+    <div class="pcrow" style="align-items:center;margin:0 0 2px" title="Full Day CR: what runs out (spell slots, Action Surge, charges) is shared over these fights; short-rest things come back after each short rest"><label class="mini" style="flex:1">A full day: fights before a long rest</label><input data-dayset="fights" class="mono" type="number" min="1" max="20" value="${root.dayFights||""}" placeholder="4" style="width:52px"></div>
+    <div class="pcrow" style="align-items:center;margin:0 0 6px"><label class="mini" style="flex:1">short rests in it</label><input data-dayset="shorts" class="mono" type="number" min="0" max="10" value="${root.dayShorts ?? ""}" placeholder="0" style="width:52px"></div>
     <div class="field" style="margin:0 0 6px"><label>Villains read the party by</label><select data-readby>
       <option value="" ${readByCR()?"":"selected"}>Level (the SRD 5.2 budget; now, by hit points left)</option>
       <option value="cr" ${readByCR()?"selected":""}>Character CR (our estimate, at full or now)</option></select></div>
@@ -2502,6 +2564,9 @@ document.addEventListener("change", e=>{
   const t = e.target; if(!t.dataset) return;
   if(t.dataset.strengthby!=null){ if(t.value) root.strengthBy = t.value; else delete root.strengthBy;
     saveParty(); scaleRefresh(); flash(strengthByCR() ? "Rooms scale by each character's CR (our estimate, from their sheets)." : "Rooms scale by level (the SRD 5.2 budget)."); return; }
+  if(t.dataset.dayset){ const k = t.dataset.dayset==="fights" ? "dayFights" : "dayShorts", v = Math.round(+t.value);
+    if(t.value!=="" && isFinite(v) && v >= (k==="dayFights" ? 1 : 0)) root[k] = v; else delete root[k];
+    saveParty(); scaleRefresh(); pcCRRefresh(); const D = daySet(); flash(`A full day: ${D.fights} fight${D.fights===1?"":"s"}, ${D.shorts} short rest${D.shorts===1?"":"s"}. Full Day CR and the rooms follow.`); return; }
   if(t.dataset.readby!=null){ if(t.value) root.readBy = t.value; else delete root.readBy;
     saveParty(); scaleRefresh(); flash(readByCR() ? "Villains read the party by character CR (our estimate)." : "Villains read the party by level."); return; }
   if(t.dataset.sclcamp){ const S = root.scaleRooms = Object.assign({ on:false }, root.scaleRooms || {});
@@ -7631,8 +7696,10 @@ function pcAttacksBlock(c, i){
    beside it, an estimate. "Now" follows their hit points, slots and resources (pcCRRefresh, on every save) */
 function pcCRRow(c, npc){
   const key = (npc ? "n:" : "") + c.id, f = charCR(c), n = charCR(c, "now", c.conc ? { active:[c.conc.id] } : null);   // a spell they're holding counts now
-  const one = (label, r) => `<span><b>${label}</b> ${esc(charCRWords(r))} <small>${r.xp.toLocaleString()} XP · an estimate</small></span>`;
-  return `<div class="pccr" data-pccr="${esc(key)}" title="Their strength rated the way a monster's is, from their sheet: our own measure from the SRD monsters, not a rule">${one("At full", f)}${one("Now", n)}</div>`;
+  const d = charCRDay(c), D = daySet();
+  const one = (label, r, tip) => `<span${tip ? ` title="${esc(tip)}"` : ""}><b>${label}</b> ${esc(charCRWords(r))} <small>${r.xp.toLocaleString()} XP · an estimate</small></span>`;
+  return `<div class="pccr" data-pccr="${esc(key)}" title="Their strength rated the way a monster's is, from their sheet: our own measure from the SRD monsters, not a rule">${one("At full", f)}${one("Now", n)}${one("Full day", d,
+    `A fight's share of the whole day: ${D.fights} fight${D.fights===1?"":"s"} before a long rest, ${D.shorts} short rest${D.shorts===1?"":"s"} (Data → This campaign)${d.share!=null ? `; this fight gets ${Math.round(d.share * 100)}% of their usual slots, surges and charges` : ""}. Rooms scale by this.`)}</div>`;
 }
 function pcCRRefresh(){
   for(const el of document.querySelectorAll("[data-pccr]")){ const c = charById(el.dataset.pccr); if(!c) continue;

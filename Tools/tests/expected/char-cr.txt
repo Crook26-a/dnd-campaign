@@ -27,8 +27,8 @@ Warlock 5, Eldritch Blast 1d10 written, Agonizing and Repelling in the notes: 15
 Bard 5, Bardic Inspiration (worth its die): 8.5 a round (CR 2: tough like CR 2, hits like CR 2) vs 4.3 without (CR 1: tough like CR 2, hits like CR 1/2)
 concentration: both 17.6, Hex alone 17.6, Spirit Guardians alone 16.2, neither 13.1 (both = the better one, not the sum)
 a spell already running (opts.active, for concentration tracking later): no slots left 13.1, Hex already up 17.6
-cards: AT FULL CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate NOW CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate
-AT FULL CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate NOW CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate
-Gawain at 12 HP, typed on his sheet: AT FULL CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate NOW CR 4: tough like CR 1/4, hits like CR 8 898 XP · an estimate
-Data tab: Level (the SRD 5.2 budget) / [Character CR (our estimate, at full strength)] · campaign set to cr
-strength of Avery and Gawain: by level 1500 XP, by character CR 2571 (High 3771); what a room was built for (2 × level 5, no ids) 1500
+cards: AT FULL CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate NOW CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate FULL DAY CR 3: tough like CR 2, hits like CR 4 772 XP · an estimate
+AT FULL CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate NOW CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate FULL DAY CR 5: tough like CR 3, hits like CR 7 1,829 XP · an estimate
+Gawain at 12 HP, typed on his sheet: AT FULL CR 5: tough like CR 3, hits like CR 8 1,887 XP · an estimate NOW CR 4: tough like CR 1/4, hits like CR 8 898 XP · an estimate FULL DAY CR 5: tough like CR 3, hits like CR 7 1,829 XP · an estimate
+Data tab: Level (the SRD 5.2 budget) / [Character CR (our estimate, for the full day)] · campaign set to cr
+strength of Avery and Gawain: by level 1500 XP, by character CR 2601 (High 3815); what a room was built for (2 × level 5, no ids) 1500
