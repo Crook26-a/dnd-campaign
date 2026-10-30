@@ -4,6 +4,8 @@ at full: Fighter 832, Rogue 496, Wizard 867, Cleric 632, Warlock 470
 7 fights, 0 short: Fighter 1002 (14%), Rogue 729 (100%), Wizard 771 (43%), Cleric 711 (43%), Warlock 660 (14%)
 7 fights, 2 short: Fighter 1069 (43%), Rogue 729 (100%), Wizard 771 (43%), Cleric 711 (43%), Warlock 670 (43%)
 the references' middle pair, every day: 750, 750, 750, 750 (budget 750)
+Battle Master dice: at full 832 -> 1042 · now with them spent 832 · full day 1002 -> 1087
+Armor of Agathys (3rd-level pact slots): at full 470 -> 532 · full day 660 -> 674
 defaults: {"fights":4,"shorts":0}
 boxes: true true · set {"fights":7,"shorts":1} · root 7/1
 card: At full CR 2: tough like CR 1, hits like CR 3 470 XP · an estimate Now CR 2: tough like CR 1, hits like CR 3 470 XP · an estimate Full day CR 3: tough like CR 1, hits like CR 5 665 XP · an estimate

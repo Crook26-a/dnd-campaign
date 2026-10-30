@@ -14,6 +14,14 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push(row(1, 0)); out.push(row(4, 0)); out.push(row(7, 0)); out.push(row(7, 2));
   const mid = (f, s) => { root.dayFights = f; root.dayShorts = s; const P = K.map(k=>charCRDay(crRefChar(k, 5)).pos).sort((a, b)=>a - b); return crRowAt((P[1] + P[2]) / 2).xp; };
   out.push('the references\' middle pair, every day: ' + [[1,0],[4,0],[7,0],[7,2]].map(([f, s])=>mid(f, s)).join(', ') + ' (budget ' + PARTY_BUDGET[5][1] + ')');
+  /* superiority dice (a Battle Master) and a ward like Armor of Agathys count, at full, now and for the day */
+  root.dayFights = 7; root.dayShorts = 0;
+  root.library.spells = [{ id:"lsp_agathys", name:"Armor of Agathys", lv:1, time:"Action", desc:"Spectral frost covers you and your gear. You gain 5 Temporary Hit Points for the duration. While you have them, a creature that hits you with a melee attack takes 5 Cold damage.", hi:"The Temporary Hit Points and the Cold damage both increase by 5 for each spell slot level above 1." }];
+  const bm = Object.assign(crRefChar('Fighter', 5), { notes:"Maneuvers: Precision Attack, Riposte, Trip Attack." }); const bmD = JSON.parse(JSON.stringify(bm)); bmD.res.push({ name:"Superiority Dice (d8)", max:4, used:0, rest:"short" });
+  const bmS = JSON.parse(JSON.stringify(bmD)); bmS.res[1].used = 4;
+  out.push('Battle Master dice: at full ' + charCR(bm).xp + ' -> ' + charCR(bmD).xp + ' · now with them spent ' + charCR(bmS, 'now').xp + ' · full day ' + charCRDay(bm).xp + ' -> ' + charCRDay(bmD).xp);
+  const wa = JSON.parse(JSON.stringify(wl)); wa.spells = [...wa.spells, 'lsp_agathys'];
+  out.push('Armor of Agathys (3rd-level pact slots): at full ' + charCR(wl).xp + ' -> ' + charCR(wa).xp + ' · full day ' + charCRDay(wl).xp + ' -> ' + charCRDay(wa).xp);
   /* the settings: Data → This campaign, and a card */
   delete root.dayFights; delete root.dayShorts; out.push('defaults: ' + JSON.stringify(daySet()));
   pane = 'data'; syncTabs(); renderPane(true); await wait(40);

@@ -1989,6 +1989,13 @@ function charCR(c, mode, opts){
       const avg = isEB(s) ? (avgD + (agonizing ? chaMod : 0) + (repelling ? 2 : 0)) * beams : avgD * (lvS ? 1 : cantripX) + (/plus your spellcasting ability modifier/i.test(s.desc||"") ? smod : 0);
       const p = s.atk ? crHit(prof + smod, r.ac) : (q=>q + (/half as much/i.test(s.desc||"") ? (1 - q) / 2 : 0))(crHit(prof + smod, r.ac));
       return avg * p * (CR_AREA.test(s.desc||"") ? 2 : 1); }
+    /* a ward like Armor of Agathys (Joseph, 2026-10-30): its temporary hit points count like healing, and the damage it
+       deals back, for the melee hits they'll likely take while those last (half the attackers are in reach: an
+       estimate), cast from the highest slot they have, its "increase by N for each slot level above" applied */
+    const tmp = /gain (\d+) Temporary Hit Points/i.exec(s.desc||""), back = /hits you with a melee attack[^.]*takes (\d+)/i.exec(s.desc||"");
+    if(tmp || back){ const inc = +((/increase by (\d+) for each (?:spell )?slot level above/i.exec(s.hi||"")||[])[1] || 0), up = inc * Math.max(0, Math.max(lvS, slotList()[0] || 0) - lvS);
+      const t = tmp ? +tmp[1] + up : 0, b = back ? +back[1] + up : 0, hitsTaken = Math.max(1, Math.min(3, (t || 10) / Math.max(1, r.dpr / 2))) * .5;
+      return t + b * hitsTaken; }
     return CR_DISABLE.test(s.desc||"") ? (6 + 6 * lvS) * crHit(prof + smod, r.ac) : 0; };
   /* what they carry that does something when used (the Library page's Heals, Temp HP, Damage, Reduces damage; Joseph,
      2026-10-29): as an action, a bonus action or a reaction ("No action" too), once a round, as often as its charges (now:
@@ -2053,7 +2060,13 @@ function charCR(c, mode, opts){
       if(a.conc && b.conc) continue;
       best = Math.max(best, a.v + b.r[0] + 2 * atWill + b.r[1] + b.r[2] + 3 * runningVal); }
     const surge = lvIn(/fighter/i) >= 2 && (resLeft(/action surge/i) ?? 1) > 0 ? atWill : 0;
-    return (best + surge + react + freeHit) / 3;
+    /* superiority dice (Battle Master; Joseph, 2026-10-30): each adds its die to a hit (Precision, Trip and the like),
+       at most one an attack; with Riposte, one a round buys an extra attack when an enemy misses them (half: an estimate) */
+    const supRes = (c.res||[]).find(x=>/superiority di/i.test(x.name||"")), supN = supRes ? resLeft(/superiority di/i) || 0 : 0;
+    let sup = 0;
+    if(supN && bestW){ const die = (+((/d(\d+)/i.exec(supRes.name||"")||[])[1] || 8) + 1) / 2, rip = /riposte/i.test(textAll) ? Math.min(3, Math.floor(supN / 2)) : 0;
+      sup = Math.min(supN - rip, 3 * n) * die * bestWHit + rip * .5 * (bestW + die * bestWHit); }
+    return (best + surge + react + freeHit + sup) / 3;
   };
   if(opts && opts.wantExpect) return expect;                     // Full Day blends two of these (charCRDay)
   const tough = crTough(hp, ac), hits = crHits(expect), cal = CR_CAL[lv - 1] || 0;
@@ -2069,7 +2082,7 @@ const charCRWords = r => r.fallback ? `CR ${crSay(r.pos)} by level (no full shee
 /* ══════════════════════════════════════════════════════════════
    FULL DAY CR (Joseph, 2026-10-30): "Now" and "At full" rate one fresh three-round fight; over a long day without rest
    that overrates whoever spends slots and underrates whoever doesn't need them. Full Day rates a fight's share of the
-   day: what runs out (spell slots, Action Surge, Bardic Inspiration, item charges; short-rest ones again after each
+   day: what runs out (spell slots, Action Surge, Bardic Inspiration, superiority dice, item charges; short-rest ones again after each
    short rest, a warlock's pact slots too) is spread over the day's fights (Data → This campaign: fights before a long
    rest, root.dayFights, default 4; short rests, root.dayShorts, default 0). A fight that has its usual three limited
    uses fights as at full; one with none fights with everything spent; between, in proportion (an estimate). Its own
@@ -2086,7 +2099,7 @@ function dayShare(c){
   const pact = K.length && K.every(k=>/warlock/i.test(k.cls));        // pact magic comes back on a short rest
   /* the uses in a day (n = refills: 1, or again for short-rest things) */
   const uses = n => slots * (pact ? n : 1)
-    + (c.res||[]).filter(r=>/action surge|bardic inspiration/i.test(r.name||"")).reduce((a, r)=>a + (+r.max || 0) * (/short|one/i.test(r.rest||"") || (!r.rest && /action surge/i.test(r.name||"")) ? n : 1), 0)     // Action Surge: always a short rest
+    + (c.res||[]).filter(r=>/action surge|bardic inspiration|superiority di/i.test(r.name||"")).reduce((a, r)=>a + (+r.max || 0) * (/short|one/i.test(r.rest||"") || (!r.rest && /action surge/i.test(r.name||"")) ? n : 1), 0)     // Action Surge: always a short rest
     + usableOf(c).reduce((a, x)=>a + (x.u.charges ? Math.floor(x.u.charges / (x.u.perUse || 1)) * (x.u.when==="rest" ? n : 1) : x.u.usedUp ? (+x.e.qty || 1) : 0), 0);
   const U = uses(again), U1 = uses(1); if(!(U1 > 0)) return 1;      // nothing runs out: every fight as at full
   return Math.min(1, U / D.fights / Math.min(DAY_USES, U1));         // a fight's plan needs no more than one refill holds (one Action Surge: one)
