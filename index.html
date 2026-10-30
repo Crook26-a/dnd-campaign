@@ -8551,7 +8551,7 @@ function libForm(cat, x){
           <div class="pcrow">${t("onHit","On a hit, for a charge",1,"1d4+Str")}<div class="field" style="flex:1"><label>Its type</label><select ${a} data-f="onHitType"><option value="">Same as the weapon</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===String(x.onHitType||"").toLowerCase()?"selected":""}>${d}</option>`).join("")}</select></div></div>
           <div class="pcrow" style="align-items:center"><div class="field" style="flex:1"><label>Heals the wielder</label><select ${a} data-f="onHitHeal">${[["", "No"], ["half", "Half of it"], ["all", "All of it"]].map(([v, l])=>`<option value="${v}" ${v===(x.onHitHeal===true ? "half" : (x.onHitHeal||""))?"selected":""}>${l}</option>`).join("")}</select></div>
             <label class="check" style="flex:1.3;margin:0"><input ${a} data-f="onHitBa" type="checkbox" ${x.onHitBa?"checked":""}> Takes the wielder's Bonus Action</label></div>
-          <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">On a hit: extra damage when whoever carries it hits, once a turn, spending a charge. It's a chip in a fight's action form; Roll rolls it apart, and the log spends the charge and heals them. Charges back "By paying hit points": a button takes that many hit points for each charge.</p>
+          <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">On a hit: its own choice in a fight's action form, made after a hit (the Items group: "after a hit"); Roll rolls its dice, and the log spends a charge and heals them. Charges back "By paying hit points": a button takes that many hit points for each charge.</p>
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Damage above counts too when it's used (a bomb, a wand). Charges come back by themselves: at dawn when the day count moves on (Next, or typing a later day), or when whoever carries it finishes that rest (the Action box's "Takes a rest", or Rest on the Party tab). The game log says so.</p></details>`; })()}`;
   }
   if(!draft && CARD_CATS.includes(cat)) h += `<div class="pcrow" style="margin:0 0 8px">${cardBtn(cat, x.id, "Card for the players")}</div>`;
@@ -13009,7 +13009,10 @@ function actionChoices(t){
       /* add-ons (Sneak Attack) ride on another attack, so they aren't attacks of their own here */
       const own = (c.attacks||[]).map((a,j)=>a && a.name && !isAddonRow(a) ? { v:`pca:${j}`, label:`${a.name}${a.hit?` (${a.hit})`:""}` } : null).filter(Boolean);
       out.push({ group:"Attacks", items:[...own, ...itemWeapons(c.inv).map(o=>({ v:`itm:${o.x.id}`, label:`${o.x.name}${o.x.hit?` (${o.x.hit} magic)`:""}` })), { v:"atk:Weapon attack", label:"Weapon attack" },{ v:"atk:Unarmed strike", label:"Unarmed strike" }] });
-      const usable = usableOf(c); if(usable.length) out.push({ group:"Items", items:usable.map(x=>({ v:`use:${x.k}`, label:`${usableLabel(x)}${x.u.use?` · ${x.u.use}`:""}` })) });
+      /* a carried thing with On a hit (Glaive Bite) is its own choice, made after the hit: "bite:<k>" */
+      const usable = usableOf(c); if(usable.length) out.push({ group:"Items", items:usable.map(x=>x.u.onHit
+        ? { v:`bite:${x.k}`, label:`${usableLabel(x)} · ${x.u.onHitBa ? "Bonus Action, " : ""}after a hit` }
+        : { v:`use:${x.k}`, label:`${usableLabel(x)}${x.u.use?` · ${x.u.use}`:""}` }) });
       const asRow = new Set((c.attacks||[]).map(a=>rowSpell(t.p, a)).filter(Boolean).map(s=>s.id));
       const known = (c.spells||[]).map(spellOf).filter(s=>s && !asRow.has(s.id)).sort((a,b)=>a.lv-b.lv||a.name.localeCompare(b.name));
       if(known.length) out.push({ group:`${t.label}'s spells`, items:known.map(s=>({ v:`sp:${s.id}`, label:`${s.name} (${s.lv?ORD[s.lv]:"cantrip"})` })) });
@@ -13111,11 +13114,6 @@ function attackAddons(t){
     }
   }
   const sb = t.kind==="foe" ? foeById(t.x.foe) : pcStatBlock(t.p);
-  /* a carried thing's On a hit, while it has a charge (Glaive Bite): once a turn, its dice rolled apart (act.bite) */
-  if(t.kind==="pc"){ const c = pcState(t.p);
-    for(const x of usableOf(c)) if(x.u.onHit && (!x.u.charges || chargesLeft(x.e, x.u) >= x.u.perUse))
-      out.push({ key:`itm:${x.k}`, name:x.it.name, dice:abilDice(x.u.onHit, c), dtype:x.u.onHitType, once:true, item:x.k, heal:x.u.onHitHeal,
-        note:`${x.u.charges ? `spends a charge (${chargesLeft(x.e, x.u)}/${x.u.charges} left)` : "on a hit"}${x.u.onHitBa ? ", and the Bonus Action" : ""}${x.u.onHitHeal ? `; heals ${x.u.onHitHeal==="all" ? "all" : "half"} of it` : ""}` }); }
   for(const [nm, text] of (sb ? pairs(sb.tr) : [])){
     const s = String(text||""), name = String(nm).replace(/\s*\(.*\)\s*$/,"");
     if(/has Advantage on (an |its )?attack rolls?/i.test(s)) out.push({ key:`tr:${nm}`, name, adv:true, note:s.replace(/^.*?has Advantage/i, "Advantage").replace(/\.$/,"") });
@@ -13184,6 +13182,8 @@ function actInfo(c, t){
     if(s) return { kind:"spell", name:s.name, spell:s, row:a, save:!!s.save || /DC|[A-Z]{3} \d+/.test(a.hit||""), atk:!!s.atk, heal:!!s.heal, hint };
     return { kind:"attack", name:a.name||"an attack", save:/DC/i.test(a.hit||""), hint };
   }
+  if(w.startsWith("bite:")){ const k = +w.slice(5), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* On a hit: its own roll, after the hit */
+    return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:"", bite:x ? x.u : null, hint:x ? { dice:abilDice(x.u.onHit, o), dtype:x.u.onHitType } : null, cond:"", save:false }; }
   if(w.startsWith("use:")){ const k = +w.slice(4), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* a carried thing with a use */
     return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : abilDice(x.u.heal, o)) : "", reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
   if(w.startsWith("atk:")) return { kind:"attack", name:w.slice(4) };
@@ -13349,16 +13349,11 @@ function logAction(n, c){
   }
   /* once-a-turn add-ons (Sneak Attack) are spent for this turn */
   for(const a of D.on) if(a.once){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {})[a.key] = turnStamp(c); }
-  /* a carried thing's On a hit (Glaive Bite): on a hit it spends its charge, and heals the wielder half of its share
-     (known when Roll rolled it; typed by hand, the log says to do it) */
+  /* a carried thing's On a hit (Glaive Bite), its own choice after the hit: the charge went above (an item); it heals
+     the wielder all or half of the damage it did */
   let biteWords = "";
-  if(actor.kind==="pc" && dmg && ["hit","crit"].includes(act.outcome)) for(const a of D.on.filter(a=>a.item!=null)){
-    const p = pcState(actor.p), x = usableOf(p).find(y=>y.k===a.item); if(!x) continue;
-    if(x.u.charges) spendItem(p, x.k);
-    const part = act.bite && act.bite.v===String(act.dmg) ? act.bite.part : null;
-    if(a.heal && part!=null){ const back = healAny(actor, a.heal==="all" ? part : Math.floor(part / 2)); biteWords += `; ${a.name}: ${part}${a.dtype ? ` ${a.dtype}` : ""} of it, and ${actor.label} regains ${back}`; }
-    else biteWords += `; ${a.name}${a.heal ? `: ${actor.label} regains ${a.heal==="all" ? "all" : "half"} of its damage (typed by hand: add it on the card)` : ""}`;
-    if(x.u.charges) biteWords += ` (${chargesLeft(x.e, x.u)}/${x.u.charges} charges left)`; }
+  if(info.bite && info.bite.onHitHeal && dmg && actor.kind==="pc"){ const back = healAny(actor, info.bite.onHitHeal==="all" ? dmg : Math.floor(dmg / 2));
+    biteWords = `, and ${actor.label} regains ${back}`; }
   if(actor.kind==="pc"){ const S = statsOf(actor.p), foeHit = h => all.find(x=>x.id===h.id).kind==="foe";
     S.dealt += hits.filter(foeHit).reduce((a,h)=>a+h.dmg,0) + hits2.filter(foeHit).reduce((a,h)=>a+h.dmg,0); S.healed += healed;
     S.kills += new Set([...hits, ...hits2].filter(h=>h.dropped && foeHit(h)).map(h=>h.id)).size; }
@@ -13634,17 +13629,10 @@ function renderBattlePanelNow(){
     keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
     const D = actDice(c, t, info), w = b.dataset.acroll;
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
-    const crit = w==="dmg" && act.outcome==="crit", bites = w==="dmg" ? D.on.filter(a=>a.item!=null && a.dice) : [];
-    let r = rollTerms(diceTerms(dice), crit), biteSaid = "";
-    if(bites.length){ /* a carried thing's On a hit: rolled apart, so the log knows its share (to heal half of it) */
-      const base = addDice(...(D.part1 ? [D.part1.dice] : []), ...D.on.filter(a=>a.item==null && a.dice).map(a=>a.dice)), bd = addDice(...bites.map(a=>a.dice));
-      const rb = base ? rollTerms(diceTerms(base), crit) : { total:0, rolls:[] }, ri = rollTerms(diceTerms(bd), crit);
-      r = { total:rb.total + ri.total, rolls:[...rb.rolls, ...ri.rolls] };
-      act.bite = { v:String(r.total), part:ri.total };
-      biteSaid = `${base ? rollSaid(base, rb, crit) : ""}${base ? " + " : ""}${bites.map(a=>a.name).join(" and ")} ${rollSaid(bd, ri, crit)} = ${r.total}`; }
+    const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
     const cut = w==="heal" && info.reduce ? reduceCap(info.reduce, r.total, +act.took || 0) : r.total;     // a damage-cutting item: no more than half the hit
     if(w==="heal") act.heal = String(cut); else if(w==="dmg2"){ if(act.p2) act.p2.dmg = String(r.total); } else act.dmg = String(r.total);
-    (act.rolled = act.rolled || {})[w] = { v:String(cut), said:(biteSaid || rollSaid(dice, r, crit)) + (cut < r.total ? `, no more than half of ${+act.took}: ${cut}` : "") };     // the dice go in the log too, unless the number is changed by hand
+    (act.rolled = act.rolled || {})[w] = { v:String(cut), said:rollSaid(dice, r, crit) + (cut < r.total ? `, no more than half of ${+act.took}: ${cut}` : "") };     // the dice go in the log too, unless the number is changed by hand
     flash(act.rolled[w].said);
     renderBattlePanel(); });
   $("#ac-go").onclick = ()=>{ keep(); logAction(n, c); };

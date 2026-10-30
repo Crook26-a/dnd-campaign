@@ -1,10 +1,11 @@
 itemUse: {"onHit":"1d4+Str","type":"piercing","heal":"all","ba":true,"when":"hp","regain":"4"}
 pay button: Restore a charge: Avery pays 4 HP (2/3)
 after paying: HP 30 -> 26 · charges 3 · "Avery de Vonn gives up 4 hit points to restore a charge of Glaive Bite (3/3; 26 HP left)"
-chip: [{"name":"Glaive Bite","dice":"1d4+3","dtype":"piercing","note":"spends a charge (3/3 left), and the Bonus Action; heals all of it"}]
-rolled: 15 · bite part 6 · "1d10 + 3: 6 + 3 = 9 + Glaive Bite 1d4 + 3: 3 + 3 = 6 = 15"
-log: "Avery de Vonn makes a Glaive Bite (reach) with Glaive Bite on Ogre — hits, 15 damage (1d10 + 3: 6 + 3 = 9 + Glaive Bite 1d4 + 3: 3 + 3 = 6 = 15); Glaive Bite: 6 piercing of it, and Avery de Vonn regains 6 (2/3 charges left)." · Avery 30 -> 36 · ogre 68 -> 53 · charges 2
-miss: charges 2
-at 0 charges, chip offered: false
+the choice: [{"v":"bite:0","label":"Glaive Bite (3/3) · Bonus Action, after a hit"}]
+glaive: "Avery de Vonn makes a Glaive Bite (reach) on Ogre — hits, 9 damage." · charges 3
+roll button: Roll 1d4 + 3
+rolled: 6 · "1d4 + 3: 3 + 3 = 6"
+bite: "Avery de Vonn uses Glaive Bite (2/3 charges left) on Ogre — hits, 6 damage (1d4 + 3: 3 + 3 = 6), and Avery de Vonn regains 6." · Avery 30 -> 36 · ogre 59 -> 53 · charges 2
+at 0 charges, logged: false
 CR with the glaive: CR 3: tough like CR 2, hits like CR 3 · 12.4 a round | without: CR 1: tough like CR 2, hits like CR 1 · 5.7
 page errors: 0

@@ -1,8 +1,8 @@
 // uses: nothing
 <script>
 /* On a hit, for a charge (Joseph, 2026-10-29: Avery's Glaive Bite, her dhampir Vampiric Bite through the blade as a Bonus Action):
-   the chip on her attack, Roll rolling its dice apart, the log spending the charge and healing her all of it,
-   a miss spending nothing, no chip once the charges are gone, buying a charge back with 4 hit points (table mode), and
+   its own choice after the hit (the glaive logged first), its own Roll, the log spending the charge and healing her all of it,
+   refused with no charges left, buying a charge back with 4 hit points (table mode), and
    character CR with the glaive against the same character without */
 const __GB = { format:"ordinate-survey-v1", title:"Glaive Test", ppm:10, unit:"mi", party:2,
   nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
@@ -30,18 +30,20 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
   const c = hall.site.combat; beginBattle(hall.site); await wait(60);
   const ogre = c.list[0], A = combatants(c).find(t=>t.id==='pa');
-  out.push('chip: ' + JSON.stringify(attackAddons(A).filter(a=>a.item!=null).map(a=>({ name:a.name, dice:a.dice, dtype:a.dtype, note:a.note }))));
-  /* a hit with the bite on: Roll rolls it apart, Log spends the charge and heals half the necrotic */
-  act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.outcome = 'hit'; act.addons = ['itm:0']; renderBattlePanel(); await wait(40);
-  const rnd = Math.random; Math.random = () => 0.5; document.querySelector('[data-acroll="dmg"]').click(); Math.random = rnd; await wait(40);
-  out.push('rolled: ' + act.dmg + ' · bite part ' + (act.bite||{}).part + ' · "' + (act.rolled.dmg||{}).said + '"');
+  out.push('the choice: ' + JSON.stringify(actionChoices(A).flatMap(g=>g.items||[]).filter(i=>/^bite:/.test(i.v))));
+  /* the glaive hit, typed as rolled at the table: no bite in it */
+  act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.outcome = 'hit'; act.dmg = '9'; logAction(hall, c); await wait(40);
+  out.push('glaive: "' + c.log.slice(-1)[0].text + '" · charges ' + ch());
+  /* then the player chooses the bite: its own roll */
+  act = freshAct('pa'); act.what = 'bite:0'; act.targets = [ogre.id]; act.outcome = 'hit'; renderBattlePanel(); await wait(40);
+  const rb = document.querySelector('[data-acroll="dmg"]'); out.push('roll button: ' + (rb ? rb.textContent.trim() : 'none'));
+  const rnd = Math.random; Math.random = () => 0.5; if(rb) rb.click(); Math.random = rnd; await wait(40);
+  out.push('rolled: ' + act.dmg + ' · "' + (act.rolled.dmg||{}).said + '"');
   const hp0 = av().hp, ohp = ogre.hp; logAction(hall, c); await wait(60);
-  out.push('log: "' + c.log.slice(-1)[0].text + '" · Avery ' + hp0 + ' -> ' + av().hp + ' · ogre ' + ohp + ' -> ' + ogre.hp + ' · charges ' + ch());
-  /* a miss: nothing spent */
-  c.onceUsed = {}; act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.outcome = 'miss'; act.addons = ['itm:0']; act.dmg = '9'; logAction(hall, c); await wait(40);
-  out.push('miss: charges ' + ch());
-  /* spend the rest: no chip at 0 */
-  av().inv[0].ch = 0; out.push('at 0 charges, chip offered: ' + attackAddons(combatants(c).find(t=>t.id==='pa')).some(a=>a.item!=null));
+  out.push('bite: "' + c.log.slice(-1)[0].text + '" · Avery ' + hp0 + ' -> ' + av().hp + ' · ogre ' + ohp + ' -> ' + ogre.hp + ' · charges ' + ch());
+  /* out of charges: the log refuses */
+  av().inv[0].ch = 0; const n0 = c.log.length; act = freshAct('pa'); act.what = 'bite:0'; act.targets = [ogre.id]; act.outcome = 'hit'; act.dmg = '5'; logAction(hall, c); await wait(30);
+  out.push('at 0 charges, logged: ' + (c.log.length > n0));
   /* character CR with and without */
   av().inv[0].ch = 3; const w = charCR(av()), bare = JSON.parse(JSON.stringify(av())); bare.inv = []; const wo = charCR(bare);
   out.push('CR with the glaive: ' + charCRWords(w) + ' · ' + w.dpr + ' a round | without: ' + charCRWords(wo) + ' · ' + wo.dpr);
