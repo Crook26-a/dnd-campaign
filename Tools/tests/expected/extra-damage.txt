@@ -6,5 +6,7 @@ a line that already has fire: Damage (4d6 + 5) · chips Flame Tongue Greatsword 
 on the hell hound (immune to fire) and the ogre: box 27 · "2d6+5 slashing: 6 + 6 + 5 = 17 · 2d6 fire: 4 + 6 = 10 · in all 27; Hell Hound is immune to fire: 17"
 logged: "Gawain makes a Flame Tongue Greatsword (fire while lit) on Hell Hound, Ogre — hits, Hell Hound 17, Ogre 27 slashing and fire damage (2d6+5 slashing: 6 + 6 + 5 = 17 · 2d6 fire: 4 + 6 = 10 · in all 27; Hell Hound is immune to fire: 17)."
 the hound bites: Damage (1d8+3 piercing + 1d6 fire) · chips Pack Tactics · Advantage · box 9 · "1d8+3 piercing: 3 + 3 = 6 · 1d6 fire: 6 · in all 12; Gawain resists fire: 9"
+slashing on its own: box 15 · "2d6+5 slashing: 4 + 6 + 5 = 15 · in all 15 (fire not rolled yet)" · buttons Roll to hit vs AC 11 / Roll / Roll / Roll all: 2d6+5 slashing + 2d6 fire
+fire typed in (5): box 20 · "2d6+5 slashing: 4 + 6 + 5 = 15 · 2d6 fire: 5 (rolled at the table) · in all 20"
 Gawain CR lines: Flame Tongue Greatsword 2d6 fire (while)
 page errors: 0

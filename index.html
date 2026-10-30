@@ -13638,7 +13638,8 @@ function actionForm(c, all){
       <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
     ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
       <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
-    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice. Each type is rolled on its own, and a target that resists, is immune to or is vulnerable to one takes half, none or double of that part.">Roll ${esc(D.dmgLabel)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
+    ${D.parts.length > 1 ? `<div class="pcrow">${D.parts.map((p, i)=>`<div class="field" style="flex:1;min-width:0"><label>${esc(p.dice)} ${esc(p.dtype)}</label><div style="display:flex;gap:4px"><input class="mono" type="number" min="0" data-acpart="${i}" value="${esc(String(((act.partV||{})[p.dtype]||{}).v ?? ""))}" placeholder="—" style="min-width:0;flex:1" title="Rolled at the table? Type it in"><button class="btn" data-acroll="part:${i}" title="Rolls just this part">Roll</button></div></div>`).join("")}</div>` : ""}
+    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice. Each type is rolled on its own, and a target that resists, is immune to or is vulnerable to one takes half, none or double of that part.">Roll ${D.parts.length > 1 ? "all: " : ""}${esc(D.dmgLabel)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
     ${D.part2 ? `<div class="actpart2"><label class="grouplab" style="margin-top:6px">Then: ${esc(D.part2.dtype)} damage (${esc(D.part2.dice)})</label>
       <div class="acttargets">${all.filter(x=>x.id!==act.actor).map(x=>`<button class="chip${p2t.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt2="${x.id}">${esc(x.label)}</button>`).join("")}</div>
       <div class="actout">${[["fail","Save failed"],["save","Save made"],["hit","Hit"],["none","—"]].map(([v,l])=>`<label><input type="radio" name="ac-out2" value="${v}" ${act.p2.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
@@ -14037,7 +14038,7 @@ function renderBattlePanelNow(){
   $("#ac-actor").onchange = e=>{ act = freshAct(e.target.value); renderBattlePanel(); };
   { const bo = $("#ac-bonus"); if(bo) bo.onchange = ()=>{ act.bonus = bo.checked; }; }     // said by hand: kept till the action changes
   $("#ac-what").onchange = e=>{
-    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.bonus; delete act.hitBonus; delete act.toHit; act.d20 = "";
+    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.bonus; delete act.hitBonus; delete act.toHit; act.d20 = "";
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
     if(info){ act.outcome = (info.spell && info.spell.atk) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
@@ -14060,6 +14061,22 @@ function renderBattlePanelNow(){
     act.addons = A.includes(k) ? A.filter(x=>x!==k) : [...A, k];
     if(k.startsWith("inv:")){ const L = (c.lit = c.lit || {})[act.actor] = c.lit[act.actor] || {}; if(act.addons.includes(k)) L[k] = true; else delete L[k]; }     // lit stays lit
     renderBattlePanel(); });
+  /* damage by type (Joseph, 2026-10-30: "Can I roll them separate from each other?"): each part rolled on its own or all
+     at once, or its number typed in from the table; the box is their sum, what each target takes of each worked out
+     (immune none, resists half, vulnerable double), one number or each target's own */
+  const partsSum = D => { const P = act.partV || {}, R = D.parts.filter(p=>P[p.dtype]); if(!R.length) return;
+    const raw = R.reduce((a, p)=>a + (+P[p.dtype].v || 0), 0), left = D.parts.filter(p=>!P[p.dtype]);
+    const said = R.map(p=>P[p.dtype].said).join(" · ") + (D.parts.length > 1 ? ` · in all ${raw}` : "") + (left.length ? ` (${left.map(p=>p.dtype || p.dice).join(", ")} not rolled yet)` : "");
+    const by = {}, notes = [], HOW = { resists:"resists", immune:"is immune to", vulnerable:"is vulnerable to" };
+    for(const x of act.targets.map(id=>all.find(y=>y.id===id)).filter(Boolean)){ let n = 0; const why = [];
+      for(const p of R){ const how = dmgTakes(x, p.dtype); n += dmgAfter(+P[p.dtype].v || 0, how); if(how) why.push(`${HOW[how]} ${p.dtype}`); }
+      by[x.id] = n; if(why.length) notes.push(`${x.label} ${why.join(", ")}: ${n}`); }
+    const vals = [...new Set(Object.values(by))], v = vals.length===1 ? vals[0] : raw;
+    act.dmg = String(v); (act.rolled = act.rolled || {}).dmg = { v:String(v), by:vals.length > 1 ? by : null, said:said + (notes.length ? `; ${notes.join("; ")}` : "") }; };
+  el.querySelectorAll("[data-acpart]").forEach(i=>i.onchange = ()=>{ keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
+    const D = actDice(c, t, info), p = D.parts[+i.dataset.acpart]; if(!p) return; const P = act.partV = act.partV || {}, s = i.value.trim(), n = Math.max(0, Math.round(+s) || 0);
+    if(s==="") delete P[p.dtype]; else P[p.dtype] = { v:n, said:`${p.dice}${p.dtype ? ` ${p.dtype}` : ""}: ${n} (rolled at the table)` };
+    partsSum(D); renderBattlePanel(); });
   /* rolling: the dice shown into the box (a crit rolls every damage die twice) */
   el.querySelectorAll("[data-acroll]").forEach(b=>b.onclick = ()=>{
     keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
@@ -14072,17 +14089,10 @@ function renderBattlePanelNow(){
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
       act.outcome = out; act.toHit = { v:out, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
-    if(w==="dmg" && D.parts.length){     /* each type on its own, then what each target takes of it (2026-10-30) */
-      const crit = act.outcome==="crit", R = D.parts.map(p=>({ ...p, r:rollTerms(diceTerms(p.dice), crit) })), raw = R.reduce((a, p)=>a + p.r.total, 0);
-      const said = R.length > 1 ? `${R.map(p=>diceWords(`${p.dice} ${p.dtype}`, p.r.rolls, diceTerms(p.dice).filter(x=>!x.d).reduce((a, x)=>a + x.k, 0), p.r.total)).join(" · ")} · in all ${raw}${crit ? " (crit: dice twice)" : ""}`
-        : rollSaid(`${R[0].dice}${R[0].dtype ? ` ${R[0].dtype}` : ""}`, R[0].r, crit);
-      const by = {}, notes = [], HOW = { resists:"resists", immune:"is immune to", vulnerable:"is vulnerable to" };
-      for(const x of act.targets.map(id=>all.find(y=>y.id===id)).filter(Boolean)){ let n = 0; const why = [];
-        for(const p of R){ const how = dmgTakes(x, p.dtype); n += dmgAfter(p.r.total, how); if(how) why.push(`${HOW[how]} ${p.dtype}`); }
-        by[x.id] = n; if(why.length) notes.push(`${x.label} ${why.join(", ")}: ${n}`); }
-      const vals = [...new Set(Object.values(by))], v = vals.length===1 ? vals[0] : raw;
-      act.dmg = String(v); (act.rolled = act.rolled || {}).dmg = { v:String(v), by:vals.length > 1 ? by : null, said:said + (notes.length ? `; ${notes.join("; ")}` : "") };
-      flash(act.rolled.dmg.said); renderBattlePanel(); return; }
+    if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
+      D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
+        P[p.dtype] = { v:r.total, said:diceWords(`${p.dice}${p.dtype ? ` ${p.dtype}` : ""}${crit ? " (crit: dice twice)" : ""}`, r.rolls, diceTerms(p.dice).filter(x=>!x.d).reduce((a, x)=>a + x.k, 0), r.total) }; });
+      partsSum(D); flash(act.rolled.dmg.said); renderBattlePanel(); return; }
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
     const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
     const cut = w==="heal" && info.reduce ? reduceCap(info.reduce, r.total, +act.took || 0) : r.total;     // a damage-cutting item: no more than half the hit

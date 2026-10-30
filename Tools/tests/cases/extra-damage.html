@@ -29,6 +29,8 @@ await pick('pa', 'pca:0', [ogre.id]); out.push('greatsword, not lit yet: ' + for
   await pick('pa', 'pca:0', [hound.id, ogre.id]); out.push('on the hell hound (immune to fire) and the ogre: ' + await clickRoll());
   logAction(hall, c); await wait(30); out.push('logged: "' + c.log.slice(-1)[0].text + '"');
   await pick(hound.id, 'fa:Bite', ['pa']); out.push('the hound bites: ' + form() + ' · ' + await clickRoll());
+  await pick('pa', 'pca:0', [ogre.id]); document.querySelector('[data-acroll="part:0"]').click(); await wait(20); out.push('slashing on its own: box ' + act.dmg + ' · "' + act.rolled.dmg.said + '" · buttons ' + [...document.querySelectorAll('[data-acroll]')].map(b=>b.textContent.trim()).join(' / '));
+  { const f = document.querySelector('[data-acpart="1"]'); f.value = '5'; f.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); } out.push('fire typed in (5): box ' + act.dmg + ' · "' + act.rolled.dmg.said + '"');
   out.push('Gawain CR lines: ' + (()=>{ const p = pcState(root.roster[0]); return itemExtras(p).map(x=>`${x.name} ${x.dice} ${x.dtype} (${x.cond ? 'while' : 'always'})`).join(', '); })());
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
