@@ -1,0 +1,38 @@
+// uses: nothing
+<script>
+/* movement (Joseph, 2026-10-30: "keep track of movement"; "From token moves, but I should be able to undo it or fudge
+   those number"): their own drags counted against their speed, Dash, the number by hand, undo, cleared on their turn */
+const __MV = { format:"ordinate-survey-v1", title:"Movement", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", speed:"30", attacks:[] },
+    { id:"pb", name:"Wren", cls:"Cleric", level:5, hp:"28", hpMax:"28", ac:"12", speed:"25 ft", attacks:[] }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:16, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:ogre", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["################","#..............#","#..............#","#..............#","#..............#","################"], start:{ party:[[1,2],[1,3]], enemy:[[13,2]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  loadJSONNow(JSON.stringify(__MV)); await wait(300); setDmMode(true); await wait(60);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60); const ogre = c.list[0];
+  combatants(c).forEach((t, k)=>{ c.init[t.id] = 20 - k; }); c.turn = 'pa'; act = freshAct('pa');
+  const T = id => combatants(c).find(t=>t.id===id);
+  const drag = (id, x, y) => { const from = { ...c.pos[id] }; c.pos[id] = { x, y }; moveTrack(c, id, from); };
+  const line = () => { renderBattlePanel(); const i = document.querySelector('#ac-moved'); return i ? i.parentElement.textContent.replace(/\s+/g, ' ').trim().replace('Moved of', `Moved ${i.value} of`) + ' · turn order: ' + ([...document.querySelectorAll('.rused')].map(e=>e.textContent).find(t=>/↦/.test(t)) || '-') : 'no movement line'; };
+  out.push('speeds: Gawain ' + speedOf(T('pa')) + ', Wren ' + speedOf(T('pb')) + ', the ogre ' + speedOf(T(ogre.id)));
+  drag('pa', 3, 2); out.push('Gawain 2 squares: ' + line());
+  drag('pa', 6, 4); out.push('then 3 diagonally-ish: ' + line());
+  drag('pa', 8, 4); out.push('then 2 more (35 of 30): ' + line());
+  document.querySelector('[data-mv="undo"]').click(); await wait(20); out.push('Undo last move: at ' + c.pos.pa.x + ',' + c.pos.pa.y + ' · ' + line());
+  document.querySelector('[data-mv="dash"]').click(); await wait(20); out.push('Dash: ' + line() + ' · "' + c.log.slice(-1)[0].text + '" · actions left ' + actionsLeft(c, 'pa'));
+  { const i = document.querySelector('#ac-moved'); i.value = '45'; i.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); } out.push('typed 45: ' + line());
+  undoAction(c); await wait(20); act = freshAct('pa'); out.push('undo the Dash: ' + line() + ' · actions left ' + actionsLeft(c, 'pa'));
+  drag(ogre.id, 12, 2); out.push('the ogre pushed on Gawain\'s turn: ogre moved ' + movedOf(c, ogre.id).ft);
+  nextTurn(c); renderBattlePanel(); await wait(20); drag('pb', 1, 1); out.push('Wren\'s turn: ' + line());
+  T('pb').p.conds = ['Grappled']; pcState(root.roster[1]).conds = ['Grappled']; out.push('Wren grappled: speed ' + speedOf(T('pb')));
+  nextTurn(c); nextTurn(c); act = freshAct('pa'); out.push('Gawain\'s next turn: moved ' + movedOf(c, 'pa').ft + ' · ' + line());
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

@@ -1,0 +1,13 @@
+speeds: Gawain 30, Wren 25, the ogre 40
+Gawain 2 squares: Moved 10 of 30 ft · turn order: ↦ 10/30 ft
+then 3 diagonally-ish: Moved 25 of 30 ft · turn order: ↦ 25/30 ft
+then 2 more (35 of 30): Moved 35 of 30 ft — 5 ft over · turn order: ↦ 35/30 ft
+Undo last move: at 6,4 · Moved 25 of 30 ft · turn order: ↦ 25/30 ft
+Dash: Moved 25 of 60 ft (Dash) · turn order: ↦ 25/60 ft · "Gawain takes the Dash action (60 ft this turn)." · actions left 0
+typed 45: Moved 45 of 60 ft (Dash) · turn order: ↦ 45/60 ft
+undo the Dash: Moved 25 of 30 ft · turn order: ↦ 25/30 ft · actions left 1
+the ogre pushed on Gawain's turn: ogre moved 0
+Wren's turn: Moved 10 of 25 ft · turn order: ↦ 10/25 ft
+Wren grappled: speed 0
+Gawain's next turn: moved 0 · Moved 0 of 30 ft · turn order: -
+page errors: 0

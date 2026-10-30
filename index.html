@@ -10364,7 +10364,7 @@ function calmAfterBattle(st){
   const c = st.combat; if(!c) return;
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
-  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.dealt; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
 }
 /* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
    calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking
@@ -13334,7 +13334,7 @@ const bend = e=>{
       battleSpot = t && (t.box || t.notice) ? s : null; renderBattle(); renderBattlePanel(); } return; }
   if(d.tok && ((bnode() && bnode().site && bnode().site.combat && bnode().site.combat.ups) || []).some(u=>u.id===d.tok)){ if(d.moved){ touch(); renderBattle(); } return; }     // a spell's token: just moved
   if(d.tok){
-    if(d.moved && !d.fixed){ touch(); { const cc = bnode() && bnode().site && bnode().site.combat; if(cc) stopDance(cc, d.tok); } if(exitDrop(d.tok, e.shiftKey)) return; askOpportunity(d.tok, d.from); }
+    if(d.moved && !d.fixed){ touch(); { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ stopDance(cc, d.tok); moveTrack(cc, d.tok, d.from); } }     /* their own move, counted (2026-10-30) */ if(exitDrop(d.tok, e.shiftKey)) return; askOpportunity(d.tok, d.from); }
     else { battleSel = battleSel===d.tok ? null : d.tok; renderBattle(); renderPane(true); }
   }
 };
@@ -13488,6 +13488,29 @@ function attacksPerAction(t){
   return pcAttacksPer(t.p ? pcState(t.p) : null);
 }
 function pcAttacksPer(o){ return o ? Math.max(1, ...crClasses(o).map(k=>crAttacks(k.cls, k.lv))) : 1; }
+/* ── movement (Joseph, 2026-10-30: "I want to be able keep track of movement"; "From token moves, but I should be able to
+   undo it or fudge those number if I would like"): on their own turn, each drag of their token adds the squares moved
+   (5 ft each, a diagonal too: 2024 rules) to c.moved[id] = { ft, dash, moves:[{ from, to, ft }] }, cleared when their turn
+   starts. A drag on someone else's turn (a shove, a push) doesn't count. Against their speed: the sheet's or stat block's
+   walking speed, doubled by Haste, halved by Slow, none while Grappled or Restrained; Dash adds it again ── */
+function speedOf(t){
+  if(!t) return 30; const first = s => { const m = /(\d+)/.exec(String(s ?? "")); return m ? +m[1] : null; };
+  let sp = t.kind==="foe" ? (first((foeById(t.x.foe)||{}).spd) ?? 30) : (first(t.p && pcState(t.p).speed) ?? first((pcStatBlock(t.p)||{}).spd) ?? 30);
+  const h = hOfT(t), F = fxOf(h, false), conds = t.kind==="foe" ? (t.x.conds||[]) : ((t.p && pcState(t.p).conds) || []);
+  if(F.some(f=>f.sp==="spell:haste")) sp *= 2; if(F.some(f=>f.sp==="spell:slow")) sp = Math.floor(sp / 2);
+  if(conds.some(k=>k==="Grappled" || k==="Restrained")) sp = 0;
+  return sp;
+}
+const movedOf = (c, id) => (c.moved && c.moved[id]) || { ft:0, dash:false, moves:[] };
+const moveAllow = (c, t) => speedOf(t) * (movedOf(c, t.id).dash ? 2 : 1);
+function moveTrack(c, id, from){
+  const to = c.pos && c.pos[id]; if(!c || calmOf(c) || c.turn!==id || !from || from.x==null || !to) return;
+  const ft = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) * 5; if(!ft) return;
+  const M = (c.moved = c.moved || {})[id] = c.moved[id] || { ft:0, dash:false, moves:[] };
+  M.ft += ft; M.moves.push({ from:{ x:from.x, y:from.y }, to:{ x:to.x, y:to.y }, ft });
+  const t = combatants(c).find(x=>x.id===id), lim = t ? moveAllow(c, t) : 30;
+  if(M.ft > lim) flash(`${t ? t.label : "They"} ${t ? "has" : "have"} moved ${M.ft} ft of ${lim}${M.dash ? " (with Dash)" : ""}.`);
+}
 /* in words (Joseph, 2026-10-30: "it tells me how many attack a character has"): "Attack action: 2 attacks (Extra Attack)",
    a creature's "Multiattack: 3 attacks" */
 function attacksWords(t){
@@ -13886,6 +13909,10 @@ function actionForm(c, all){
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
     ${t ? tacticsHtml(c, t) : ""}
     ${t && (t.kind==="foe" || t.p) ? `<p class="actspell">${esc(attacksWords(t))}</p>` : ""}
+    ${t && !calmOf(c) ? (M=>{ const lim = moveAllow(c, t), over = M.ft > lim;
+      return `<div class="pcrow" style="align-items:center;margin:0 0 6px"><span class="actspell" style="flex:1;margin:0">Moved <input id="ac-moved" class="mono" type="number" min="0" step="5" value="${M.ft}" style="width:52px" title="Feet moved this turn: change it if you like"> of ${lim} ft${M.dash ? " (Dash)" : ""}${over ? ` <i class="rused">— ${M.ft - lim} ft over</i>` : ""}</span>
+        <button class="btn small" data-mv="dash" ${M.dash ? "disabled" : ""} title="The Dash action: their speed again (it takes their action)">${M.dash ? "Dashed" : "Dash"}</button>
+        <button class="btn small" data-mv="undo" ${M.moves.length ? "" : "disabled"} title="Put their token back where it was before the last move">Undo last move</button></div>`; })(movedOf(c, t.id)) : ""}
     ${(c.ups||[]).length ? `<p class="actspell">Up now: ${c.ups.map(u=>{ const o = all.find(x=>x.id===u.owner); return `${esc(u.name)}${o ? ` (${esc(o.label)})` : ""}${u.left!=null ? `, ${esc(concLeftWords(u.left))}` : ""}${u.thing && c.pos && c.pos[u.id] ? "" : ` <button class="btn small" data-uptok="${u.id}" title="Put a token for it on the battle map, next to its caster">Token</button>`} <button class="btn small" data-upend="${u.id}" title="End it now: its token goes">End</button>`; }).join(" · ")}</p>` : ""}
     ${t && fxOf(hOfT(t), true).length ? `<p class="actspell">On ${esc(t.label)}: ${fxOf(hOfT(t), true).map(f=>esc(f.name + fxSay(f.b) + (f.item ? ", worn" : ""))).join(" · ")}</p>` : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
@@ -14125,7 +14152,7 @@ function undoAction(c){
     flash("Took back the arrival."); touch(); renderBattle(); renderBattlePanel(); return; }
   if(e.ups!=null){ const B = JSON.parse(e.ups), keep = new Set(B.u.map(u=>u.id)); c.pos = c.pos || {};     // what was up, as it was (a token moved since stays where it is)
     for(const u of c.ups||[]) if(!keep.has(u.id)) delete c.pos[u.id]; c.ups = B.u; for(const [id, p] of Object.entries(B.p)) if(!c.pos[id]) c.pos[id] = p; }
-  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
+  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.moved!=null) c.moved = JSON.parse(e.moved); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   partySync();
   flash("Took back the last action.");
   touch(); renderBattle(); renderBattlePanel();
@@ -14284,7 +14311,7 @@ function renderBattlePanelNow(){
     <p class="grouplab">Turn order${Array.isArray(c.order)&&c.order.length?` <i>· arranged by hand</i>`:""}</p>
     ${all.map((t,k)=>`<div class="initrow${c.turn===t.id?" cur":""}${battleSel===t.id?" sel":""}${t.side==="party"?" pc":""}${t.fled?" fled":""}">
         <input class="init-in" data-bid="${t.id}" type="number" value="${t.init??""}" placeholder="–" ${t.shared?`disabled title="Goes right after its owner"`:`title="Initiative"`}>
-        <span class="ir-name" data-bsel="${t.id}">${esc(t.label)}${reactedThisRound(c,t.id)?` <small class="rused" title="Used their reaction this round">⚡ used</small>`:""}${actionUsed(c,t.id) || ((c.acted||{})[t.id]||{}).more ? ` <small class="rused" title="Their action this turn (Action Surge gives one more)">${((c.acted||{})[t.id]||{}).swings > 0 ? `● ${c.acted[t.id].swings} attack${c.acted[t.id].swings>1?"s":""} left in it` : actionsLeft(c,t.id) > 0 ? `● ${actionsLeft(c,t.id)} action${actionsLeft(c,t.id)>1?"s":""} left` : "● action used"}</small>` : ""}${bonusUsed(c,t.id)?` <small class="rused" title="Used their bonus action this turn">◑ bonus used</small>`:""}</span><span class="mono">${hpText(t)}</span>
+        <span class="ir-name" data-bsel="${t.id}">${esc(t.label)}${reactedThisRound(c,t.id)?` <small class="rused" title="Used their reaction this round">⚡ used</small>`:""}${t.id===c.turn && ((c.moved||{})[t.id]||{}).ft ? ` <small class="rused" title="Feet moved this turn, of their speed">↦ ${c.moved[t.id].ft}/${moveAllow(c,t)} ft</small>` : ""}${actionUsed(c,t.id) || ((c.acted||{})[t.id]||{}).more ? ` <small class="rused" title="Their action this turn (Action Surge gives one more)">${((c.acted||{})[t.id]||{}).swings > 0 ? `● ${c.acted[t.id].swings} attack${c.acted[t.id].swings>1?"s":""} left in it` : actionsLeft(c,t.id) > 0 ? `● ${actionsLeft(c,t.id)} action${actionsLeft(c,t.id)>1?"s":""} left` : "● action used"}</small>` : ""}${bonusUsed(c,t.id)?` <small class="rused" title="Used their bonus action this turn">◑ bonus used</small>`:""}</span><span class="mono">${hpText(t)}</span>
         <span class="ir-ctl"><button data-breact="${t.id}" title="Take a reaction (opportunity attack…)">⚡</button><button data-bturn="${t.id}" title="Their turn now">▶</button><button data-bmove="${k}" data-dir="-1" title="Move up" ${k?"":"disabled"}>▲</button><button data-bmove="${k}" data-dir="1" title="Move down" ${k<all.length-1?"":"disabled"}>▼</button></span></div>`).join("")}
     ${Array.isArray(c.order)&&c.order.length?`<button class="btn wide" data-ba="initorder" style="margin-top:4px">Back to initiative order</button>`:""}
     ${selActs}
@@ -14320,7 +14347,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-spellopen]").forEach(s=>s.onclick = ()=>{ libPeek("spells", s.dataset.spellopen); });
   el.querySelectorAll("[data-bsel]").forEach(s=>s.onclick = ()=>{ battleSel = s.dataset.bsel; renderBattle(); renderBattlePanel(); });
   /* breaking initiative: jump the turn to someone, or move them in the order by hand */
-  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; battleSel = c.turn; fxTurnStart(c, c.turn); act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
+  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; fxTurnStart(c, c.turn); act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-breact]").forEach(b=>b.onclick = ()=>{
     startReaction(c, b.dataset.breact, null); renderBattle(); renderBattlePanel();
     const box = document.querySelector(".actbox"); if(box) scrollInPane(box, "center");
@@ -14390,6 +14417,16 @@ function renderBattlePanelNow(){
   { const dcI = $("#ac-savedc"); if(dcI) dcI.onchange = ()=>{ keep(); const v = dcI.value.trim(); if(v==="") delete act.saveDC; else act.saveDC = Math.round(+v) || 0;     // a new DC: the totals judged again
     const X = svCtx(); if(X && X.dc) for(const r of Object.values(act.saves||{})) if(!/set by hand/.test(r.said)){ r.made = r.tot >= X.dc; r.said = r.said.replace(/vs DC \d+: (made|failed)$/, `vs DC ${X.dc}: ${r.made ? "made" : "failed"}`); }
     svOutcome(); renderBattlePanel(); }; }
+  /* movement: the number by hand, Dash (their action, in the log so Undo takes it back), and undoing the last move */
+  { const mi = $("#ac-moved"); if(mi) mi.onchange = ()=>{ keep(); const M = (c.moved = c.moved || {})[act.actor] = movedOf(c, act.actor); M.ft = Math.max(0, Math.round(+mi.value) || 0); touch(); renderBattle(); renderBattlePanel(); }; }
+  el.querySelectorAll("[data-mv]").forEach(b=>b.onclick = ()=>{ keep(); const t = all.find(x=>x.id===act.actor); if(!t) return;
+    const M = (c.moved = c.moved || {})[t.id] = movedOf(c, t.id);
+    if(b.dataset.mv==="undo"){ const m = M.moves.pop(); if(!m) return; M.ft = Math.max(0, M.ft - m.ft); c.pos[t.id] = { ...m.from }; flash(`${t.label} back where they were (${m.ft} ft taken off).`); }
+    else if(b.dataset.mv==="dash"){ if(actionsLeft(c, t.id) <= 0 && !confirm(`${t.label} has already used their action this turn. Dash anyway?`)) return;
+      const actedBefore = JSON.stringify(c.acted||{}), movedBefore = JSON.stringify(c.moved||{});
+      M.dash = true; const a = (c.acted = c.acted || {})[t.id] = c.acted[t.id] || { n:0, more:0 }; a.n++; a.swings = 0;
+      const line = `${t.label} takes the Dash action (${moveAllow(c, t)} ft this turn).`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap:{}, acted:actedBefore, moved:movedBefore }); flash(line); }
+    touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-upend]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.upend); if(!u) return;     // ending a spell that's up, by hand
     upEnd(c, u, "ended"); if(String(act.what||"")===`again:${u.id}`) act = freshAct(act.actor); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];
@@ -16935,7 +16972,7 @@ function nextTurn(c){
   if(!order.length) return false;
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn);
   return true;
 }
 document.addEventListener("click", e=>{
@@ -16944,7 +16981,7 @@ document.addEventListener("click", e=>{
   const a = b.dataset.ts;
   if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
   if(a==="next"){ if(!nextTurn(c)) return; }
-  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); }
+  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); }
   touch(); renderBattle(); renderBattlePanel();
 });
 
@@ -17555,7 +17592,7 @@ function walkThrough(ids, ex, from){
     if(!calmOf(c) && ids.includes(c.turn)){
       const order = combatants(c).filter(x=>!(x.kind==="foe" && x.x.max!=null && x.x.hp<=0) && !x.fled), k = order.findIndex(x=>x.id===c.turn);
       let next = null; for(let j=1; j<=order.length; j++){ const q = order[(k+j) % order.length]; if(!ids.includes(q.id)){ if(k+j >= order.length) newRound(c); next = q; break; } }
-      c.turn = next ? next.id : null; if(next && c.reacted) delete c.reacted[next.id]; if(next && c.bonused) delete c.bonused[next.id]; if(next && c.acted) delete c.acted[next.id]; battleSel = null;
+      c.turn = next ? next.id : null; if(next && c.reacted) delete c.reacted[next.id]; if(next && c.bonused) delete c.bonused[next.id]; if(next && c.acted) delete c.acted[next.id]; if(next && c.moved) delete c.moved[next.id]; battleSel = null;
     }
     if(c.pos) for(const id of ids) delete c.pos[id];
   }
