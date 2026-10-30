@@ -1,0 +1,46 @@
+// uses: nothing
+<script>
+/* attack by attack (Joseph, 2026-10-30: "multi attack and similar things need to allow me to roll and do the other
+   attacks"): a creature's Multiattack in a row, Extra Attack's next swing, Eldritch Blast's beams, Scorching Ray's rays;
+   one action, one slot; Done stops early */
+const __MA = { format:"ordinate-survey-v1", title:"Multiattack", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", attacks:[{ name:"Greatsword", hit:"+8", dmg:"2d6+5", dtype:"slashing" }] },
+    { id:"pb", name:"Wren", cls:"Warlock", level:5, hp:"28", hpMax:"28", ac:"12", satk:"+6", spells:["spell:eldritch-blast", "spell:scorching-ray"], attacks:[] }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:owlbear", n:"1" }, { id:"srd:ogre", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[1,2],[2,2]], enemy:[[3,2],[7,3]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  const Q = id => multiQueue(foeById(id)).map(w=>w.slice(3).replace(/\s*\(.*\)$/, '')).join(', ');
+  out.push('read: ' + ['srd:owlbear', 'srd:tyrannosaurus-rex', 'srd:aboleth', 'srd:chimera', 'srd:behir', 'srd:pit-fiend', 'srd:roper', 'srd:rust-monster', 'srd:tarrasque', 'srd:dryad', 'srd:medusa', 'srd:hydra', 'srd:planetar', 'srd:mummy', 'srd:hill-giant']
+    .filter(id=>foeById(id)).map(id=>`${foeById(id).name}: ${Q(id)}`).join(' · '));
+  loadJSONNow(JSON.stringify(__MA)); await wait(300); setDmMode(true); await wait(60);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60); const owl = c.list.find(x=>/Owlbear/.test(x.label)), ogre = c.list.find(x=>/Ogre/.test(x.label));
+  root.roster[1].slots[2].max = 2; root.roster[1].slots[3].max = 2;
+  let asked = []; window.confirm = q => { asked.push(q); return true; };
+  const banner = () => { renderBattlePanel(); const b = document.querySelector('[data-qdone]'); return b ? b.parentElement.textContent.replace(/\s+/g, ' ').replace('Done', '').trim() : 'no row'; };
+  const choose = async (actor, what, targets) => { act = freshAct(actor); act.what = what; renderBattlePanel(); await wait(20); document.querySelector('#ac-what').dispatchEvent(new Event('change', { bubbles:true })); await wait(20); if(targets) act.targets = targets; renderBattlePanel(); await wait(20); };
+  const go = async (dmg, out1) => { act.outcome = out1 || 'hit'; act.dmg = String(dmg); logAction(hall, c); await wait(30); return c.log.slice(-1)[0].text; };
+  /* the owlbear */
+  c.turn = owl.id; await choose(owl.id, 'fa:Multiattack', ['pa']); out.push('owlbear picks Multiattack: does ' + act.what + ' · ' + banner());
+  out.push('1: ' + await go(10) + ' → next: ' + act.what + ', on ' + act.targets.join(',') + ' · ' + banner());
+  out.push('2: ' + await go(0, 'miss') + ' → next: ' + (act.queue ? banner() : 'nothing lined up') + ' · actions left ' + actionsLeft(c, owl.id) + ' · asked: ' + (asked.splice(0).join(' | ') || 'nothing'));
+  /* Gawain's Extra Attack */
+  c.turn = 'pa'; await choose('pa', 'pca:0', [owl.id]); out.push('Gawain swings: ' + await go(12) + ' → next: ' + act.what + ' on ' + act.targets.map(id=>combatants(c).find(t=>t.id===id).label).join(',') + ' · ' + banner());
+  out.push('2nd swing: ' + await go(9) + ' → ' + (act.queue ? banner() : 'nothing lined up') + ' · asked: ' + (asked.splice(0).join(' | ') || 'nothing'));
+  /* Wren: Eldritch Blast (2 beams at 5th level), then Scorching Ray at 3rd (4 rays), stopping after 2 */
+  c.turn = 'pb'; await choose('pb', 'sp:spell:eldritch-blast', [owl.id]); out.push('Eldritch Blast: ' + banner());
+  out.push('beam 1: ' + await go(7) + ' → ' + banner()); act.targets = [ogre.id];
+  out.push('beam 2 on the ogre: ' + await go(0, 'miss') + ' → ' + (act.queue ? banner() : 'nothing lined up'));
+  c.acted = {}; await choose('pb', 'sp:spell:scorching-ray', [ogre.id]); act.lvl = 3; out.push('Scorching Ray at 3rd: ' + banner());
+  out.push('ray 1: ' + await go(6) + ' · slots 3rd used ' + root.roster[1].slots[3].used + ' → ' + banner());
+  out.push('ray 2: ' + await go(5) + ' · slots 3rd used ' + root.roster[1].slots[3].used + ' → ' + banner());
+  document.querySelector('[data-qdone]').click(); await wait(20); out.push('Done: ' + (act.queue ? banner() : 'nothing lined up') + ', doing ' + (act.what || 'nothing'));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

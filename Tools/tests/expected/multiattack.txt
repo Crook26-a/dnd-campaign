@@ -1,0 +1,14 @@
+read: Owlbear: Rend, Rend · Tyrannosaurus Rex: Bite, Tail · Aboleth: Tentacle, Tentacle, Consume Memories · Chimera: Ram, Bite, Claw · Behir: Bite, Constrict · Pit Fiend: Bite, Devilish Claw, Devilish Claw, Fiery Mace · Roper: Tentacle, Tentacle, Reel, Bite, Bite · Rust Monster: Bite, Antennae, Antennae · Tarrasque: Bite, Claw, Claw, Claw · Dryad: Vine Lash · Medusa: Claw, Claw, Snake Hair · Hydra: Bite, Bite · Planetar: Radiant Sword, Radiant Sword, Radiant Sword · Mummy: Rotting Fist, Rotting Fist, Dreadful Glare · Hill Giant: Tree Club, Tree Club
+owlbear picks Multiattack: does fa:Rend · Multiattack 1 of 2 · ▸ Rend, Rend
+1: Owlbear uses Rend (Multiattack 1 of 2) on Gawain — hits, 10 slashing damage. → next: fa:Rend, on pa · Multiattack 2 of 2 · Rend, ▸ Rend
+2: Owlbear uses Rend (Multiattack 2 of 2) on Gawain — misses. → next: nothing lined up · actions left 0 · asked: nothing
+Gawain swings: Gawain makes a Greatsword on Owlbear — hits, 12 slashing damage. → next: pca:0 on Owlbear · Extra Attack 2 of 2
+2nd swing: Gawain makes a Greatsword (Extra Attack 2 of 2) on Owlbear — hits, 9 slashing damage. → nothing lined up · asked: nothing
+Eldritch Blast: Beam 1 of 2
+beam 1: Wren casts Eldritch Blast (beam 1 of 2) on Owlbear — hits, 7 force damage. → Beam 2 of 2
+beam 2 on the ogre: Wren casts Eldritch Blast (beam 2 of 2) on Ogre — misses. → nothing lined up
+Scorching Ray at 3rd: Ray 1 of 4
+ray 1: Wren casts Scorching Ray (3rd) (ray 1 of 4) on Ogre — hits, 6 fire damage. · slots 3rd used 1 → Ray 2 of 4
+ray 2: Wren casts Scorching Ray (ray 2 of 4) on Ogre — hits, 5 fire damage. · slots 3rd used 1 → Ray 3 of 4
+Done: nothing lined up, doing nothing
+page errors: 0
