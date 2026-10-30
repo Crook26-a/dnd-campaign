@@ -1545,6 +1545,13 @@ const SRD_SPELLS = (typeof SRD!=="undefined" && SRD.spells) || [], SPELL_BY = ne
 /* a spell its text says makes a spell attack is one, though the SRD data misses three (Joseph, 2026-10-30: Spiritual
    Weapon wouldn't roll to hit; Arcane Hand and Conjure Fey too) */
 for(const s of SRD_SPELLS) if(!s.atk && /\bmakes?\s+(?:a|an|one)\s+(?:melee|ranged)\s+spell\s+attack/i.test(s.desc||"")) s.atk = true;
+/* …and the other way: one whose text never says "spell attack" isn't one (Joseph, 2026-10-30: "bless was making me do an
+   attack roll"; the data marks Bless, Bane, Hex, Hunter's Mark, Faerie Fire… for mentioning attack rolls). And a die that
+   isn't damage ("guidance took away hit points"): Guidance's, Resistance's, Bless's and Bane's d4, and the table rolls
+   (Blink's d6, Confusion's d10, Teleport's d100…) come off. Healing dice (Cure Wounds) and a damage type the caster
+   picks (Chromatic Orb, Sorcerous Burst, Dragon's Breath) stay */
+const NOT_DAMAGE = new Set(["spell:guidance", "spell:resistance", "spell:bless", "spell:bane", "spell:alter-self", "spell:blink", "spell:confusion", "spell:reincarnate", "spell:teleport", "spell:control-weather", "spell:time-stop"]);
+for(const s of SRD_SPELLS){ if(s.atk && !/spell attack/i.test(s.desc||"")) s.atk = false; if(NOT_DAMAGE.has(s.id)) s.dmg = ""; }
 /* a spell with no damage type that restores Hit Points is a healing spell */
 for(const s of SRD_SPELLS) s.heal = !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||"");
 /* the generator hands back a lone action as a bare pair and none as {}; one shape for the reader */

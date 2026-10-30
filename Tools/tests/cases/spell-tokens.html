@@ -42,7 +42,7 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('Vampiric Touch: "' + c.log.slice(-1)[0].text + '" · up ' + (c.ups||[]).map(x=>`${x.name} token ${x.thing} again ${x.again} BA ${x.ba}`).join('; '));
   W.conc = null; await choose('sp:spell:moonbeam'); act.lvl = 2; act.outcome = 'fail'; act.dmg = '11'; logAction(hall, c); await wait(30); out.push('Moonbeam: "' + c.log.slice(-1)[0].text + '" · up ' + c.ups.map(x=>x.name + (x.thing ? ' token ' + x.thing : '') + (c.pos[x.id] ? ' at ' + c.pos[x.id].x + ',' + c.pos[x.id].y : '')).join('; '));
   W.conc = null; await choose('sp:spell:bless'); act.outcome = 'none'; act.targets = ['pa', 'pb']; logAction(hall, c); await wait(30); renderBattlePanel(); await wait(20);
-  out.push('Bless (casting it ended Moonbeam): up ' + c.ups.map(x=>x.name).join('; ') + ' · Up now line: ' + document.querySelector('#pane-battle .actspell, .actbox .actspell').textContent.replace(/\s+/g, ' '));
+  out.push('Bless (casting it ended Moonbeam): up ' + c.ups.map(x=>x.name).join('; ') + ' · Up now line: ' + [...document.querySelectorAll('.actbox .actspell')].map(p=>p.textContent.replace(/\s+/g, ' ')).find(t=>/^\s*Up now/.test(t)));
   document.querySelector('[data-uptok]').click(); await wait(20); out.push('Token for Bless: ' + c.ups.filter(x=>c.pos[x.id]).map(x=>x.name + ' ' + x.thing).join('; '));
   renderBattlePanel(); await wait(20); document.querySelector('[data-upend]').click(); await wait(20); out.push('End: up ' + (c.ups||[]).length + ' · "' + c.log.slice(-1)[0].text + '"');
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }

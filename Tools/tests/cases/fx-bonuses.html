@@ -6,7 +6,7 @@ const __FX = { format:"ordinate-survey-v1", title:"Effects", ppm:10, unit:"mi", 
   nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
   roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", str:20, dex:10, con:15, attacks:[{ name:"Greatsword", hit:"+8", dmg:"2d6+5", dtype:"slashing" }], inv:[{ id:"ll_cloak", qty:1, attuned:true }] },
     { id:"pb", name:"Wren", cls:"Cleric", level:5, hp:"28", hpMax:"28", ac:"12", dex:14, con:14, wis:16, dc:"14", satk:"+6", saves:"Wis +6, Cha +2", skills:"Stealth +2",
-      spells:["spell:bless", "spell:shield", "spell:false-life", "spell:pass-without-trace"], attacks:[] }],
+      spells:["spell:bless", "spell:shield", "spell:false-life", "spell:pass-without-trace", "spell:guidance"], attacks:[] }],
   groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[],
     loot:[{ id:"ll_cloak", name:"Cloak of Protection", kind:"magic item", attune:true, desc:"You gain a +1 bonus to AC and saving throws while you wear this cloak." }] },
   plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
@@ -23,6 +23,10 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   const line = () => '"' + c.log.slice(-1)[0].text + '"';
   /* the cloak: a save the app works out gets +1; AC is the sheet's */
   out.push('Gawain with the cloak: Dex save ' + saveBonusOf(combatants(c).find(t=>t.id==='pa'), 'Dexterity') + ', Wren Wis save (on her sheet) ' + saveBonusOf(combatants(c).find(t=>t.id==='pb'), 'Wisdom') + ', AC to hit ' + acOf(combatants(c).find(t=>t.id==='pa')));
+  /* Bless and Guidance aren't attacks or damage (Joseph, 2026-10-30: "guidance took away hit points and bless was making me do an attack roll") */
+  await choose('pb', 'sp:spell:bless', ['pa', 'pb']); out.push('Bless form: roll to hit ' + !!document.querySelector('[data-acroll="hit"]') + ', damage roll ' + !!document.querySelector('[data-acroll="dmg"]') + ', outcome ' + act.outcome);
+  await choose('pb', 'sp:spell:guidance', ['pa']); out.push('Guidance form: damage roll ' + !!document.querySelector('[data-acroll="dmg"]')); { const hp = G.hp; logAction(hall, c); await wait(30); out.push('Guidance on Gawain: hp ' + hp + ' -> ' + G.hp + ' · ' + line() + ' · on him: ' + fxOf(G, false).map(f=>f.name + fxSay(f.b)).join(' · ')); }
+  W.conc = null;
   /* Bless on both */
   await choose('pb', 'sp:spell:bless', ['pa', 'pb']); act.outcome = 'none'; logAction(hall, c); await wait(30);
   out.push('Bless: ' + line() + ' · on Gawain: ' + fxOf(G, true).map(f=>f.name + fxSay(f.b)).join(' · '));
