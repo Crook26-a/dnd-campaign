@@ -1,0 +1,17 @@
+SRD spells that stay up: Dancing Lights (token: lights), Mage Hand (token: hand, again), Expeditious Retreat (again BA), Flaming Sphere (token: sphere, again BA), Heat Metal (again BA), Moonbeam (token: cylinder, again), Phantasmal Force (token: cube, again), Spike Growth (token: sphere, again), Spiritual Weapon (token: force, again BA), Web (token: cube, again), Call Lightning (again), Conjure Animals (token: pack, again), Vampiric Touch (again), Wind Wall (token: wall, again), Arcane Eye (token: eye), Control Water (again), Faithful Hound (token: hound, again), Wall of Fire (token: wall, again), Arcane Hand (token: hand), Cloudkill (token: sphere, again), Insect Plague (token: sphere, again), Blade Barrier (token: wall, again), Conjure Fey (token: spirit, again BA), Eyebite (again), Wall of Ice (token: wall, again), Wall of Thorns (token: wall, again), Arcane Sword (token: sword, again BA), Conjure Celestial (token: cylinder), Delayed Blast Fireball (token: sphere, again), Animal Shapes (again), Incendiary Cloud (token: cloud, again), Tsunami (token: wall, again), Storm of Vengeance (token: cloud, again), Weird (token: sphere, again)
+slots before: 2: 0/3, 3: 0/2
+cast at 3rd: "Wren casts Spiritual Weapon (3rd) on Ogre — hits, 9 force damage — as a bonus action. Spiritual Weapon stays up: its force is on the map, again as a Bonus Action without a slot." · slots 2: 0/3, 3: 1/2 · up: Spiritual Weapon lvl 3, 10 rounds, conc true, token force at 5,1 · Wren concentrating on Spiritual Weapon
+on the TV: true · on the DM map: true
+choices: Up now (no slot): Spiritual Weapon: again · Bonus Action
+again: slot picker false · damage 2d8 + 3
+"Wren uses Spiritual Weapon again (no slot) on Ogre — hits, 7 force damage — as a bonus action." · slots 2: 0/3, 3: 1/2 · still concentrating Spiritual Weapon, 10 rounds
+moved to 5,3
+undo the again: up 1, token at 5,3
+a new round: 9 rounds left
+concentration broken: up 0, token false · "Spiritual Weapon (Wren) ends: concentration ended."
+Vampiric Touch: "Wren casts Vampiric Touch (3rd) on Ogre — hits, 10 necrotic damage. Vampiric Touch stays up: again without a slot." · up Vampiric Touch token null again true BA false
+Moonbeam: "Vampiric Touch (Wren) ends: concentration ended." · up Moonbeam token cylinder at 5,1
+Bless (casting it ended Moonbeam): up Bless · Up now line: Up now: Bless (Wren), 10 rounds left Token End
+Token for Bless: Bless spell
+End: up 0 · "Bless (Wren) ends: ended."
+page errors: 0

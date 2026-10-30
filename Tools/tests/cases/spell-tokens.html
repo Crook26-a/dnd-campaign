@@ -1,0 +1,49 @@
+// uses: nothing
+<script>
+/* spells that stay up (Joseph, 2026-10-30: "spiritual weapon, it's not doing a token or anything"; "shouldn't take another
+   spell slot to attack again"; general): a token for a thing you move, again with no slot while it lasts, ending with
+   its concentration, its time, or End */
+const __ST = { format:"ordinate-survey-v1", title:"Spell tokens", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", attacks:[] },
+    { id:"pb", name:"Wren", cls:"Cleric", level:5, hp:"28", hpMax:"28", ac:"12", wis:16, satk:"+6", spells:["spell:spiritual-weapon", "spell:vampiric-touch", "spell:flaming-sphere", "spell:moonbeam", "spell:bless"], attacks:[] }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:ogre", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[1,2],[2,2]], enemy:[[6,2]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  out.push('SRD spells that stay up: ' + SRD_SPELLS.map(s=>[s, spellUp(s)]).filter(([, u])=>u && (u.thing || u.again)).map(([s, u])=>`${s.name} (${[u.thing ? 'token: ' + u.thing : '', u.again ? 'again' + (u.ba ? ' BA' : '') : ''].filter(Boolean).join(', ')})`).join(', '));
+  loadJSONNow(JSON.stringify(__ST)); await wait(300); setDmMode(true); await wait(60);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60); const ogre = c.list[0], W = root.roster[1];
+  combatants(c).forEach((t, k)=>{ c.init[t.id] = 20 - k; }); c.turn = 'pb';
+  const slots = () => [2, 3].map(L=>`${L}: ${W.slots[L].used}/${W.slots[L].max}`).join(', ');
+  const choose = async what => { act = freshAct('pb'); act.what = what; renderBattlePanel(); await wait(20); const w = document.querySelector('#ac-what'); w.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); act.targets = [ogre.id]; renderBattlePanel(); await wait(20); };
+  W.slots[2].max = 3; W.slots[3].max = 2; out.push('slots before: ' + slots());
+  await choose('sp:spell:spiritual-weapon'); act.lvl = 3; act.outcome = 'hit'; act.dmg = '9'; logAction(hall, c); await wait(30);
+  const u = (c.ups||[])[0];
+  out.push('cast at 3rd: "' + c.log.slice(-1)[0].text + '" · slots ' + slots() + ' · up: ' + (c.ups||[]).map(x=>`${x.name} lvl ${x.lvl}, ${x.left} rounds, conc ${x.conc}, token ${x.thing} at ${c.pos[x.id] ? c.pos[x.id].x + ',' + c.pos[x.id].y : 'none'}`).join('; ') + ' · Wren concentrating on ' + ((W.conc||{}).name || 'nothing'));
+  { const d = document.createElement('div'); d.innerHTML = `<svg>${renderBattle(true)}</svg>`; out.push('on the TV: ' + !!d.querySelector(`[data-tok="${u.id}"]`) + ' · on the DM map: ' + !!document.querySelector(`#bsvg [data-tok="${u.id}"]`)); }
+  c.bonused = {}; renderBattlePanel(); await wait(20);
+  out.push('choices: ' + [...document.querySelectorAll('#ac-what optgroup')].slice(0, 1).map(g=>g.label + ': ' + [...g.children].map(o=>o.textContent).join(' | ')).join(''));
+  await choose('again:' + u.id); out.push('again: slot picker ' + !!document.querySelector('#ac-lvl') + ' · damage ' + actDice(c, combatants(c).find(t=>t.id==='pb'), actInfo(c, combatants(c).find(t=>t.id==='pb'))).dmgDice);
+  act.outcome = 'hit'; act.dmg = '7'; logAction(hall, c); await wait(30); out.push('"' + c.log.slice(-1)[0].text + '" · slots ' + slots() + ' · still concentrating ' + ((W.conc||{}).name || 'nothing') + ', ' + (W.conc||{}).left + ' rounds');
+  c.pos[u.id] = { x:5, y:3 }; out.push('moved to 5,3');
+  undoAction(c); await wait(20); out.push('undo the again: up ' + (c.ups||[]).length + ', token at ' + c.pos[u.id].x + ',' + c.pos[u.id].y);
+  upsNewRound(c); out.push('a new round: ' + c.ups[0].left + ' rounds left');
+  /* concentration ends: so does the weapon */
+  concEnd(concHolders().find(o=>o.h===W), 'took a hit'); renderBattle(); await wait(20); out.push('concentration broken: up ' + (c.ups||[]).length + ', token ' + !!c.pos[u.id] + ' · "' + c.log.slice(-1)[0].text + '"');
+  /* Vampiric Touch: no token, again as an action */
+  await choose('sp:spell:vampiric-touch'); act.lvl = 3; act.outcome = 'hit'; act.dmg = '10'; logAction(hall, c); await wait(30);
+  out.push('Vampiric Touch: "' + c.log.slice(-1)[0].text + '" · up ' + (c.ups||[]).map(x=>`${x.name} token ${x.thing} again ${x.again} BA ${x.ba}`).join('; '));
+  W.conc = null; await choose('sp:spell:moonbeam'); act.lvl = 2; act.outcome = 'fail'; act.dmg = '11'; logAction(hall, c); await wait(30); out.push('Moonbeam: "' + c.log.slice(-1)[0].text + '" · up ' + c.ups.map(x=>x.name + (x.thing ? ' token ' + x.thing : '') + (c.pos[x.id] ? ' at ' + c.pos[x.id].x + ',' + c.pos[x.id].y : '')).join('; '));
+  W.conc = null; await choose('sp:spell:bless'); act.outcome = 'none'; act.targets = ['pa', 'pb']; logAction(hall, c); await wait(30); renderBattlePanel(); await wait(20);
+  out.push('Bless (casting it ended Moonbeam): up ' + c.ups.map(x=>x.name).join('; ') + ' · Up now line: ' + document.querySelector('#pane-battle .actspell, .actbox .actspell').textContent.replace(/\s+/g, ' '));
+  document.querySelector('[data-uptok]').click(); await wait(20); out.push('Token for Bless: ' + c.ups.filter(x=>c.pos[x.id]).map(x=>x.name + ' ' + x.thing).join('; '));
+  renderBattlePanel(); await wait(20); document.querySelector('[data-upend]').click(); await wait(20); out.push('End: up ' + (c.ups||[]).length + ' · "' + c.log.slice(-1)[0].text + '"');
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

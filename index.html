@@ -10704,6 +10704,7 @@ function wireFight(n, st){
 function newRound(c){
   c.round++;
   concNewRound(c);                                 // a round less for everyone concentrating
+  upsNewRound(c);                                  // and for every spell that stays up
   for(const y of c.list){ for(const r of foeResources(foeById(y.foe))) if(r.perRound) y.used[r.key] = 0; }
 }
 
@@ -12949,6 +12950,7 @@ function renderBattle(players){
   const selB = players ? null : battleSel;
   const furnish = editingInside(), n = bnode(); if(!n || (!furnish && (!n.site || !n.site.combat))){ if(players) return ""; closeBattle(); return; }
   const c = furnish ? EDIT_STAGE : n.site.combat, bm = useBmap(n); if(!furnish) placeTokens(c);
+  if(!players && !furnish && c.ups && c.ups.length) upsSweep(c);     // a spell up ends with its concentration
   if(!players) syncUpBtn();
   if(!players) renderTurnStrip();
   if(!players) renderRoomTabs();
@@ -13030,6 +13032,15 @@ function renderBattle(players){
       ${players && !b.p.known ? "" : `<text text-anchor="middle" y="${BS*.38+11}" font-size="9.5" font-family="var(--serif)" fill="var(--ink)" ${players ? `stroke="#fff8e6" stroke-width="3" paint-order="stroke" ` : ""}style="pointer-events:none">${esc(nm.split(" ").slice(0,2).join(" "))}</text>`}${knownEye(players, b.p)}</g>`;
     g = danceToken(g, at0, c, b.id, players);
   }
+  /* what spells have put on the map (Spiritual Weapon's force, Flaming Sphere, Moonbeam's beam): a dashed diamond, drag
+     it to move it; on the TV only where its square shows */
+  if(!lineup && !furnish) for(const u of (c.ups||[]).filter(u=>u.thing && c.pos && c.pos[u.id])){ const p = c.pos[u.id];
+    if(players && sight && sight.shade[p.y*BW+p.x] < 1) continue;
+    const own = combatants(c).find(t=>t.id===u.owner), col = own && own.side==="party" ? "#3d5a8a" : "var(--lead)";
+    g += `<g class="btok upmark" data-tok="${u.id}" transform="translate(${p.x*BS+BS/2} ${p.y*BS+BS/2})"${players ? "" : ` style="cursor:grab"`}><title>${esc(u.name)}${own ? ` (${esc(own.label)})` : ""}${u.left!=null ? ` · ${esc(concLeftWords(u.left))}` : ""}${players ? "" : ": drag to move it"}</title>
+      <rect x="${-BS*.27}" y="${-BS*.27}" width="${BS*.54}" height="${BS*.54}" transform="rotate(45)" fill="${col}" fill-opacity=".75" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="3 2"/>
+      <text text-anchor="middle" dy=".35em" font-size="12" font-family="var(--mono)" fill="#fff" style="pointer-events:none">${esc(u.thing[0].toUpperCase())}</text>
+      <text text-anchor="middle" y="${BS*.45+9}" font-size="8.5" font-family="var(--serif)" fill="var(--ink)" stroke="#fff8e6" stroke-width="2.5" paint-order="stroke" style="pointer-events:none">${esc(u.name)}</text></g>`; }
   /* furnishing: the people who'll be here and the enemies of its fight, each on the square set for them (drag to move,
      right-click to take away) */
   if(furnish && !players && !lineup) for(const t of plannedAt(n)){
@@ -13208,6 +13219,7 @@ const bend = e=>{
       if(t && (t.lamp || t.fire || t.chandelier || t.candles)){ toggleLamp(n, s); return; }
       if(t && t.door) return doorClick(n, s);
       battleSpot = t && (t.box || t.notice) ? s : null; renderBattle(); renderBattlePanel(); } return; }
+  if(d.tok && ((bnode() && bnode().site && bnode().site.combat && bnode().site.combat.ups) || []).some(u=>u.id===d.tok)){ if(d.moved){ touch(); renderBattle(); } return; }     // a spell's token: just moved
   if(d.tok){
     if(d.moved && !d.fixed){ touch(); { const cc = bnode() && bnode().site && bnode().site.combat; if(cc) stopDance(cc, d.tok); } if(exitDrop(d.tok, e.shiftKey)) return; askOpportunity(d.tok, d.from); }
     else { battleSel = battleSel===d.tok ? null : d.tok; renderBattle(); renderPane(true); }
@@ -13304,6 +13316,7 @@ const bonusUsed = (c, id) => !!(c.bonused && c.bonused[id]!=null);
 function bonusActOf(t, info, what){
   if(!info) return false;
   if(info.ba) return true;
+  if(info.free) return false;                     // a spell used again: its own "As a Bonus Action" said so above, or not
   if(info.spell && /bonus/i.test(info.spell.time||"")) return true;
   if(/bonus action|off-hand/i.test(info.name||"")) return true;
   if(/^(fa|pca):Bonus: /.test(what||"")) return true;
@@ -13498,6 +13511,49 @@ function dmgTakes(t, dtype){
   const def = t.p ? t.p.defenses : "";
   return has(def, "immun") ? "immune" : has(def, "resist") ? "resists" : has(def, "vulnerab") ? "vulnerable" : "";
 }
+/* a spell that stays up in a fight (Joseph, 2026-10-30: "spiritual weapon, it's not doing a token or anything";
+   "shouldn't take another spell slot to attack again"; general, from the spell's own text so any spell does): a thing
+   it makes that you move ("move the force", "move the sphere", "teleport the spirit") gets a token on the battle map;
+   one you use again on later turns ("repeat the attack", "make the attack again", "deal this damage again"), or a moved
+   thing that does damage, is free while it lasts. c.ups = [{ id, sp, name, owner, lvl, left (rounds), conc, thing, again,
+   ba }]; a token's square is c.pos[id]. It ends when its time runs out, its concentration ends, or End on the panel */
+const UP_NOT = /^(target|targets|creature|creatures|mark|yourself|it|them|illusory|object|objects|water)$/i;
+function spellUp(s){
+  if(!s || !s.dur || /^instant/i.test(String(s.dur))) return null;
+  const S = String(s.desc||"").split(/(?<=\.)\s+/), mv = /\b(?:move|teleport) the ([a-z]+)\b/i.exec(String(s.desc||""));
+  /* a damaging concentration spell's area that stays where it's put (Moonbeam's Cylinder, a cloud, a wall), not one
+     around the caster (Spirit Guardians' Emanation) */
+  const lasts = /ends (its|their) turn (there|in|within)|enters (the|that|its) |for the duration/i.test(String(s.desc||""));     // not a one-off blast (Confusion)
+  const area = s.conc && s.dmg && lasts ? (/\b(Cylinder|Sphere|Cube|cloud|wall)\b/.exec(String(s.desc||"")) || [])[1] : null;
+  const thing = mv && !UP_NOT.test(mv[1]) ? mv[1].toLowerCase() : area ? area.toLowerCase() : null;
+  const rep = S.find(x=>/(later turns?|each of your turns|until the spell ends, you can)/i.test(x) && /\b(again|repeat|deal)\b/i.test(x))
+    || (thing && (s.dmg || s.atk) ? (S.find(x=>new RegExp(`\\b(move|teleport) the ${thing}\\b`, "i").test(x)) || "moves into a creature's space") : null);
+  if(!thing && !rep && !s.conc) return null;                  // a concentration spell is listed as up, to see and end, either way
+  return { thing, again:!!rep, ba:!!rep && /Bonus Action/i.test(rep), said:rep ? rep.trim() : "" };
+}
+function upHolder(c, u){ const t = combatants(c).find(x=>x.id===u.owner); return t ? (t.kind==="foe" ? t.x : t.p) : null; }
+function upEnd(c, u, why){
+  c.ups = (c.ups||[]).filter(x=>x!==u); if(c.pos) delete c.pos[u.id];
+  const who = (combatants(c).find(x=>x.id===u.owner)||{}).label, line = `${u.name}${who ? ` (${who})` : ""} ends: ${why}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("spell", line);
+}
+/* what's up ends with its concentration (dropped, broken, another spell) or when its owner leaves the fight */
+function upsSweep(c){
+  for(const u of [...(c.ups||[])]){ const h = upHolder(c, u);
+    if(!h) upEnd(c, u, "its caster isn't in the fight");
+    else if(u.conc && !(h.conc && h.conc.id===u.sp)) upEnd(c, u, "concentration ended"); }
+}
+function upsNewRound(c){
+  for(const u of [...(c.ups||[])]) if(u.left!=null && (u.left -= 1) <= 0) upEnd(c, u, "its time ran out");
+}
+/* a free square near a point, for a new token: not a wall, water or a big piece, and nobody standing there */
+function upSpot(c, from){
+  const bm = battleOf ? bmapOf(bnode()) : null, taken = new Set(Object.values(c.pos||{}).map(p=>p.x+","+p.y));
+  const ok = (x, y) => x>=0 && y>=0 && x<BW && y<BH && !taken.has(x+","+y) && (!bm || !bm.rows || !bm.rows[y] || !/[~#CKMrb]/.test(bm.rows[y][x]));
+  for(let r=1; r<Math.max(BW, BH); r++) for(let dy=-r; dy<=r; dy++) for(let dx=-r; dx<=r; dx++)
+    if(Math.max(Math.abs(dx), Math.abs(dy))===r && ok(from.x+dx, from.y+dy)) return { x:from.x+dx, y:from.y+dy };
+  return { x:from.x, y:from.y };
+}
 function dmgAfter(n, how){ return how==="immune" ? 0 : how==="resists" ? Math.floor(n / 2) : how==="vulnerable" ? n * 2 : n; }
 const turnStamp = c => `${c.round}|${c.turn||""}`;
 const addonUsed = (c, actorId, key) => !!(c.onceUsed && c.onceUsed[actorId] && c.onceUsed[actorId][key]===turnStamp(c));
@@ -13548,6 +13604,9 @@ function actInfo(c, t){
     return { kind:"spell", name:s?s.name:(a.spellText||"a spell"), spell:s, save:!!(s&&s.save), atk:!!(s&&s.atk), heal:!!(s&&s.heal),
       hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null };
   }
+  if(w.startsWith("again:")){ const u = ((c && c.ups) || []).find(x=>x.id===w.slice(6)), s = u ? (spellOf(u.sp) || allSpells().find(x=>x.id===u.sp) || null) : null;     /* a spell that's up, used again: no slot */
+    return { kind:"spell", name:s ? s.name : (u ? u.name : "a spell"), spell:s, free:u ? u.id : true, upLvl:u ? u.lvl : null, ba:!!(u && u.ba), save:!!(s&&s.save), atk:!!(s&&s.atk), heal:!!(s&&s.heal),
+      hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null }; }
   if(w.startsWith("res:")){ const r = (t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4)))||{}, nm = r.name||"a resource";
     const heal = /second wind/i.test(nm) ? ((/(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(nm)||[])[1] || `1d10+${clampLv(pcState(t.p).level)}`).replace(/\s+/g, "") : "";     // Second Wind heals (2026-10-30)
     return { kind:"ability", name:nm, res:w.slice(4), healDice:heal }; }
@@ -13608,7 +13667,10 @@ function actDice(c, t, info){
 function actionForm(c, all){
   const t = all.find(x=>x.id===act.actor), info = t ? actInfo(c, t) : null;
   const choices = actionChoices(t);
-  const lvls = (info && info.kind==="spell" && info.spell && info.spell.lv>0 && t && t.kind==="pc")
+  const upsMine = t ? (c.ups||[]).filter(u=>u.owner===t.id && u.again) : [];      /* spells they have up: again, no slot */
+  if(upsMine.length) choices.unshift({ group:"Up now (no slot)", items:upsMine.map(u=>({ v:`again:${u.id}`, label:`${u.name}: again${u.ba ? " · Bonus Action" : ""}` })) });
+  if(info && info.free && info.upLvl!=null) act.lvl = info.upLvl;                     // it hits as hard as the slot it was cast with
+  const lvls = (info && info.kind==="spell" && !info.free && info.spell && info.spell.lv>0 && t && t.kind==="pc")
     ? [...Array(10).keys()].filter(L=>L>=info.spell.lv && pcState(t.p).slots[L].max>0) : [];
   if(lvls.length && (act.lvl==null || !lvls.includes(act.lvl))) act.lvl = lvls.find(L=>pcState(t.p).slots[L].used < pcState(t.p).slots[L].max) ?? lvls[0];
   const D = actDice(c, t, info);
@@ -13620,6 +13682,7 @@ function actionForm(c, all){
       <div class="field" style="flex:1"><label>Who</label><select id="ac-actor">${all.map(x=>`<option value="${x.id}" ${x.id===act.actor?"selected":""}>${esc(x.label)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
     ${t ? tacticsHtml(c, t) : ""}
+    ${(c.ups||[]).length ? `<p class="actspell">Up now: ${c.ups.map(u=>{ const o = all.find(x=>x.id===u.owner); return `${esc(u.name)}${o ? ` (${esc(o.label)})` : ""}${u.left!=null ? `, ${esc(concLeftWords(u.left))}` : ""}${u.thing && c.pos && c.pos[u.id] ? "" : ` <button class="btn small" data-uptok="${u.id}" title="Put a token for it on the battle map, next to its caster">Token</button>`} <button class="btn small" data-upend="${u.id}" title="End it now: its token goes">End</button>`; }).join(" · ")}</p>` : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
     ${lvls.length?`<div class="field"><label>Slot used</label><select id="ac-lvl">${lvls.map(L=>{ const s = pcState(t.p).slots[L]; return `<option value="${L}" ${L===act.lvl?"selected":""}>${ORD[L]} level (${s.max-s.used} left)</option>`; }).join("")}</select></div>`:""}
@@ -13709,7 +13772,7 @@ function logAction(n, c){
     touch(); renderBattle(); renderBattlePanel(); return;
   }
   /* a concentration spell: if they're holding another, ask first (yes ends it); it starts once the cast is logged */
-  const concSp = info.spell && info.spell.conc ? info.spell : null, concH = actor.kind==="foe" ? actor.x : actor.p;
+  const concSp = info.spell && info.spell.conc && !info.free ? info.spell : null, concH = actor.kind==="foe" ? actor.x : actor.p;
   if(concSp && !concOK(concH, concSp, actor.label)) return;
   /* a bonus action: one a turn (asks first if they've had theirs) */
   const isBonus = !act.reaction && (act.bonus ?? bonusActOf(actor, info, act.what));
@@ -13720,7 +13783,7 @@ function logAction(n, c){
   let slotTxt = "";
   if(actor.kind==="pc"){
     const p = pcState(actor.p), S = statsOf(p);
-    if(info.kind==="spell" && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
+    if(info.kind==="spell" && !info.free && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
     if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used+1); }
     if(info.kind==="item"){ const x = usableOf(p).find(y=>y.k===info.useK);                 /* using a carried thing spends a charge (or the thing) */
       if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } spendItem(p, x.k);
@@ -13738,6 +13801,7 @@ function logAction(n, c){
     if(res && res.kind==="recharge") x.spent[key] = true;
     if(res && res.kind==="slotspell"){ const s = r.find(q=>q.key===res.slot); if(s) x.used[s.key] = Math.min(s.max, (x.used[s.key]||0)+1); slotTxt = ` (${ORD[res.lv]})`; }
   }
+  if(info.free) slotTxt = " again (no slot)";
   /* apply it to each target */
   const hits = [];
   let dealt = 0, healed = 0, kills = 0;
@@ -13781,7 +13845,7 @@ function logAction(n, c){
   if(actor.kind==="pc"){ const S = statsOf(actor.p), foeHit = h => all.find(x=>x.id===h.id).kind==="foe";
     S.dealt += hits.filter(foeHit).reduce((a,h)=>a+h.dmg,0) + hits2.filter(foeHit).reduce((a,h)=>a+h.dmg,0); S.healed += healed;
     S.kills += new Set([...hits, ...hits2].filter(h=>h.dropped && foeHit(h)).map(h=>h.id)).size; }
-  const verb = info.kind==="spell" ? "casts" : info.kind==="attack" ? "makes a" : "uses";
+  const verb = info.free ? "uses" : info.kind==="spell" ? "casts" : info.kind==="attack" ? "makes a" : "uses";
   const OUT = { hit:"hits", crit:"crits", miss:"misses", fail:"save failed", save:"save made", none:"" }, out = OUT[act.outcome];
   const named = D.on.filter(a=>!String(info.name||"").toLowerCase().includes(String(a.name||"").toLowerCase()));     // not "Flame Tongue Greatsword with Flame Tongue Greatsword"
   const riders = named.length ? ` with ${named.map(a=>a.name).join(" and ")}${D.on.some(a=>a.adv)?" (Advantage)":""}` : "";
@@ -13806,7 +13870,15 @@ function logAction(n, c){
   if(act.reaction){ c.reacted = c.reacted || {}; c.reacted[actor.id] = c.round; }
   if(isBonus){ c.bonused = c.bonused || {}; c.bonused[actor.id] = c.round; }
   const asWhat = act.reaction ? " — as a reaction." : isBonus && !/as a Bonus Action/.test(line) ? " — as a bonus action." : ".";
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, once:onceBefore, tac:tacBefore });
+  /* a spell that stays up: its token on the map, free again while it lasts (casting it again replaces their old one) */
+  const upsBefore = JSON.stringify({ u:c.ups || [], p:Object.fromEntries((c.ups||[]).filter(u=>c.pos && c.pos[u.id]).map(u=>[u.id, c.pos[u.id]])) });
+  const U = info.kind==="spell" && !info.free ? spellUp(info.spell) : null;
+  if(U){ for(const o of (c.ups||[]).filter(o=>o.owner===actor.id && o.sp===info.spell.id)){ c.ups = c.ups.filter(x=>x!==o); if(c.pos) delete c.pos[o.id]; }
+    const u = { id:uid("up"), sp:info.spell.id, name:info.spell.name, owner:actor.id, lvl:act.lvl ?? null, left:concRounds(info.spell.dur), conc:!!info.spell.conc, thing:U.thing, again:U.again, ba:U.ba };
+    (c.ups = c.ups || []).push(u); c.pos = c.pos || {};
+    if(U.thing){ const near = (targets[0] && c.pos[targets[0].id]) || c.pos[actor.id]; if(near) c.pos[u.id] = upSpot(c, near); } }
+  const upW = U && (U.thing || U.again) ? ` ${info.spell.name} stays up${U.thing ? `: its ${U.thing} is on the map` : ""}${U.again ? `${U.thing ? "," : ":"} again${U.ba ? " as a Bonus Action" : ""} without a slot` : ""}.` : "";
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW, snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, once:onceBefore, tac:tacBefore, ups:upsBefore });
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   act = freshAct(actor.id);
   partySync();                                    // the fight's log has its own undo for this
@@ -13820,6 +13892,8 @@ function undoAction(c){
     Object.assign(c.scaled, { held:A.before.held, lines:A.before.lines, expected:A.before.expected, who:A.before.who });
     c.scaled.undone = c.scaled.undone || {}; for(const w of back) c.scaled.undone[w.id] = true;   // they're still standing there: not again till they leave and come back
     flash("Took back the arrival."); touch(); renderBattle(); renderBattlePanel(); return; }
+  if(e.ups!=null){ const B = JSON.parse(e.ups), keep = new Set(B.u.map(u=>u.id)); c.pos = c.pos || {};     // what was up, as it was (a token moved since stays where it is)
+    for(const u of c.ups||[]) if(!keep.has(u.id)) delete c.pos[u.id]; c.ups = B.u; for(const [id, p] of Object.entries(B.p)) if(!c.pos[id]) c.pos[id] = p; }
   restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   partySync();
   flash("Took back the last action.");
@@ -14060,6 +14134,10 @@ function renderBattlePanelNow(){
   /* the second part's targets start as the first part's, then go their own way once one is clicked */
   el.querySelectorAll("[data-actt2]").forEach(b=>b.onclick = ()=>{ keep(); if(!act.p2) return; const id = b.dataset.actt2, T = act.p2.targets || [...act.targets];
     act.p2.targets = T.includes(id) ? T.filter(x=>x!==id) : [...T, id]; renderBattlePanel(); });
+  el.querySelectorAll("[data-uptok]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.uptok); if(!u) return;     // a token for any spell that's up, by hand
+    u.thing = u.thing || "spell"; c.pos = c.pos || {}; c.pos[u.id] = upSpot(c, c.pos[u.owner] || { x:1, y:1 }); touch(); renderBattle(); renderBattlePanel(); flash(`${u.name} is on the map: drag it where it goes.`); });
+  el.querySelectorAll("[data-upend]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.upend); if(!u) return;     // ending a spell that's up, by hand
+    upEnd(c, u, "ended"); if(String(act.what||"")===`again:${u.id}`) act = freshAct(act.actor); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];
     act.addons = A.includes(k) ? A.filter(x=>x!==k) : [...A, k];
     if(k.startsWith("inv:")){ const L = (c.lit = c.lit || {})[act.actor] = c.lit[act.actor] || {}; if(act.addons.includes(k)) L[k] = true; else delete L[k]; }     // lit stays lit
