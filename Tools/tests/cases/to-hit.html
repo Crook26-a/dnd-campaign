@@ -1,0 +1,45 @@
+// uses: nothing
+<script>
+/* rolling to hit (Joseph, 2026-10-30, everywhere): the attack's bonus (a character's attack line, a creature's "Attack
+   Roll: +N", a spell attack) against the target's AC; the app's d20 or one typed in from the table; Advantage and
+   Disadvantage; a natural 20 crits, a natural 1 misses; the outcome set; the roll in the logged line */
+const __TH = { format:"ordinate-survey-v1", title:"To hit", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", str:20, attacks:[{ name:"Greatsword", hit:"+8", dmg:"2d6+5" }, { name:"Greatsword, with its +", hit:"+8", dmg:"2d6+5", mod:"2" }], res:[{ id:"rs_sw", name:"Second Wind (1d10+5)", max:1, used:0, rest:"short" }], inv:[{ id:"ll_axe", qty:1 }] },
+    { id:"pb", name:"Wren", cls:"Wizard", level:5, hp:"28", hpMax:"28", ac:"12", satk:"+7", spells:["spell:fire-bolt", "spell:spiritual-weapon"], attacks:[] }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[{ id:"ll_axe", name:"Frost Axe", kind:"magic item", dmg:"1d8", dtype:"slashing", hit:"+1", props:"Versatile" }, { id:"ll_wand", name:"Spark Rod", kind:"magic item", dmg:"1d6", dtype:"lightning", abil:"cha", range:"60" }] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:ogre", n:"1" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[2,2],[3,2]], enemy:[[6,1]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  loadJSONNow(JSON.stringify(__TH)); await wait(300); setDmMode(true); await wait(60);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60); const ogre = c.list[0], G = combatants(c).find(t=>t.id==='pa'), W = combatants(c).find(t=>t.id==='pb'), O = combatants(c).find(t=>t.id===ogre.id);
+  const seq = (...v) => { let k = 0; const r0 = Math.random; return () => k < v.length ? v[k++] : r0(); };      // set values for the roll, then real ones
+  const roll = async (setup, rnd) => { setup(); renderBattlePanel(); await wait(30); const r0 = Math.random; if(rnd) Math.random = rnd;
+    const b = document.querySelector('[data-acroll="hit"]'); const lab = b ? b.textContent : 'no button'; if(b) b.click(); Math.random = r0; await wait(30); return `${lab} → ${act.outcome} · "${(act.toHit||{}).said}"`; };
+  out.push('Gawain\'s greatsword (+8) on the ogre (AC 11), d20 10: ' + await roll(()=>{ act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; }, seq(0.45, 0.45)));
+  out.push('a natural 1: ' + await roll(()=>{ act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; }, seq(0.0, 0.0)));
+  out.push('typed 20 at the table: ' + await roll(()=>{ act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.d20 = '20'; }));
+  out.push('Advantage: ' + await roll(()=>{ act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.adv = 'adv'; }, seq(0.1, 0.8)));
+  out.push('the ogre (Attack Roll on its Greatclub) on Gawain (AC 17), d20 10: ' + await roll(()=>{ act = freshAct(ogre.id); act.what = 'fa:Greatclub'; act.targets = ['pa']; }, seq(0.45, 0.45)));
+  out.push('Wren\'s Fire Bolt (spell attack +7): ' + await roll(()=>{ act = freshAct('pb'); act.what = 'sp:spell:fire-bolt'; act.targets = [ogre.id]; }, seq(0.45, 0.45)));
+  out.push('a bonus typed in (+2): ' + await roll(()=>{ act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.hitBonus = '+2'; }, seq(0.45, 0.45)));
+  /* the modifiers (2026-10-30): a sheet line's +, an item weapon's modifier and magic bonus, a spell's caster modifier, the boxes */
+  const diceOf = what => { act = freshAct(what[0]); act.what = what[1]; act.targets = [ogre.id]; const t = combatants(c).find(x=>x.id===what[0]); return actDice(c, t, actInfo(c, t)).dmgDice; };
+  out.push('line with + 2: ' + diceOf(['pa', 'pca:1']) + ' · Frost Axe (+1, Str): ' + diceOf(['pa', 'itm:ll_axe']) + ' · Spiritual Weapon (Wren, +4): ' + diceOf(['pb', 'sp:spell:spiritual-weapon']));
+  act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.dmgMod = '3'; out.push('the + box (3): ' + actDice(c, G, actInfo(c, G)).dmgDice);
+  out.push('to-hit with ±2: ' + await roll(()=>{ act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; act.hitMod = '2'; }, seq(0.45, 0.45)));
+  /* Second Wind targets himself and heals */
+  { const sel = document.querySelector('#ac-actor'); act = freshAct('pa'); renderBattlePanel(); await wait(20); const w = document.querySelector('#ac-what'); w.value = 'res:rs_sw'; w.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+    out.push('Second Wind: targets ' + JSON.stringify(act.targets) + ' · heal dice ' + actDice(c, G, actInfo(c, G)).healDice + ' · chip "' + ((document.querySelector('[data-actt="pa"]')||{}).textContent || 'none') + '"');
+    act.heal = '10'; const hp0 = root.roster[0].hp; logAction(hall, c); await wait(20); out.push('logged: Gawain ' + hp0 + ' -> ' + root.roster[0].hp + ' · "' + c.log.slice(-1)[0].text + '"'); }
+  /* logged: the roll in the line */
+  act = freshAct('pa'); act.what = 'pca:0'; act.targets = [ogre.id]; renderBattlePanel(); await wait(20); const r0 = Math.random; Math.random = seq(0.6, 0.6); document.querySelector('[data-acroll="hit"]').click(); Math.random = r0; await wait(20);
+  act.dmg = '12'; logAction(hall, c); await wait(30); out.push('logged: "' + c.log.slice(-1)[0].text + '"');
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

@@ -1131,7 +1131,7 @@
   .sprow-m{font-family:var(--mono);font-size:9.5px;color:var(--ink-soft);margin:1px 0}
   .sprow-d{font-size:11.5px;color:var(--ink);line-height:1.35}
   .btn.libback{margin:0 0 10px;text-align:left;background:var(--paper-lit)}
-  .atkrow{display:grid;grid-template-columns:.8fr 1fr 1.2fr 22px;gap:3px;align-items:center;margin-bottom:7px}
+  .atkrow{display:grid;grid-template-columns:.8fr 1fr .5fr 1.2fr 22px;gap:3px;align-items:center;margin-bottom:7px}
   .atkrow .atkname{grid-column:1/-1}
   .atkrow input,.atkrow select{min-width:0;width:100%;background:var(--paper-lit);border:1px solid var(--rule);border-radius:2px;padding:3px 4px;font-size:11.5px}
   .atkrow.head span{font-family:var(--mono);font-size:9px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em}
@@ -1968,7 +1968,7 @@ function charCR(c, mode, opts){
   /* their attack lines: a weapon, or a spell (by its name) with the numbers they wrote */
   const lines = (c.attacks||[]).map(a=>{ const h = String(a.hit||"").trim(), base = String(a.name||"").replace(/\s*\(.*$/, "").trim(), sp = spellByName(base);
     const atk = /^[+-]?\d+$/.test(h) ? parseInt(h) : null, dc = atk==null && /\d/.test(h) ? +(/(\d+)/.exec(h)[1]) : null;
-    let avg = crDiceAvg(a.dmg); const eb = /eldritch blast/i.test(a.name||"");
+    let avg = crDiceAvg(a.dmg) + (Math.round(+a.mod) || 0); const eb = /eldritch blast/i.test(a.name||"");     // the line's own + (2026-10-30)
     if(eb){ const dice = [...String(a.dmg||"").matchAll(/(\d*)d10/gi)].reduce((s, m)=>s + (+m[1] || 1), 0), perBeam = dice <= 1;
       if(perBeam && agonizing && !/[+-]\s*\d+\s*$/.test(String(a.dmg||"").split(/,/)[0])) avg += chaMod;
       if(perBeam) avg = avg * cantripX + (repelling ? 2 * cantripX : 0); }
@@ -2270,6 +2270,7 @@ function roomScalePlan(site, chars, n){
 /* who's in a room: the groups standing there (everyone, while the party is together and has no other place), and the
    companions with them (one bonded to a character goes where they go) that count. Each as { id, name, level }. */
 function roomChars(map, nodeId){
+  if(isArena()){ const ids = new Set(root.arenaIn||[]); return partyRoster().filter(p=>ids.has(p.id)).map(p=>({ id:p.id, name:p.name, level:clampLv(p.level) })); }   // the arena: who's been brought in
   const all = partyRoster(), gs = partySize() > 1 ? groupsOf() : [];
   const there = gs.filter(g=>g.at && g.at.map===map && g.at.node===nodeId);
   const pcs = partySize() <= 1 ? all : there.length ? all.filter(p=>there.some(g=>g.members.includes(p.id))) : gs.length > 1 ? [] : all;
@@ -2541,7 +2542,7 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
    ══════════════════════════════════════════════════════════════ */
 var fillOpts = { diff:"mod", type:"" };
 const FILL_DIFFS = [["lo","Low"],["mod","Moderate"],["hi","High"]];
-function fillWho(n){ const R = roomChars(planOf || "survey", n.id); return R.length ? R : partyRoster().map(p=>({ id:p.id, name:p.name, level:clampLv(p.level) })); }
+function fillWho(n){ const R = roomChars(planOf || "survey", n.id); return R.length || isArena() ? R : partyRoster().map(p=>({ id:p.id, name:p.name, level:clampLv(p.level) })); }   // the arena: only who's brought in
 function fillBudget(who, diff){
   return who.reduce((a, w)=>{ const lv = clampLv(w.level), B = budgetFor([lv]), real = w.id ? charById(w.id) : null;
     const xp = real ? charCRDay(Object.assign({}, real, { level:lv })).xp : B.mod; return a + Math.round(xp * B[diff] / B.mod); }, 0);
@@ -4679,6 +4680,7 @@ function dropMember(id, w){ const at = atFromDrop(w); moveMember(id, at); partyM
 function setPartyAt(at, quiet){ let g = activeGroup(); g.at = at; g = joinUp(g); partyMoved(quiet ? "" : `${groupName(g)}: ${groupWord(g)}.`); }
 /* who's in a fight at a place: the party members there; if nobody is, everyone (the DM looking round, as before) */
 function presentChars(c){
+  if(isArena()){ const ids = new Set(root.arenaIn||[]); return partyRoster().filter(p=>ids.has(p.id)); }     // the arena: only who's been brought in (2026-10-30)
   const all = partySize()>1 ? partyRoster() : [];
   const here = (doc.nodes||[]).find(n=>n.site && n.site.combat===c); if(!here) return all;
   const map = planOf || "survey", aboard = planOf && sailsAbout(root.nodes.find(x=>x.id===planOf));
@@ -7736,6 +7738,14 @@ function pcSpellsBlock(c, i){
 /* going into the library from somewhere, and back to exactly there */
 var libReturn = null;
 function openLibFrom(cat, id, back){ libReturn = back || null; openLib(cat, id); }
+/* a library card from a fight or a place, without leaving it (Joseph, 2026-10-30: going to the library backed out of the
+   fight): table mode, in the drawer; else the Library tab, with a way back */
+function libPeek(cat, id){
+  if(typeof tableOn==="function" && tableOn()){ libTab = cat; libOpen = id; libQuery = "";
+    const std = cat==="foes" ? SRD_FOE_BY.get(id) : cat==="loot" ? SRD_LOOT_BY.get(id) : cat==="spells" ? SPELL_BY.get(id) : null; if(std) libQuery = std.name;
+    openDrawer("library"); return; }
+  openLibFrom(cat, id, { pane });
+}
 function goBackFromLib(){
   const r = libReturn; libReturn = null; if(!r) return;
   for(const k of (r.open||[])) openInv.add(k);
@@ -7750,8 +7760,8 @@ function pcAttacksBlock(c, i){
   const A = Array.isArray(c.attacks) ? c.attacks : [];
   const inp = (a, j, k, ph) => `<input data-pcatk="${i}" data-k="${j}" data-af="${k}" type="text" value="${esc(a[k]||"")}" placeholder="${ph}">`;
   return `<div class="field">
-    ${A.length ? `<div class="atkrow head"><span>Hit / DC</span><span>Damage</span><span>Type</span><span></span></div>` : ""}
-    ${A.map((a,j)=>`<div class="atkrow"><span class="atkname">${inp(a,j,"name","Attack name, e.g. Rapier")}</span>${inp(a,j,"hit","+4")}${inp(a,j,"dmg","1d8+2")}
+    ${A.length ? `<div class="atkrow head"><span>Hit / DC</span><span>Damage</span><span title="Added to the damage roll">+</span><span>Type</span><span></span></div>` : ""}
+    ${A.map((a,j)=>`<div class="atkrow"><span class="atkname">${inp(a,j,"name","Attack name, e.g. Rapier")}</span>${inp(a,j,"hit","+4")}${inp(a,j,"dmg","1d8+2")}${inp(a,j,"mod","0")}
       <select data-pcatk="${i}" data-k="${j}" data-af="dtype"><option value="">—</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===a.dtype?"selected":""}>${d}</option>`).join("")}</select>
       <button class="fdel" data-act="atkdel" data-pc="${i}" data-k="${j}" title="Remove">×</button></div>`).join("")}
     <button class="btn wide" data-act="atkadd" data-pc="${i}">Add an attack</button></div>`;
@@ -8796,6 +8806,7 @@ function libForm(cat, x){
         return `<details class="pcset pcsec" data-invfor="${k}" ${openInv.has(k)||has?"open":""}><summary>Item stats${has?` <small>${esc(has)}</small>`:""}</summary>
           <p class="empty-note" style="font-size:11px;margin:2px 0 6px">All optional. Give it damage and whoever carries it can attack with it in a fight; the magic bonus adds to their own attack and damage rolls.</p>
           <div class="pcrow">${t("dmg","Damage",1,"1d8+1")}<div class="field" style="flex:1"><label>Damage type</label><select ${a} data-f="dtype"><option value="">—</option>${DAMAGE_TYPES.filter(Boolean).map(d=>`<option ${d===x.dtype?"selected":""}>${d}</option>`).join("")}</select></div>${t("hit","Magic bonus",.8,"+1")}</div>
+          <div class="pcrow"><div class="field" style="flex:1" title="Which ability's modifier the wielder adds to its attack and damage (2026-10-30)"><label>Modifier</label><select ${a} data-f="abil">${[["", "Worked out (Str; Dex if finesse or ranged)"], ["str", "Strength"], ["dex", "Dexterity"], ["con", "Constitution"], ["int", "Intelligence"], ["wis", "Wisdom"], ["cha", "Charisma"], ["none", "None"]].map(([v, l])=>`<option value="${v}" ${v===(x.abil||"")?"selected":""}>${l}</option>`).join("")}</select></div></div>
           <div class="pcrow">${t("props","Properties",1.6,"Finesse, Light, Thrown")}${t("range","Range",.9,"20/60 ft.")}</div>
           <div class="pcrow">${t("ac","Armor Class",1,"+1, or 14 + Dex")}${t("charges","Charges",.7,"3")}</div>
           <label class="check" style="margin:0 0 9px"><input ${a} data-f="attune" type="checkbox" ${x.attune?"checked":""}> Needs attunement</label>
@@ -8853,7 +8864,7 @@ function stdMatches(q){
    "Fights as" can come as a stat block's name, matched here to your foes or the SRD's. ── */
 const FB_FIELDS = {
   /* every category also has "campaign": which campaign the phone meant it for */
-  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","reduce","reduceSelf","reduceType","reduceHalf","onHit","onHitType","onHitHeal","onHitBa","notes","soldAt","campaign"],
+  loot:["name","kind","rarity","value","wt","desc","attune","dmg","dtype","hit","abil","range","props","ac","charges","effect","use","perUse","regain","regainWhen","usedUp","heal","tempHp","cond","reduce","reduceSelf","reduceType","reduceHalf","onHit","onHitType","onHitHeal","onHitBa","notes","soldAt","campaign"],
   shops:["name","keeper","staff","staff2","nmin","nmax","srd","goods","notes","campaign"],
   factions:["name","align","wants","how","hidden","notes","campaign"],
   npcs:["name","role","where","align","look","voice","wants","knows","backstory","spare","fightsAs","species","gender","known","cls","level","ac","hpMax","speed","init",
@@ -13239,6 +13250,44 @@ $("#bsvg").addEventListener("wheel", e=>{
    click puts it all back. ── */
 const DAMAGE_TYPES = ["","acid","bludgeoning","cold","fire","force","lightning","necrotic","piercing","poison","psychic","radiant","slashing","thunder"];
 const OUTCOMES = [["hit","Hit"],["crit","Crit"],["miss","Miss"],["fail","Save failed"],["save","Save made"],["none","—"]];
+/* rolling to hit (Joseph, 2026-10-30, everywhere): the attack's bonus (a character's attack line, a creature's "Attack
+   Roll: +N" or "+N to hit", a spell attack: their spell attack bonus; changeable on the form) against the first
+   target's AC; the d20 rolled here (Advantage: the higher of two, Disadvantage: the lower) or the one rolled at the
+   table typed in; a natural 20 crits, a natural 1 misses. It sets the outcome, and the logged line says the roll */
+/* something only its user is the target of: Second Wind and the like, a spell with a range of Self (not a cone, a
+   radius…), an item used on "yourself" (or that gives its user temporary hit points) */
+function selfOnly(info, t){
+  if(!info) return false;
+  if(info.spell){ const r = String(info.spell.range||""); return /^self/i.test(r) && !/radius|cone|cube|line|sphere|emanation/i.test(r) && !info.spell.dmg; }
+  if(info.res) return /second wind|action surge|form of dread|rage|wild shape|cunning action/i.test(String(info.name||info.res));
+  if(info.kind==="item" && !info.bite && t && t.p){ const x = usableOf(pcState(t.p)).find(y=>y.k===info.useK); return !!x && (/\byourself\b/i.test(x.u.effect || "") || (!!x.u.tempHp && !x.u.heal)); }
+  return false;
+}
+const isAttackAct = info => !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
+const acOf = o => !o ? 10 : o.kind==="foe" ? (parseInt((foeById(o.x.foe)||{}).ac) || 10) : (parseInt(pcState(o.p).ac) || 10);
+function toHitOf(c, t, info){
+  if(!info || !t) return null; const w = act.what || "", num = s => { const m = /([+-]?\d+)/.exec(String(s ?? "")); return m ? +m[1] : null; };
+  const bare = n => String(n).replace(/^(Bonus action|Bonus|Reaction|Legendary): /i, "");
+  const txt = (m, nm) => (m ? (foeEntries(m).find(([n])=>n===nm || bare(n)===nm) || [])[1] : "") || "";
+  const fromText = s => { const m = /Attack Roll:\s*([+-]\d+)/i.exec(s || "") || /([+-]\d+) to hit/i.exec(s || ""); return m ? +m[1] : null; };
+  if(info.spell && info.spell.atk){ if(t.kind==="foe"){ const all = foeEntries(foeById(t.x.foe)).map(e=>e[1]).join(" "), m = /([+-]\d+) to hit with spell/i.exec(all); return m ? +m[1] : null; } return num(pcState(t.p).satk); }
+  if(w.startsWith("fa:")) return fromText(txt(foeById(t.x.foe), w.slice(3)));
+  if(w.startsWith("wsa:")) return fromText(txt(pcStatBlock(t.p), w.slice(4)));
+  if(w.startsWith("pca:")){ const a = (pcState(t.p).attacks||[])[+w.slice(4)] || {}; return /DC/i.test(a.hit||"") ? null : num(a.hit); }
+  if(w.startsWith("itm:")) return info.hitRow ? num(info.hitRow.hit) : null;
+  return null;
+}
+function toHitRow(c, t, info, all){
+  if(!isAttackAct(info) || !act.targets.length) return "";
+  const tg = all.find(x=>x.id===act.targets[0]), b = act.hitBonus ?? toHitOf(c, t, info);
+  return `<div class="pcrow" style="align-items:center;margin:2px 0 4px">
+      <input id="ac-hitbonus" class="mono" type="text" value="${esc(b==null || b==="" ? "" : /^[+-]/.test(String(b)) ? b : signed(+b))}" placeholder="+?" style="width:48px" title="Their bonus to hit">
+      <input id="ac-hitmod" class="mono" type="number" value="${esc(act.hitMod||"")}" placeholder="±0" style="width:44px" title="A modifier on this roll only: cover, Bless, your call">
+      <select id="ac-adv" style="flex:1;min-width:0"><option value="">Straight roll</option><option value="adv" ${act.adv==="adv"?"selected":""}>Advantage</option><option value="dis" ${act.adv==="dis"?"selected":""}>Disadvantage</option></select>
+      <input id="ac-d20" class="mono" type="number" min="1" max="20" value="${esc(act.d20||"")}" placeholder="d20" style="width:52px" title="The d20 rolled at the table (empty: the app rolls)">
+      <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${acOf(tg)}</button></div>
+    ${act.toHit ? `<p class="empty-note" style="font-size:11.5px;margin:-2px 0 6px">${esc(act.toHit.said)}</p>` : ""}`;
+}
 let act = null;                                          // the action being filled in
 const freshAct = actor => ({ actor, what:"", lvl:null, spellText:"", otherText:"", targets:[], outcome:"hit", dmg:"", dtype:"", heal:"", cond:"", note:"", reaction:false, addons:[], p2:null });
 /* ── reactions: one per creature per round, back when its own turn starts ── */
@@ -13465,18 +13514,20 @@ function actInfo(c, t){
     return { kind:"spell", name:s?s.name:(a.spellText||"a spell"), spell:s, save:!!(s&&s.save), atk:!!(s&&s.atk), heal:!!(s&&s.heal),
       hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null };
   }
-  if(w.startsWith("res:")) return { kind:"ability", name:(t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4))||{}).name||"a resource", res:w.slice(4) };
+  if(w.startsWith("res:")){ const r = (t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4)))||{}, nm = r.name||"a resource";
+    const heal = /second wind/i.test(nm) ? ((/(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(nm)||[])[1] || `1d10+${clampLv(pcState(t.p).level)}`).replace(/\s+/g, "") : "";     // Second Wind heals (2026-10-30)
+    return { kind:"ability", name:nm, res:w.slice(4), healDice:heal }; }
   if(w.startsWith("wsa:")){
     const nm = w.slice(4), sb = pcStatBlock(t.p);
     const bare = n => String(n).replace(/^(Bonus action|Bonus|Reaction|Legendary): /i,"");
     const text = (foeEntries(sb).find(([n])=>n===nm || bare(n)===nm) || [...pairs(sb&&sb.bon)].find(([n])=>n===nm) || [])[1] || "";
     return { kind:/Attack Roll|Weapon Attack|to hit/i.test(text) ? "attack" : "ability", name:nm.replace(/\s*\(.*\)\s*$/,""), hint:hintFromText(text), save:/Saving Throw/i.test(text) };
   }
-  if(w.startsWith("itm:")){ const x = libLootById(w.slice(4));          /* a carried item with its own stats */
-    return { kind:"attack", name:x ? x.name : "an item", hint:x && x.dmg ? { dice:String(x.dmg).replace(/\s+/g,""), dtype:String(x.dtype||"").toLowerCase() } : null, save:false }; }
+  if(w.startsWith("itm:")){ const x = libLootById(w.slice(4)), r = x && t && t.p ? itemWeaponRow(pcState(t.p), x) : null;          /* a carried item with its own stats */
+    return { kind:"attack", name:x ? x.name : "an item", hitRow:r, hint:x && x.dmg ? { dice:r ? r.dmg : String(x.dmg).replace(/\s+/g,""), dtype:String(x.dtype||"").toLowerCase() } : null, save:false }; }
   if(w.startsWith("pca:")){
     const a = ((t.p && pcState(t.p).attacks) || [])[+w.slice(4)] || {}, s = t.p && rowSpell(t.p, a);
-    const hint = a.dmg ? { dice:a.dmg, dtype:String(a.dtype||"").toLowerCase() } : null;
+    const hint = a.dmg ? { dice:+a.mod ? addDice(a.dmg, String(Math.round(+a.mod))) : a.dmg, dtype:String(a.dtype||"").toLowerCase() } : null;     // the line's own + (2026-10-30)
     /* a row that is one of their spells casts it: the slot is spent and it scales like the spell */
     if(s) return { kind:"spell", name:s.name, spell:s, row:a, save:!!s.save || /DC|[A-Z]{3} \d+/.test(a.hit||""), atk:!!s.atk, heal:!!s.heal, hint };
     return { kind:"attack", name:a.name||"an attack", save:/DC/i.test(a.hit||""), hint };
@@ -13498,10 +13549,19 @@ function actDice(c, t, info){
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
   const addons = isAtk && t ? attackAddons(t) : [];
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
-  const dmgDice = addDice(...(part1 ? [part1.dice] : []), ...on.filter(a=>a.dice).map(a=>a.dice));
+  /* the modifier the rules add (Joseph, 2026-10-30: "a plus modifier for spiritual weapon and just in general"): a spell
+     whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
+     Cure Wounds), and the form's + box adds anything else to the damage */
+  const desc = String((info && info.spell && info.spell.desc) || ""), sMod = t && t.kind==="pc" ? spellModOf(pcState(t.p)) : 0;
+  const dmgMod = (sMod && /damage[^.]*plus your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0);
+  const healMod = sMod && /(Hit Points|regains?)[^.]*plus your spellcasting ability modifier/i.test(desc) ? sMod : 0;
+  let dmgDice = addDice(...(part1 ? [part1.dice] : []), ...on.filter(a=>a.dice).map(a=>a.dice));
+  if(dmgDice && dmgMod) dmgDice = addDice(dmgDice, String(dmgMod));
   /* a damage-cutting item on whoever uses it: its "on yourself" amount */
   const selfCut = info && info.reduce && t && t.p && act.targets.length===1 && act.targets[0]===t.id;
-  return { sc, part1, part2, addons, on, dmgDice, healDice:selfCut ? reduceDice(info.reduce, pcState(t.p), true) : (sc && sc.heal) || (info && info.healDice) || "" };
+  let healDice = selfCut ? reduceDice(info.reduce, pcState(t.p), true) : (sc && sc.heal) || (info && info.healDice) || "";
+  if(healDice && healMod && sc && sc.heal) healDice = addDice(healDice, String(healMod));
+  return { sc, part1, part2, addons, on, dmgDice, healDice };
 }
 function actionForm(c, all){
   const t = all.find(x=>x.id===act.actor), info = t ? actInfo(c, t) : null;
@@ -13529,15 +13589,17 @@ function actionForm(c, all){
       <div class="acttargets">${D.addons.map(a=>{ const on = (act.addons||[]).includes(a.key), used = a.once && addonUsed(c, t.id, a.key);
         return `<button class="chip${on?" on":""}" data-addon="${esc(a.key)}" ${used&&!on?"disabled":""} title="${esc(a.note||(a.once?"Once a turn":""))}">${esc(a.name)}${a.dice?` +${esc(a.dice)}${a.dtype && D.part1 && a.dtype!==D.part1.dtype ? ` ${esc(a.dtype)}` : ""}`:""}${a.adv?" · Advantage":""}${a.once?(used?" · used this turn":" · once a turn"):""}</button>`; }).join("")}</div>` : ""}
     <label class="grouplab" style="margin-top:4px">Targets</label>
-    <div class="acttargets">${all.filter(x=>x.id!==act.actor).map(x=>`<button class="chip${act.targets.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt="${x.id}" data-side="${x.side}">${esc(x.label)}</button>`).join("")}</div>
+    <div class="acttargets">${[...all.filter(x=>x.id===act.actor), ...all.filter(x=>x.id!==act.actor)].map(x=>`<button class="chip${act.targets.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt="${x.id}" data-side="${x.side}">${x.id===act.actor ? `themself (${esc(x.label)})` : esc(x.label)}</button>`).join("")}</div>
     <div class="actout">${OUTCOMES.map(([v,l])=>`<label><input type="radio" name="ac-out" value="${v}" ${act.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
+    ${toHitRow(c, t, info, all)}
     <div class="pcrow">
       <div class="field" style="flex:.9"><label>Damage${D.dmgDice?` <i>(${esc(D.dmgDice)})</i>`:""}</label><input id="ac-dmg" type="number" min="0" value="${esc(act.dmg)}"></div>
+      <div class="field" style="flex:.45" title="Add (or take) this much on the damage roll: a modifier the app doesn't know about"><label>+</label><input id="ac-dmgmod" class="mono" type="number" value="${esc(act.dmgMod||"")}" placeholder="0"></div>
       <div class="field" style="flex:1.2"><label>Type</label><select id="ac-dtype">${DAMAGE_TYPES.map(d=>`<option value="${d}" ${d===act.dtype?"selected":""}>${d||"—"}</option>`).join("")}</select></div>
-      <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)}${healMod?" + mod":""})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
+      <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
     ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
       <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
-    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice.">Roll ${esc(D.dmgDice)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="${healMod?"Rolls the dice; add the caster's spellcasting modifier":"Rolls the dice into the Healing box"}">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
+    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice.">Roll ${esc(D.dmgDice)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
     ${D.part2 ? `<div class="actpart2"><label class="grouplab" style="margin-top:6px">Then: ${esc(D.part2.dtype)} damage (${esc(D.part2.dice)})</label>
       <div class="acttargets">${all.filter(x=>x.id!==act.actor).map(x=>`<button class="chip${p2t.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt2="${x.id}">${esc(x.label)}</button>`).join("")}</div>
       <div class="actout">${[["fail","Save failed"],["save","Save made"],["hit","Hit"],["none","—"]].map(([v,l])=>`<label><input type="radio" name="ac-out2" value="${v}" ${act.p2.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
@@ -13681,6 +13743,7 @@ function logAction(n, c){
   const line = `${actor.label} ${verb} ${info.name}${slotTxt}${riders}`
     + (targets.length ? ` on ${hits.map(h=>h.label).join(", ")}` : "")
     + (out ? ` — ${out}` : "")
+    + (act.toHit && act.toHit.v===act.outcome ? ` (${act.toHit.said.replace(/^To hit: /, "to hit: ")})` : "")
     + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}${rolledW("dmg", act.dmg)}` : "")
     + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
       : `, healing ${healed}${rolledW("heal", act.heal)}`) : "")
@@ -13900,8 +13963,8 @@ function renderBattlePanelNow(){
     touch(); renderBattle(); renderBattlePanel(); flash(`${nx.label} joins the fight${nx.ally?" on the party's side":""}.`); });
   wireBmapPanel(el, n, c);
 
-  el.querySelectorAll("[data-libopen]").forEach(s=>s.onclick = ()=>{ const [k,id] = s.dataset.libopen.split(":"); closeBattle(true); openLib(k,id); });
-  el.querySelectorAll("[data-spellopen]").forEach(s=>s.onclick = ()=>{ closeBattle(true); openLib("spells", s.dataset.spellopen); });
+  el.querySelectorAll("[data-libopen]").forEach(s=>s.onclick = ()=>{ const [k,id] = s.dataset.libopen.split(":"); libPeek(k, id); });     // the fight stays open (2026-10-30)
+  el.querySelectorAll("[data-spellopen]").forEach(s=>s.onclick = ()=>{ libPeek("spells", s.dataset.spellopen); });
   el.querySelectorAll("[data-bsel]").forEach(s=>s.onclick = ()=>{ battleSel = s.dataset.bsel; renderBattle(); renderBattlePanel(); });
   /* breaking initiative: jump the turn to someone, or move them in the order by hand */
   el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
@@ -13918,6 +13981,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; touch(); renderBattlePanel(); });
   /* the action form: keep what's typed, redraw only when a choice changes what's shown */
   const keep = () => { const g = id => { const e = $(id); return e ? e.value : undefined; };
+    if(g("#ac-dmgmod")!==undefined) act.dmgMod = g("#ac-dmgmod"); if(g("#ac-hitmod")!==undefined) act.hitMod = g("#ac-hitmod"); if(g("#ac-hitbonus")!==undefined) act.hitBonus = g("#ac-hitbonus"); if(g("#ac-adv")!==undefined) act.adv = g("#ac-adv"); if(g("#ac-d20")!==undefined) act.d20 = g("#ac-d20");     // rolling to hit
     if(g("#ac-dmg")!==undefined) act.dmg = g("#ac-dmg"); if(g("#ac-heal")!==undefined) act.heal = g("#ac-heal"); if(g("#ac-took")!==undefined) act.took = g("#ac-took");
     if(g("#ac-note")!==undefined) act.note = g("#ac-note"); if(g("#ac-dtype")!==undefined) act.dtype = g("#ac-dtype");
     if(g("#ac-cond")!==undefined) act.cond = g("#ac-cond"); if(g("#ac-spell")!==undefined) act.spellText = g("#ac-spell");
@@ -13929,12 +13993,13 @@ function renderBattlePanelNow(){
   $("#ac-actor").onchange = e=>{ act = freshAct(e.target.value); renderBattlePanel(); };
   { const bo = $("#ac-bonus"); if(bo) bo.onchange = ()=>{ act.bonus = bo.checked; }; }     // said by hand: kept till the action changes
   $("#ac-what").onchange = e=>{
-    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.bonus;
+    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.bonus; delete act.hitBonus; delete act.toHit; act.d20 = "";
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
     if(info){ act.outcome = (info.spell && info.spell.atk) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
       /* a new choice brings its own damage type (Ice Knife is piercing, not the radiant of the Starry Form picked before it) */
-      act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; if(info.cond) act.cond = info.cond; }
+      act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; if(info.cond) act.cond = info.cond;
+      if(selfOnly(info, t)){ act.targets = [act.actor]; act.outcome = "none"; } }     // only its user (Joseph, 2026-10-30: Second Wind)
     renderBattlePanel();
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
@@ -13949,6 +14014,14 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-acroll]").forEach(b=>b.onclick = ()=>{
     keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
     const D = actDice(c, t, info), w = b.dataset.acroll;
+    if(w==="hit"){ const tg = all.find(x=>x.id===act.targets[0]); if(!tg){ flash("Pick who they're attacking."); return; }     // rolling to hit (2026-10-30)
+      const bonus = /^\s*[+-]?\d+\s*$/.test(String(act.hitBonus ?? "")) ? parseInt(act.hitBonus) : (toHitOf(c, t, info) ?? 0), ac = acOf(tg), typed = Math.round(+act.d20);
+      const r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), mine = typed >= 1 && typed <= 20;
+      const d = mine ? typed : act.adv==="adv" ? Math.max(r1, r2) : act.adv==="dis" ? Math.min(r1, r2) : r1;
+      const how = mine ? `d20 ${d} (rolled at the table)` : act.adv ? `d20 ${r1} and ${r2}, ${act.adv==="adv" ? "Advantage" : "Disadvantage"}: ${d}` : `d20 ${d}`;
+      const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
+      act.outcome = out; act.toHit = { v:out, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
+      act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
     const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
     const cut = w==="heal" && info.reduce ? reduceCap(info.reduce, r.total, +act.took || 0) : r.total;     // a damage-cutting item: no more than half the hit
@@ -15577,6 +15650,18 @@ function weaponStats(x){
 /* an SRD weapon as an attack on someone's sheet, by the 2024 rules (SRD 5.2, Weapons): a melee weapon uses Strength,
    a ranged one (Ammunition) Dexterity, a Finesse one the better of the two; the attack roll adds the proficiency bonus
    (anyone handed the weapon is taken to be proficient with it) and the damage adds the same modifier */
+/* an item weapon in someone's hands (2026-10-30): its to-hit and damage with their modifier (the item's own choice,
+   x.abil: str/dex/con/int/wis/cha or "none"; else worked out: Strength, Dexterity for a finesse weapon if better or a
+   ranged one), proficiency on the to-hit, and its magic bonus (x.hit) on both. { hit:"+6", dmg:"1d10+3" } or null */
+function itemWeaponRow(p, x){
+  if(!x || !x.dmg) return null;
+  if(!x.abil && SRD_LOOT.some(y=>y.id===x.id)){ const r = weaponAttack(p, x.id); if(r) return { hit:r.hit, dmg:String(r.dmg).replace(/\s+/g, "") }; }
+  const sb = p && p.statBlock && Array.isArray(p.statBlock.ab) ? p.statBlock.ab : [], score = k => numOr(p[k]) ?? sb[ABK.indexOf(k)] ?? 10;
+  const str = modOf(score("str")), dex = modOf(score("dex")), props = `${x.props||""} ${x.range ? "range" : ""}`;
+  const mod = x.abil==="none" ? 0 : x.abil && ABK.includes(x.abil) ? modOf(score(x.abil)) : /finesse/i.test(props) ? Math.max(str, dex) : /ammunition|\brange\b/i.test(props) && !/thrown/i.test(props) ? dex : str;
+  const prof = numOr(p.level) ? profByLevel(p.level) : (p.cr!=null && p.cr!=="") ? profByCr(p.cr) : 2, magic = parseInt(x.hit) || 0;
+  return { hit:signed(prof + mod + magic), dmg:(mod + magic ? addDice(String(x.dmg).replace(/\s+/g, ""), String(mod + magic)) : String(x.dmg)).replace(/\s+/g, "") };
+}
 function weaponAttack(p, id){
   const w = SRD_LOOT.find(x=>x.id===id), ws = w && weaponStats(w); if(!ws) return null;
   const sb = p && p.statBlock && Array.isArray(p.statBlock.ab) ? p.statBlock.ab : [];
@@ -19169,9 +19254,12 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
 var arenaPick = { from:"", room:"", fight:"own" };       // fight: "own" (the room's), "none", or one of root.arenaFights
 /* the arena opens in its home room (root.arenaHome { plan, node }: the blank template room), the Arena tab showing, after
    loading it and at every start (Joseph: "it should just open in a blank room, not a map view") */
-function arenaStart(){
-  if(!isArena()) return; const H = root.arenaHome || {}, pl = plans[H.plan], n0 = pl && (pl.nodes||[]).find(x=>x.id===H.node); if(!n0) return;
-  pane = "session"; Object.assign(arenaPick, { from:H.plan, room:H.node, fight:"own" });
+function arenaStart(fresh){
+  if(!isArena()) return;
+  if(fresh){ root.arenaIn = []; delete root.arenaLast; }          // a file just loaded: nobody from the party in yet, the blank room
+  const at = root.arenaLast && plans[root.arenaLast.plan] && (plans[root.arenaLast.plan].nodes||[]).some(x=>x.id===root.arenaLast.node) ? root.arenaLast : null;
+  const H = at || root.arenaHome || {}, pl = plans[H.plan], n0 = pl && (pl.nodes||[]).find(x=>x.id===H.node); if(!n0) return;     // a reload: back to the last room
+  pane = "session"; Object.assign(arenaPick, { from:H.plan, room:H.node, fight:(n0.site && n0.site.arenaFight) || "own" });
   try{ enterPlan(H.plan); const n = (doc.nodes||[]).find(x=>x.id===H.node); if(n) openBattle(n); }catch(err){}
   syncTabs(); renderPane(true);
 }
@@ -19195,25 +19283,33 @@ function arenaPanel(){
   const what = arenaPick.fight==="own" ? linesOf(own) : arenaPick.fight==="none" ? [] : linesOf(fight);
   return `<p class="eyebrow spaced">Arena</p>
     <p class="empty-note" style="font-size:11px;margin:0 0 6px">Pick a room and a fight, and open it: any fight in any room. Then Fill with enemies, the Roll tab or Build adds more.</p>
+    <div class="field"><label>Find a room</label><input data-arenafind="room" type="text" placeholder="Type to search every room…" autocomplete="off"></div><div class="arenares"></div>
     <div class="field"><label>Room, from</label><select data-arena="from">${places.map(p=>`<option value="${esc(p.id)}" ${p.id===arenaPick.from?"selected":""}>${esc(p.name)} (${(plans[p.id].nodes||[]).length} rooms)</option>`).join("")}</select></div>
     <div class="field"><label>Room</label><select data-arena="room">${groups.map(([g, L])=>g ? `<optgroup label="${esc(g)}">${L.map(opt).join("")}</optgroup>` : L.map(opt).join("")).join("")}</select></div>
     <div class="field"><label>Fight</label><select data-arena="fight">${fOpt("own", `The room's own (${said(linesOf(own))})`)}${fOpt("none", "No enemies (an empty room)")}
       ${fGroups.map(g=>`<optgroup label="${esc(g)}">${F.filter(f=>f.name.split(":")[0]===g).map(f=>fOpt(f.id, f.name.slice(g.length + 1).trim())).join("")}</optgroup>`).join("")}</select></div>
     ${r ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">In it: ${esc(said(what))}</p>` : ""}
-    <button class="btn wide calmgo" data-arena="open" ${r ? "" : "disabled"}>Open it</button>${arenaRoomBlock()}`;
+    ${r && r.site && r.site.combat && (r.site.arenaFight || "own")===arenaPick.fight
+      ? `<div class="pcrow"><button class="btn calmgo" style="flex:2" data-arena="open" title="The fight in it is still there">Go back to it</button><button class="btn" style="flex:1" data-arena="fresh" title="Clear what's in it and start again (asks first)">Start fresh</button></div>`
+      : `<button class="btn wide calmgo" data-arena="open" ${r ? "" : "disabled"}>Open it</button>`}${arenaRoomBlock()}`;
 }
 /* once a room is open (Joseph, 2026-10-30: "remove people … bring in individual NPCs or roll for them"): who's in it
    (× takes one out), Add (a library person, your creature or an SRD one; how many; which side), Roll (a person, or a
    creature of a type, at a level) */
-var arenaAdd = { who:"", n:"1", side:"enemy", roll:"", level:"5" };
+var arenaAdd = { who:"", n:"1", side:"enemy", roll:"", level:"5", disp:"", kind:"", role:"", species:"", gender:"", theme:"", foe:"", align:"" };
 function arenaRoomBlock(){
   const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat; if(!c) return "";
   const them = combatants(c).filter(t=>t.side!=="party");
   const L = lib(), people = (L.npcs||[]).filter(p=>p.name).sort((a, b)=>a.name.localeCompare(b.name)), own = (L.foes||[]).filter(f=>f.name), srd = SRD_FOES.slice().sort((a, b)=>a.name.localeCompare(b.name));
   const o = (v, l) => `<option value="${esc(v)}" ${v===arenaAdd.who?"selected":""}>${esc(l)}</option>`, types = typeof CREATURE_TYPES!=="undefined" ? CREATURE_TYPES : [];
-  return `<p class="eyebrow spaced" style="margin-top:12px">${esc(placeLabel(n))}: in the room now</p>
+  const inIds = new Set(root.arenaIn||[]);
+  return `<p class="eyebrow spaced" style="margin-top:12px">${esc(placeLabel(n))}: the party</p>
+    ${partyRoster().map(p=>{ const on = inIds.has(p.id); return `<div class="pcrow" style="align-items:center;margin:0 0 2px"><span style="flex:1;font-size:12.5px">${esc(p.name || "Someone")} <small>level ${clampLv(p.level)}${p.cls ? ` ${esc(String(p.cls).toLowerCase())}` : ""}</small></span><button class="btn small${on ? "" : " calmgo"}" data-arenapc="${esc(p.id)}">${on ? "Take out" : "Bring in"}</button></div>`; }).join("")}
+    <p class="empty-note" style="font-size:11px;margin:2px 0 4px">${inIds.size ? "" : "Nobody from the party is in yet. "}More characters: raise the party size on the Party tab.</p>
+    <p class="eyebrow spaced" style="margin-top:10px">In the room now</p>
     ${them.length ? them.map(t=>`<div class="pcrow" style="align-items:center;margin:0 0 2px"><span style="flex:1;font-size:12.5px">${esc(t.label)} <small>${t.side==="neutral" ? "neutral" : "enemy"}</small></span><button class="btn small" data-arenarm="${esc(t.id)}" title="Take them out of the room">×</button></div>`).join("") : `<p class="empty-note" style="font-size:11px">Nobody but the party.</p>`}
     <p class="grouplab" style="margin-top:8px">Add</p>
+    <input data-arenafind="who" type="text" placeholder="Type to search people and creatures…" autocomplete="off" style="width:100%;margin:0 0 2px"><div class="arenares"></div>
     <select data-arenaadd="who" style="width:100%;margin:0 0 4px"><option value="">Choose who…</option>
       <optgroup label="People in the Library">${people.map(p=>o("p:" + p.id, p.name + (p.role ? ` (${String(p.role).slice(0, 40)})` : ""))).join("")}</optgroup>
       ${own.length ? `<optgroup label="Your creatures">${own.map(f=>o(f.id, f.name)).join("")}</optgroup>` : ""}
@@ -19221,15 +19317,54 @@ function arenaRoomBlock(){
     <div class="pcrow" style="align-items:center;margin:0 0 6px"><input data-arenaadd="n" class="mono" type="number" min="1" max="20" value="${esc(arenaAdd.n)}" style="width:52px" title="How many (a person: one)">
       <select data-arenaadd="side" style="flex:1"><option value="enemy" ${arenaAdd.side==="enemy"?"selected":""}>Against the party</option><option value="ally" ${arenaAdd.side==="ally"?"selected":""}>With the party</option><option value="neutral" ${arenaAdd.side==="neutral"?"selected":""}>Neutral</option></select>
       <button class="btn" data-arena="add">Add</button></div>
-    <p class="grouplab">Roll someone</p>
-    <div class="pcrow" style="align-items:center;margin:0 0 6px"><select data-arenaadd="roll" style="flex:1.6"><option value="">A person</option>${types.filter(t=>t!=="Humanoid").map(t=>`<option ${t===arenaAdd.roll?"selected":""}>${esc(t)}</option>`).join("")}</select>
-      <input data-arenaadd="level" class="mono" type="number" min="1" max="20" value="${esc(arenaAdd.level)}" style="width:52px" title="Their level (a creature: about this CR or under)">
-      <button class="btn" data-arena="roll">Roll and add</button></div>`;
+    <p class="grouplab">Roll someone <small>(as the Field Book rolls; they come in on the side above)</small></p>
+    ${arenaRollForm()}`;
 }
+/* the roll's choices, the Field Book's (Joseph: "the roll needs to let me enter the information I would for the field
+   book"): level, attitude, a person (kind of person or class, species, man or woman, theme) or a creature type (which
+   one), alignment */
+function arenaRollForm(){
+  const A = arenaAdd, o = (v, l, cur) => `<option value="${esc(v)}" ${String(v)===String(cur ?? "")?"selected":""}>${esc(l)}</option>`, person = !A.roll || A.roll==="Humanoid";
+  const sel = (k, html, flex) => `<select data-arenaadd="${k}" style="flex:${flex||1};min-width:0">${html}</select>`;
+  return `<div class="pcrow" style="align-items:center;margin:0 0 4px"><input data-arenaadd="level" class="mono" type="number" min="1" max="20" value="${esc(A.level)}" style="width:52px" title="Level (a creature: about this CR or under)">
+      ${sel("disp", [["", "Attitude: from the side"], ["enemy", "Enemy"], ["neutral", "Neutral"], ["ally", "Potential ally"]].map(([v, l])=>o(v, l, A.disp)).join(""), 1.3)}</div>
+    <div class="pcrow" style="margin:0 0 4px">${sel("roll", o("", "Humanoid: a person", A.roll) + (typeof CREATURE_TYPES!=="undefined" ? CREATURE_TYPES : []).filter(t=>t!=="Humanoid").map(t=>o(t, t, A.roll)).join(""))}</div>
+    ${person ? `<div class="pcrow" style="margin:0 0 4px">${sel("kind", kindOptions(A.kind))}</div>
+      <div class="pcrow" style="margin:0 0 4px">${A.kind ? "" : sel("role", roleOptions(A.role))}${sel("species", o("", "Any species", A.species) + GEN_SPECIES.map(s=>o(s, s, A.species)).join(""))}</div>
+      <div class="pcrow" style="margin:0 0 4px">${sel("gender", o("", "Man or woman", A.gender) + o("man", "Man", A.gender) + o("woman", "Woman", A.gender))}${sel("theme", o("", "Any theme", A.theme) + o("neutral", "Neutral only", A.theme) + THEMES.map(([v, l])=>o(v, l, A.theme)).join(""))}</div>`
+      : `<div class="pcrow" style="margin:0 0 4px">${sel("foe", creatureOptions(A.roll, A.foe))}</div>`}
+    <div class="pcrow" style="align-items:center;margin:0 0 6px">${sel("align", o("", "Alignment: fits the attitude", A.align) + ALIGNMENTS.map(a=>o(a, a, A.align)).join(""), 1.6)}<button class="btn" data-arena="roll">Roll and add</button></div>`;
+}
+/* type to search (Joseph: "I also need to be able to type search, not just a dropdown"): the room box searches every
+   room of every place; the Add box searches library people, your creatures and the SRD's; up to 10, click one to pick */
+function arenaFind(inp){
+  const box = inp.closest(".field") ? inp.closest(".field").nextElementSibling : inp.nextElementSibling; if(!box || !box.classList.contains("arenares")) return;
+  box.style.cssText = "display:grid;gap:2px;margin:0 0 6px";
+  const q = inp.value.trim().toLowerCase(); if(!q){ box.innerHTML = ""; return; }
+  const it = (data, html) => `<button type="button" class="btn small" style="text-align:left" ${data}>${html}</button>`;
+  if(inp.dataset.arenafind==="room"){
+    const hits = []; for(const p of (root.nodes||[])) for(const r of ((plans[p.id]||{}).nodes||[])) if(r.name && r.name.toLowerCase().includes(q)) hits.push([p, r]);
+    box.innerHTML = hits.slice(0, 10).map(([p, r])=>it(`data-arenaroom="${esc(p.id)}|${esc(r.id)}"`, `${esc(r.name)} <small>${esc(p.name)}</small>`)).join("") || `<p class="empty-note" style="font-size:11px">No room by that name.</p>`;
+    return; }
+  const L = lib(), all = [...(L.npcs||[]).filter(p=>p.name).map(p=>["p:" + p.id, p.name, "Library person"]), ...(L.foes||[]).filter(f=>f.name).map(f=>[f.id, f.name, "your creature"]),
+    ...SRD_FOES.map(m=>[m.id, m.name, `SRD, CR ${crLabel(m.cr)}`])], starts = x => x[1].toLowerCase().startsWith(q) ? 0 : 1;
+  const hits = all.filter(x=>x[1].toLowerCase().includes(q)).sort((a, b)=>starts(a) - starts(b) || a[1].localeCompare(b[1])).slice(0, 10);
+  box.innerHTML = hits.map(([v, nm, k])=>it(`data-arenawho="${esc(v)}"`, `${esc(nm)} <small>${esc(k)}</small>`)).join("") || `<p class="empty-note" style="font-size:11px">Nothing by that name.</p>`;
+}
+document.addEventListener("input", e=>{ const t = e.target; if(t.dataset && t.dataset.arenafind) arenaFind(t); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-arenaroom],[data-arenawho]"); if(!b) return;
+  if(b.dataset.arenaroom){ const [from, room] = b.dataset.arenaroom.split("|"); Object.assign(arenaPick, { from, room }); }
+  else arenaAdd.who = b.dataset.arenawho;
+  renderSession(); });
 const arenaAfter = () => { const n = bnode(), c = n && n.site && n.site.combat; if(c && c.pos) placeTokens(c); touch(); renderBattle(); renderBattlePanel(); renderSession(); };
-document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.arenaadd) return; arenaAdd[t.dataset.arenaadd] = t.value; });
-document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arenarm],[data-arena="add"],[data-arena="roll"]'); if(!b || !battleOf) return;
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.arenaadd) return; const k = t.dataset.arenaadd; arenaAdd[k] = t.value;
+  if(k==="roll"){ arenaAdd.foe = ""; } if(k==="roll" || k==="kind") renderSession(); });      // the roll's form changes with the type and the kind of person
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arenarm],[data-arena="add"],[data-arena="roll"],[data-arenapc]'); if(!b || !battleOf) return;
   const n = bnode(), c = n && n.site && n.site.combat; if(!c) return;
+  if(b.dataset.arenapc){ const id = b.dataset.arenapc, S = new Set(root.arenaIn||[]), p = partyRoster().find(q=>q.id===id);     // the party, in or out
+    if(S.has(id)){ S.delete(id); for(const k of ["pos", "init"]) if(c[k]) delete c[k][id]; if(c.fled) delete c.fled[id]; gameLog("fight", `${(p||{}).name || "Someone"} left ${placeLabel(n)}`); }
+    else { S.add(id); gameLog("fight", `${(p||{}).name || "Someone"} came into ${placeLabel(n)}`); }
+    root.arenaIn = [...S]; return arenaAfter(); }
   if(b.dataset.arenarm){ const id = b.dataset.arenarm, x = c.list.find(y=>y.id===id);
     if(x){ c.list = c.list.filter(y=>y!==x); for(const k of ["pos", "init", "stealth"]) if(c[k]) delete c[k][x.id]; gameLog("fight", `${x.label} taken out of ${placeLabel(n)}`); }
     else if(Array.isArray(c.people) && c.people.includes(String(id).slice(2))){ c.people = c.people.filter(p=>"p:" + p!==id); if(c.pos) delete c.pos[id]; }
@@ -19239,15 +19374,22 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
     const k = w.startsWith("p:") ? 1 : Math.max(1, Math.min(20, Math.round(+arenaAdd.n) || 1)), got = [];
     for(let i = 0; i < k; i++){ const x = put(w); if(x) got.push(x.label); }
     if(got.length) gameLog("fight", `Brought into ${placeLabel(n)}: ${got.join(", ")}`); return arenaAfter(); }
-  const g = genPerson(Object.assign({ level:Math.max(1, Math.min(20, Math.round(+arenaAdd.level) || 5)), disp:arenaAdd.side==="ally" ? "ally" : arenaAdd.side==="neutral" ? "neutral" : "enemy" }, arenaAdd.roll ? { type:arenaAdd.roll } : {}));
+  const A = arenaAdd, g = genPerson({ level:Math.max(1, Math.min(20, Math.round(+A.level) || 5)), disp:A.disp || (A.side==="ally" ? "ally" : A.side==="neutral" ? "neutral" : "enemy"),
+    role:A.kind ? "" : A.role, kind:A.kind || "", species:A.species, gender:A.gender || "", theme:A.theme || "any", align:A.align, type:A.roll || "Humanoid", foe:A.foe });     // the Field Book's roll
   if(!g || g.kind==="none"){ flash((g && g.why) || "Nothing to roll for that."); return; }
   const p = personToLibrary(g), x = put("p:" + p.id);
   gameLog("fight", `Rolled into ${placeLabel(n)}: ${p.name}${p.role ? ` (${p.role})` : ""}${p.tactics ? `. Tactics: ${p.tactics}` : ""}`); flash(`${p.name} is in the room (and in the Library).`); arenaAfter(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.arena) return; arenaPick[t.dataset.arena] = t.value; if(t.dataset.arena==="from") arenaPick.room = ""; renderSession(); });
-/* Open it: the room, with the fight picked put in it (the room's own is kept aside, st.arenaOwn, to put back); a fresh start */
-document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arena="open"]'); if(!b) return;
+/* Open it: the room, with the fight picked put in it (the room's own is kept aside, st.arenaOwn, to put back). A fight
+   already going there with the same pick is gone back to, not cleared (Joseph, 2026-10-30: "I think it cleared the
+   fight"); a different pick, or Start fresh, clears it after asking. root.arenaLast remembers the room for the next start */
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arena="open"],[data-arena="fresh"]'); if(!b) return;
   if(!plans[arenaPick.from]) return; enterPlan(arenaPick.from); const n = (doc.nodes||[]).find(x=>x.id===arenaPick.room); if(!n) return;
   const st = n.site = n.site || { kind:"", level:5, once:false, waves:1, foes:[], loot:{ coin:0 }, items:[] }, copy = v => JSON.parse(JSON.stringify(v));
+  root.arenaLast = { plan:arenaPick.from, node:n.id };
+  if(st.combat && b.dataset.arena==="open" && (st.arenaFight || "own")===arenaPick.fight){ touch(); openBattle(n); return; }     // back to it
+  if(st.combat && (st.combat.list||[]).length && !confirm(`Start ${n.name || "this room"} fresh? The fight in it now will be cleared.`)) return;
+  st.arenaFight = arenaPick.fight;
   if(!st.arenaOwn) st.arenaOwn = copy({ foes:st.foes || [], stages:st.stages || null, at:st.at || null });
   const pick = arenaPick.fight==="own" ? st.arenaOwn : arenaPick.fight==="none" ? { foes:[] } : (root.arenaFights||[]).find(f=>f.id===arenaPick.fight);
   st.foes = copy((pick && pick.foes) || []); const stg = pick && Array.isArray(pick.stages) ? pick.stages.filter(Boolean) : []; if(stg.length) st.stages = copy(stg); else delete st.stages;
@@ -19568,7 +19710,7 @@ function loadJSONNow(text){
   flash(`Loaded ${doc.nodes.length} markers, ${doc.roads.length} roads${np?`, ${np} plan${np===1?"":"s"}`:""}.`);
   refreshAfterLoad();
   if(d.files) importFiles(d.files).catch(()=>{});
-  arenaStart();                                   // the Test Arena: straight into its blank room
+  arenaStart(true);                                 // the Test Arena: straight into its blank room
 }
 /* ══════════════════════════════════════════════════════════════
    UPDATING FROM A NEW MAP — the app is the master copy for play. The map
@@ -20020,7 +20162,8 @@ document.addEventListener("click", e=>{
 function wirePcCardLinks(el){
   const peek = (cat, id) => { libTab = cat; libOpen = id; libQuery = "";
     const std = cat==="foes" ? SRD_FOE_BY.get(id) : cat==="loot" ? SRD_LOOT_BY.get(id) : cat==="spells" ? SPELL_BY.get(id) : null; if(std) libQuery = std.name;
-    if(tableOn()) openDrawer("library"); else { if(battleOf) closeBattle(true); openLib(cat, id); } };
+    if(tableOn()) openDrawer("library"); else openLibFrom(cat, id, { pane });     // the fight or place stays open (2026-10-30)
+  };
   el.querySelectorAll(".pcard [data-spellgo]").forEach(s=>s.onclick = e=>{ e.stopPropagation(); peek("spells", s.dataset.spellgo); });
   el.querySelectorAll(".pcard [data-libopen]").forEach(s=>s.onclick = e=>{ e.stopPropagation(); const [k,id] = s.dataset.libopen.split(":"); peek(k, id); });
 }

@@ -5,6 +5,15 @@
  try{ loadJSONNow(JSON.stringify(__SAVE)); await wait(300); setDmMode(true); await wait(50);
   out.push('opens in: ' + (battleOf ? placeLabel(bnode()) : 'the map') + ' · pane ' + pane);
   out.push('arena ' + isArena() + ' · tab "' + document.querySelector('button[data-pane="session"]').textContent + '" · docs ' + (root.docs ? root.docs.length : 'none') + ' · countdown ' + !!root.countdown);
+  /* the party: nobody in at first; bring them in and take them out */
+  { const c = bnode().site.combat, partyIn = () => combatants(c).filter(t=>t.side==='party').map(t=>t.label).join(', ') || 'nobody';
+    renderSession(); await wait(20); out.push('party in at first: ' + partyIn() + ' · Fill row: ' + !!document.querySelector('[data-fill]') + ' · buttons: ' + [...document.querySelectorAll('[data-arenapc]')].map(b=>b.textContent).join('/'));
+    document.querySelector('[data-arenapc="pc2"]').click(); await wait(30); document.querySelector('[data-arenapc="pc1"]').click(); await wait(30);
+    out.push('brought in Gawain and Avery: ' + partyIn() + ' · tokens ' + ['pc1', 'pc2'].map(id=>!!(c.pos||{})[id]).join('/') + ' · ' + ((document.querySelector('[data-fill]')||{}).textContent || 'no Fill').trim());
+    intoOpenPlace(bnode(), { foes:[{ id:"srd:goblin-warrior", n:"1" }] }); await wait(20); const gob = combatants(c).find(t=>/Goblin/.test(t.label));
+    out.push('a goblin goes for: ' + (tacSuggest(c, gob).toLabel || '-'));
+    document.querySelector('[data-arenapc="pc1"]').click(); await wait(30); out.push('took Avery out: ' + partyIn() + ' · ' + gameLogList().slice(-1)[0].text);
+    root.arenaIn = []; c.list = []; arenaAfter(); await wait(20); }
   pane = 'session'; syncTabs(); renderPane(true); await wait(40); const el = document.getElementById('pane-session');
   const from = el.querySelector('[data-arena="from"]'); out.push('From: ' + [...from.options].map(o=>o.textContent).join(' | '));
   { const f0 = el.querySelector('[data-arena="from"]'); f0.value = 'kmanor'; f0.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); }
@@ -35,6 +44,19 @@
   out.push('rolled: ' + gameLogList().slice(-2).map(e=>e.text.slice(0, 120)).join(' / '));
   out.push('the room now: ' + combatants(bnode().site.combat).filter(t=>t.side!=='party').map(t=>t.label + (t.side==='party' ? '' : '')).join(', ') + ' · Mara with the party: ' + combatants(bnode().site.combat).some(t=>/Mara/.test(t.label) && t.side==='party'));
   document.querySelector('[data-arena="open"]').click(); await wait(150);
+  /* type to search: rooms, and who to add */
+  { const rq = document.querySelector('#pane-session [data-arenafind="room"]'); rq.value = 'lab'; rq.dispatchEvent(new Event('input', { bubbles:true })); await wait(20);
+    const hits = [...document.querySelectorAll('#pane-session [data-arenaroom]')]; out.push('search rooms "lab": ' + hits.map(b=>b.textContent.replace(/\s+/g, ' ')).join(' | '));
+    hits[0].click(); await wait(30); out.push('picked: ' + arenaPick.from + ' / ' + arenaPick.room);
+    const wq = document.querySelector('#pane-session [data-arenafind="who"]'); wq.value = 'gob'; wq.dispatchEvent(new Event('input', { bubbles:true })); await wait(20);
+    const w = [...document.querySelectorAll('#pane-session [data-arenawho]')]; out.push('search who "gob": ' + w.slice(0, 5).map(b=>b.textContent.replace(/\s+/g, ' ')).join(' | '));
+    w[0].click(); await wait(30); out.push('chosen to add: ' + arenaAdd.who + ' · the dropdown shows ' + (document.querySelector('#pane-session [data-arenaadd="who"]') || {}).value); }
+  /* the roll, with the Field Book's choices */
+  Object.assign(arenaAdd, { roll:'', kind:'', role:'Priest', species:'Elf', gender:'woman', theme:'gothic', disp:'ally', level:'3', side:'ally' }); renderSession(); await wait(20);
+  out.push('roll form: ' + [...document.querySelectorAll('#pane-session [data-arenaadd]')].map(s=>s.dataset.arenaadd).filter((v, i, a)=>a.indexOf(v)===i).join(','));
+  document.querySelector('[data-arena="roll"]').click(); await wait(40); { const t = gameLogList().slice(-1)[0].text, nm = (/: ([^(]+) (/.exec(t)||[])[1], p = lib().npcs.find(q=>q.name===String(nm).trim()) || {}; out.push(`rolled: ${t.slice(0, 90)} · ${p.species} · ${p.gender} · ${p.cls} · ${p.align} · ${p.theme}`); }
+  Object.assign(arenaAdd, { roll:'Undead', foe:'srd:ghoul', side:'enemy', disp:'' }); renderSession(); await wait(20); document.querySelector('[data-arena="roll"]').click(); await wait(40);
+  out.push('rolled a creature: ' + gameLogList().slice(-1)[0].text.slice(0, 110));
   const n = bnode(); out.push('opened: ' + (battleOf ? placeLabel(n) : 'nothing') + ' · in the room ' + (n && n.site && n.site.combat ? n.site.combat.list.map(x=>x.label).join(', ') : '-'));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1,3).join(' / ')); }
  out.push('page errors: ' + (window.__ERR||[]).length + ' ' + (window.__ERR||[]).slice(0,2).join(' ; '));
