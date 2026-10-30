@@ -358,3 +358,6 @@ Next in order (Joseph, 2026-10-12; all three DONE, see below): (1) name + backst
 
 ## 2026-10-30: resistance ignores the types a bracket leaves out
 Corvin coming apart resists "acid, ... thunder (everything but radiant and force)": dmgTakes read radiant and force as resisted too. A bracket starting "everything but / all but / other than / except" is dropped before the types are matched. Checked against the one-shot file: coming apart resists the listed types, takes radiant and force in full; the lich, specter and armor unchanged.
+
+## 2026-10-30: a scene creature that comes only with a flag
+A scene setup's creature can carry ifAny: [flag ids]; ▶ Set the scene brings it only if one of those flags is ticked. Ashgrave's finale: the second specter has ifAny chandelier broken / elixir ruined, so the Unfinished Lich fights with the armor and one specter (Joseph: "they need a chance"). Checked on the one-shot file for all three versions.

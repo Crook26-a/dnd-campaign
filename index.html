@@ -19703,7 +19703,8 @@ function setScene(d, key){
         const st0 = siteOf(n);
         if(st0.combat && (calmOf(st0.combat) || confirm(`A fight is under way at ${placeLabel(n)}. Start this scene's map fresh?`))) delete st0.combat;
         openBattle(n); const c = n.site.combat; c.fromScene = key;
-        const want = {}; for(const f of s.foes||[]) (want[f.id] = want[f.id] || []).push(f);
+        /* a creature with ifAny comes only if one of those flags is ticked (Joseph, 2026-10-30: the lich's finale without the armor and a specter) */
+        const want = {}; for(const f of (s.foes||[]).filter(f=>!Array.isArray(f.ifAny) || f.ifAny.some(flagOn))) (want[f.id] = want[f.id] || []).push(f);
         for(const [id, list] of Object.entries(want)){
           const have = c.list.filter(x=>x.foe===id && !(x.max!=null && x.hp<=0) && !x.fled);
           list.forEach((f, k)=>{ let x = have[k];
