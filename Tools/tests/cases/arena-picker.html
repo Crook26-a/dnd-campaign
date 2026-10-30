@@ -3,14 +3,37 @@
    rooms), Room (by floor), what's planned there, Open it goes in and opens its battle map; no session notes */
 ;setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
  try{ loadJSONNow(JSON.stringify(__SAVE)); await wait(300); setDmMode(true); await wait(50);
+  out.push('opens in: ' + (battleOf ? placeLabel(bnode()) : 'the map') + ' · pane ' + pane);
   out.push('arena ' + isArena() + ' · tab "' + document.querySelector('button[data-pane="session"]').textContent + '" · docs ' + (root.docs ? root.docs.length : 'none') + ' · countdown ' + !!root.countdown);
   pane = 'session'; syncTabs(); renderPane(true); await wait(40); const el = document.getElementById('pane-session');
   const from = el.querySelector('[data-arena="from"]'); out.push('From: ' + [...from.options].map(o=>o.textContent).join(' | '));
-  out.push('Ashgrave floors: ' + [...el.querySelectorAll('[data-arena="room"] optgroup')].map(g=>g.label + ' ' + g.children.length).join(', '));
-  from.value = 'kfights'; from.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
+  { const f0 = el.querySelector('[data-arena="from"]'); f0.value = 'kmanor'; f0.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); }
+  out.push('Ashgrave floors: ' + [...document.querySelectorAll('#pane-session [data-arena="room"] optgroup')].map(g=>g.label + ' ' + g.children.length).join(', '));
+  { const f1 = document.querySelector('#pane-session [data-arena="from"]'); f1.value = 'kfights'; f1.dispatchEvent(new Event('change', { bubbles:true })); await wait(30); }
   const room = document.querySelector('#pane-session [data-arena="room"]'), lantern = [...room.options].find(o=>/Lantern/.test(o.textContent));
   room.value = lantern.value; room.dispatchEvent(new Event('change', { bubbles:true })); await wait(30);
-  out.push('picked: ' + lantern.textContent + ' · ' + document.querySelector('#pane-session .empty-note:last-of-type').textContent.trim());
+  out.push('picked: ' + lantern.textContent + ' · ' + [...document.querySelectorAll('#pane-session .empty-note')].map(p=>p.textContent.trim()).find(t=>/^In it/.test(t)));
+  /* any fight in any room */
+  const pick = async (from, roomRe, fight) => { const el = document.getElementById('pane-session'), f = el.querySelector('[data-arena="from"]'); f.value = from; f.dispatchEvent(new Event('change', { bubbles:true })); await wait(20);
+    const r = document.querySelector('#pane-session [data-arena="room"]'); r.value = [...r.options].find(o=>roomRe.test(o.textContent)).value; r.dispatchEvent(new Event('change', { bubbles:true })); await wait(20);
+    const g = document.querySelector('#pane-session [data-arena="fight"]'); g.value = fight; g.dispatchEvent(new Event('change', { bubbles:true })); await wait(20);
+    const said = [...document.querySelectorAll('#pane-session .empty-note')].map(p=>p.textContent.trim()).find(t=>/^In it/.test(t)); document.querySelector('[data-arena="open"]').click(); await wait(150);
+    const n = bnode(); return `${placeLabel(n)} + ${fight} → ${said} → in the room: ${n.site.combat.list.map(x=>x.label).join(', ') || 'nobody'}`; };
+  out.push('fights to pick: ' + (root.arenaFights||[]).map(f=>f.name).join(' | '));
+  out.push(await pick('ktemplates', /Camp: forest/, 'af_finale'));
+  out.push(await pick('kmanor', /armory/i, 'af_pdining'));
+  out.push(await pick('kmanor', /armory/i, 'none'));
+  out.push(await pick('kmanor', /armory/i, 'own'));
+  /* in the room: take one out, add some, roll someone */
+  renderSession(); await wait(30); const rm = document.querySelectorAll('#pane-session [data-arenarm]'); out.push('listed in the room: ' + rm.length);
+  rm[0].click(); await wait(40); out.push('after ×: ' + bnode().site.combat.list.length + ' left');
+  arenaAdd.who = 'srd:goblin-warrior'; arenaAdd.n = '3'; arenaAdd.side = 'enemy'; document.querySelector('[data-arena="add"]').click(); await wait(40);
+  arenaAdd.who = 'p:ln_mara'; arenaAdd.side = 'ally'; document.querySelector('[data-arena="add"]').click(); await wait(40);
+  out.push('added: ' + gameLogList().slice(-2).map(e=>e.text).join(' / '));
+  arenaAdd.roll = 'Undead'; arenaAdd.level = '4'; arenaAdd.side = 'enemy'; document.querySelector('[data-arena="roll"]').click(); await wait(40);
+  arenaAdd.roll = ''; document.querySelector('[data-arena="roll"]').click(); await wait(40);
+  out.push('rolled: ' + gameLogList().slice(-2).map(e=>e.text.slice(0, 120)).join(' / '));
+  out.push('the room now: ' + combatants(bnode().site.combat).filter(t=>t.side!=='party').map(t=>t.label + (t.side==='party' ? '' : '')).join(', ') + ' · Mara with the party: ' + combatants(bnode().site.combat).some(t=>/Mara/.test(t.label) && t.side==='party'));
   document.querySelector('[data-arena="open"]').click(); await wait(150);
   const n = bnode(); out.push('opened: ' + (battleOf ? placeLabel(n) : 'nothing') + ' · in the room ' + (n && n.site && n.site.combat ? n.site.combat.list.map(x=>x.label).join(', ') : '-'));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1,3).join(' / ')); }

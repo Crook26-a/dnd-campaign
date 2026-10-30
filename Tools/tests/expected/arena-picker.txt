@@ -1,6 +1,17 @@
+opens in: Template: blank · pane inspect
 arena true · tab "Arena" · docs 0 · countdown false
 From: Ashgrave Manor (16 rooms) | Template rooms (40 rooms) | Kalatecha fights (7 rooms)
 Ashgrave floors: Cellars 3, Ground floor 7, Upper floor 5, Attic 1
-picked: Kalatecha: The Lantern Room · Planned: 2 × Wrecker, Wrecker Bruiser, Raven Heartgrove
-opened: Kalatecha: The Lantern Room · in the room Wrecker 1, Wrecker 2, Wrecker Bruiser, Raven Heartgrove
+picked: Kalatecha: The Lantern Room · In it: 2 × Wrecker, Wrecker Bruiser, Raven Heartgrove
+fights to pick: Ashgrave: The dining hall | Ashgrave: The library | Ashgrave: The portrait gallery | Ashgrave: The armory | Ashgrave: The attic | Ashgrave: The laboratory | Ashgrave: the finale (Corvin, the armor, two specters) | Kalatecha: Dock Ambush (Scene 5) | Kalatecha: The Lighthouse | Kalatecha: The Lantern Room | Kalatecha: Wreck of the Silver Tern | Kalatecha: Sentry's Perch | Kalatecha: Wreckers' Cove | Kalatecha: The Landing
+Template: Camp: forest + af_finale → In it: Lord Corvin Ashgrave, Animated Armor, 2 × Specter → in the room: Lord Corvin Ashgrave, Animated Armor, Specter 1, Specter 2
+The armory + af_pdining → In it: 3 × Animated Rug of Smothering, Animated Armor, 2 × Gargoyle, Gnickgnick "Gnick" Gnomeson → in the room: Animated Rug of Smothering 1, Animated Rug of Smothering 2, Animated Rug of Smothering 3, Animated Armor, Gargoyle 1, Gargoyle 2, Gnickgnick "Gnick" Gnomeson
+The armory + none → In it: nobody → in the room: nobody
+The armory + own → In it: 6 × Animated Armor, 6 × Animated Flying Sword, 2 × Minotaur Skeleton → in the room: Animated Armor 1, Animated Armor 2, Animated Armor 3, Animated Armor 4, Animated Armor 5, Animated Armor 6, Animated Flying Sword 1, Animated Flying Sword 2, Animated Flying Sword 3, Animated Flying Sword 4, Animated Flying Sword 5, Animated Flying Sword 6, Minotaur Skeleton 1, Minotaur Skeleton 2
+listed in the room: 14
+after ×: 13 left
+added: Brought into The armory: Goblin Warrior, Goblin Warrior 2, Goblin Warrior 3 / Brought into The armory: Mara Fenwick
+rolled: Rolled into The armory: Briar (Enemy · Wight). Tactics: Hits and moves; picks off the weakest unless the strongest close / Rolled into The armory: Faye Oakshade (Enemy · Tiefling druid). Tactics: Stays back, opens big; goes for the strongest i
+the room now: Animated Armor 2, Animated Armor 3, Animated Armor 4, Animated Armor 5, Animated Armor 6, Animated Flying Sword 1, Animated Flying Sword 2, Animated Flying Sword 3, Animated Flying Sword 4, Animated Flying Sword 5, Animated Flying Sword 6, Minotaur Skeleton 1, Minotaur Skeleton 2, Goblin Warrior, Goblin Warrior 2, Goblin Warrior 3, Briar, Faye Oakshade · Mara with the party: true
+opened: The armory · in the room Animated Armor 1, Animated Armor 2, Animated Armor 3, Animated Armor 4, Animated Armor 5, Animated Armor 6, Animated Flying Sword 1, Animated Flying Sword 2, Animated Flying Sword 3, Animated Flying Sword 4, Animated Flying Sword 5, Animated Flying Sword 6, Minotaur Skeleton 1, Minotaur Skeleton 2
 page errors: 0

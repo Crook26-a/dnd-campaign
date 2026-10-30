@@ -10,7 +10,7 @@
   res.find(b=>/Fire Bolt/.test(b.textContent)).click(); await wait(40); out.push('clicked Fire Bolt: ' + who.name + ' spells ' + before + ' -> ' + (who.spells||[]).length + ' · has it ' + who.spells.includes('spell:fire-bolt'));
   const inp2 = document.querySelector('.pc-spname'); inp2.value = 'Gnick\'s Lucky Coin'; inp2.dispatchEvent(new Event('input', { bubbles:true })); await wait(20);
   const nw = [...document.querySelectorAll('[data-spres]')].pop(); out.push('a new name: "' + nw.textContent.replace(/\s+/g, ' ') + '"'); nw.click(); await wait(40);
-  const own = lib().spells.find(s=>s.name==='Gnick\'s Lucky Coin'); out.push('made: ' + (own ? own.id + ' "' + own.notes + '"' : 'no') + ' · on the sheet ' + (own && who.spells.includes(own.id)) + ' · in the list ' + allSpells().some(s=>s===own));
+  const own = lib().spells.find(s=>s.name==='Gnick\'s Lucky Coin'); out.push('made: ' + (own ? (/^lsp/.test(own.id) ? 'lsp…' : own.id) + ' "' + own.notes + '"' : 'no') + ' · on the sheet ' + (own && who.spells.includes(own.id)) + ' · in the list ' + allSpells().some(s=>s===own));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1,3).join(' / ')); }
  out.push('errors ' + (window.__ERR||[]).length + ' ' + (window.__ERR||[]).slice(0,2).join(' ; '));
  document.title = 'RES ' + out.join(' || ');

@@ -19166,7 +19166,15 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
 /* ══ THE ARENA (Joseph, 2026-10-30): a map file with root.arena (the Test Arena) has "Arena" in place of the Session
    tab, and no session notes: pick where a room comes from (any place with rooms), then the room (by floor), see what's
    planned there, and Open it goes in and opens its battle map. ══ */
-var arenaPick = { from:"", room:"" };
+var arenaPick = { from:"", room:"", fight:"own" };       // fight: "own" (the room's), "none", or one of root.arenaFights
+/* the arena opens in its home room (root.arenaHome { plan, node }: the blank template room), the Arena tab showing, after
+   loading it and at every start (Joseph: "it should just open in a blank room, not a map view") */
+function arenaStart(){
+  if(!isArena()) return; const H = root.arenaHome || {}, pl = plans[H.plan], n0 = pl && (pl.nodes||[]).find(x=>x.id===H.node); if(!n0) return;
+  pane = "session"; Object.assign(arenaPick, { from:H.plan, room:H.node, fight:"own" });
+  try{ enterPlan(H.plan); const n = (doc.nodes||[]).find(x=>x.id===H.node); if(n) openBattle(n); }catch(err){}
+  syncTabs(); renderPane(true);
+}
 const isArena = () => !!(typeof root!=="undefined" && root && root.arena);
 const arenaFoeName = id => { const s = String(id||""); return s.startsWith("npc:") ? ((libNpcById(s.slice(4))||{}).name || "someone") : ((foeById(s)||{}).name || s); };
 function arenaPanel(){
@@ -19176,18 +19184,75 @@ function arenaPanel(){
   if(!rooms.some(r=>r.id===arenaPick.room)) arenaPick.room = rooms.length ? rooms[0].id : "";
   const floors = pl && Array.isArray(pl.floors) && pl.floors.length ? pl.floors : null;
   const groups = floors ? [...floors.map(f=>[f.name || f.id, rooms.filter(r=>r.floor===f.id)]), ["Elsewhere", rooms.filter(r=>!floors.some(f=>f.id===r.floor))]].filter(g=>g[1].length) : [["", rooms]];
-  const r = rooms.find(x=>x.id===arenaPick.room), st = r && r.site, lines = st ? [...(st.foes||[]), ...siteStages(st).flatMap(s=>s.foes||[])] : [];
+  const r = rooms.find(x=>x.id===arenaPick.room), st = r && r.site, own = st && st.arenaOwn ? st.arenaOwn : st;
+  const said = lines => lines.length ? lines.map(f=>`${f.n && f.n!=="1" ? f.n + " × " : ""}${arenaFoeName(f.id)}`).join(", ") : "nobody";
+  const linesOf = s => s ? [...(s.foes||[]), ...siteStages(s).filter(Boolean).flatMap(x=>x.foes||[])] : [];
+  const F = root.arenaFights || [], fight = F.find(f=>f.id===arenaPick.fight);
+  if(arenaPick.fight!=="own" && arenaPick.fight!=="none" && !fight) arenaPick.fight = "own";
   const opt = x => `<option value="${esc(x.id)}" ${x.id===arenaPick.room?"selected":""}>${esc(x.name)}</option>`;
+  const fOpt = (v, l) => `<option value="${esc(v)}" ${v===arenaPick.fight?"selected":""}>${esc(l)}</option>`;
+  const fGroups = [...new Set(F.map(f=>f.name.split(":")[0]))];
+  const what = arenaPick.fight==="own" ? linesOf(own) : arenaPick.fight==="none" ? [] : linesOf(fight);
   return `<p class="eyebrow spaced">Arena</p>
-    <p class="empty-note" style="font-size:11px;margin:0 0 6px">Pick a room and open it; then Fill with enemies, the Roll tab or Build adds more.</p>
-    <div class="field"><label>From</label><select data-arena="from">${places.map(p=>`<option value="${esc(p.id)}" ${p.id===arenaPick.from?"selected":""}>${esc(p.name)} (${(plans[p.id].nodes||[]).length} rooms)</option>`).join("")}</select></div>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">Pick a room and a fight, and open it: any fight in any room. Then Fill with enemies, the Roll tab or Build adds more.</p>
+    <div class="field"><label>Room, from</label><select data-arena="from">${places.map(p=>`<option value="${esc(p.id)}" ${p.id===arenaPick.from?"selected":""}>${esc(p.name)} (${(plans[p.id].nodes||[]).length} rooms)</option>`).join("")}</select></div>
     <div class="field"><label>Room</label><select data-arena="room">${groups.map(([g, L])=>g ? `<optgroup label="${esc(g)}">${L.map(opt).join("")}</optgroup>` : L.map(opt).join("")).join("")}</select></div>
-    ${r ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">${lines.length ? `Planned: ${esc(lines.map(f=>`${f.n && f.n!=="1" ? f.n + " × " : ""}${arenaFoeName(f.id)}`).join(", "))}` : "Nothing planned: empty."}</p>` : ""}
-    <button class="btn wide calmgo" data-arena="open" ${r ? "" : "disabled"}>Open it</button>`;
+    <div class="field"><label>Fight</label><select data-arena="fight">${fOpt("own", `The room's own (${said(linesOf(own))})`)}${fOpt("none", "No enemies (an empty room)")}
+      ${fGroups.map(g=>`<optgroup label="${esc(g)}">${F.filter(f=>f.name.split(":")[0]===g).map(f=>fOpt(f.id, f.name.slice(g.length + 1).trim())).join("")}</optgroup>`).join("")}</select></div>
+    ${r ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">In it: ${esc(said(what))}</p>` : ""}
+    <button class="btn wide calmgo" data-arena="open" ${r ? "" : "disabled"}>Open it</button>${arenaRoomBlock()}`;
 }
+/* once a room is open (Joseph, 2026-10-30: "remove people … bring in individual NPCs or roll for them"): who's in it
+   (× takes one out), Add (a library person, your creature or an SRD one; how many; which side), Roll (a person, or a
+   creature of a type, at a level) */
+var arenaAdd = { who:"", n:"1", side:"enemy", roll:"", level:"5" };
+function arenaRoomBlock(){
+  const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat; if(!c) return "";
+  const them = combatants(c).filter(t=>t.side!=="party");
+  const L = lib(), people = (L.npcs||[]).filter(p=>p.name).sort((a, b)=>a.name.localeCompare(b.name)), own = (L.foes||[]).filter(f=>f.name), srd = SRD_FOES.slice().sort((a, b)=>a.name.localeCompare(b.name));
+  const o = (v, l) => `<option value="${esc(v)}" ${v===arenaAdd.who?"selected":""}>${esc(l)}</option>`, types = typeof CREATURE_TYPES!=="undefined" ? CREATURE_TYPES : [];
+  return `<p class="eyebrow spaced" style="margin-top:12px">${esc(placeLabel(n))}: in the room now</p>
+    ${them.length ? them.map(t=>`<div class="pcrow" style="align-items:center;margin:0 0 2px"><span style="flex:1;font-size:12.5px">${esc(t.label)} <small>${t.side==="neutral" ? "neutral" : "enemy"}</small></span><button class="btn small" data-arenarm="${esc(t.id)}" title="Take them out of the room">×</button></div>`).join("") : `<p class="empty-note" style="font-size:11px">Nobody but the party.</p>`}
+    <p class="grouplab" style="margin-top:8px">Add</p>
+    <select data-arenaadd="who" style="width:100%;margin:0 0 4px"><option value="">Choose who…</option>
+      <optgroup label="People in the Library">${people.map(p=>o("p:" + p.id, p.name + (p.role ? ` (${String(p.role).slice(0, 40)})` : ""))).join("")}</optgroup>
+      ${own.length ? `<optgroup label="Your creatures">${own.map(f=>o(f.id, f.name)).join("")}</optgroup>` : ""}
+      <optgroup label="SRD creatures">${srd.map(m=>o(m.id, `${m.name} (CR ${crLabel(m.cr)})`)).join("")}</optgroup></select>
+    <div class="pcrow" style="align-items:center;margin:0 0 6px"><input data-arenaadd="n" class="mono" type="number" min="1" max="20" value="${esc(arenaAdd.n)}" style="width:52px" title="How many (a person: one)">
+      <select data-arenaadd="side" style="flex:1"><option value="enemy" ${arenaAdd.side==="enemy"?"selected":""}>Against the party</option><option value="ally" ${arenaAdd.side==="ally"?"selected":""}>With the party</option><option value="neutral" ${arenaAdd.side==="neutral"?"selected":""}>Neutral</option></select>
+      <button class="btn" data-arena="add">Add</button></div>
+    <p class="grouplab">Roll someone</p>
+    <div class="pcrow" style="align-items:center;margin:0 0 6px"><select data-arenaadd="roll" style="flex:1.6"><option value="">A person</option>${types.filter(t=>t!=="Humanoid").map(t=>`<option ${t===arenaAdd.roll?"selected":""}>${esc(t)}</option>`).join("")}</select>
+      <input data-arenaadd="level" class="mono" type="number" min="1" max="20" value="${esc(arenaAdd.level)}" style="width:52px" title="Their level (a creature: about this CR or under)">
+      <button class="btn" data-arena="roll">Roll and add</button></div>`;
+}
+const arenaAfter = () => { const n = bnode(), c = n && n.site && n.site.combat; if(c && c.pos) placeTokens(c); touch(); renderBattle(); renderBattlePanel(); renderSession(); };
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.arenaadd) return; arenaAdd[t.dataset.arenaadd] = t.value; });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arenarm],[data-arena="add"],[data-arena="roll"]'); if(!b || !battleOf) return;
+  const n = bnode(), c = n && n.site && n.site.combat; if(!c) return;
+  if(b.dataset.arenarm){ const id = b.dataset.arenarm, x = c.list.find(y=>y.id===id);
+    if(x){ c.list = c.list.filter(y=>y!==x); for(const k of ["pos", "init", "stealth"]) if(c[k]) delete c[k][x.id]; gameLog("fight", `${x.label} taken out of ${placeLabel(n)}`); }
+    else if(Array.isArray(c.people) && c.people.includes(String(id).slice(2))){ c.people = c.people.filter(p=>"p:" + p!==id); if(c.pos) delete c.pos[id]; }
+    return arenaAfter(); }
+  const put = (who, k) => { const x = addToFight(c, who, arenaAdd.side==="ally"); if(x && arenaAdd.side==="neutral") x.neutral = true; return x; };
+  if(b.dataset.arena==="add"){ const w = arenaAdd.who; if(!w){ flash("Choose who to add."); return; }
+    const k = w.startsWith("p:") ? 1 : Math.max(1, Math.min(20, Math.round(+arenaAdd.n) || 1)), got = [];
+    for(let i = 0; i < k; i++){ const x = put(w); if(x) got.push(x.label); }
+    if(got.length) gameLog("fight", `Brought into ${placeLabel(n)}: ${got.join(", ")}`); return arenaAfter(); }
+  const g = genPerson(Object.assign({ level:Math.max(1, Math.min(20, Math.round(+arenaAdd.level) || 5)), disp:arenaAdd.side==="ally" ? "ally" : arenaAdd.side==="neutral" ? "neutral" : "enemy" }, arenaAdd.roll ? { type:arenaAdd.roll } : {}));
+  if(!g || g.kind==="none"){ flash((g && g.why) || "Nothing to roll for that."); return; }
+  const p = personToLibrary(g), x = put("p:" + p.id);
+  gameLog("fight", `Rolled into ${placeLabel(n)}: ${p.name}${p.role ? ` (${p.role})` : ""}${p.tactics ? `. Tactics: ${p.tactics}` : ""}`); flash(`${p.name} is in the room (and in the Library).`); arenaAfter(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.arena) return; arenaPick[t.dataset.arena] = t.value; if(t.dataset.arena==="from") arenaPick.room = ""; renderSession(); });
+/* Open it: the room, with the fight picked put in it (the room's own is kept aside, st.arenaOwn, to put back); a fresh start */
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arena="open"]'); if(!b) return;
-  if(!plans[arenaPick.from]) return; enterPlan(arenaPick.from); const n = (doc.nodes||[]).find(x=>x.id===arenaPick.room); if(n) openBattle(n); });
+  if(!plans[arenaPick.from]) return; enterPlan(arenaPick.from); const n = (doc.nodes||[]).find(x=>x.id===arenaPick.room); if(!n) return;
+  const st = n.site = n.site || { kind:"", level:5, once:false, waves:1, foes:[], loot:{ coin:0 }, items:[] }, copy = v => JSON.parse(JSON.stringify(v));
+  if(!st.arenaOwn) st.arenaOwn = copy({ foes:st.foes || [], stages:st.stages || null, at:st.at || null });
+  const pick = arenaPick.fight==="own" ? st.arenaOwn : arenaPick.fight==="none" ? { foes:[] } : (root.arenaFights||[]).find(f=>f.id===arenaPick.fight);
+  st.foes = copy((pick && pick.foes) || []); const stg = pick && Array.isArray(pick.stages) ? pick.stages.filter(Boolean) : []; if(stg.length) st.stages = copy(stg); else delete st.stages;
+  if(arenaPick.fight==="own" && st.arenaOwn.at) st.at = copy(st.arenaOwn.at); else delete st.at;      // starting squares only fit their own room
+  delete st.combat; touch(); openBattle(n); });
 function renderSession(){
   const tb = document.querySelector('button[data-pane="session"]'); if(tb) tb.textContent = isArena() ? "Arena" : "Session";
   if(isArena()){ $("#pane-session").innerHTML = arenaPanel(); return; }
@@ -19503,6 +19568,7 @@ function loadJSONNow(text){
   flash(`Loaded ${doc.nodes.length} markers, ${doc.roads.length} roads${np?`, ${np} plan${np===1?"":"s"}`:""}.`);
   refreshAfterLoad();
   if(d.files) importFiles(d.files).catch(()=>{});
+  arenaStart();                                   // the Test Arena: straight into its blank room
 }
 /* ══════════════════════════════════════════════════════════════
    UPDATING FROM A NEW MAP — the app is the master copy for play. The map
@@ -20405,6 +20471,7 @@ async function boot(){
     if((root.docs||[]).length){ pane = "session"; syncTabs(); renderPane(true); } }    // open on its first document (a demo's tour)
   /* started: DM mode on a laptop lays out for the table now that everything is loaded */
   applyMode(); syncTabs(); renderPane(true);
+  arenaStart();                                   // the Test Arena: straight into its blank room
 }
 boot();
 

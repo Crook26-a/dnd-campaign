@@ -2,5 +2,5 @@ box: true "Search the SRD and your spells, or type a new one…"
 typing "fire": Fire Bolt cantrip evocation · SRD | Fire Shield 4th level evocation · SRD | Fire Storm 7th level evocation · SRD | Fireball 3rd level evocation · SRD | Delayed Blast Fireball 7th level evocation · SRD | Faerie Fire 1st level evocation · SRD | Wall of Fire 4th level evocation · SRD | + Add “fire” as your own new spell
 clicked Fire Bolt: Avery de Vonn spells 20 -> 21 · has it true
 a new name: "+ Add “Gnick's Lucky Coin” as your own new spell"
-made: lsp7ajs11 "Added by name from a sheet: fill it in here." · on the sheet true · in the list true
+made: lsp… "Added by name from a sheet: fill it in here." · on the sheet true · in the list true
 errors 0
