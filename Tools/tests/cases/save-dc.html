@@ -1,0 +1,43 @@
+// uses: nothing
+<script>
+/* saving throws in a fight (Joseph, 2026-10-30: "needs to show dc of enemy spell casters/monsters"): the DC and ability,
+   each target's save rolled or typed against it, half or none on a made one, no condition on a made one */
+const __SV = { format:"ordinate-survey-v1", title:"Saves", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", dex:10, con:15, attacks:[] },
+    { id:"pb", name:"Wren", cls:"Cleric", level:5, hp:"28", hpMax:"28", ac:"12", dex:14, wis:16, dc:"14", saves:"Wis +6, Cha +2", spells:["spell:sacred-flame"], attacks:[] }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:hell-hound", n:"1" }, { id:"srd:mage", n:"1" }, { id:"srd:ogre", n:"2" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[1,2],[2,2]], enemy:[[6,1],[7,2],[6,3],[7,3]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  loadJSONNow(JSON.stringify(__SV)); await wait(300); setDmMode(true); await wait(60);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60);
+  const [hound, mage, o1, o2] = ['Hell', 'Mage', 'Ogre 1', 'Ogre 2'].map(s=>c.list.find(x=>(x.label||'').includes(s)));
+  const choose = async (actor, what, targets) => { act = freshAct(actor); act.what = what; renderBattlePanel(); await wait(20); document.querySelector('#ac-what').dispatchEvent(new Event('change', { bubbles:true })); await wait(20); act.targets = targets; renderBattlePanel(); await wait(20); };
+  const row = () => { const r = document.querySelector('.saverow'); return r ? r.textContent.replace(/\s+/g, ' ').trim().replace('DC ·', 'DC ' + document.querySelector('#ac-savedc').value + ' ·') : 'no save row'; };
+  const seq = (...v) => { let k = 0; const r0 = Math.random; return () => k < v.length ? v[k++] : r0(); };
+  /* the hell hound's breath on both */
+  await choose(hound.id, 'fa:Fire Breath (Recharge 5–6)', ['pa', 'pb']); out.push('Fire Breath: ' + row());
+  { const r0 = Math.random; Math.random = seq(0.3, 0.6); document.querySelector('[data-svroll="all"]').click(); Math.random = r0; await wait(20); }
+  out.push('rolled: ' + row() + ' · outcome ' + act.outcome);
+  act.dmg = '17'; const hp = [root.roster[0].hp, root.roster[1].hp]; logAction(hall, c); await wait(30);
+  out.push(`logged: Gawain ${hp[0]} -> ${root.roster[0].hp}, Wren ${hp[1]} -> ${root.roster[1].hp} · "${c.log.slice(-1)[0].text}"`);
+  /* the mage's spell: its spell save DC */
+  const fb = [...document.querySelectorAll('#ac-what option')].length; await choose(mage.id, 'fsp:spell:Fireball', ['pa']); out.push('the mage, Fireball: ' + row());
+  /* Wren's Sacred Flame on two ogres: her DC, no damage on a made save; one typed in from the table */
+  await choose('pb', 'sp:spell:sacred-flame', [o1.id, o2.id]); out.push('Sacred Flame: ' + row());
+  { const i = document.querySelector(`[data-svtot="${o1.id}"]`); i.value = '20'; i.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); }
+  { const r0 = Math.random; Math.random = seq(0.0); document.querySelector(`[data-svroll="${o2.id}"]`).click(); Math.random = r0; await wait(20); }
+  out.push('one typed (20), one rolled: ' + row() + ' · outcome ' + act.outcome);
+  { const i = document.querySelector('#ac-savedc'); i.value = '21'; i.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); } out.push('DC changed to 21: ' + row());
+  document.querySelector(`[data-svflip="${o1.id}"]`).click(); await wait(20); out.push('flipped Ogre 1: ' + row());
+  act.dmg = '9'; const oh = [o1.hp, o2.hp]; logAction(hall, c); await wait(30);
+  out.push(`logged: Ogre 1 ${oh[0]} -> ${o1.hp}, Ogre 2 ${oh[1]} -> ${o2.hp} · "${c.log.slice(-1)[0].text}"`);
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

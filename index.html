@@ -13304,6 +13304,51 @@ function toHitOf(c, t, info){
   if(w.startsWith("itm:")) return info.hitRow ? num(info.hitRow.hit) : null;
   return null;
 }
+/* ── saving throws (Joseph, 2026-10-30: "needs to show dc of enemy spell casters/monsters"): the DC and ability of what's
+   used (a creature's "Dexterity Saving Throw: DC 13" or "DC 13 Wisdom saving throw", its Spellcasting "spell save DC
+   N", a character's spell at their DC), and each target's save rolled or typed in: made or failed each, half or none
+   on a made one as the text says ── */
+const SAVE_ABIL = "(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)";
+function saveOfAct(c, t, info){
+  if(!info || !t || !info.save || isAttackAct(info)) return null; const w = act.what || "", num = s => { const m = /(\d+)/.exec(String(s ?? "")); return m ? +m[1] : null; };     // an attack's save is its second part's (Ice Knife)
+  const fromText = s => { s = String(s||""); const a = new RegExp(`${SAVE_ABIL} Saving Throw:\\s*DC (\\d+)`, "i").exec(s); if(a) return { abil:a[1], dc:+a[2] };
+    const b = new RegExp(`DC (\\d+) ${SAVE_ABIL} saving throw`, "i").exec(s); return b ? { abil:b[2], dc:+b[1] } : null; };
+  const halfIn = s => /half as much|Success:\s*Half (the )?damage/i.test(String(s||""));
+  const cap = s => s ? s[0].toUpperCase() + s.slice(1).toLowerCase() : "";
+  if(info.spell){ const s = info.spell, abil = cap(String(s.save||"").split(/[ ,]/)[0]); let dc = null;
+    if(t.kind==="foe"){ const all = foeEntries(foeById(t.x.foe)).map(e=>e[1]).join(" "), m = /spell save DC (\d+)/i.exec(all); dc = m ? +m[1] : null; }
+    else { const o = pcState(t.p), row = info.row && /\d/.test(info.row.hit||"") && !/^[+-]/.test(String(info.row.hit).trim()) ? num(info.row.hit) : null;
+      dc = row ?? num(o.dc) ?? (8 + profOf(o) + spellModOf(o)); }
+    return { dc, abil, half:halfIn(s.desc) }; }
+  const r = fromText(info.text); if(r) return { ...r, abil:cap(r.abil), half:halfIn(info.text) };
+  if(w.startsWith("pca:")){ const a = (pcState(t.p).attacks||[])[+w.slice(4)] || {}, m = /\b(Str|Dex|Con|Int|Wis|Cha)\w*/i.exec(String(a.hit||"") + " " + String(a.name||""));
+    const full = m ? ABIL_NAMES[ABK.indexOf(m[1].slice(0, 3).toLowerCase())] : "";
+    return { dc:num(a.hit), abil:full || "", half:false }; }
+  return { dc:null, abil:"", half:false };
+}
+/* a target's save: the number on their sheet or stat block ("Dex +3"), else the ability modifier, plus proficiency
+   for a character's class saves */
+function saveBonusOf(t, abil){
+  const k = String(abil||"").slice(0, 3).toLowerCase(); if(!ABK.includes(k)) return 0;
+  const said = s => { const m = new RegExp(`\\b${k}[a-z]*\\s*([+-]\\d+)`, "i").exec(String(s||"")); return m ? +m[1] : null; };
+  if(t.kind==="foe"){ const m = foeById(t.x.foe), v = m && said(m.sav); if(v!=null) return v; return Math.floor(((m && Array.isArray(m.ab) ? +m.ab[ABK.indexOf(k)] : 10) - 10) / 2); }
+  const o = t.kind==="pc" ? pcState(t.p) : t.p; if(!o) return 0;
+  const v = said(o.saves) ?? said((pcStatBlock(t.p)||{}).sav); if(v!=null) return v;
+  const cls = Object.keys(CLASS_SAVES).find(n=>new RegExp(`\\b${n}\\b`, "i").test(String(o.cls||""))), prof = cls && CLASS_SAVES[cls].includes(k) ? profOf(o) : 0;     // the class's save proficiencies
+  return abBonus(o, k) + prof;
+}
+function saveRow(c, t, info, all){
+  const S = saveOfAct(c, t, info); if(!S) return "";
+  const tg = act.targets.map(id=>all.find(x=>x.id===id)).filter(Boolean), sv = act.saves || {};
+  return `<div class="saverow" style="margin:2px 0 6px">
+    <p class="actspell" style="margin:0 0 4px"><b>${S.abil ? esc(S.abil) + " save" : "Saving throw"}, DC <input id="ac-savedc" class="mono" type="number" value="${esc(String(act.saveDC ?? S.dc ?? ""))}" placeholder="?" style="width:46px"></b>${S.half ? " · half damage on a made save" : " · no damage on a made save"}</p>
+    ${tg.map(x=>{ const b = saveBonusOf(x, S.abil), r = sv[x.id];
+      return `<div class="pcrow" style="align-items:center;margin:0 0 3px"><span style="flex:1;min-width:0">${esc(x.label)} <small class="mono">${S.abil ? S.abil.slice(0, 3) : "save"} ${signed(b)}</small></span>
+        <input class="mono" type="number" data-svtot="${x.id}" value="${esc(r && r.typed ? String(r.tot) : "")}" placeholder="total" style="width:58px" title="Rolled at the table? Their total">
+        <button class="btn small" data-svroll="${x.id}">Roll</button>
+        ${r ? `<button class="btn small${r.made ? "" : " danger"}" data-svflip="${x.id}" title="${esc(r.said)} · click to flip">${r.made ? "made" : "failed"} ${r.tot}</button>` : `<span style="width:64px"></span>`}</div>`; }).join("")}
+    ${tg.length > 1 ? `<button class="btn wide" data-svroll="all">Roll every save</button>` : ""}</div>`;
+}
 function toHitRow(c, t, info, all){
   if(!isAttackAct(info) || !act.targets.length) return "";
   const tg = all.find(x=>x.id===act.targets[0]), b = act.hitBonus ?? toHitOf(c, t, info);
@@ -13605,7 +13650,7 @@ function actInfo(c, t){
   if(w.startsWith("fa:")){
     const nm = w.slice(3), m = foeById(t.x.foe);
     const text = (foeEntries(m).find(([n])=>n===nm)||[])[1] || [...pairs(m&&m.leg)].find(([n])=>n===nm)?.[1] || "";
-    return { kind:/^Spellcasting/i.test(nm)?"spell":"ability", name:nm.replace(/\s*\(.*\)\s*$/,""), full:nm, hint:hintFromText(text), save:/Saving Throw/i.test(text), cond:condFromText(text), once:/can't use it again today/i.test(text) };
+    return { text, kind:/^Spellcasting/i.test(nm)?"spell":"ability", name:nm.replace(/\s*\(.*\)\s*$/,""), full:nm, hint:hintFromText(text), save:/Saving Throw/i.test(text), cond:condFromText(text), once:/can't use it again today/i.test(text) };
   }
   if(w.startsWith("fsp:")){ const key = w.slice(4), s = allSpells().find(x=>`spell:${x.name}`===key) || null;
     return { kind:"spell", name:key.slice(6), spell:s, save:!!(s&&s.save), hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null }; }
@@ -13624,7 +13669,7 @@ function actInfo(c, t){
     const nm = w.slice(4), sb = pcStatBlock(t.p);
     const bare = n => String(n).replace(/^(Bonus action|Bonus|Reaction|Legendary): /i,"");
     const text = (foeEntries(sb).find(([n])=>n===nm || bare(n)===nm) || [...pairs(sb&&sb.bon)].find(([n])=>n===nm) || [])[1] || "";
-    return { kind:/Attack Roll|Weapon Attack|to hit/i.test(text) ? "attack" : "ability", name:nm.replace(/\s*\(.*\)\s*$/,""), hint:hintFromText(text), save:/Saving Throw/i.test(text) };
+    return { text, kind:/Attack Roll|Weapon Attack|to hit/i.test(text) ? "attack" : "ability", name:nm.replace(/\s*\(.*\)\s*$/,""), hint:hintFromText(text), save:/Saving Throw/i.test(text) };
   }
   if(w.startsWith("itm:")){ const x = libLootById(w.slice(4)), r = x && t && t.p ? itemWeaponRow(pcState(t.p), x) : null;          /* a carried item with its own stats */
     return { kind:"attack", name:x ? x.name : "an item", hitRow:r, hint:x && x.dmg ? { dice:r ? r.dmg : String(x.dmg).replace(/\s+/g,""), dtype:String(x.dtype||"").toLowerCase() } : null, save:false }; }
@@ -13711,6 +13756,7 @@ function actionForm(c, all){
     <div class="acttargets">${[...all.filter(x=>x.id===act.actor), ...all.filter(x=>x.id!==act.actor)].map(x=>`<button class="chip${act.targets.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt="${x.id}" data-side="${x.side}">${x.id===act.actor ? `themself (${esc(x.label)})` : esc(x.label)}</button>`).join("")}</div>
     <div class="actout">${OUTCOMES.map(([v,l])=>`<label><input type="radio" name="ac-out" value="${v}" ${act.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
     ${toHitRow(c, t, info, all)}
+    ${saveRow(c, t, info, all)}
     <div class="pcrow">
       <div class="field" style="flex:.9"><label>Damage${D.dmgDice?` <i>(${esc(D.dmgLabel)})</i>`:""}</label><input id="ac-dmg" type="number" min="0" value="${esc(act.dmg)}"></div>
       <div class="field" style="flex:.45" title="Add (or take) this much on the damage roll: a modifier the app doesn't know about"><label>+</label><input id="ac-dmgmod" class="mono" type="number" value="${esc(act.dmgMod||"")}" placeholder="0"></div>
@@ -13824,15 +13870,17 @@ function logAction(n, c){
   const turned = [];
   /* rolled by type, each target's resistances worked out (2026-10-30): their own amount, unless the box was changed by hand */
   const byT = act.rolled && act.rolled.dmg && act.rolled.dmg.by && act.rolled.dmg.v===String(act.dmg) ? act.rolled.dmg.by : null;
+  /* each target's own save (2026-10-30): a made one takes half or none, as the text says, and no condition */
+  const SV = act.saves ? saveOfAct(c, actor, info) : null, svOf = t => SV ? (act.saves[t.id] || null) : null;
   for(const t of targets){
     let dropped = false, got = 0, hl = 0, off = false;
     const mp = actor.side!=="party" && ["hit","crit"].includes(act.outcome) && t.kind==="pc" ? Math.max(0, Math.min(100, Math.round(+pcState(t.p).hitsMiss || 0))) : 0;
     if(mp){ const r = 1 + Math.floor(Math.random()*100), why = String(pcState(t.p).hitsMissWhy||"").trim(); off = r <= mp;
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
-    const dm = byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg;
+    const dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
     if(dm && !off){ got = dm; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(heal){ hl = healAny(t, heal); healed += hl; }
-    if(act.cond && !off && !["miss","save"].includes(act.outcome) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
+    if(act.cond && !off && !["miss","save"].includes(act.outcome) && !(svOf(t) && svOf(t).made) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
     if(dropped) kills++;
     hits.push({ id:t.id, label:t.label, dmg:got, heal:hl, dropped });
   }
@@ -13860,7 +13908,8 @@ function logAction(n, c){
     S.dealt += hits.filter(foeHit).reduce((a,h)=>a+h.dmg,0) + hits2.filter(foeHit).reduce((a,h)=>a+h.dmg,0); S.healed += healed;
     S.kills += new Set([...hits, ...hits2].filter(h=>h.dropped && foeHit(h)).map(h=>h.id)).size; }
   const verb = info.free ? "uses" : info.kind==="spell" ? "casts" : info.kind==="attack" ? "makes a" : "uses";
-  const OUT = { hit:"hits", crit:"crits", miss:"misses", fail:"save failed", save:"save made", none:"" }, out = OUT[act.outcome];
+  const OUT = { hit:"hits", crit:"crits", miss:"misses", fail:"save failed", save:"save made", none:"" }, out = (svs=>svs.some(r=>r.made) && svs.some(r=>!r.made) ? "" : OUT[act.outcome])(targets.map(svOf).filter(Boolean));
+  const svW = targets.map(svOf).filter(Boolean).map(r=>r.said).join("; ");
   const named = D.on.filter(a=>!String(info.name||"").toLowerCase().includes(String(a.name||"").toLowerCase()));     // not "Flame Tongue Greatsword with Flame Tongue Greatsword"
   const riders = named.length ? ` with ${named.map(a=>a.name).join(" and ")}${D.on.some(a=>a.adv)?" (Advantage)":""}` : "";
   /* the dice the Roll buttons rolled, when the number wasn't changed by hand */
@@ -13869,8 +13918,9 @@ function logAction(n, c){
   const line = `${actor.label} ${verb} ${info.name}${slotTxt}${riders}`
     + (targets.length ? ` on ${hits.map(h=>h.label).join(", ")}` : "")
     + (out ? ` — ${out}` : "")
+    + (svW ? ` (saves: ${svW})` : "")
     + (act.toHit && act.toHit.v===act.outcome ? ` (${act.toHit.said.replace(/^To hit: /, "to hit: ")})` : "")
-    + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${byT ? hits.map(h=>`${h.label} ${h.dmg}`).join(", ") : dmg}${dtypeW ? ` ${dtypeW}` : ""} damage${targets.length>1 && !byT ? " each" : ""}${rolledW("dmg", act.dmg)}` : "")
+    + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${byT || new Set(hits.map(h=>h.dmg)).size > 1 ? hits.map(h=>`${h.label} ${h.dmg}`).join(", ") : dmg}${dtypeW ? ` ${dtypeW}` : ""} damage${targets.length>1 && !byT && new Set(hits.map(h=>h.dmg)).size <= 1 ? " each" : ""}${rolledW("dmg", act.dmg)}` : "")
     + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
       : `, healing ${healed}${rolledW("heal", act.heal)}`) : "")
     + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
@@ -14129,7 +14179,7 @@ function renderBattlePanelNow(){
   $("#ac-actor").onchange = e=>{ act = freshAct(e.target.value); renderBattlePanel(); };
   { const bo = $("#ac-bonus"); if(bo) bo.onchange = ()=>{ act.bonus = bo.checked; }; }     // said by hand: kept till the action changes
   $("#ac-what").onchange = e=>{
-    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.bonus; delete act.hitBonus; delete act.toHit; act.d20 = "";
+    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.saves; delete act.saveDC; delete act.bonus; delete act.hitBonus; delete act.toHit; act.d20 = "";
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
     if(info){ act.outcome = (info.spell && info.spell.atk) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
@@ -14150,6 +14200,24 @@ function renderBattlePanelNow(){
     act.p2.targets = T.includes(id) ? T.filter(x=>x!==id) : [...T, id]; renderBattlePanel(); });
   el.querySelectorAll("[data-uptok]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.uptok); if(!u) return;     // a token for any spell that's up, by hand
     u.thing = u.thing || "spell"; c.pos = c.pos || {}; c.pos[u.id] = upSpot(c, c.pos[u.owner] || { x:1, y:1 }); touch(); renderBattle(); renderBattlePanel(); flash(`${u.name} is on the map: drag it where it goes.`); });
+  /* saving throws: each target's rolled (d20 + their save) or typed in, against the DC; made or failed each, the outcome
+     following (all made: Save made, else Save failed) */
+  const svCtx = () => { const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t), S = info && saveOfAct(c, t, info); return S ? { S, dc:Math.round(+(act.saveDC ?? S.dc)) || 0 } : null; };
+  const svOutcome = () => { const R = act.targets.map(id=>(act.saves||{})[id]).filter(Boolean); if(R.length) act.outcome = R.every(r=>r.made) ? "save" : "fail"; };
+  el.querySelectorAll("[data-svroll]").forEach(b=>b.onclick = ()=>{ keep(); const X = svCtx(); if(!X) return; if(!X.dc){ flash("Type in the DC first."); return; }
+    for(const id of b.dataset.svroll==="all" ? act.targets : [b.dataset.svroll]){ const x = all.find(y=>y.id===id); if(!x) continue;
+      const d = 1 + Math.floor(Math.random()*20), bo = saveBonusOf(x, X.S.abil), tot = d + bo;
+      (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${d20Words(d, bo)} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` }; }
+    svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
+  el.querySelectorAll("[data-svtot]").forEach(i=>i.onchange = ()=>{ keep(); const X = svCtx(), x = all.find(y=>y.id===i.dataset.svtot); if(!X || !x) return; const v = i.value.trim();
+    if(v===""){ if(act.saves) delete act.saves[x.id]; }
+    else { const tot = Math.round(+v) || 0; (act.saves = act.saves || {})[x.id] = { tot, typed:true, made:tot >= X.dc, said:`${x.label} ${tot} (rolled at the table) vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` }; }
+    svOutcome(); renderBattlePanel(); });
+  el.querySelectorAll("[data-svflip]").forEach(b=>b.onclick = ()=>{ keep(); const r = (act.saves||{})[b.dataset.svflip]; if(!r) return; r.made = !r.made;
+    r.said = r.said.replace(/: (made|failed)( \(set by hand\))?$/, "") + `: ${r.made ? "made" : "failed"} (set by hand)`; svOutcome(); renderBattlePanel(); });
+  { const dcI = $("#ac-savedc"); if(dcI) dcI.onchange = ()=>{ keep(); const v = dcI.value.trim(); if(v==="") delete act.saveDC; else act.saveDC = Math.round(+v) || 0;     // a new DC: the totals judged again
+    const X = svCtx(); if(X && X.dc) for(const r of Object.values(act.saves||{})) if(!/set by hand/.test(r.said)){ r.made = r.tot >= X.dc; r.said = r.said.replace(/vs DC \d+: (made|failed)$/, `vs DC ${X.dc}: ${r.made ? "made" : "failed"}`); }
+    svOutcome(); renderBattlePanel(); }; }
   el.querySelectorAll("[data-upend]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.upend); if(!u) return;     // ending a spell that's up, by hand
     upEnd(c, u, "ended"); if(String(act.what||"")===`again:${u.id}`) act = freshAct(act.actor); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];

@@ -1,0 +1,10 @@
+Fire Breath: Dexterity save, DC 12 · half damage on a made save Gawain Dex +0 Roll Wren Dex +2 Roll Roll every save
+rolled: Dexterity save, DC 12 · half damage on a made save Gawain Dex +0 Roll failed 7Wren Dex +2 Roll made 15 Roll every save · outcome fail
+logged: Gawain 40 -> 23, Wren 28 -> 20 · "Hell Hound uses Fire Breath on Gawain, Wren (saves: Gawain d20 7 vs DC 12: failed; Wren d20 13 + 2 = 15 vs DC 12: made), Gawain 17, Wren 8 fire damage."
+the mage, Fireball: Dexterity save, DC 14 · half damage on a made save Gawain Dex +0 Roll
+Sacred Flame: Dexterity save, DC 14 · no damage on a made save Ogre 1 Dex -1 Roll Ogre 2 Dex -1 Roll Roll every save
+one typed (20), one rolled: Dexterity save, DC 14 · no damage on a made save Ogre 1 Dex -1 Roll made 20Ogre 2 Dex -1 Roll failed 0 Roll every save · outcome fail
+DC changed to 21: Dexterity save, DC 21 · no damage on a made save Ogre 1 Dex -1 Roll failed 20Ogre 2 Dex -1 Roll failed 0 Roll every save
+flipped Ogre 1: Dexterity save, DC 21 · no damage on a made save Ogre 1 Dex -1 Roll made 20Ogre 2 Dex -1 Roll failed 0 Roll every save
+logged: Ogre 1 68 -> 68, Ogre 2 68 -> 59 · "Wren casts Sacred Flame on Ogre 1, Ogre 2 (saves: Ogre 1 20 (rolled at the table) vs DC 21: made (set by hand); Ogre 2 d20 1 − 1 = 0 vs DC 21: failed), Ogre 1 0, Ogre 2 9 radiant damage."
+page errors: 0

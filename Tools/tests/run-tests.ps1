@@ -138,7 +138,7 @@ function Invoke-Batch($list, [int]$n) {
 function Get-Verdict([string]$name) {
   $got = $results[$name]
   if ($got -eq $null) { return "broke" }
-  if ($got -match '^(ERR |WINERR )|THREW |\bFAILED\b|^TIMED OUT|· WINERR ') { return "broke" }
+  if ($got -cmatch '^(ERR |WINERR )|THREW |\bFAILED\b|^TIMED OUT|· WINERR ') { return "broke" }     # its own markers, in capitals (a save that "failed" isn't one)
   $expFile = Join-Path $expDir "$name.txt"
   if (-not (Test-Path $expFile)) { return "new" }
   if (([IO.File]::ReadAllText($expFile, [Text.Encoding]::UTF8)).TrimEnd("`n") -eq $got) { return "same" }
