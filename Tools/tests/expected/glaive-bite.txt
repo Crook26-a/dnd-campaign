@@ -4,8 +4,8 @@ after paying: HP 30 -> 26 · charges 3 · "Avery de Vonn gives up 4 hit points t
 the choice: [{"v":"bite:0","label":"Glaive Bite (3/3) · Bonus Action, after a hit"}]
 glaive: "Avery de Vonn makes a Glaive Bite (reach) on Ogre — hits, 9 damage." · charges 3
 roll button: Roll 1d4 + 3
-rolled: 6 · "1d4 + 3: 3 + 3 = 6"
-bite: "Avery de Vonn uses Glaive Bite (2/3 charges left) as a Bonus Action on Ogre — hits, 6 damage (1d4 + 3: 3 + 3 = 6), and Avery de Vonn regains 6." · Avery 30 -> 36 · ogre 59 -> 53 · charges 2
+rolled: 6 · "1d4+3 piercing: 3 + 3 = 6"
+bite: "Avery de Vonn uses Glaive Bite (2/3 charges left) as a Bonus Action on Ogre — hits, 6 damage (1d4+3 piercing: 3 + 3 = 6), and Avery de Vonn regains 6." · Avery 30 -> 36 · ogre 59 -> 53 · charges 2
 bonus used after the bite: true · the glaive hit alone was one: false
 a second bonus action: asked "Avery de Vonn has already used a Bonus Action this turn. Log this one anyway?" · logged false · charges still 2
 her next turn: bonus used false

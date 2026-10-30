@@ -1,0 +1,18 @@
+Gawain with the cloak: Dex save 1, Wren Wis save (on her sheet) 6, AC to hit 17
+Bless: "Wren casts Bless (1st) on Gawain, Wren. Bless is on Gawain, themself." · on Gawain: Bless (attacks +1d4, saves +1d4) · Cloak of Protection (saves +1, AC +1)
+the form for Gawain: On Gawain: Bless (attacks +1d4, saves +1d4) · Cloak of Protection (saves +1, AC +1), worn
+to hit: To hit: d20 10 + 8 + 1d4 (Bless) 3 = 21 vs AC 11 (Ogre): hit
+save row: Dex +1 +1d4 Bless | Dex +2 +1d4 Bless
+saves: Gawain d20 7 + 1 + 1d4 (Bless) 3 = 11 vs DC 12: failed ; Wren d20 13 + 2 + 1d4 (Bless) 1 = 16 vs DC 12: made
+Wren's concentration save: Wren keeps concentrating on Bless: made the Constitution save (d20 11 + 2 + 1d4 (Bless) 2 = 15 against DC 10)
+Shield: "Wren casts Shield (1st) on Wren. Shield is on themself."
+the ogre on Wren: Roll to hit vs AC 17
+a round later: AC 12
+Bless gone: Gawain nothing
+False Life form: Temp HP (2d4+4)
+targets ["pb"] temp flag true
+False Life: hp 23 -> 23, temp 9 · Wren casts False Life (1st) on Wren, Wren has 9 temporary hit points. / Bless (Wren) ends: concentration ended.
+the ogre with 5 temp: hp 68 -> 65, temp 0
+Pass without Trace: Stealth Wren 12 (sheet +2), Gawain 10 (Dex +0)
+ended: Wren 2, Gawain 0
+page errors: 0

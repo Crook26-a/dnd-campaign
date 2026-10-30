@@ -7866,6 +7866,7 @@ function concSweep(){
       if(o.hp!=null) s.hp = o.hp;
     }
   } finally { concBusy = false; }
+  fxSweep();                                      // spell effects end with their concentration or their time
   concPaint(); if(changed) concRefreshRows();
 }
 /* on a card: "Concentrating: Bless · 8 rounds left [End it]" (an empty holder when not, so it can fill in later) */
@@ -7893,6 +7894,103 @@ function concPaint(){
   el.innerHTML = concAsks.map((a, i)=>{ const o = concFind(a.key), b = o ? conSaveOf(o.h) : 0;
     return `<div class="concask"><p><b>${esc(a.name)}</b> is concentrating on <b>${esc(a.spell)}</b>: Constitution save, DC ${a.dc} <small>(${a.dmg} damage)</small></p>
       <div class="pcrow"><button class="btn" data-concask="roll" data-i="${i}" title="${o && hasWarCaster(o.h) ? `two d20, the higher (War Caster), ${signed(b)}` : `d20 ${signed(b)}`}">Roll (${signed(b)}${o && hasWarCaster(o.h) ? ", War Caster" : ""})</button><button class="btn" data-concask="made" data-i="${i}">Made it</button><button class="btn danger" data-concask="lost" data-i="${i}">Lost it</button></div></div>`; }).join("");
+}
+/* ══════════════════════════════════════════════════════════════
+   EFFECTS ON ROLLS (Joseph, 2026-10-30: "will things like pass without trace give the bonus that it's supposed to";
+   "Is it doing it for items as well?"; "and temp hit points"). What a spell does to the people it's cast on, while it
+   lasts: h.fx = [{ id, sp, name, by (the caster's concentration key), conc, left (rounds), w (world minutes), b }] on the
+   character, person or enemy. It ends with the caster's concentration, or when its time runs out (concSweep).
+   b: atk / save / check: dice ("1d4", "-1d4") or a number, to every one; skill: { Stealth:10 }; saveAb: { dex:-2 };
+   saveAdv: ["dex"]; ac: N; vsAdv: attacks against them have Advantage; temp: temporary hit points at the start of each of
+   their turns (Heroism: the caster's spellcasting modifier).
+   The spells' numbers, from the SRD 5.2 text: */
+const SPELL_FX = {
+  "spell:bless":{ atk:"1d4", save:"1d4" },
+  "spell:bane":{ atk:"-1d4", save:"-1d4", onFail:true },
+  "spell:guidance":{ check:"1d4", note:"its chosen skill" },
+  "spell:shield-of-faith":{ ac:2 },
+  "spell:haste":{ ac:2, saveAdv:["dex"] },
+  "spell:slow":{ ac:-2, saveAb:{ dex:-2 }, onFail:true },
+  "spell:pass-without-trace":{ skill:{ Stealth:10 }, aura:30 },
+  "spell:shield":{ ac:5, self:true },
+  "spell:warding-bond":{ ac:1, save:1 },
+  "spell:faerie-fire":{ vsAdv:true, onFail:true },
+  "spell:heroism":{ temp:"mod" },
+};
+/* a spell that gives temporary hit points when cast: "You gain 2d4 + 4 Temporary Hit Points" (False Life), "you gain 5
+   Temporary Hit Points" (Armor of Agathys), more from a higher slot as its text says; one "equal to the Hit Points of
+   the form" (Polymorph) is typed in. Not Heroism's, which come at the start of each turn (an effect) */
+function spellTemp(s, lvl){
+  const d = String(s && s.desc || ""); if(!/Temporary Hit Points/i.test(d) || /at the start of each of its turns/i.test(d)) return null;
+  const m = /gain (\d+d\d+(?:\s*[+-]\s*\d+)?|\d+) Temporary Hit Points/i.exec(d); let dice = m ? m[1].replace(/\s+/g, "") : "";
+  const up = /(\d+) additional Temporary Hit Points for each (?:spell )?slot level above (\d)/i.exec(s.hi||"") || /increase by (\d+) for each (?:spell )?slot level above (\d)/i.exec(s.hi||"");
+  if(dice && up && +lvl > +up[2]) dice = addDice(dice, String(+up[1] * (+lvl - +up[2])));
+  return { dice };
+}
+/* what they carry does the same (attuned, if it needs it): "+1 bonus to AC and saving throws" (Cloak or Ring of
+   Protection), "+1 bonus to ability checks and saving throws" (Stone of Good Luck), from its text or a Library item's
+   effect. Only where the app works the number out itself: a sheet's own AC, save or skill already counts what they wear */
+function itemFx(o){
+  return (o && o.inv || []).flatMap(e=>{ const x = e && e.id ? libLootById(e.id) : null; if(!x || ((needsAttune(x) || x.attune) && !e.attuned)) return [];
+    const s = `${x.desc||""} ${x.effect||""}`, b = {}, n = re => { const m = re.exec(s); return m ? +m[1] : 0; };
+    const acSv = n(/\+(\d+) bonus to (?:AC|Armor Class) and saving throws/i), ckSv = n(/\+(\d+) bonus to ability checks and saving throws/i);
+    if(acSv){ b.ac = acSv; b.save = acSv; } if(ckSv){ b.check = ckSv; b.save = (b.save||0) + ckSv; }
+    if(!acSv && n(/\+(\d+) bonus to (?:AC|Armor Class)\b/i)) b.ac = n(/\+(\d+) bonus to (?:AC|Armor Class)\b/i);
+    if(!acSv && !ckSv && n(/\+(\d+) bonus to saving throws/i)) b.save = n(/\+(\d+) bonus to saving throws/i);
+    return Object.keys(b).length ? [{ name:x.name, b, item:true }] : []; });
+}
+function fxLive(f){ if(f.conc){ const o = concFind(f.by); return !!(o && o.h.conc && o.h.conc.id===f.sp); } return f.left==null || f.left > 0; }
+const fxOf = (h, items) => [...((h && h.fx) || []).filter(fxLive), ...(items ? itemFx(h) : [])];
+/* a number from them all: kind "atk", "save" (sub: the ability), "check" (sub: the skill or ability), "ac" */
+function fxNum(h, kind, sub, items){
+  let n = 0; for(const f of fxOf(h, items)){ const b = f.b, v = b[kind];
+    if(typeof v==="number") n += v;
+    if(kind==="save" && b.saveAb && sub) n += +b.saveAb[String(sub).slice(0, 3).toLowerCase()] || 0;
+    if(kind==="check" && b.skill && sub) n += +b.skill[sub] || 0; }
+  return n;
+}
+/* the dice ones, rolled: " + 1d4 (Bless) 3" */
+function fxRoll(h, kind){
+  let n = 0; const said = [];
+  for(const f of fxOf(h, false)){ const v = f.b[kind]; if(typeof v!=="string") continue;
+    const neg = v.trim().startsWith("-"), r = rollTerms(diceTerms(v.replace(/^\s*-/, "")), false);
+    n += neg ? -r.total : r.total; said.push(` ${neg ? "−" : "+"} ${v.replace(/^\s*-/, "")} (${f.name}${f.b.note ? `, ${f.b.note}` : ""}) ${r.total}`); }
+  return { n, said:said.join("") };
+}
+const fxDiceWords = (h, kind) => fxOf(h, false).filter(f=>typeof f.b[kind]==="string").map(f=>`${f.b[kind].trim().startsWith("-") ? "−" : "+"}${f.b[kind].replace(/^\s*-/, "")} ${f.name}`).join(" ");
+const fxAdv = (h, abil) => fxOf(h, false).some(f=>(f.b.saveAdv||[]).includes(String(abil||"").slice(0, 3).toLowerCase()));
+const fxVsAdv = h => fxOf(h, false).some(f=>f.b.vsAdv);
+const hOfT = t => !t ? null : t.kind==="foe" ? t.x : t.p;
+/* in words: " (attacks +1d4, saves +1d4)" */
+function fxSay(b){
+  const sg = v => typeof v==="number" ? (v < 0 ? `−${-v}` : `+${v}`) : v.trim().startsWith("-") ? `−${v.replace(/^\s*-/, "")}` : `+${v}`;
+  const w = [b.atk!=null ? `attacks ${sg(b.atk)}` : "", b.save!=null ? `saves ${sg(b.save)}` : "", b.check!=null ? `checks ${sg(b.check)}${b.note ? ` (${b.note})` : ""}` : "",
+    ...Object.entries(b.skill||{}).map(([k, v])=>`${k} ${sg(v)}`), ...Object.entries(b.saveAb||{}).map(([k, v])=>`${ABN[k] || k} saves ${sg(v)}`),
+    b.ac ? `AC ${sg(b.ac)}` : "", (b.saveAdv||[]).length ? `Advantage on ${b.saveAdv.map(k=>ABN[k] || k).join(", ")} saves` : "", b.vsAdv ? "attacks on them have Advantage" : "",
+    b.temp ? `${b.temp} temp HP each turn` : ""].filter(Boolean);
+  return w.length ? ` (${w.join(", ")})` : "";
+}
+/* a spell cast: its effect on each of them (casting it again replaces theirs) */
+function fxCast(s, by, hs, caster){
+  const B = s && SPELL_FX[s.id]; if(!B || !hs.length) return 0;
+  const b = { ...B }; if(b.temp==="mod") b.temp = Math.max(1, spellModOf(caster || {}));
+  const R = s.id==="spell:shield" ? 1 : concRounds(s.dur);
+  for(const h of hs){ if(!h) continue; h.fx = (h.fx||[]).filter(f=>f.sp!==s.id); h.fx.push({ id:uid("fx"), sp:s.id, name:s.name, by, conc:!!s.conc, left:R, w:worldMin(), b }); }
+  return hs.length;
+}
+/* the end of what's run out (in the sweep) and a round less in a fight */
+function fxSweep(){
+  const now = worldMin(), n = battleOf ? bnode() : null, c = n && n.site && n.site.combat;
+  for(const h of [...partyRoster(), ...lib().npcs, ...((c && c.list) || [])]){ if(!h || !h.fx || !h.fx.length) continue;
+    for(const f of h.fx) if(!f.conc && f.left!=null && f.w!=null && now > f.w){ f.left -= (now - f.w) * 10; f.w = now; }
+    h.fx = h.fx.filter(fxLive); if(!h.fx.length) delete h.fx; }
+}
+function fxNewRound(c){ for(const t of combatants(c)){ const h = hOfT(t); for(const f of (h && h.fx) || []) if(!f.conc && f.left!=null) f.left -= 1; } }
+/* the start of someone's turn: Heroism's temporary hit points (they don't stack: the higher) */
+function fxTurnStart(c, id){
+  const t = combatants(c).find(x=>x.id===id), h = hOfT(t); if(!h) return;
+  for(const f of fxOf(h, false)) if(f.b.temp){ const was = numOr(h.temp, 0); if(f.b.temp > was){ h.temp = f.b.temp;
+    const line = `${t.label} has ${f.b.temp} temporary hit points (${f.name})`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("spell", line); } }
 }
 /* War Caster (2014 and 2024): Advantage on concentration saves, if it's anywhere on their sheet or stat block */
 const hasWarCaster = h => /war caster/i.test([h && h.notes, h && h.feats, h && h.features, h && h.traits, h && h.persona, h && h.defenses, h && h.saves,
@@ -8139,8 +8237,10 @@ document.addEventListener("click", e=>{
   const a = concAsks[+b.dataset.i]; if(!a) return; const o = concFind(a.key); concAsks.splice(+b.dataset.i, 1);
   if(!o || !o.h.conc){ concAfter(); return; }
   let made = b.dataset.concask==="made", how = "";
-  if(b.dataset.concask==="roll"){ const d1 = 1 + Math.floor(Math.random() * 20), wc = hasWarCaster(o.h), d2 = wc ? 1 + Math.floor(Math.random() * 20) : 0, d = Math.max(d1, d2), tot = d + conSaveOf(o.h);
-    made = tot >= a.dc; how = wc ? ` (War Caster: rolled ${d1} and ${d2}, kept ${d}; ${d20Words(d, conSaveOf(o.h)).replace(/^d20 \d+/, `${d}`)} against DC ${a.dc})` : ` (${d20Words(d, conSaveOf(o.h))} against DC ${a.dc})`; }
+  if(b.dataset.concask==="roll"){ const d1 = 1 + Math.floor(Math.random() * 20), wc = hasWarCaster(o.h), d2 = wc ? 1 + Math.floor(Math.random() * 20) : 0, d = Math.max(d1, d2);
+    const cb = conSaveOf(o.h) + fxNum(o.h, "save", "con", false), F = fxRoll(o.h, "save"), tot = d + cb + F.n;     // Bless counts here too (2026-10-30)
+    const words = F.said ? `d20 ${d}${cb ? ` ${cb < 0 ? "−" : "+"} ${Math.abs(cb)}` : ""}${F.said} = ${tot}` : d20Words(d, cb);
+    made = tot >= a.dc; how = wc ? ` (War Caster: rolled ${d1} and ${d2}, kept ${d}; ${words.replace(/^d20 \d+/, `${d}`)} against DC ${a.dc})` : ` (${words} against DC ${a.dc})`; }
   else how = ` (DC ${a.dc})`;
   if(made){ const line = `${o.name} keeps concentrating on ${o.h.conc.name}: made the Constitution save${how}`; gameLog("spell", line); flash(line + "."); }
   else concEnd(o, `lost it: failed the Constitution save${how}`);
@@ -10713,6 +10813,7 @@ function newRound(c){
   c.round++;
   concNewRound(c);                                 // a round less for everyone concentrating
   upsNewRound(c);                                  // and for every spell that stays up
+  fxNewRound(c);                                   // and every spell effect without concentration (Shield)
   for(const y of c.list){ for(const r of foeResources(foeById(y.foe))) if(r.perRound) y.used[r.key] = 0; }
 }
 
@@ -13285,13 +13386,13 @@ const OUTCOMES = [["hit","Hit"],["crit","Crit"],["miss","Miss"],["fail","Save fa
    radius…), an item used on "yourself" (or that gives its user temporary hit points) */
 function selfOnly(info, t){
   if(!info) return false;
-  if(info.spell){ const r = String(info.spell.range||""); return /^self/i.test(r) && !/radius|cone|cube|line|sphere|emanation/i.test(r) && !info.spell.dmg; }
+  if(info.spell){ const r = String(info.spell.range||""); return /^self/i.test(r) && !/radius|cone|cube|line|sphere|emanation/i.test(r) && (!info.spell.dmg || !!spellTemp(info.spell)); }     // False Life: its "dmg" is its temporary hit points
   if(info.res) return /second wind|action surge|form of dread|rage|wild shape|cunning action/i.test(String(info.name||info.res));
   if(info.kind==="item" && !info.bite && t && t.p){ const x = usableOf(pcState(t.p)).find(y=>y.k===info.useK); return !!x && (/\byourself\b/i.test(x.u.effect || "") || (!!x.u.tempHp && !x.u.heal)); }
   return false;
 }
 const isAttackAct = info => !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
-const acOf = o => !o ? 10 : o.kind==="foe" ? (parseInt((foeById(o.x.foe)||{}).ac) || 10) : (parseInt(pcState(o.p).ac) || 10);
+const acOf = o => !o ? 10 : (o.kind==="foe" ? (parseInt((foeById(o.x.foe)||{}).ac) || 10) : (parseInt(pcState(o.p).ac) || 10)) + fxNum(hOfT(o), "ac", null, false);     // Shield of Faith, Haste, Shield, Slow
 function toHitOf(c, t, info){
   if(!info || !t) return null; const w = act.what || "", num = s => { const m = /([+-]?\d+)/.exec(String(s ?? "")); return m ? +m[1] : null; };
   const bare = n => String(n).replace(/^(Bonus action|Bonus|Reaction|Legendary): /i, "");
@@ -13335,15 +13436,15 @@ function saveBonusOf(t, abil){
   const o = t.kind==="pc" ? pcState(t.p) : t.p; if(!o) return 0;
   const v = said(o.saves) ?? said((pcStatBlock(t.p)||{}).sav); if(v!=null) return v;
   const cls = Object.keys(CLASS_SAVES).find(n=>new RegExp(`\\b${n}\\b`, "i").test(String(o.cls||""))), prof = cls && CLASS_SAVES[cls].includes(k) ? profOf(o) : 0;     // the class's save proficiencies
-  return abBonus(o, k) + prof;
+  return abBonus(o, k) + prof + fxNum(o, "save", k, true) - fxNum(o, "save", k, false);     // what they wear (a Cloak of Protection): only here, where the app works it out
 }
 function saveRow(c, t, info, all){
   const S = saveOfAct(c, t, info); if(!S) return "";
   const tg = act.targets.map(id=>all.find(x=>x.id===id)).filter(Boolean), sv = act.saves || {};
   return `<div class="saverow" style="margin:2px 0 6px">
     <p class="actspell" style="margin:0 0 4px"><b>${S.abil ? esc(S.abil) + " save" : "Saving throw"}, DC <input id="ac-savedc" class="mono" type="number" value="${esc(String(act.saveDC ?? S.dc ?? ""))}" placeholder="?" style="width:46px"></b>${S.half ? " · half damage on a made save" : " · no damage on a made save"}</p>
-    ${tg.map(x=>{ const b = saveBonusOf(x, S.abil), r = sv[x.id];
-      return `<div class="pcrow" style="align-items:center;margin:0 0 3px"><span style="flex:1;min-width:0">${esc(x.label)} <small class="mono">${S.abil ? S.abil.slice(0, 3) : "save"} ${signed(b)}</small></span>
+    ${tg.map(x=>{ const k = String(S.abil).slice(0, 3).toLowerCase(), b = saveBonusOf(x, S.abil) + fxNum(hOfT(x), "save", k, false), dw = fxDiceWords(hOfT(x), "save"), adv = fxAdv(hOfT(x), k), r = sv[x.id];
+      return `<div class="pcrow" style="align-items:center;margin:0 0 3px"><span style="flex:1;min-width:0">${esc(x.label)} <small class="mono">${S.abil ? S.abil.slice(0, 3) : "save"} ${signed(b)}${dw ? ` ${esc(dw)}` : ""}${adv ? " · Advantage" : ""}</small></span>
         <input class="mono" type="number" data-svtot="${x.id}" value="${esc(r && r.typed ? String(r.tot) : "")}" placeholder="total" style="width:58px" title="Rolled at the table? Their total">
         <button class="btn small" data-svroll="${x.id}">Roll</button>
         ${r ? `<button class="btn small${r.made ? "" : " danger"}" data-svflip="${x.id}" title="${esc(r.said)} · click to flip">${r.made ? "made" : "failed"} ${r.tot}</button>` : `<span style="width:64px"></span>`}</div>`; }).join("")}
@@ -13687,7 +13788,7 @@ function actInfo(c, t){
   if(w.startsWith("bite:")){ const k = +w.slice(5), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* On a hit: its own roll, after the hit */
     return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:"", bite:x ? x.u : null, ba:!!(x && x.u.onHitBa), hint:x ? { dice:abilDice(x.u.onHit, o), dtype:x.u.onHitType } : null, cond:"", save:false }; }
   if(w.startsWith("use:")){ const k = +w.slice(4), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* a carried thing with a use */
-    return { kind:"item", name:x ? x.it.name : "an item", useK:k, ba:!!(x && /bonus/i.test(x.u.use||"")), healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : abilDice(x.u.heal, o)) : "", reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
+    return { kind:"item", name:x ? x.it.name : "an item", useK:k, ba:!!(x && /bonus/i.test(x.u.use||"")), healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : abilDice(x.u.heal || x.u.tempHp, o)) : "", temp:!!(x && !x.u.heal && !x.u.reduce && x.u.tempHp), reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
   if(w.startsWith("atk:")) return { kind:"attack", name:w.slice(4) };
   if(w==="other") return { kind:"other", name:a.otherText||"something" };
   if(w==="flee") return { kind:"flee", name:"flees" };
@@ -13711,7 +13812,8 @@ function actDice(c, t, info){
   const baseType = String(act.dtype || (part1 && part1.dtype) || "").toLowerCase(), parts = [];
   const put = (dice, dtype) => { if(!dice) return; const k = String(dtype || baseType).toLowerCase(), p = parts.find(x=>x.dtype===k);
     if(p) p.dice = addDice(p.dice, dice); else parts.push({ dice, dtype:k }); };
-  if(part1) put(part1.dice, baseType);
+  const tempOnly = !!(info && info.spell && spellTemp(info.spell) && !String(info.spell.dtype||"").trim());     // False Life: its "damage" is its temporary hit points
+  if(part1 && !tempOnly) put(part1.dice, baseType);
   if(!(info && info.spell)) ((info && info.hint && info.hint.more) || []).forEach(x=>put(x.dice, x.dtype));
   on.filter(a=>a.dice).forEach(a=>put(a.dice, a.dtype));
   if(parts.length && dmgMod) parts[0].dice = addDice(parts[0].dice, String(dmgMod));
@@ -13721,7 +13823,9 @@ function actDice(c, t, info){
   const selfCut = info && info.reduce && t && t.p && act.targets.length===1 && act.targets[0]===t.id;
   let healDice = selfCut ? reduceDice(info.reduce, pcState(t.p), true) : (sc && sc.heal) || (info && info.healDice) || "";
   if(healDice && healMod && sc && sc.heal) healDice = addDice(healDice, String(healMod));
-  return { sc, part1, part2, addons, on, dmgDice, dmgLabel, parts, healDice };
+  /* temporary hit points (False Life, Armor of Agathys, the Snowflake Brooch): in the Healing box, given as temporary */
+  const tmp = info && info.spell ? spellTemp(info.spell, act.lvl ?? info.spell.lv) : null; if(tmp) healDice = tmp.dice;
+  return { sc, part1, part2, addons, on, dmgDice, dmgLabel, parts, healDice, temp:!!tmp || !!(info && info.temp) };
 }
 function actionForm(c, all){
   const t = all.find(x=>x.id===act.actor), info = t ? actInfo(c, t) : null;
@@ -13742,6 +13846,7 @@ function actionForm(c, all){
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
     ${t ? tacticsHtml(c, t) : ""}
     ${(c.ups||[]).length ? `<p class="actspell">Up now: ${c.ups.map(u=>{ const o = all.find(x=>x.id===u.owner); return `${esc(u.name)}${o ? ` (${esc(o.label)})` : ""}${u.left!=null ? `, ${esc(concLeftWords(u.left))}` : ""}${u.thing && c.pos && c.pos[u.id] ? "" : ` <button class="btn small" data-uptok="${u.id}" title="Put a token for it on the battle map, next to its caster">Token</button>`} <button class="btn small" data-upend="${u.id}" title="End it now: its token goes">End</button>`; }).join(" · ")}</p>` : ""}
+    ${t && fxOf(hOfT(t), true).length ? `<p class="actspell">On ${esc(t.label)}: ${fxOf(hOfT(t), true).map(f=>esc(f.name + fxSay(f.b) + (f.item ? ", worn" : ""))).join(" · ")}</p>` : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
     ${lvls.length?`<div class="field"><label>Slot used</label><select id="ac-lvl">${lvls.map(L=>{ const s = pcState(t.p).slots[L]; return `<option value="${L}" ${L===act.lvl?"selected":""}>${ORD[L]} level (${s.max-s.used} left)</option>`; }).join("")}</select></div>`:""}
@@ -13761,11 +13866,11 @@ function actionForm(c, all){
       <div class="field" style="flex:.9"><label>Damage${D.dmgDice?` <i>(${esc(D.dmgLabel)})</i>`:""}</label><input id="ac-dmg" type="number" min="0" value="${esc(act.dmg)}"></div>
       <div class="field" style="flex:.45" title="Add (or take) this much on the damage roll: a modifier the app doesn't know about"><label>+</label><input id="ac-dmgmod" class="mono" type="number" value="${esc(act.dmgMod||"")}" placeholder="0"></div>
       <div class="field" style="flex:1.2"><label>Type</label><select id="ac-dtype">${DAMAGE_TYPES.map(d=>`<option value="${d}" ${d===act.dtype?"selected":""}>${d||"—"}</option>`).join("")}</select></div>
-      <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
+      <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : D.temp ? "Temp HP" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
     ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
       <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
     ${D.parts.length > 1 ? `<div class="pcrow">${D.parts.map((p, i)=>`<div class="field" style="flex:1;min-width:0"><label>${esc(p.dice)} ${esc(p.dtype)}</label><div style="display:flex;gap:4px"><input class="mono" type="number" min="0" data-acpart="${i}" value="${esc(String(((act.partV||{})[p.dtype]||{}).v ?? ""))}" placeholder="—" style="min-width:0;flex:1" title="Rolled at the table? Type it in"><button class="btn" data-acroll="part:${i}" title="Rolls just this part">Roll</button></div></div>`).join("")}</div>` : ""}
-    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice. Each type is rolled on its own, and a target that resists, is immune to or is vulnerable to one takes half, none or double of that part.">Roll ${D.parts.length > 1 ? "all: " : ""}${esc(D.dmgLabel)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll healing ${esc(D.healDice)}</button>`:""}</div>` : ""}
+    ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice. Each type is rolled on its own, and a target that resists, is immune to or is vulnerable to one takes half, none or double of that part.">Roll ${D.parts.length > 1 ? "all: " : ""}${esc(D.dmgLabel)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll ${D.temp ? "temp HP" : "healing"} ${esc(D.healDice)}</button>`:""}</div>` : ""}
     ${D.part2 ? `<div class="actpart2"><label class="grouplab" style="margin-top:6px">Then: ${esc(D.part2.dtype)} damage (${esc(D.part2.dice)})</label>
       <div class="acttargets">${all.filter(x=>x.id!==act.actor).map(x=>`<button class="chip${p2t.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt2="${x.id}">${esc(x.label)}</button>`).join("")}</div>
       <div class="actout">${[["fail","Save failed"],["save","Save made"],["hit","Hit"],["none","—"]].map(([v,l])=>`<label><input type="radio" name="ac-out2" value="${v}" ${act.p2.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
@@ -13784,20 +13889,21 @@ function snapOf(c, ids){
   const s = {};
   for(const id of ids){
     const x = c.list.find(y=>y.id===id);
-    if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null })) };
+    if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, temp:x.temp||0, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null, fx:x.fx||null })) };
     const p = partyRoster().find(y=>y.id===id);
-    if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null })) }; }
+    if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null, fx:p.fx||null })) }; }
   }
   return s;
 }
 function restoreSnap(c, s){
   for(const id in s){
-    if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; } }     // concentration comes back with the rest
-    else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; } }
+    if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; if(!x.fx) delete x.fx; } }     // concentration and spell effects come back with the rest
+    else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; if(!p.fx) delete p.fx; } }
   }
 }
 const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
-function damageFoe(x, v){ if(x.max==null) return false; const was = x.hp; x.hp = Math.max(0, x.hp - v); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); return was>0 && x.hp<=0; }
+function damageFoe(x, v){ if(x.max==null) return false; const soak = Math.min(+x.temp || 0, v); if(soak){ x.temp -= soak; v -= soak; }     /* temporary hit points go first */
+  const was = x.hp; x.hp = Math.max(0, x.hp - v); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); return was>0 && x.hp<=0; }
 function damagePc(p, v){
   pcState(p); let hp = numOr(p.hp, 0); const was = hp;
   const soak = Math.min(p.temp, v); p.temp -= soak; const rest = v - soak;
@@ -13867,7 +13973,7 @@ function logAction(n, c){
   let dealt = 0, healed = 0, kills = 0;
   /* a character some hits miss anyway (Joseph, 2026-10-30: Bathilda, the Gentleman's protection): an enemy's hit on
      them rolls a d100; at or under their "Hits on them miss" % it turns into a miss (no damage, no condition). Not in CR */
-  const turned = [];
+  const turned = [], tempGot = [];
   /* rolled by type, each target's resistances worked out (2026-10-30): their own amount, unless the box was changed by hand */
   const byT = act.rolled && act.rolled.dmg && act.rolled.dmg.by && act.rolled.dmg.v===String(act.dmg) ? act.rolled.dmg.by : null;
   /* each target's own save (2026-10-30): a made one takes half or none, as the text says, and no condition */
@@ -13879,7 +13985,8 @@ function logAction(n, c){
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
     const dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
     if(dm && !off){ got = dm; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
-    if(heal){ hl = healAny(t, heal); healed += hl; }
+    if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
+    else if(heal){ hl = healAny(t, heal); healed += hl; }
     if(act.cond && !off && !["miss","save"].includes(act.outcome) && !(svOf(t) && svOf(t).made) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
     if(dropped) kills++;
     hits.push({ id:t.id, label:t.label, dmg:got, heal:hl, dropped });
@@ -13921,6 +14028,7 @@ function logAction(n, c){
     + (svW ? ` (saves: ${svW})` : "")
     + (act.toHit && act.toHit.v===act.outcome ? ` (${act.toHit.said.replace(/^To hit: /, "to hit: ")})` : "")
     + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${byT || new Set(hits.map(h=>h.dmg)).size > 1 ? hits.map(h=>`${h.label} ${h.dmg}`).join(", ") : dmg}${dtypeW ? ` ${dtypeW}` : ""} damage${targets.length>1 && !byT && new Set(hits.map(h=>h.dmg)).size <= 1 ? " each" : ""}${rolledW("dmg", act.dmg)}` : "")
+    + (D.temp && heal ? (tempGot.length ? `, ${tempGot.join(", ")} ${tempGot.length > 1 ? "have" : "has"} ${heal} temporary hit points${rolledW("heal", act.heal)}` : `, ${heal} temporary hit points (no more than they had)`) : "")
     + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
       : `, healing ${healed}${rolledW("heal", act.heal)}`) : "")
     + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
@@ -13944,6 +14052,13 @@ function logAction(n, c){
   const upW = U && (U.thing || U.again) ? ` ${info.spell.name} stays up${U.thing ? `: its ${U.thing} is on the map` : ""}${U.again ? `${U.thing ? "," : ":"} again${U.ba ? " as a Bonus Action" : ""} without a slot` : ""}.` : "";
   c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW, snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, once:onceBefore, tac:tacBefore, ups:upsBefore });
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
+  /* what the spell does to them while it lasts (Bless, Pass without Trace, Shield of Faith…): on its targets (and the
+     caster, for an aura or Shield); Bane, Slow, Faerie Fire only on those who failed the save */
+  if(info.kind==="spell" && !info.free && info.spell && SPELL_FX[info.spell.id]){ const B = SPELL_FX[info.spell.id];
+    let on = B.self ? [actor] : B.aura ? [actor, ...targets.filter(t=>t.id!==actor.id)] : targets;
+    if(B.onFail) on = on.filter(t=>{ const sv = svOf(t); return sv ? !sv.made : act.outcome!=="save"; });
+    const by = (concHolders().find(o=>o.h===hOfT(actor)) || {}).key || "";
+    if(fxCast(info.spell, by, on.map(hOfT), actor.kind==="pc" ? pcState(actor.p) : null)) c.log[c.log.length - 1].text = c.log[c.log.length - 1].text.replace(/\.$/, "") + `. ${info.spell.name} is on ${on.map(t=>t.id===actor.id ? "themself" : t.label).join(", ")}.`; }
   act = freshAct(actor.id);
   partySync();                                    // the fight's log has its own undo for this
   touch(); renderBattle(); renderBattlePanel();
@@ -14153,7 +14268,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-spellopen]").forEach(s=>s.onclick = ()=>{ libPeek("spells", s.dataset.spellopen); });
   el.querySelectorAll("[data-bsel]").forEach(s=>s.onclick = ()=>{ battleSel = s.dataset.bsel; renderBattle(); renderBattlePanel(); });
   /* breaking initiative: jump the turn to someone, or move them in the order by hand */
-  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
+  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; fxTurnStart(c, c.turn); act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-breact]").forEach(b=>b.onclick = ()=>{
     startReaction(c, b.dataset.breact, null); renderBattle(); renderBattlePanel();
     const box = document.querySelector(".actbox"); if(box) scrollInPane(box, "center");
@@ -14186,6 +14301,9 @@ function renderBattlePanelNow(){
       /* a new choice brings its own damage type (Ice Knife is piercing, not the radiant of the Starry Form picked before it) */
       act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; if(info.cond) act.cond = info.cond;
       if(selfOnly(info, t)){ act.targets = [act.actor]; act.outcome = "none"; }     // only its user (Joseph, 2026-10-30: Second Wind)
+      /* an aura (Pass without Trace): them and their side within reach of it, to take out or add to */
+      { const FX = info.spell && SPELL_FX[info.spell.id], me = FX && FX.aura && c.pos ? c.pos[act.actor] : null;
+        if(me) act.targets = [act.actor, ...all.filter(x=>x.id!==act.actor && x.side===t.side && c.pos[x.id] && Math.max(Math.abs(c.pos[x.id].x - me.x), Math.abs(c.pos[x.id].y - me.y)) * 5 <= FX.aura).map(x=>x.id)]; }
       /* what they carry that adds to it: on by itself on its own weapon (a "while lit" one once ticked this fight), not
          when the line already counts that type ("2d6+5 + 2d6", "slashing + fire") */
       const lit = (c.lit || {})[act.actor] || {}, rowDt = String((info.hint && info.hint.dtype) || "");
@@ -14206,8 +14324,10 @@ function renderBattlePanelNow(){
   const svOutcome = () => { const R = act.targets.map(id=>(act.saves||{})[id]).filter(Boolean); if(R.length) act.outcome = R.every(r=>r.made) ? "save" : "fail"; };
   el.querySelectorAll("[data-svroll]").forEach(b=>b.onclick = ()=>{ keep(); const X = svCtx(); if(!X) return; if(!X.dc){ flash("Type in the DC first."); return; }
     for(const id of b.dataset.svroll==="all" ? act.targets : [b.dataset.svroll]){ const x = all.find(y=>y.id===id); if(!x) continue;
-      const d = 1 + Math.floor(Math.random()*20), bo = saveBonusOf(x, X.S.abil), tot = d + bo;
-      (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${d20Words(d, bo)} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` }; }
+      const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), adv = fxAdv(h, k), r1 = 1 + Math.floor(Math.random()*20), r2 = adv ? 1 + Math.floor(Math.random()*20) : 0, d = Math.max(r1, r2);
+      const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false), F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
+      const how = `${adv ? `d20 ${r1} and ${r2}, Advantage: ${d}` : `d20 ${d}`}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
+      (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` }; }
     svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
   el.querySelectorAll("[data-svtot]").forEach(i=>i.onchange = ()=>{ keep(); const X = svCtx(), x = all.find(y=>y.id===i.dataset.svtot); if(!X || !x) return; const v = i.value.trim();
     if(v===""){ if(act.saves) delete act.saves[x.id]; }
@@ -14247,10 +14367,12 @@ function renderBattlePanelNow(){
     if(w==="hit"){ const tg = all.find(x=>x.id===act.targets[0]); if(!tg){ flash("Pick who they're attacking."); return; }     // rolling to hit (2026-10-30)
       const bonus = /^\s*[+-]?\d+\s*$/.test(String(act.hitBonus ?? "")) ? parseInt(act.hitBonus) : (toHitOf(c, t, info) ?? 0), ac = acOf(tg), typed = Math.round(+act.d20);
       const r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), mine = typed >= 1 && typed <= 20;
-      const d = mine ? typed : act.adv==="adv" ? Math.max(r1, r2) : act.adv==="dis" ? Math.min(r1, r2) : r1;
-      const how = mine ? `d20 ${d} (rolled at the table)` : act.adv ? `d20 ${r1} and ${r2}, ${act.adv==="adv" ? "Advantage" : "Disadvantage"}: ${d}` : `d20 ${d}`;
-      const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
-      act.outcome = out; act.toHit = { v:out, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
+      const adv = act.adv || (fxVsAdv(hOfT(tg)) ? "adv" : "");     // Faerie Fire on the target: Advantage, unless set by hand
+      const d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1;
+      const how = mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${act.adv ? "" : " (an effect on them)"}: ${d}` : `d20 ${d}`;
+      const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
+      const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
+      act.outcome = out; act.toHit = { v:out, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
       D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
@@ -16761,7 +16883,7 @@ function nextTurn(c){
   if(!order.length) return false;
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn);
   return true;
 }
 document.addEventListener("click", e=>{
@@ -16770,7 +16892,7 @@ document.addEventListener("click", e=>{
   const a = b.dataset.ts;
   if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
   if(a==="next"){ if(!nextTurn(c)) return; }
-  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn); }
+  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); }
   touch(); renderBattle(); renderBattlePanel();
 });
 
@@ -20572,9 +20694,10 @@ const profOf = o => 2 + Math.floor((Math.max(1, +o.level || (o.cr!=null ? Math.m
 const abBonus = (o, k) => Math.floor(((+o[k] || 10) - 10)/2);
 /* their bonus for a skill: the number on their sheet ("Perception +5") if there is one, else the ability modifier */
 function skillMod(o, skill){
-  if(ABIL_NAME[skill]) return abBonus(o, skill);
-  const m = new RegExp(`${skill.replace(/ /g,"\\s+")}\\s*([+-]\\d+)`, "i").exec(String(o.skills||"")); if(m) return +m[1];
-  return abBonus(o, SKILL_AB[skill] || "dex");
+  const fx = fxNum(o, "check", skill, false), worn = fxNum(o, "check", skill, true) - fx;     // a spell's (Pass without Trace +10 Stealth), and what they wear where the app works it out
+  if(ABIL_NAME[skill]) return abBonus(o, skill) + fx + worn;
+  const m = new RegExp(`${skill.replace(/ /g,"\\s+")}\\s*([+-]\\d+)`, "i").exec(String(o.skills||"")); if(m) return +m[1] + fx;
+  return abBonus(o, SKILL_AB[skill] || "dex") + fx + worn;
 }
 const spellModOf = o => { const s = parseInt(String(o.satk||"").replace("+","")); return isFinite(s) ? s - profOf(o) : 0; };
 const knownSpells = o => (o.spells||[]).map(spellOf).filter(Boolean);
@@ -20693,8 +20816,10 @@ function wireActionBox(){
         gameLog("item", line); flash(line + "."); saveParty(); }
       else { const keys = k==="checkall" ? taPeople().filter(x=>ta.who==="party" ? x.key.startsWith("pc:") : x.key===ta.who).map(x=>x.key) : [b.dataset.k];
         const said = [];
-        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill); ta.tot[key] = String(r + m); (ta.nat = ta.nat || {})[key] = r;
-          (ta.d20 = ta.d20 || {})[key] = { v:ta.tot[key], said:d20Words(r, m) }; said.push(`${keys.length > 1 ? `${(o.name || "Someone").split(" ")[0]} ` : ""}${d20Words(r, m)}`); }
+        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill), F = fxRoll(o, "check");     // Guidance's die
+          const w = F.said ? `d20 ${r}${m ? ` ${m < 0 ? "−" : "+"} ${Math.abs(m)}` : ""}${F.said} = ${r + m + F.n}` : d20Words(r, m);
+          ta.tot[key] = String(r + m + F.n); (ta.nat = ta.nat || {})[key] = r;
+          (ta.d20 = ta.d20 || {})[key] = { v:ta.tot[key], said:w }; said.push(`${keys.length > 1 ? `${(o.name || "Someone").split(" ")[0]} ` : ""}${w}`); }
         if(said.length) flash(said.join(" · ")); }
       return renderActionBox(true);
     }
@@ -20778,6 +20903,10 @@ function logTableAction(){
     if(s.lv && ta.slot && o.slots && o.slots[ta.slot]){ partyDoing(`Cast ${s.name}`, o); o.slots[ta.slot].used = Math.min(o.slots[ta.slot].max, o.slots[ta.slot].used + 1); }
     gameLog("spell", `${name} casts ${s.name}${s.lv && ta.slot ? ` (${ORD[ta.slot]})` : ""}${on ? ` on ${on===ta.who ? "themself" : nameOf(on)}` : ""}${N}`);
     if(s.conc) concBegin(o, s, numOr(o.hp));
+    /* what it does while it lasts (2026-10-30): Pass without Trace on the whole party (the caster's aura), Shield on
+       themself, the rest on who it's cast on */
+    { const B = SPELL_FX[s.id], hs = !B ? [] : B.aura ? [o, ...P.filter(x=>x.key.startsWith("pc:") && x.o!==o).map(x=>x.o)] : B.self || !on ? [o] : [taObj(on) || o];
+      if(B && fxCast(s, (concHolders().find(q=>q.h===o) || {}).key || "", hs, o)) gameLog("spell", `${s.name} is on ${hs.map(h=>h===o ? "themself" : (h.name || "someone").split(" ")[0]).join(", ")}${N}`); }
   } else if(ta.what==="rest"){
     if(party){ restParty(ta.rest); }
     else if(o){ partyDoing(`${ta.rest==="long"?"Long":"Short"} rest`, o); restPc(o, ta.rest); gameLog("rest", `${name} takes a ${ta.rest} rest${N}`); }
