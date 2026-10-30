@@ -1,0 +1,8 @@
+ogres at 5,2 and 7,3, Wren sees 60 ft in the dark
+Gawain's view (no darkvision): on the map: Gawain, Wren · turn strip: Gawain, Wren
+Wren's view: on the map: Gawain, Wren, Ogre 1, Ogre 2 · turn strip: Gawain, Wren, Ogre 1, Ogre 2
+the whole party: on the map: Gawain, Wren, Ogre 1, Ogre 2 · turn strip: Gawain, Wren, Ogre 1, Ogre 2
+just the light (all dark): on the map: Gawain, Wren · turn strip: Gawain, Wren
+one ogre hidden (DC 15): on the map: Gawain, Wren, Ogre 2 · turn strip: Gawain, Wren, Ogre 2
+the DM's map still has both: true/true
+page errors: 0

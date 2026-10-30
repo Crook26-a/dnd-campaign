@@ -1,0 +1,32 @@
+// uses: nothing
+<script>
+/* what the players' screen shows of a fight (Joseph, 2026-10-30, a screenshot: enemies in the black squares and every
+   enemy in the turn strip): a creature only where the TV's own shading shows its square; hidden (Stealth) ones gone */
+const __TV = { format:"ordinate-survey-v1", title:"TV", ppm:10, unit:"mi", party:2,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", attacks:[] },
+    { id:"pb", name:"Wren", cls:"Wizard", level:5, hp:"28", hpMax:"28", ac:"12", senses:"Darkvision 60 ft.", attacks:[] }],
+  groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"dark", foes:[{ id:"srd:ogre", n:"2" }] },
+      bmap:{ name:"The Hall", rows:["##########","#........#","#........#","#........#","##########"], start:{ party:[[1,2],[2,2]], enemy:[[5,2],[7,3]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  loadJSONNow(JSON.stringify(__TV)); await wait(300); setDmMode(true); await wait(60);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60); const [o1, o2] = c.list;
+  combatants(c).forEach((t, k)=>{ c.init[t.id] = 20 - k; }); c.turn = 'pa';
+  const tv = () => { const d = document.createElement('div'); d.innerHTML = `<svg>${renderBattle(true)}</svg>`; const on = [...d.querySelectorAll('[data-tok]')].map(e=>e.dataset.tok);
+    const o = playersOrder(); return `on the map: ${combatants(c).filter(t=>on.includes(t.id)).map(t=>t.label).join(', ') || 'nobody'} · turn strip: ${o ? o.list.map(x=>x.label).join(', ') : '-'}`; };
+  out.push('ogres at ' + [o1, o2].map(o=>`${c.pos[o.id].x},${c.pos[o.id].y}`).join(' and ') + ', Wren sees 60 ft in the dark');
+  c.see = 'pa'; out.push("Gawain's view (no darkvision): " + tv());
+  c.see = 'pb'; out.push("Wren's view: " + tv());
+  c.see = 'party'; out.push('the whole party: ' + tv());
+  c.see = 'plain'; out.push('just the light (all dark): ' + tv());
+  c.see = 'party'; c.stealth = { [o1.id]:{ hide:15 } }; out.push('one ogre hidden (DC 15): ' + tv());
+  out.push("the DM's map still has both: " + (()=>{ renderBattle(); return [o1, o2].map(o=>!!document.querySelector(`#bsvg [data-tok="${o.id}"]`)).join('/'); })());
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>

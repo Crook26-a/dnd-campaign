@@ -3044,7 +3044,7 @@ function sendPlayers(now){
 function playersOrder(){
   const n = bnode(), c = n && n.site && n.site.combat; if(!c || editingInside()) return null;
   if(!c.turn && !Object.values(c.init||{}).some(v=>v!=null)) return null;
-  const lineup = c.layout==="lineup", sight = lineup ? null : sightOf(n, c, useBmap(n));
+  const lineup = c.layout==="lineup", sight = lineup ? null : sightOf(n, c, useBmap(n), true);     // as the players' screen sees it
   const list = combatants(c).filter(t=>!t.fled && !(t.kind==="foe" && (t.x.dormant || (t.x.max!=null && t.x.hp<=0))) && (isMember(t) || (sight ? sight.seen(t) : !outOfSight(stealthOf(c, t)))))
     .map(t=>({ label:(t.x && t.x.shownAs) || t.label, party:t.side==="party", now:c.turn===t.id, col:t.kind==="pc" && !t.npc && t.side==="party" ? pcTokColour(t.p) : null }));      // a foe named at the table keeps its old label for the players
   return list.length ? { round:c.round, list } : null;
@@ -12132,8 +12132,11 @@ function sightOf(n, c, bm, players){
         if(!losClear(bm, st, q.x, q.y, p.x, p.y)) return false;
         return s.ethereal ? (sv.ts && d<=sv.ts) : ((sv.ts && d<=sv.ts) || (sv.bs && d<=sv.bs)); });
     }
+    /* the players' screen (Joseph, 2026-10-30: "players who shouldn't be visible are showing up"): only where its own
+       shading shows the square, so no token sits in a black square and the turn strip names only those on it */
+    if(players) return shade[i] >= 1;
     if(mode==="plain") return true;
-    if(!party.length && !players) return true;
+    if(!party.length) return true;
     return union[i] >= 1;
   };
   return { shade, union, who, seen, light };
