@@ -8137,7 +8137,8 @@ function pcCard(c, i, npc){
       ${tf("saves","Saving throws","Wis +5, Int +2",1)}
       ${tf("skills","Skills and tools","Perception +5, Insight +5; tools they can use",2)}
       <div class="pcrow">${f("senses","Senses",1,"Darkvision 60 ft.")}${f("langs","Languages",1)}</div>
-      ${tf("defenses","Defenses","Resistances, immunities, Advantage against…",2)}`)}
+      ${tf("defenses","Defenses","Resistances, immunities, Advantage against…",2)}
+      <div class="pcrow" title="DM only (Joseph, 2026-10-30): when an enemy's hit on them is logged, a d100 at or under this turns it into a miss. Not counted in their CR">${f("hitsMiss","Hits on them miss (%, DM only)",1,"0")}${f("hitsMissWhy","Why (DM only)",1.6,"a patron's protection")}</div>`)}
     ${sec("atk", "Attacks", pcAttacksBlock(c, i), (c.attacks||[]).length ? String(c.attacks.length) : "")}
     ${sec("spells", "Spells", pcSpellsBlock(c, i), (c.spells||[]).length ? String(c.spells.length) : "")}
     ${sec("rp", npc ? "Personality, look and notes" : "Personality, favor and notes", `
@@ -13570,11 +13571,17 @@ function logAction(n, c){
   /* apply it to each target */
   const hits = [];
   let dealt = 0, healed = 0, kills = 0;
+  /* a character some hits miss anyway (Joseph, 2026-10-30: Bathilda, the Gentleman's protection): an enemy's hit on
+     them rolls a d100; at or under their "Hits on them miss" % it turns into a miss (no damage, no condition). Not in CR */
+  const turned = [];
   for(const t of targets){
-    let dropped = false, got = 0, hl = 0;
-    if(dmg){ got = dmg; dropped = t.kind==="foe" ? damageFoe(t.x, dmg) : damagePc(t.p, dmg); dealt += dmg; if(t.kind==="pc") statsOf(t.p).taken += dmg; }
+    let dropped = false, got = 0, hl = 0, off = false;
+    const mp = actor.side!=="party" && ["hit","crit"].includes(act.outcome) && t.kind==="pc" ? Math.max(0, Math.min(100, Math.round(+pcState(t.p).hitsMiss || 0))) : 0;
+    if(mp){ const r = 1 + Math.floor(Math.random()*100), why = String(pcState(t.p).hitsMissWhy||"").trim(); off = r <= mp;
+      turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
+    if(dmg && !off){ got = dmg; dropped = t.kind==="foe" ? damageFoe(t.x, dmg) : damagePc(t.p, dmg); dealt += dmg; if(t.kind==="pc") statsOf(t.p).taken += dmg; }
     if(heal){ hl = healAny(t, heal); healed += hl; }
-    if(act.cond && !["miss","save"].includes(act.outcome) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
+    if(act.cond && !off && !["miss","save"].includes(act.outcome) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
     if(dropped) kills++;
     hits.push({ id:t.id, label:t.label, dmg:got, heal:hl, dropped });
   }
@@ -13609,12 +13616,13 @@ function logAction(n, c){
   const line = `${actor.label} ${verb} ${info.name}${slotTxt}${riders}`
     + (targets.length ? ` on ${hits.map(h=>h.label).join(", ")}` : "")
     + (out ? ` — ${out}` : "")
-    + (dmg && act.outcome!=="miss" ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}${rolledW("dmg", act.dmg)}` : "")
+    + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${dmg}${act.dtype?` ${act.dtype}`:""} damage${targets.length>1?" each":""}${rolledW("dmg", act.dmg)}` : "")
     + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
       : `, healing ${healed}${rolledW("heal", act.heal)}`) : "")
     + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
     + (act.note ? ` (${act.note})` : "")
     + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}${rolledW("dmg2", p2.dmg)}` : ""}` : "")
+    + (turned.length ? `; ${turned.join("; ")}` : "")
     + biteWords
     + [...hits, ...hits2].filter((h,i,A)=>h.dropped && A.findIndex(x=>x.id===h.id && x.dropped)===i).map(h=>`. ${h.label} drops`).join("") + ".";
   c.log = c.log || [];

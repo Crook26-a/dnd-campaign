@@ -45,6 +45,13 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   const html = tacEditor(gar.x, 'x:' + gar.x.id); out.push('card dials: ' + (html.match(/data-tf="(\w+)"/g) || []).join(' '));
   root.tacFoes = { 'srd:gargoyle':{ courage:1 } }; out.push('kind set to cowardly: ' + tacOf(c, gar).courage + ' · this one only: ' + (gar.x.tac = { courage:5 }, tacOf(c, gar).courage)); delete gar.x.tac;
   /* undo takes the tallies back */
+  /* hits on them miss 25% (Bathilda's protection): an enemy's hit rolls a d100; at or under 25 it turns aside */
+  const wren = root.roster[1]; wren.hitsMiss = '25'; wren.hitsMissWhy = 'a patron\'s protection'; wren.hp = 28; const rnd0 = Math.random;
+  Math.random = () => 0.1; act = freshAct(gar.id); act.what = gar.x ? 'fa:Claw' : ''; act.targets = [W.id]; act.outcome = 'hit'; act.dmg = '7'; logAction(hall, c); await wait(20);
+  out.push('turned aside: "' + c.log.slice(-1)[0].text + '" · Wren HP ' + wren.hp);
+  Math.random = () => 0.9; act = freshAct(gar.id); act.what = 'fa:Claw'; act.targets = [W.id]; act.outcome = 'hit'; act.dmg = '7'; logAction(hall, c); await wait(20); Math.random = rnd0;
+  out.push('lands: "' + c.log.slice(-1)[0].text + '" · Wren HP ' + wren.hp + ' · in her CR? ' + (charCR(wren).xp === charCR(Object.assign({}, wren, { hitsMiss:'0' })).xp ? 'no' : 'yes'));
+  c.log.pop(); c.log.pop();
   const before = JSON.stringify(c.dealt); undoAction(c); out.push('undo: dealt ' + before + ' -> ' + JSON.stringify(c.dealt));
  }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
  out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));

@@ -1,6 +1,6 @@
 defaults: Animated Armor front/nearest/courage 5 · Gargoyle front/grudge/courage 3 · Specter skirm/weakest/courage 4
 round 1: Animated Armor → Wren (the nearest, 5 ft away) | Gargoyle → Wren (the nearest (nobody has hurt it yet), 5 ft away) | Specter → Wren (the weakest it can get at (20 HP), 25 ft away)
-after Gawain hits the gargoyle for 30: Gargoyle → Gawain (hurt it most for the distance (30 damage), 55 ft away) · tallies {"dealt":{"pa":30},"hurt":{"fx6m8ft2":{"pa":30}}}
+after Gawain hits the gargoyle for 30: Gargoyle → Gawain (hurt it most for the distance (30 damage), 55 ft away) · tallies {"dealt":{"pa":30},"hurt":{"fx6tmrr2":{"pa":30}}}
 Gawain beside the specter: Specter → Gawain (the strongest is bearing down on it (Now CR 1,769 XP), 5 ft away)
 the gargoyle as clever, round 1: Gargoyle → Gawain (the strongest (Now CR 1,769 XP), 35 ft away)
 round 3, Wren has dealt 40: Gargoyle → Wren (the strongest (dealt 40 this fight), 5 ft away)
@@ -11,5 +11,7 @@ form: Tactics (Front-liner: wades in; a suggestion) → Gawain: hurt it most for
 Target picked: ["pa"]
 card dials: data-tf="role" data-tf="aim" data-tf="rigid" data-tf="courage" data-tf="only"
 kind set to cowardly: 1 · this one only: 5
-undo: dealt {"pa":30,"pb":40} -> {"pa":30}
+turned aside: "Gargoyle uses Claw on Wren — hits; Wren: d100 11 ≤ 25, the hit turns aside (a patron's protection)." · Wren HP 28
+lands: "Gargoyle uses Claw on Wren — hits, 7 damage; Wren: d100 91 > 25, it lands." · Wren HP 21 · in her CR? no
+undo: dealt {"pa":30,"pb":40,"fx6tmrr2":7} -> {"pa":30}
 page errors: 0
