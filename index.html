@@ -7933,9 +7933,135 @@ function villNotes(h, key){
   if(!h) return "";
   const k = "vn:" + key, has = h.tactics || h.partyRead;
   return `<details class="pcset pcsec vnotes" data-invfor="${esc(k)}" ${openInv.has(k) || h.partyRead ? "open" : ""}><summary>Tactics and what they know <small>DM only</small></summary>
+    ${tacEditor(h, key)}
     <div class="field"><label>Tactics: how they fight</label><textarea data-vill="${esc(key)}" data-vf="tactics" rows="2" placeholder="Wades in front, picks the biggest threat and holds the line…">${esc(h.tactics||"")}</textarea></div>
     <div class="field"><label>What they know about the party <small>newest read on top</small></label><textarea data-vill="${esc(key)}" data-vf="partyRead" rows="${h.partyRead ? 5 : 2}" placeholder="Nothing yet: Size them up (the Action box, with them picked) writes it here">${esc(h.partyRead||"")}</textarea></div></details>`;
 }
+/* ══════════════════════════════════════════════════════════════
+   TACTICS (Joseph, 2026-10-30): three dials for every enemy, worked out from its stat block, changeable for a kind of
+   creature (root.tacFoes[foe id]), a line of them in a room (its foes line's tac), one of them in a fight (x.tac) or a
+   person (p.tac); tacOf merges them over tacDefault.
+   - role, where it fights: front (wades in), skirm (hits and moves), ranged (keeps its distance, picks people off),
+     caster (stays back, opens big), support (helps an ally: the one chosen beforehand, tac.ward, else the one with the
+     lowest share of hit points), lurker (hides, strikes first);
+   - aim, who it goes for, and how firmly (rigid: 1 loose, 2 normal, 3 rigid): nearest (mindless: always); grudge
+     (animal-smart: the damage each has done it, less 4 / 2 / 1 for every 5 ft past its reach); weakest (cunning: the
+     lowest hit points, then AC, unless the strongest bears down: within 15 / 10 / 5 ft, or hurt it this round or
+     last); strongest (clever: if within its reach or range plus its movement × 1 / 1.5 / 2, else the strongest within that);
+   - courage, 1 cowardly … 5 fearless: at its line the action form says "would flee"; the DM decides.
+   "Strongest" is their Now CR for the first two rounds, then whoever has dealt the most this fight (c.dealt; c.hurt
+   and c.hurtAt keep who hurt whom, for the grudges). On an enemy's turn the action form suggests its target, says why
+   and where it stands, and Target picks it. Mindless or not, a suggestion only: the DM chooses.
+   ══════════════════════════════════════════════════════════════ */
+const TAC_ROLES = [["front","Front-liner: wades in"],["skirm","Skirmisher: hits and moves"],["ranged","Ranged: keeps its distance, picks people off"],["caster","Caster: stays back, opens big"],["support","Support: helps an ally"],["lurker","Lurker: hides, strikes first"]];
+const TAC_AIMS = [["nearest","The nearest (mindless)"],["grudge","Whoever hurt it most, against how far (animal-smart)"],["weakest","The weakest, unless the strongest bears down (cunning)"],["strongest","The strongest, if it's in reach (clever)"]];
+const TAC_RIGID = [[1,"Loosely"],[2,"Normally"],[3,"Rigidly"]];
+const TAC_COURAGE = [[1,"1 Cowardly: flees when first hurt or outnumbered"],[2,"2 Cautious: below half, or outnumbered 2 to 1"],[3,"3 Steady: below a quarter"],[4,"4 Brave: only when nearly dead"],[5,"5 Fearless: never flees"]];
+const TAC_STAND = { front:"into the thick of it, beside its target", skirm:"hits, then moves off; flanks; won't stay pinned", ranged:"at range behind cover, away from anyone in melee",
+  caster:"at the back, out of reach; opens with its biggest spell", support:"beside the one it's helping", lurker:"hidden; strikes from hiding, then hides again" };
+/* who gets tactics: enemies the DM runs (creatures, people), not the players' characters */
+const tacFor = t => !!t && (t.kind==="foe" || (t.npc && t.side!=="party")) && t.side!=="party";
+function tacBlockOf(t){
+  if(t.kind==="foe") return foeById(t.x.foe);
+  const p = t.p; return p ? (p.statBlock || (p.fightsAs && p.fightsAs!=="self" ? foeById(p.fightsAs) : null) || (typeof pcStatBlock==="function" ? pcStatBlock(p) : null)) : null;
+}
+const tacText = m => m ? foeEntries(m).map(([n, d])=>`${n}. ${d}`).join(" ") + " " + pairs(m.tr).map(([n, d])=>`${n}. ${d}`).join(" ") : "";
+const tacSpeed = (m, p) => Math.max(5, ...(String((p && p.speed) || (m && (m.spd || m.speed)) || "30").match(/\d+/g) || ["30"]).map(Number));
+const tacReach = m => Math.max(5, ...[...tacText(m).matchAll(/reach (\d+) ?ft/gi)].map(x=>+x[1]));
+const tacRange = (m, role) => Math.max(role==="caster" || role==="support" ? 60 : 0, ...[...tacText(m).matchAll(/range (\d+)/gi)].map(x=>+x[1]));
+function tacDefault(m){
+  const ab = (m && m.ab) || [], int = +ab[3] || 10, type = String((m && m.type) || ""), txt = tacText(m), spd = String((m && (m.spd || m.speed)) || "");
+  const aim = int <= 3 ? "nearest" : int <= 7 ? "grudge" : int <= 11 ? "weakest" : "strongest";
+  const casts = /spellcasting/i.test(txt), heals = /cure wounds|healing word|mass healing|regains? \S+ hit points/i.test(txt);
+  const ranged = /ranged attack/i.test(txt) && !/melee attack/i.test(txt), mobile = /fly|teleport/i.test(spd + " " + txt) || tacSpeed(m) >= 40;
+  const tough = m && (foeMaxHp(m) || 0) >= crRowAt(crPos("cr", +m.cr || 0)).hp;
+  const role = casts ? (heals && !/damage/i.test(txt.replace(/healing|hit points/gi, "")) ? "support" : "caster") : ranged ? "ranged" : /stealth|hide action|invisible/i.test(txt) ? "lurker" : mobile && !tough ? "skirm" : "front";
+  const courage = /construct/i.test(type) || (/undead/i.test(type) && int <= 7) ? 5 : /undead/i.test(type) ? 4 : /beast/i.test(type) ? 2 : 3;
+  return { role, aim, rigid:2, courage };
+}
+/* the settings for one combatant: its own, its line's, its kind's, over the defaults */
+function tacOf(c, t){
+  const m = tacBlockOf(t), base = tacDefault(m);
+  const kind = t.kind==="foe" ? ((root.tacFoes||{})[t.x.foe] || null) : null;
+  let line = null;
+  if(t.kind==="foe" && t.x.line!=null){ const n = battleOf ? bnode() : null, st = n && n.site;
+    const L = st ? (t.x.stg ? ((siteStages(st)[t.x.stg - 1] || {}).foes || []) : (st.foes || [])) : []; line = (L[t.x.line] || {}).tac || null; }
+  const person = t.kind==="foe" ? (t.x.npc ? libNpcById(t.x.npc) : null) : (libNpcById(String(t.id).replace(/^[pn]:/, "")) || t.p);   // a person fighting: their own page's
+  const own = t.kind==="foe" && !person ? t.x.tac : person && person.tac;
+  return Object.assign({}, base, person ? {} : (kind || {}), line || {}, own || {});
+}
+const tacDist = (c, a, b) => { const P = c.pos || {}, A = P[a.id], B = P[b.id]; return A && B ? 5 * Math.max(Math.abs(A.x - B.x), Math.abs(A.y - B.y)) : null; };
+const tacHp = o => o.kind==="foe" ? { hp:+o.x.hp, max:+o.x.max } : { hp:numOr(o.p.hp, 0), max:numOr(o.p.hpMax, 0) };
+const tacAc = o => o.kind==="foe" ? parseInt((foeById(o.x.foe)||{}).ac) || 10 : parseInt(o.p.ac) || 10;
+/* how strong one of them is right now: Now CR for two rounds, then the damage they've dealt this fight */
+function tacStrength(c, o){
+  const dealt = (c.dealt||{})[o.id] || 0;
+  if((c.round||1) > 2 && Object.values(c.dealt||{}).some(v=>v > 0)) return { v:dealt, why:`dealt ${dealt} this fight` };
+  const fm = o.kind==="foe" ? foeById(o.x.foe) : null, xp = o.kind==="foe" ? (fm ? crRowAt(crOfBlock(fm).pos).xp : 0) : charCR(pcState(o.p), "now").xp;
+  return { v:xp, why:`Now CR ${xp.toLocaleString()} XP` };
+}
+const tacDown = o => { const H = tacHp(o); return o.fled || (H.max > 0 && H.hp <= 0); };
+/* the suggestion for an enemy's turn: { to, why, stand, flee, help } */
+function tacSuggest(c, t){
+  const all = combatants(c), T = tacOf(c, t), m = tacBlockOf(t), rigid = +T.rigid || 2;
+  const foes = all.filter(o=>o.id!==t.id && o.side!==t.side && o.side!=="neutral" && !tacDown(o)), mates = all.filter(o=>o.id!==t.id && o.side===t.side && !tacDown(o));
+  const reach = T.role==="ranged" || T.role==="caster" ? Math.max(tacReach(m), tacRange(m, T.role)) : tacReach(m), move = tacSpeed(m, t.kind==="foe" ? null : t.p);
+  const dist = o => tacDist(c, t, o), gap = o => { const d = dist(o); return d==null ? 0 : Math.max(0, d - reach); }, ft = o => { const d = dist(o); return d==null ? "" : `, ${d} ft away`; };
+  const near = L => L.slice().sort((a, b)=>(dist(a) ?? 0) - (dist(b) ?? 0))[0];
+  /* courage: its line */
+  const H = tacHp(t), frac = H.max > 0 ? H.hp / H.max : 1, outn = foes.length / Math.max(1, mates.length + 1), cg = +T.courage || 3;
+  const flee = cg>=5 ? "" : cg===1 && (frac < 1 || outn > 1) ? "first hurt or outnumbered" : cg===2 && (frac < .5 || outn >= 2) ? (frac < .5 ? "below half its hit points" : "outnumbered 2 to 1")
+    : cg===3 && frac < .25 ? "below a quarter of its hit points" : cg===4 && frac < .1 ? "nearly dead" : "";
+  const out = { stand:TAC_STAND[T.role] || "", flee:flee ? `${TAC_COURAGE.find(x=>x[0]===cg)[1].split(":")[0].replace(/^\d /, "").toLowerCase()}, ${flee}` : "", role:T.role, aim:T.aim };
+  if(T.role==="support"){ const w = T.ward && mates.find(o=>o.id===T.ward);
+    const hurt = mates.filter(o=>tacHp(o).max > 0).sort((a, b)=>tacHp(a).hp / tacHp(a).max - tacHp(b).hp / tacHp(b).max)[0];
+    const h = w || hurt; if(h){ const P = tacHp(h); return Object.assign(out, { help:h.id, helpLabel:h.label, why:w ? `the one it looks after (${P.hp}/${P.max} HP)` : `the ally with the least hit points left (${P.hp}/${P.max})` }); } }
+  if(!foes.length) return Object.assign(out, { why:"nobody left to fight" });
+  let to = null, why = "";
+  if(T.aim==="nearest"){ to = near(foes); why = "the nearest"; }
+  else if(T.aim==="grudge"){ const hurt = (c.hurt||{})[t.id] || {}, pen = rigid===1 ? 4 : rigid===3 ? 1 : 2;
+    const S = foes.map(o=>({ o, g:hurt[o.id] || 0, s:(hurt[o.id] || 0) - pen * gap(o) / 5 })).sort((a, b)=>b.s - a.s || (dist(a.o) ?? 0) - (dist(b.o) ?? 0));
+    if(S[0].g > 0){ to = S[0].o; why = `hurt it most for the distance (${S[0].g} damage)`; } else { to = near(foes); why = "the nearest (nobody has hurt it yet)"; } }
+  else {
+    const str = foes.map(o=>({ o, s:tacStrength(c, o) })).sort((a, b)=>b.s.v - a.s.v), top = str[0];
+    if(T.aim==="weakest"){ const bear = rigid===1 ? 15 : rigid===3 ? 5 : 10, d = dist(top.o), at = ((c.hurtAt||{})[t.id] || {})[top.o.id];
+      if((d!=null && d <= bear) || (at!=null && at >= (c.round||1) - 1)){ to = top.o; why = `the strongest is bearing down on it (${top.s.why})`; }
+      else { const L = foes.filter(o=>gap(o) <= 2 * move), hpOf = o => tacHp(o).max > 0 ? tacHp(o).hp : Infinity;     // no hit points on their sheet: not the weakest
+        to = (L.length ? L : foes).slice().sort((a, b)=>hpOf(a) - hpOf(b) || tacAc(a) - tacAc(b))[0]; why = `the weakest it can get at (${tacHp(to).hp} HP)`; } }
+    else { const lim = move * (rigid===1 ? 1 : rigid===3 ? 2 : 1.5), inR = str.filter(x=>gap(x.o) <= lim);
+      if(inR.length && inR[0].o===top.o){ to = top.o; why = `the strongest (${top.s.why})`; }
+      else if(inR.length){ to = inR[0].o; why = `the strongest within ${Math.round(lim)} ft (${inR[0].s.why}); ${top.o.label} is too far`; }
+      else { to = near(foes); why = `nobody within ${Math.round(lim)} ft: the nearest`; } } }
+  return Object.assign(out, { to:to && to.id, toLabel:to && to.label, why:why + (to ? ft(to) : "") });
+}
+/* in the action form, on an enemy's turn */
+function tacticsHtml(c, t){
+  if(!tacFor(t)) return ""; const s = tacSuggest(c, t);
+  return `<div class="tacbox" style="margin:0 0 6px;padding:4px 6px;border-left:3px solid var(--r2);background:var(--paper-lit);font-size:12px">
+    <b>Tactics</b> <small>(${esc((TAC_ROLES.find(x=>x[0]===s.role)||[])[1] || "")}; a suggestion)</small><br>
+    ${s.help ? `Helps <b>${esc(s.helpLabel)}</b>: ${esc(s.why)}` : s.to ? `→ <b>${esc(s.toLabel)}</b>: ${esc(s.why)} <button class="btn small" data-tactgt="${esc(s.to)}">Target</button>` : esc(s.why || "")}
+    ${s.stand ? `<br><small>Stands: ${esc(s.stand)}</small>` : ""}${s.flee ? `<br><b class="rused">Would flee</b> <small>(${esc(s.flee)}; your call)</small>` : ""}</div>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-tactgt]"); if(!b || !battleOf) return; act.targets = [b.dataset.tactgt]; renderBattlePanel(); });
+/* the dials, on an enemy's card (DM only): a creature's go to its kind unless "this one only"; a person's to them */
+function tacEditor(h, key){
+  if(!h) return ""; const k = String(key||""), isX = k.startsWith("x:"), cur = isX ? Object.assign({}, tacDefault(foeById(h.foe)), (root.tacFoes||{})[h.foe] || {}, h.tac || {}) : Object.assign({}, tacDefault(h.statBlock || (h.fightsAs && h.fightsAs!=="self" ? foeById(h.fightsAs) : null)), h.tac || {});
+  const sel = (f, opts) => `<select data-tac="${esc(k)}" data-tf="${f}">${opts.map(([v, l])=>`<option value="${v}" ${String(v)===String(cur[f])?"selected":""}>${esc(l)}</option>`).join("")}</select>`;
+  const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat, me = isX ? h.id : "p:" + k.slice(2);
+  const mates = c ? combatants(c).filter(o=>o.side!=="party" && o.side!=="neutral" && o.id!==me) : [];
+  return `<div class="field"><label>Fights as</label>${sel("role", TAC_ROLES)}</div>
+    ${cur.role==="support" ? `<div class="field"><label>Looks after</label><select data-tac="${esc(k)}" data-tf="ward"><option value="">The ally with the least hit points left</option>${mates.map(o=>`<option value="${esc(o.id)}" ${o.id===cur.ward?"selected":""}>${esc(o.label)}</option>`).join("")}</select></div>` : ""}
+    <div class="field"><label>Goes for</label>${sel("aim", TAC_AIMS)}</div>
+    <div class="pcrow"><div class="field" style="flex:1"><label>Holds to it</label>${sel("rigid", TAC_RIGID)}</div><div class="field" style="flex:1.6"><label>Courage</label>${sel("courage", TAC_COURAGE)}</div></div>
+    ${isX ? `<label class="check" style="margin:0 0 6px"><input type="checkbox" data-tac="${esc(k)}" data-tf="only" ${h.tac?"checked":""}> This one only (else every ${esc((foeById(h.foe)||{}).name || "one of its kind")} in the campaign)</label>` : ""}`;
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.tac) return; const h = villFind(t.dataset.tac); if(!h) return;
+  const isX = t.dataset.tac.startsWith("x:"), f = t.dataset.tf;
+  if(f==="only"){ if(t.checked) h.tac = Object.assign({}, (root.tacFoes||{})[h.foe] || {}); else delete h.tac; }
+  else { const v = ["rigid", "courage"].includes(f) ? +t.value : t.value, box = isX && !h.tac ? ((root.tacFoes = root.tacFoes || {})[h.foe] = (root.tacFoes||{})[h.foe] || {}) : (h.tac = h.tac || {});
+    if(v==="" || v==null) delete box[f]; else box[f] = v; }
+  if(isX){ touch(); saveParty(); } else saveParty();
+  if(battleOf){ renderBattle(); renderBattlePanel(); } else renderPane(true); });
 document.addEventListener("input", e=>{ const t = e.target; if(!t.dataset || !t.dataset.vill) return; const h = villFind(t.dataset.vill); if(!h) return;
   h[t.dataset.vf] = t.value; if(!t.value) delete h[t.dataset.vf]; if(String(t.dataset.vill).startsWith("p:")) saveParty(); else touch(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.sizeupopt) return;
@@ -10028,12 +10154,12 @@ function wireInv(el, n, st){
   });
 }
 function startFight(st){
-  const list = [], stealth = {}, said = [];
+  const list = [], stealth = {}, said = [], seen = {}, lines = id => (st.foes||[]).filter(g=>g.id===id).length;     // numbered across lines of the same creature
   (st.foes||[]).forEach((f, fi)=>{
     const R = foeLineRoll(f); if(R.said) said.push(R.said); if(!R.n) return;
     const m = foeById(f.id), count = R.n, max = foeMaxHp(m);
     for(let i=0;i<count;i++){
-      const x = { id:uid("fx"), foe:f.id, label:`${m?m.name:"Foe"}${count>1?` ${i+1}`:""}`, hp:max, max, used:{}, spent:{}, conds:[], line:fi };
+      const x = { id:uid("fx"), foe:f.id, label:`${m?m.name:"Foe"}${count>1 || lines(f.id)>1 ? ` ${seen[f.id] = (seen[f.id] || 0) + 1}` : ""}`, hp:max, max, used:{}, spent:{}, conds:[], line:fi };
       /* what Build set up: what each one carries, and the square each one starts on */
       if(f.kit && f.kit.foe===f.id && Array.isArray(f.kit.inv)){ x.inv = JSON.parse(JSON.stringify(f.kit.inv)); x.purse = { ...(f.kit.purse||{}) }; if(f.kit.pdc!=null) x.pdc = f.kit.pdc; }
       if(st.at && st.at[`f:${fi}:${i}`]) x.at = { ...st.at[`f:${fi}:${i}`] };
@@ -10074,7 +10200,7 @@ function calmAfterBattle(st){
   const c = st.combat; if(!c) return;
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
-  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.onceUsed; delete c.fled;
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.dealt; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
 }
 /* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
    calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking
@@ -13325,6 +13451,7 @@ function actionForm(c, all){
     <div class="pcrow">
       <div class="field" style="flex:1"><label>Who</label><select id="ac-actor">${all.map(x=>`<option value="${x.id}" ${x.id===act.actor?"selected":""}>${esc(x.label)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
+    ${t ? tacticsHtml(c, t) : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
     ${lvls.length?`<div class="field"><label>Slot used</label><select id="ac-lvl">${lvls.map(L=>{ const s = pcState(t.p).slots[L]; return `<option value="${L}" ${L===act.lvl?"selected":""}>${ORD[L]} level (${s.max-s.used} left)</option>`; }).join("")}</select></div>`:""}
@@ -13459,6 +13586,11 @@ function logAction(n, c){
     if(dropped && !hits.some(h=>h.id===t.id && h.dropped)) kills++;
     hits2.push({ id:t.id, label:t.label, dmg:dmg2, dropped });
   }
+  /* for tactics: what each has dealt this fight, and who hurt whom (and when), kept for undo */
+  const tacBefore = JSON.stringify({ d:c.dealt || {}, h:c.hurt || {}, a:c.hurtAt || {} });
+  if(dealt > 0){ c.dealt = c.dealt || {}; c.dealt[actor.id] = (c.dealt[actor.id] || 0) + dealt;
+    for(const h of [...hits, ...hits2]) if(h.dmg > 0){ const H = (c.hurt = c.hurt || {})[h.id] = (c.hurt[h.id] || {}), A = (c.hurtAt = c.hurtAt || {})[h.id] = (c.hurtAt[h.id] || {});
+      H[actor.id] = (H[actor.id] || 0) + h.dmg; A[actor.id] = c.round; } }
   /* once-a-turn add-ons (Sneak Attack) are spent for this turn */
   for(const a of D.on) if(a.once){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {})[a.key] = turnStamp(c); }
   /* a carried thing's On a hit (Glaive Bite), its own choice after the hit: the charge went above (an item); it heals
@@ -13490,7 +13622,7 @@ function logAction(n, c){
   if(act.reaction){ c.reacted = c.reacted || {}; c.reacted[actor.id] = c.round; }
   if(isBonus){ c.bonused = c.bonused || {}; c.bonused[actor.id] = c.round; }
   const asWhat = act.reaction ? " — as a reaction." : isBonus && !/as a Bonus Action/.test(line) ? " — as a bonus action." : ".";
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, once:onceBefore });
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, once:onceBefore, tac:tacBefore });
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   act = freshAct(actor.id);
   partySync();                                    // the fight's log has its own undo for this
@@ -13504,7 +13636,7 @@ function undoAction(c){
     Object.assign(c.scaled, { held:A.before.held, lines:A.before.lines, expected:A.before.expected, who:A.before.who });
     c.scaled.undone = c.scaled.undone || {}; for(const w of back) c.scaled.undone[w.id] = true;   // they're still standing there: not again till they leave and come back
     flash("Took back the arrival."); touch(); renderBattle(); renderBattlePanel(); return; }
-  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.once!=null) c.onceUsed = JSON.parse(e.once);
+  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   partySync();
   flash("Took back the last action.");
   touch(); renderBattle(); renderBattlePanel();

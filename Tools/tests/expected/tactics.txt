@@ -1,0 +1,15 @@
+defaults: Animated Armor front/nearest/courage 5 · Gargoyle front/grudge/courage 3 · Specter skirm/weakest/courage 4
+round 1: Animated Armor → Wren (the nearest, 5 ft away) | Gargoyle → Wren (the nearest (nobody has hurt it yet), 5 ft away) | Specter → Wren (the weakest it can get at (20 HP), 25 ft away)
+after Gawain hits the gargoyle for 30: Gargoyle → Gawain (hurt it most for the distance (30 damage), 55 ft away) · tallies {"dealt":{"pa":30},"hurt":{"fx6m8ft2":{"pa":30}}}
+Gawain beside the specter: Specter → Gawain (the strongest is bearing down on it (Now CR 1,769 XP), 5 ft away)
+the gargoyle as clever, round 1: Gargoyle → Gawain (the strongest (Now CR 1,769 XP), 35 ft away)
+round 3, Wren has dealt 40: Gargoyle → Wren (the strongest (dealt 40 this fight), 5 ft away)
+specter at 2 HP: Specter → Wren (the weakest it can get at (20 HP), 25 ft away) · would flee: brave, nearly dead
+armor as support: Animated Armor → Specter (the ally with the least hit points left (2/22))
+looking after the specter: Animated Armor → Specter (the one it looks after (2/22 HP))
+form: Tactics (Front-liner: wades in; a suggestion) → Gawain: hurt it most for the distance (30 damage), 35 ft away Target Stands: into the thick of it, beside its target Would flee (steady, below a quarter of its hit points; your call)
+Target picked: ["pa"]
+card dials: data-tf="role" data-tf="aim" data-tf="rigid" data-tf="courage" data-tf="only"
+kind set to cowardly: 1 · this one only: 5
+undo: dealt {"pa":30,"pb":40} -> {"pa":30}
+page errors: 0
