@@ -6,7 +6,7 @@
 const __ST = { format:"ordinate-survey-v1", title:"Spell tokens", ppm:10, unit:"mi", party:2,
   nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
   roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"40", hpMax:"53", ac:"17", attacks:[] },
-    { id:"pb", name:"Wren", cls:"Cleric", level:5, hp:"28", hpMax:"28", ac:"12", wis:16, satk:"+6", spells:["spell:spiritual-weapon", "spell:vampiric-touch", "spell:flaming-sphere", "spell:moonbeam", "spell:bless"], attacks:[] }],
+    { id:"pb", name:"Wren", cls:"Cleric", level:5, hp:"28", hpMax:"28", ac:"12", wis:16, satk:"+6", spells:["spell:spiritual-weapon", "spell:vampiric-touch", "spell:flaming-sphere", "spell:moonbeam", "spell:bless"], attacks:[{ name:"Spiritual Weapon (bonus action)", hit:"+6", dmg:"1d8+3", dtype:"force" }] }],
   groups:[{ id:"g1", members:["pa","pb"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[] },
   plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
     { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:ogre", n:"1" }] },
@@ -21,13 +21,16 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   const slots = () => [2, 3].map(L=>`${L}: ${W.slots[L].used}/${W.slots[L].max}`).join(', ');
   const choose = async what => { act = freshAct('pb'); act.what = what; renderBattlePanel(); await wait(20); const w = document.querySelector('#ac-what'); w.dispatchEvent(new Event('change', { bubbles:true })); await wait(20); act.targets = [ogre.id]; renderBattlePanel(); await wait(20); };
   W.slots[2].max = 3; W.slots[3].max = 2; out.push('slots before: ' + slots());
-  await choose('sp:spell:spiritual-weapon'); act.lvl = 3; act.outcome = 'hit'; act.dmg = '9'; logAction(hall, c); await wait(30);
+  await choose('pca:0'); act.lvl = 3; act.outcome = 'hit'; act.dmg = '9'; logAction(hall, c); await wait(30);
   const u = (c.ups||[])[0];
   out.push('cast at 3rd: "' + c.log.slice(-1)[0].text + '" · slots ' + slots() + ' · up: ' + (c.ups||[]).map(x=>`${x.name} lvl ${x.lvl}, ${x.left} rounds, conc ${x.conc}, token ${x.thing} at ${c.pos[x.id] ? c.pos[x.id].x + ',' + c.pos[x.id].y : 'none'}`).join('; ') + ' · Wren concentrating on ' + ((W.conc||{}).name || 'nothing'));
   { const d = document.createElement('div'); d.innerHTML = `<svg>${renderBattle(true)}</svg>`; out.push('on the TV: ' + !!d.querySelector(`[data-tok="${u.id}"]`) + ' · on the DM map: ' + !!document.querySelector(`#bsvg [data-tok="${u.id}"]`)); }
   c.bonused = {}; renderBattlePanel(); await wait(20);
   out.push('choices: ' + [...document.querySelectorAll('#ac-what optgroup')].slice(0, 1).map(g=>g.label + ': ' + [...g.children].map(o=>o.textContent).join(' | ')).join(''));
   await choose('again:' + u.id); out.push('again: slot picker ' + !!document.querySelector('#ac-lvl') + ' · damage ' + actDice(c, combatants(c).find(t=>t.id==='pb'), actInfo(c, combatants(c).find(t=>t.id==='pb'))).dmgDice);
+  out.push('roll to hit on it: ' + ((document.querySelector('[data-acroll="hit"]')||{}).textContent || 'none'));
+  await choose('pca:0'); out.push("her attack line while it's up: slot picker " + !!document.querySelector('#ac-lvl') + ' · free ' + !!actInfo(c, combatants(c).find(t=>t.id==='pb')).free + ' · roll to hit ' + !!document.querySelector('[data-acroll="hit"]'));
+  await choose('again:' + u.id);
   act.outcome = 'hit'; act.dmg = '7'; logAction(hall, c); await wait(30); out.push('"' + c.log.slice(-1)[0].text + '" · slots ' + slots() + ' · still concentrating ' + ((W.conc||{}).name || 'nothing') + ', ' + (W.conc||{}).left + ' rounds');
   c.pos[u.id] = { x:5, y:3 }; out.push('moved to 5,3');
   undoAction(c); await wait(20); out.push('undo the again: up ' + (c.ups||[]).length + ', token at ' + c.pos[u.id].x + ',' + c.pos[u.id].y);

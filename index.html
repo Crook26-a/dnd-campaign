@@ -1541,6 +1541,9 @@ const libNpcById  = id => lib().npcs.find(p => p.id === id) || null;
 const SRD_FOES = (typeof SRD!=="undefined" && SRD.foes) || [], SRD_LOOT = (typeof SRD!=="undefined" && SRD.loot) || [];
 const SRD_FOE_BY = new Map(SRD_FOES.map(m=>[m.id,m])), SRD_LOOT_BY = new Map(SRD_LOOT.map(x=>[x.id,x]));
 const SRD_SPELLS = (typeof SRD!=="undefined" && SRD.spells) || [], SPELL_BY = new Map(SRD_SPELLS.map(s=>[s.id,s]));
+/* a spell its text says makes a spell attack is one, though the SRD data misses three (Joseph, 2026-10-30: Spiritual
+   Weapon wouldn't roll to hit; Arcane Hand and Conjure Fey too) */
+for(const s of SRD_SPELLS) if(!s.atk && /\bmakes?\s+(?:a|an|one)\s+(?:melee|ranged)\s+spell\s+attack/i.test(s.desc||"")) s.atk = true;
 /* a spell with no damage type that restores Hit Points is a healing spell */
 for(const s of SRD_SPELLS) s.heal = !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||"");
 /* the generator hands back a lone action as a bare pair and none as {}; one shape for the reader */
@@ -13622,6 +13625,10 @@ function actInfo(c, t){
     const a = ((t.p && pcState(t.p).attacks) || [])[+w.slice(4)] || {}, s = t.p && rowSpell(t.p, a);
     const hint = a.dmg ? { dice:+a.mod ? addDice(a.dmg, String(Math.round(+a.mod))) : a.dmg, dtype:String(a.dtype||"").toLowerCase() } : null;     // the line's own + (2026-10-30)
     /* a row that is one of their spells casts it: the slot is spent and it scales like the spell */
+    /* …unless it's up already (Joseph, 2026-10-30: Avery's "Spiritual Weapon (bonus action)" line kept taking a slot):
+       then the line is the spell used again, no slot */
+    const up = s && ((c && c.ups) || []).find(u=>u.owner===t.id && u.sp===s.id && u.again);
+    if(up) return { kind:"spell", name:s.name, spell:s, row:a, free:up.id, upLvl:up.lvl, ba:up.ba, save:!!s.save, atk:!!s.atk, heal:!!s.heal, hint };
     if(s) return { kind:"spell", name:s.name, spell:s, row:a, save:!!s.save || /DC|[A-Z]{3} \d+/.test(a.hit||""), atk:!!s.atk, heal:!!s.heal, hint };
     return { kind:"attack", name:a.name||"an attack", save:/DC/i.test(a.hit||""), hint };
   }
