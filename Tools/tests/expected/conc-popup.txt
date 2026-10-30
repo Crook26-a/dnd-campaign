@@ -1,0 +1,8 @@
+Wren concentrating on Bless · pop-up: no pop-up
+the ogre hits her for 13: pop-up: Wren is concentrating on Bless: Constitution save, DC 10 (13 damage) Roll (+2)Made itLost it
+on the TV: no save
+after the map redraws: Wren is concentrating on Bless: Constitution save, DC 10 (13 damage) Roll (+2)Made itLost it
+Roll: pop-up no pop-up · Wren keeps concentrating on Bless: made the Constitution save (d20 15 + 2 = 17 against DC 10)
+hit again: Wren is concentrating on Bless: Constitution save, DC 10 (4 damage) Roll (+2)Made itLost it
+map closed: pop-up no pop-up · the save is in actionbox
+page errors: 0

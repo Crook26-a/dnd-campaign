@@ -777,6 +777,7 @@
 
   /* ── the encounter (battle map) ── */
   #battle{position:absolute;inset:0;z-index:30;background:var(--paper-deep);display:flex;flex-direction:column}
+  #bt-conc{position:absolute;top:44px;left:50%;transform:translateX(-50%);z-index:5;width:min(440px,calc(100% - 32px));box-shadow:0 4px 16px rgba(0,0,0,.28)} #bt-conc[hidden]{display:none} #bt-conc .concask{margin:0 0 6px} #bt-conc .concask:last-child{margin:0}
   #battle[hidden]{display:none}
   .bt-head{display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--paper-lit);border-bottom:1px solid var(--rule)}
   .bt-head #bt-title{font-family:var(--serif);font-size:15px;color:var(--ink)}
@@ -7877,9 +7878,13 @@ function concRefreshRows(){
   for(const el of document.querySelectorAll("[data-concrow]")){ const o = concFind(el.dataset.concrow), s = o && o.h.conc;
     el.innerHTML = s ? concRowInner(s, el.dataset.concrow) : ""; }
 }
-/* the saves waiting, at the top of the Action box (or the room's panel, without one) */
+/* the saves waiting, at the top of the Action box (or the room's panel, without one); with the battle map open, popped up
+   over it (Joseph, 2026-10-30: "make the concentration pop up on the actual map for dm"). The DM's screen only: the TV
+   draws its own copy of the map */
 function concPaint(){
-  const box = document.getElementById("actionbox") && tableOn() ? document.getElementById("actionbox") : document.getElementById("pane-inspect");
+  const B = document.getElementById("battle"), pop = document.getElementById("bt-conc"), onMap = !!(battleOf && B && !B.hidden && pop);
+  const box = onMap ? pop : document.getElementById("actionbox") && tableOn() ? document.getElementById("actionbox") : document.getElementById("pane-inspect");
+  if(pop) pop.hidden = !(onMap && concAsks.length);
   let el = document.getElementById("concasks");
   if(!concAsks.length){ if(el) el.remove(); return; }
   if(!box) return;
@@ -12694,7 +12699,7 @@ function resizeBmap(n, w, h){
   return b;
 }
 document.getElementById("field").insertAdjacentHTML("beforeend",
-  `<div id="battle" hidden><div class="bt-head"><span id="bt-title"></span><span class="bt-hint">Drag tokens · drag the floor to pan · wheel to zoom · 1 square = 5 ft</span><button class="btn" id="bt-back">Back to the map</button></div><div id="bt-strip" hidden></div><svg id="bsvg"></svg><div id="bt-pop" hidden></div></div>`);
+  `<div id="battle" hidden><div class="bt-head"><span id="bt-title"></span><span class="bt-hint">Drag tokens · drag the floor to pan · wheel to zoom · 1 square = 5 ft</span><button class="btn" id="bt-back">Back to the map</button></div><div id="bt-strip" hidden></div><svg id="bsvg"></svg><div id="bt-pop" hidden></div><div id="bt-conc" hidden></div></div>`);
 const bnode = () => battleOf ? (battleOf.doc.nodes||[]).find(x=>x.id===battleOf.nodeId) : null;
 /* every spell name, for typing one in */
 document.body.insertAdjacentHTML("beforeend", `<datalist id="dl-spells"></datalist>`); refreshSpellList();
@@ -12783,6 +12788,7 @@ function closeBattle(quiet){
   battleOf = null; battleSel = null; bdrag = null; battleSpot = null;
   $("#battle").hidden = true;
   if(!quiet){ render(); renderPane(true); }
+  concPaint();                                    // any save still waiting goes back to the Action box
 }
 $("#bt-back").onclick = ()=>closeBattle();
 /* ══════════════════════════════════════════════════════════════
@@ -13060,6 +13066,7 @@ function renderBattle(players){
       <text text-anchor="middle" y="${BS*.42+11}" font-size="9" font-family="var(--serif)" fill="var(--ink)">held back</text></g>`; }
   if(players) return g;
   svgB.innerHTML = g;
+  concPaint();                                    // a concentration save waiting pops up over the map
   sendPlayers();
 }
 function bpoint(e){
