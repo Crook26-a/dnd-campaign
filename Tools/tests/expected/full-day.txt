@@ -6,6 +6,8 @@ at full: Fighter 832, Rogue 496, Wizard 867, Cleric 632, Warlock 470
 the references' middle pair, every day: 750, 750, 750, 750 (budget 750)
 Battle Master dice: at full 832 -> 1042 · now with them spent 832 · full day 1002 -> 1087
 Armor of Agathys (3rd-level pact slots): at full 470 -> 532 · full day 660 -> 674
+Second Wind: at full 832 -> 985
+Form of Dread: 470 -> 705 · a familiar: 470 -> 507 · the reference wizard keeps none: 867
 defaults: {"fights":4,"shorts":0}
 boxes: true true · set {"fights":7,"shorts":1} · root 7/1
 card: At full CR 2: tough like CR 1, hits like CR 3 470 XP · an estimate Now CR 2: tough like CR 1, hits like CR 3 470 XP · an estimate Full day CR 3: tough like CR 1, hits like CR 5 665 XP · an estimate

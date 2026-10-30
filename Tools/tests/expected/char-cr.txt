@@ -28,7 +28,7 @@ Bard 5, Bardic Inspiration (worth its die): 8.5 a round (CR 2: tough like CR 2, 
 concentration: both 17.6, Hex alone 17.6, Spirit Guardians alone 16.2, neither 13.1 (both = the better one, not the sum)
 a spell already running (opts.active, for concentration tracking later): no slots left 13.1, Hex already up 17.6
 cards: AT FULL CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate NOW CR 3: tough like CR 2, hits like CR 3 684 XP · an estimate FULL DAY CR 3: tough like CR 2, hits like CR 4 772 XP · an estimate
-AT FULL CR 6: tough like CR 3, hits like CR 10 2,474 XP · an estimate NOW CR 6: tough like CR 3, hits like CR 10 2,474 XP · an estimate FULL DAY CR 6: tough like CR 3, hits like CR 8 2,095 XP · an estimate
-Gawain at 12 HP, typed on his sheet: AT FULL CR 6: tough like CR 3, hits like CR 10 2,474 XP · an estimate NOW CR 5: tough like CR 1/4, hits like CR 10 1,532 XP · an estimate FULL DAY CR 6: tough like CR 3, hits like CR 8 2,095 XP · an estimate
+AT FULL CR 6: tough like CR 3, hits like CR 10 2,474 XP · an estimate NOW CR 6: tough like CR 3, hits like CR 10 2,474 XP · an estimate FULL DAY CR 6: tough like CR 3, hits like CR 9 2,204 XP · an estimate
+Gawain at 12 HP, typed on his sheet: AT FULL CR 6: tough like CR 3, hits like CR 10 2,474 XP · an estimate NOW CR 5: tough like CR 1/4, hits like CR 10 1,532 XP · an estimate FULL DAY CR 6: tough like CR 3, hits like CR 9 2,204 XP · an estimate
 Data tab: Level (the SRD 5.2 budget) / [Character CR (our estimate, for the full day)] · campaign set to cr
-strength of Avery and Gawain: by level 1500 XP, by character CR 2867 (High 4205); what a room was built for (2 × level 5, no ids) 1500
+strength of Avery and Gawain: by level 1500 XP, by character CR 2976 (High 4365); what a room was built for (2 × level 5, no ids) 1500

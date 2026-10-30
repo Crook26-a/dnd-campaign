@@ -2047,6 +2047,14 @@ function charCR(c, mode, opts){
     for(const g of gear.filter(g=>g.how==="ba")) bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < g.uses ? g.v(r) : 0)), conc:false });   // a carried thing as the bonus action
     for(const g of gear.filter(g=>g.hit && g.hit.ba)) bas.push({ r:[0, 1, 2].map(j=>Math.max(baW1, j < g.uses ? g.hit.avg * anyHit : 0)), conc:false });   // On a hit, as the bonus action
     const freeHit = [0, 1, 2].reduce((a, j)=>a + Math.max(0, ...gear.filter(g=>g.hit && !g.hit.ba && j < g.uses).map(g=>g.hit.avg * anyHit)), 0);   // On a hit, no action
+    /* (Joseph, 2026-10-30) Second Wind: a bonus action, heals 1d10 + fighter level (or the dice in its name), like healing */
+    const swRes = (c.res||[]).find(x=>/second wind/i.test(x.name||""));
+    if(swRes && (resLeft(/second wind/i) || 0) > 0) bas.push({ r:[crDiceAvg((/(\d+d\d+(?:\s*\+\s*\d+)?)/.exec(swRes.name||"")||[])[1] || `1d10+${lvIn(/fighter/i) || lv}`), baW1, baW1], conc:false });
+    /* Form of Dread (Undead warlock): a bonus action for the fight: 1d10 + warlock level temporary hit points (like
+       healing), and once a turn a hit can frighten (their DC, a Wisdom save): a frightened enemy deals about a quarter
+       less while it lasts (an estimate) */
+    if((resLeft(/form of dread/i) ?? 0) > 0){ const ebP = ebLine ? lineHit(ebLine, r) : 0, hitTurn = Math.max(anyHit, ebLine ? 1 - Math.pow(1 - ebP, cantripX) : 0);
+      const fr = hitTurn * crHit(prof + smod, r.ac) * r.dpr / 4; bas.push({ r:[5.5 + (lvIn(/warlock/i) || lv) + fr, baW1 + fr, baW1 + fr], conc:false }); }
     /* the reaction, each round: the best carried thing still with a use (a damage cut, …) */
     const react = [0, 1, 2].reduce((a, j)=>a + Math.max(0, ...gear.filter(g=>g.how==="re" && j < g.uses).map(g=>g.v(r))), 0);
     /* one concentration spell at most (one already running counts and blocks the rest) */
@@ -2066,7 +2074,13 @@ function charCR(c, mode, opts){
     let sup = 0;
     if(supN && bestW){ const die = (+((/d(\d+)/i.exec(supRes.name||"")||[])[1] || 8) + 1) / 2, rip = /riposte/i.test(textAll) ? Math.min(3, Math.floor(supN / 2)) : 0;
       sup = Math.min(supN - rip, 3 * n) * die * bestWHit + rip * .5 * (bestW + die * bestWHit); }
-    return (best + surge + react + freeHit + sup) / 3;
+    /* a familiar (Pact of the Chain, Find Familiar) takes the Help action each round: Advantage on one of their attacks,
+       worth p(1 - p) of a hit (three quarters: it has to get there and live; an estimate) */
+    let help = 0;
+    if(!c.ref && (/pact of the chain/i.test(textAll) || known.some(s=>/find familiar/i.test(s.name||"")))){
+      const p = ebLine ? lineHit(ebLine, r) : bestWHit, one = ebLine ? ebLine.avg / cantripX : (bestWHit ? bestW / bestWHit : 0);
+      help = 3 * p * (1 - p) * one * .75; }
+    return (best + surge + react + freeHit + sup + help) / 3;
   };
   if(opts && opts.wantExpect) return expect;                     // Full Day blends two of these (charCRDay)
   const tough = crTough(hp, ac), hits = crHits(expect), cal = CR_CAL[lv - 1] || 0;
@@ -2099,7 +2113,7 @@ function dayShare(c){
   const pact = K.length && K.every(k=>/warlock/i.test(k.cls));        // pact magic comes back on a short rest
   /* the uses in a day (n = refills: 1, or again for short-rest things) */
   const uses = n => slots * (pact ? n : 1)
-    + (c.res||[]).filter(r=>/action surge|bardic inspiration|superiority di/i.test(r.name||"")).reduce((a, r)=>a + (+r.max || 0) * (/short|one/i.test(r.rest||"") || (!r.rest && /action surge/i.test(r.name||"")) ? n : 1), 0)     // Action Surge: always a short rest
+    + (c.res||[]).filter(r=>/action surge|bardic inspiration|superiority di|second wind|form of dread/i.test(r.name||"")).reduce((a, r)=>a + (+r.max || 0) * (/short|one/i.test(r.rest||"") || (!r.rest && /action surge/i.test(r.name||"")) ? n : 1), 0)     // Action Surge: always a short rest
     + usableOf(c).reduce((a, x)=>a + (x.u.charges ? Math.floor(x.u.charges / (x.u.perUse || 1)) * (x.u.when==="rest" ? n : 1) : x.u.usedUp ? (+x.e.qty || 1) : 0), 0);
   const U = uses(again), U1 = uses(1); if(!(U1 > 0)) return 1;      // nothing runs out: every fight as at full
   return Math.min(1, U / D.fights / Math.min(DAY_USES, U1));         // a fight's plan needs no more than one refill holds (one Action Surge: one)
@@ -2141,7 +2155,7 @@ function charCRDay(c){
 function crRefChar(cls, L){
   const prof = profByLevel(L), pm = L >= 8 ? 5 : L >= 4 ? 4 : 3, con = 2, hd = { Fighter:10, Rogue:8, Wizard:6, Cleric:8 }[cls];
   const hp = hd + con + (L - 1) * (hd / 2 + 1 + con);
-  const c = { level:L, cls, hpMax:String(hp), hp:String(hp), attacks:[], spells:[], slots:[], res:[] };
+  const c = { level:L, cls, hpMax:String(hp), hp:String(hp), attacks:[], spells:[], slots:[], res:[], ref:true };     // ref: no familiar (the calibration predates it)
   if(cls==="Fighter"){ c.ac = L >= 5 ? "18" : "16"; c.attacks = [{ name:"Greatsword", hit:"+" + (prof + pm), dmg:"2d6+" + pm }]; c.res = [{ name:"Action Surge", max:1, used:0 }]; }
   if(cls==="Rogue"){ c.ac = String(12 + pm); c.attacks = [{ name:"Rapier", hit:"+" + (prof + pm), dmg:"1d8+" + pm }]; }
   if(cls==="Wizard" || cls==="Cleric"){

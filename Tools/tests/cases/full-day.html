@@ -22,6 +22,12 @@ setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); con
   out.push('Battle Master dice: at full ' + charCR(bm).xp + ' -> ' + charCR(bmD).xp + ' · now with them spent ' + charCR(bmS, 'now').xp + ' · full day ' + charCRDay(bm).xp + ' -> ' + charCRDay(bmD).xp);
   const wa = JSON.parse(JSON.stringify(wl)); wa.spells = [...wa.spells, 'lsp_agathys'];
   out.push('Armor of Agathys (3rd-level pact slots): at full ' + charCR(wl).xp + ' -> ' + charCR(wa).xp + ' · full day ' + charCRDay(wl).xp + ' -> ' + charCRDay(wa).xp);
+  /* Second Wind (a bonus action heal), Form of Dread (temp HP and frightening hits), a familiar's Help */
+  const fw = JSON.parse(JSON.stringify(bm)); fw.res.push({ name:"Second Wind (1d10+5)", max:1, used:0, rest:"short" });
+  out.push('Second Wind: at full ' + charCR(bm).xp + ' -> ' + charCR(fw).xp);
+  const dr = JSON.parse(JSON.stringify(wl)); dr.res = [{ name:"Form of Dread", max:3, used:0, rest:"long" }];
+  const fm = JSON.parse(JSON.stringify(wl)); fm.notes = "Pact of the Chain";
+  out.push('Form of Dread: ' + charCR(wl).xp + ' -> ' + charCR(dr).xp + ' · a familiar: ' + charCR(wl).xp + ' -> ' + charCR(fm).xp + ' · the reference wizard keeps none: ' + charCR(crRefChar('Wizard', 5)).xp);
   /* the settings: Data → This campaign, and a card */
   delete root.dayFights; delete root.dayShorts; out.push('defaults: ' + JSON.stringify(daySet()));
   pane = 'data'; syncTabs(); renderPane(true); await wait(40);

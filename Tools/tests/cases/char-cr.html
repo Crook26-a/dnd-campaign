@@ -8,7 +8,7 @@ const __AG = {"chars":[{"id":"pc1","name":"Avery de Vonn","player":"Rebekah","sp
 function refChar(cls, L){
   const prof = profByLevel(L), pm = L >= 8 ? 5 : L >= 4 ? 4 : 3, con = 2, hd = { Fighter:10, Rogue:8, Wizard:6, Cleric:8 }[cls];
   const hp = hd + con + (L - 1) * (hd / 2 + 1 + con);
-  const c = { level:L, cls, hpMax:String(hp), hp:String(hp), attacks:[], spells:[], slots:[], res:[] };
+  const c = { level:L, cls, hpMax:String(hp), hp:String(hp), attacks:[], spells:[], slots:[], res:[], ref:true };     // like the app's crRefChar: no familiar
   if(cls==="Fighter"){ c.ac = L >= 5 ? "18" : "16"; c.attacks = [{ name:"Greatsword", hit:"+" + (prof + pm), dmg:"2d6+" + pm }]; c.res = [{ name:"Action Surge", max:1, used:0 }]; }
   if(cls==="Rogue"){ c.ac = String(12 + pm); c.attacks = [{ name:"Rapier", hit:"+" + (prof + pm), dmg:"1d8+" + pm }]; }
   if(cls==="Wizard" || cls==="Cleric"){
