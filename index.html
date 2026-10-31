@@ -8946,6 +8946,7 @@ function libForm(cat, x){
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">On a hit: its own choice in a fight's action form, made after a hit (the Items group: "after a hit"); Roll rolls its dice, and the log spends a charge and heals them. Charges back "By paying hit points": a button takes that many hit points for each charge.</p>
           <p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Damage above counts too when it's used (a bomb, a wand). Charges come back by themselves: at dawn when the day count moves on (Next, or typing a later day), or when whoever carries it finishes that rest (the Action box's "Takes a rest", or Rest on the Party tab). The game log says so.</p></details>`; })()}`;
   }
+  if(!draft && cat==="loot") h += libGiveRow(x.id);
   if(!draft && CARD_CATS.includes(cat)) h += `<div class="pcrow" style="margin:0 0 8px">${cardBtn(cat, x.id, "Card for the players")}</div>`;
   h += ta("notes","Notes");
   if(cat==="spells" && !draft){
@@ -9239,11 +9240,34 @@ function cardGive(){
   const at = cardKey.indexOf(":"), cat = cardKey.slice(0, at), x = cardFind(cat, cardKey.slice(at+1));
   const c = [...partyRoster(), ...companions()].find(p=>p.id===s.value); if(!c || !x) return;
   if(cat==="spells"){ c.spells = c.spells || []; if(c.spells.includes(x.id)){ cardSay(`${c.name||"They"} already know${c.name?"s":""} ${x.name}.`, false); return; } c.spells.push(x.id); }
-  else { c.inv = Array.isArray(c.inv) ? c.inv : []; c.inv.push({ id:x.id, qty:1, at:today() }); }
+  else { const from = giveLoot(c, x); saveParty(); renderPane(true); if(drawerPane) renderNamedPane(drawerPane);
+    cardSay(`${x.name} is in ${c.name||"their"}${c.name?"'s":""} inventory, card and all${from ? ` (taken from ${from})` : ""}.`); return; }
   saveParty(); renderPane(true); if(drawerPane) renderNamedPane(drawerPane);
-  cardSay(cat==="spells" ? `${c.name||"They"} can cast ${x.name} now (their Spells).` : `${x.name} is in ${c.name||"their"}${c.name?"'s":""} inventory, card and all.`);
-  gameLog("pic", cat==="spells" ? `${c.name||"Someone"} learned ${x.name}` : `${c.name||"Someone"} got ${x.name}`);
+  cardSay(`${c.name||"They"} can cast ${x.name} now (their Spells).`);
+  gameLog("pic", `${c.name||"Someone"} learned ${x.name}`);
 }
+/* an item from the Library into someone's inventory. If it's lying in just one place, it comes out of there, so it
+   can't be handed out twice (Joseph, 2026-10-31); in more than one (a healing potion) or none, it's a new one */
+function giveLoot(c, x){
+  const holds = []; for(const nodes of [root.nodes||[], ...Object.values(plans).map(P=>P.nodes||[])]) for(const n of nodes)
+    if(n.site && (n.site.items||[]).includes(x.id) && !(n.shop && (n.shop.items||[]).includes(x.id))) holds.push(n);
+  let from = "";
+  if(holds.length===1){ const n = holds[0], st = n.site; st.items.splice(st.items.indexOf(x.id), 1); forgetItem(st, x.id); from = placeLabel(n); touch(); }
+  c.inv = Array.isArray(c.inv) ? c.inv : []; c.inv.push(Object.assign({ id:x.id, qty:1, at:today() }, from ? { from } : {}));
+  gameLog("loot", `${c.name||"Someone"} got ${x.name}${from ? ` (from ${from})` : ""}`);
+  return from;
+}
+/* Give it to… right on an item in the Library (Joseph, 2026-10-31: it was only inside "Card for the players", and he
+   couldn't find it). The name picked stays picked until the button, as on the card */
+const libGiveRow = id => { const who = [...partyRoster(), ...companions()]; return who.length ? `<div class="pcrow" style="margin:0 0 8px"><select data-libgiveto="${esc(String(id))}" style="flex:1;min-width:0" aria-label="Who gets it"><option value="">Give it to…</option>${who.map(p=>`<option value="${p.id}">${esc(p.name||"Someone")}</option>`).join("")}</select><button class="btn" data-libgive="${esc(String(id))}">Give</button></div>` : ""; };
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-libgive]"); if(!b) return;
+  const s = b.parentElement.querySelector("[data-libgiveto]"), x = libLootById(b.dataset.libgive); if(!x) return;
+  if(!s || !s.value){ flash("Pick who gets it first."); if(s) s.focus(); return; }
+  const c = [...partyRoster(), ...companions()].find(p=>p.id===s.value); if(!c) return;
+  const from = giveLoot(c, x); saveParty(); renderPane(true); if(drawerPane) renderNamedPane(drawerPane);
+  flash(`${x.name} is in ${c.name||"their"}${c.name?"'s":""} inventory${from ? ` (taken from ${from})` : ""}.`);
+});
 document.addEventListener("click", e=>{
   const o = e.target.closest && e.target.closest("[data-cardopen]");
   if(o){ e.preventDefault(); e.stopPropagation(); openCard(o.dataset.cardopen); return; }
@@ -9323,6 +9347,7 @@ function renderLibList(){
               <p class="grouplab">Used at</p>${used.length
                 ? used.map(u=>`<button class="libgo" data-libgo="${u.plan||""}|${u.node}">${esc(u.name)}${u.host?` <small>in ${esc(u.host)}</small>`:""}</button>`).join("")
                 : `<p class="empty-note" style="margin:0 0 8px">Not placed anywhere yet.</p>`}
+              ${libTab==="loot" ? libGiveRow(x.id) : ""}
               ${CARD_CATS.includes(libTab) ? `<div class="pcrow" style="margin-top:8px">${cardBtn(libTab, x.id, "Card for the players")}</div>` : ""}
               <button class="btn wide" data-libcopy="${x.id}" style="margin-top:8px">Copy to my library to change it</button></div>`:""}</div>`; }).join("")
       + (match.length > page.length ? `<p class="empty-note">${(match.length-page.length).toLocaleString()} more — search to narrow it down${libTab==="foes"?` (try a name, a type like "dragon", or "cr 2")`:` (try a name, "rare", or "weapon")`}.</p>` : "")
@@ -10143,7 +10168,7 @@ function lootHere(n, st, reg){
         return `<div class="librow${partySize()>1?" give":""}"><span><span class="libref" data-libopen="loot:${baseId(id)}">${x?esc(x.name):"<i>missing from the library</i>"}</span>${x&&lootLabel(x)?` <small>· ${esc(lootLabel(x))}</small>`:""}${lootWhere(n, st, id)}${x ? " " + cardBtn("loot", baseId(id)) : ""}
             ${shown ? (dc?`<small class="ivst found">found</small>`:"") : hidTag(dc)}${dc ? ` <button class="btn small${shown ? " on" : ""}" data-wh="found" data-id="${esc(id)}" title="${shown ? "Not found after all: hidden again" : "They found it"}">${shown ? "Found" : "Mark found"}</button>` : ""}
             <select class="pl-dc" data-gi="${i}" title="How hard it is to find. Plain sight: the players can just take it.">${dcOptions(dc)}</select></span>
-          ${partySize()>1 ? (shown ? `<select class="giveto" data-gi="${i}" title="Hand it to a character"><option value="">Give to…</option>${who}</select>` : `<span class="ivst" style="text-align:center">not found</span>`) : ""}
+          ${partySize()>1 ? `<select class="giveto" data-gi="${i}" title="${shown ? "Hand it to a character" : "Hand it over: they found it however they did"}"><option value="">Give to…</option>${who}</select>` : ""}
           <button class="fdel" data-plitemdel="${i}" title="Remove">×</button></div>`; }).join("")
     + (st && searched ? `<div class="ivlog">Searched by ${st.searches.map(s=>`${esc(s.who)} <b>${s.roll}</b>`).join(", ")}</div>` : "")
     + (st ? placeSearchBox(st) : "")
@@ -10173,7 +10198,8 @@ function wireLootHere(el, n, st, redraw){
   const cdc = el.querySelector("#pl-cdc"); if(cdc) cdc.onchange = ()=>{ const v = +cdc.value||0; if(v) st.coinDc = v; else delete st.coinDc; delete st.coinFound; touch(); redraw(); };
   const csp = el.querySelector("#pl-coinsplit");
   if(csp) csp.onclick = ()=>{ partyDoing("Coin split"); const said = splitCoins(st.coins); delete st.coins; saveParty(); touch(); redraw(); flash(`${said} split among the party.`); };
-  el.querySelectorAll(".giveto").forEach(s=>s.onchange = ()=>{
+  /* a hidden one too (Joseph, 2026-10-31: "I couldn't find the give to thing for some of them"): handing it over says they found it */
+  el.querySelectorAll(".giveto[data-gi]").forEach(s=>s.onchange = ()=>{
     const p = partyRoster().find(q=>q.id===s.value); if(!p) return;
     const id = n.site.items.splice(+s.dataset.gi,1)[0]; if(!id) return; forgetItem(n.site, id);
     partyDoing(`${(libLootById(id)||{}).name||"Item"} given`, p);
@@ -12528,8 +12554,11 @@ function spotPanel(n){
     return `<div class="spotbox">${head}
       <div class="pcrow" style="align-items:center"><button class="btn" data-spot="door">${shut?"Open it":"Shut it"}</button><small style="flex:1">${shut?"Shut: blocks sight and light, so what's beyond is hidden":"Open"}</small></div>
       ${lockBlock(lock, "spot")}</div>`; }
-  const ids = spotItems(st, battleSpot), pcs = partySize()>1 && !lock ? partyRoster() : [];   // nobody takes anything out of a locked one
+  const ids = spotItems(st, battleSpot), pcs = partySize()>1 && !lock ? partyRoster() : [];   // nobody searches a locked one or splits its coin
   const who = pcs.map(p=>`<option value="${p.id}">${esc(p.name||"Character")}</option>`).join("");
+  /* but you can always hand what's in it over, hidden or locked: they found it, they got it open (Joseph, 2026-10-31:
+     no Give to on the verse in the wardrobe or the wand in Corvin's strongbox) */
+  const giveWho = partySize()>1 ? partyRoster().map(p=>`<option value="${p.id}">${esc(p.name||"Character")}</option>`).join("") : "";
   const pile = (st.coinsAt||{})[spotKey(battleSpot)] || {}, gp = purseGp(pile), pshown = pileShown(pile);
   const coins = `<p class="grouplab" style="margin:8px 0 3px">Coins ${gp ? `<small>${pshown ? (pile.dc?"found":"in plain sight") : `hidden · DC ${pile.dc}`}</small>` : ""}</p>
     <div class="purse">${COINS.map(([k,l])=>`<label title="${l} pieces">${k}<input data-spcoin="${k}" type="number" min="0" value="${pile[k]||""}" placeholder="0"></label>`).join("")}<span class="ptotal">= ${fmtGp(gp)} gp</span></div>
@@ -12545,11 +12574,11 @@ function spotPanel(n){
   return `<div class="spotbox">${head}
     ${hideRow}
     ${lockBlock(lock, "spot")}
-    ${lock ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">Locked: get it open before anyone searches it or takes anything out.</p>` : ""}
+    ${lock ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">Locked: get it open before anyone searches it. Give to… hands something over once they're in.</p>` : ""}
     ${ids.length ? ids.map(id=>{ const x = libLootById(id), shown = itemShown(st, id), dc = itemDc(st, id), many = (st.items||[]).filter(y=>y===id).length;
         return `<div class="adrow"><span>${esc(x?x.name:id)}${many>1?` <b>×${many}</b>`:""}<br><small>${shown ? (dc?"found":"in plain sight") : `hidden · DC ${dc}`}</small></span>
           <select class="giveto" data-spotdc="${esc(id)}" title="How hard it is to find">${dcOptions(dc)}</select>
-          ${shown && who ? `<select class="giveto" data-spotgive="${esc(id)}"><option value="">Give to…</option>${who}</select>` : ""}
+          ${giveWho ? `<select class="giveto" data-spotgive="${esc(id)}"><option value="">Give to…</option>${giveWho}</select>` : ""}
           <button class="fdel" data-spot="del" data-id="${esc(id)}" title="Take it out">×</button></div>`; }).join("")
       : `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">Empty.</p>`}
     <div class="pcrow" style="margin-top:6px"><select class="sp-add" style="flex:1;min-width:0"><option value="">Put something in it…</option>${lootOptions("")}</select></div>
