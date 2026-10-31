@@ -361,3 +361,9 @@ Corvin coming apart resists "acid, ... thunder (everything but radiant and force
 
 ## 2026-10-30: a scene creature that comes only with a flag
 A scene setup's creature can carry ifAny: [flag ids]; ▶ Set the scene brings it only if one of those flags is ticked. Ashgrave's finale: the second specter has ifAny chandelier broken / elixir ruined, so the Unfinished Lich fights with the armor and one specter (Joseph: "they need a chance"). Checked on the one-shot file for all three versions.
+
+## 2026-10-31: after the one-shot (Joseph's save)
+- Next round on the turn strip, after everyone (Joseph: "the button for the next round at the end of the scroll bar with the people"): data-ts="round", newRound. Turns given with ▶ never reached a new round, so every fight logged as 1 round and per-round things never counted on.
+- Searching with nobody on the open battle map: placeSeer gave a character with no square no sight at all (Gawain's 20 in the library found nothing); now they can find anything, as with no map open.
+- Targets: for an attack or a save, the actor's own "themself" chip comes last, not first. A roll to hit keeps its target (act.toHit.tg): changing the first target drops it ("roll to hit again"), and the logged line uses it only for that target. Logging an attack on themself asks first (a Specter's Life Drain was rolled against Bennus and landed on itself).
+- Opportunity attacks for a character without a stat block: meleeRow picks their melee line (a bonus to hit; not a spell, add-on, bonus action or bow; Great Weapon Master, thrown, then unarmed only if nothing better), with its damage type and what they carry riding on it; picking Opportunity attack by hand does the same, as a reaction (Gawain's and Avery's were +0 with no type).

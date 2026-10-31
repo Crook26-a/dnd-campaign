@@ -10056,13 +10056,14 @@ function searchPlace(st, roll, n, o){
   return got;
 }
 /* who can see which squares: on this place's open battle map, each party member sees what their own view does
-   (walls, shut doors, light, darkvision); with no map open, anyone can find anything */
+   (walls, shut doors, light, darkvision); with no map open, or not on it themselves, anyone can find anything
+   (Joseph, 2026-10-31: Gawain's 20 in the library found nothing, as no one had been put on its map) */
 function placeSeer(n){
   const all = () => true;
   if(!battleOf || battleOf.nodeId!==n.id || editingInside()) return ()=>all;
   const st = n.site, c = st && st.combat, bm = bmapOf(n); if(!c || !bm.rows || c.layout==="lineup") return ()=>all;
   const light = lightGrid(bm, st, c), ts = combatants(c);
-  return p => { const t = ts.find(x=>x.p && x.p.id===p.id && isMember(x)); if(!t || !c.pos || !c.pos[t.id]) return ()=>false;
+  return p => { const t = ts.find(x=>x.p && x.p.id===p.id && isMember(x)); if(!t || !c.pos || !c.pos[t.id]) return all;
     const g = viewGrid(bm, st, c, light, t); return k => { const [x, y] = k.split(",").map(Number); return x<BW && y<BH && g[y*BW+x] >= 1; }; };
 }
 /* everyone who searched, each with their own roll and their own view; logged as one search */
@@ -13584,6 +13585,18 @@ function reachSq(t){
   for(const [, text] of foeEntries(sb)){ const m = /reach (\d+) ft/i.exec(String(text||"")); if(m) best = Math.max(best, +m[1]); }
   return Math.max(1, Math.round(best/5));
 }
+/* a character's opportunity attack is made with their melee weapon (Joseph, 2026-10-31: Gawain's and Avery's were rolled
+   at +0, with no damage type): the first attack line with a bonus to hit that isn't a spell, an add-on, a bonus action
+   or a bow; a line that's only sometimes worth it (Great Weapon Master's -5) or thrown, then unarmed, only if nothing else */
+function meleeRow(p){
+  const A = pcState(p).attacks || [];
+  const rank = a => { const nm = String(a.name||"");
+    if(!a || a.addon || !/^\s*[+-]?\d+\s*$/.test(String(a.hit||"")) || rowSpell(p, a) || /bonus action|off-hand/i.test(nm)) return -1;
+    if(/\b(bow|shortbow|longbow|crossbow|sling|blowgun)\b/i.test(nm) || (/\(\d+\/\d+\)/.test(nm) && !/melee|thrown/i.test(nm))) return -1;
+    return /unarmed/i.test(nm) ? 3 : /great weapon master|-5/i.test(nm) ? 2 : /thrown|\d+\/\d+/i.test(nm) ? 1 : 0; };
+  let best = -1, bestR = 9; A.forEach((a, i)=>{ const r = rank(a); if(r >= 0 && r < bestR){ best = i; bestR = r; } });
+  return best;
+}
 /* set the action form up for a reaction — an opportunity attack unless you pick something else */
 function startReaction(c, reactorId, targetId){
   const t = combatants(c).find(x=>x.id===reactorId); if(!t) return;
@@ -13594,7 +13607,12 @@ function startReaction(c, reactorId, targetId){
     const hint = melee && hintFromText(melee[1]); if(hint && DAMAGE_TYPES.includes(hint.dtype)) act.dtype = hint.dtype;
   } else {
     const melee = pcStatBlock(t.p) && foeEntries(pcStatBlock(t.p)).find(([, text])=>/Melee (Weapon )?Attack/i.test(String(text||"")));
-    act.what = melee ? `wsa:${melee[0]}` : "atk:Opportunity attack";
+    const row = melee ? -1 : meleeRow(t.p);
+    act.what = melee ? `wsa:${melee[0]}` : row >= 0 ? `pca:${row}` : "atk:Opportunity attack";
+    if(row >= 0){ const a = pcState(t.p).attacks[row], dt = String(a.dtype||"").toLowerCase(); if(DAMAGE_TYPES.includes(dt)) act.dtype = dt;
+      /* what they carry rides on it as on any swing (the Flame Tongue's fire, once lit) */
+      const info = actInfo(c, t), lit = (c.lit || {})[reactorId] || {};
+      act.addons = attackAddons(t).filter(x=>x.key.startsWith("inv:") && extraFits(x, act.what, info && info.name) && (!x.cond || lit[x.key]) && !new RegExp(`\\b${x.dtype}\\b`, "i").test(dt)).map(x=>x.key); }
   }
   if(targetId) act.targets = [targetId];
   battleSel = reactorId;
@@ -13964,7 +13982,7 @@ function actionForm(c, all){
       <div class="acttargets">${D.addons.map(a=>{ const on = (act.addons||[]).includes(a.key), used = a.once && addonUsed(c, t.id, a.key);
         return `<button class="chip${on?" on":""}" data-addon="${esc(a.key)}" ${used&&!on?"disabled":""} title="${esc(a.note||(a.once?"Once a turn":""))}">${esc(a.name)}${a.dice?` +${esc(a.dice)}${a.dtype && D.part1 && a.dtype!==D.part1.dtype ? ` ${esc(a.dtype)}` : ""}`:""}${a.adv?" · Advantage":""}${a.once?(used?" · used this turn":" · once a turn"):""}</button>`; }).join("")}</div>` : ""}
     <label class="grouplab" style="margin-top:4px">Targets</label>
-    <div class="acttargets">${[...all.filter(x=>x.id===act.actor), ...all.filter(x=>x.id!==act.actor)].map(x=>`<button class="chip${act.targets.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt="${x.id}" data-side="${x.side}">${x.id===act.actor ? `themself (${esc(x.label)})` : esc(x.label)}</button>`).join("")}</div>
+    <div class="acttargets">${(me=>isAttackAct(info) || (info && info.save) ? [...all.filter(x=>x.id!==act.actor), ...me] : [...me, ...all.filter(x=>x.id!==act.actor)])(all.filter(x=>x.id===act.actor)).map(x=>`<button class="chip${act.targets.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt="${x.id}" data-side="${x.side}">${x.id===act.actor ? `themself (${esc(x.label)})` : esc(x.label)}</button>`).join("")}</div>
     <div class="actout">${OUTCOMES.map(([v,l])=>`<label><input type="radio" name="ac-out" value="${v}" ${act.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
     ${toHitRow(c, t, info, all)}
     ${saveRow(c, t, info, all)}
@@ -14032,6 +14050,8 @@ function logAction(n, c){
   const all = combatants(c), actor = all.find(x=>x.id===act.actor); if(!actor || !act.what) return;
   const info = actInfo(c, actor); if(!info) return;
   const targets = act.targets.map(id=>all.find(x=>x.id===id)).filter(Boolean);
+  /* attacking themself is nearly always a slip of the finger (2026-10-31: a Specter's Life Drain landed on itself) */
+  if(isAttackAct(info) && targets.some(t=>t.id===actor.id) && !confirm(`${actor.label} is attacking themself. Log it anyway?`)) return;
   /* what rode on it, and a second part (Ice Knife's explosion) with its own targets */
   const D = actDice(c, actor, info), p2 = D.part2 && act.p2 ? act.p2 : null;
   const targets2 = p2 ? (p2.targets || act.targets).map(id=>all.find(x=>x.id===id)).filter(Boolean) : [];
@@ -14140,7 +14160,7 @@ function logAction(n, c){
     + (targets.length ? ` on ${hits.map(h=>h.label).join(", ")}` : "")
     + (out ? ` — ${out}` : "")
     + (svW ? ` (saves: ${svW})` : "")
-    + (act.toHit && act.toHit.v===act.outcome ? ` (${act.toHit.said.replace(/^To hit: /, "to hit: ")})` : "")
+    + (act.toHit && act.toHit.v===act.outcome && (!act.toHit.tg || act.toHit.tg===act.targets[0]) ? ` (${act.toHit.said.replace(/^To hit: /, "to hit: ")})` : "")
     + (dmg && act.outcome!=="miss" && (!targets.length || hits.some(h=>h.dmg > 0)) ? `, ${byT || new Set(hits.map(h=>h.dmg)).size > 1 ? hits.map(h=>`${h.label} ${h.dmg}`).join(", ") : dmg}${dtypeW ? ` ${dtypeW}` : ""} damage${targets.length>1 && !byT && new Set(hits.map(h=>h.dmg)).size <= 1 ? " each" : ""}${rolledW("dmg", act.dmg)}` : "")
     + (D.temp && heal ? (tempGot.length ? `, ${tempGot.join(", ")} ${tempGot.length > 1 ? "have" : "has"} ${heal} temporary hit points${rolledW("heal", act.heal)}` : `, ${heal} temporary hit points (no more than they had)`) : "")
     + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
@@ -14425,6 +14445,8 @@ function renderBattlePanelNow(){
   { const bo = $("#ac-bonus"); if(bo) bo.onchange = ()=>{ act.bonus = bo.checked; }; }     // said by hand: kept till the action changes
   $("#ac-what").onchange = e=>{
     keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.saves; delete act.saveDC; delete act.bonus; delete act.hitBonus; delete act.toHit; act.d20 = "";
+    /* Opportunity attack picked by hand: made with their melee weapon, as a reaction, as when the map offers one */
+    if(act.what==="atk:Opportunity attack"){ const T = act.targets; startReaction(c, act.actor, null); act.targets = T; if(act.what!=="atk:Opportunity attack"){ renderBattlePanel(); return; } }
     /* Multiattack: its attacks in a row, the first one now (2026-10-30); Eldritch Blast's beams and Scorching Ray's rays the same.
        Changing what one of them is, mid-way, keeps the row */
     { const t0 = all.find(x=>x.id===act.actor);
@@ -14448,7 +14470,10 @@ function renderBattlePanelNow(){
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
   const lv = $("#ac-lvl"); if(lv) lv.onchange = ()=>{ act.lvl = +lv.value; redraw(); };
-  el.querySelectorAll("[data-actt]").forEach(b=>b.onclick = ()=>{ keep(); const id = b.dataset.actt; act.targets = act.targets.includes(id) ? act.targets.filter(x=>x!==id) : [...act.targets, id]; renderBattlePanel(); });
+  el.querySelectorAll("[data-actt]").forEach(b=>b.onclick = ()=>{ keep(); const id = b.dataset.actt; act.targets = act.targets.includes(id) ? act.targets.filter(x=>x!==id) : [...act.targets, id];
+    /* a roll to hit was against one target's AC: another target, roll again (2026-10-31: a Specter's roll against Bennus was logged on the Specter itself) */
+    if(act.toHit && act.toHit.tg!==act.targets[0]){ delete act.toHit; flash("The target changed: roll to hit again."); }
+    renderBattlePanel(); });
   /* the second part's targets start as the first part's, then go their own way once one is clicked */
   el.querySelectorAll("[data-actt2]").forEach(b=>b.onclick = ()=>{ keep(); if(!act.p2) return; const id = b.dataset.actt2, T = act.p2.targets || [...act.targets];
     act.p2.targets = T.includes(id) ? T.filter(x=>x!==id) : [...T, id]; renderBattlePanel(); });
@@ -14520,7 +14545,7 @@ function renderBattlePanelNow(){
       const how = mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${act.adv ? "" : " (an effect on them)"}: ${d}` : `d20 ${d}`;
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
-      act.outcome = out; act.toHit = { v:out, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
+      act.outcome = out; act.toHit = { v:out, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
       D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
@@ -17021,7 +17046,9 @@ function renderTurnStrip(){
     const foe = t.kind==="foe", down = foe && t.x.max!=null && t.x.hp<=0, pct = foe && t.x.max ? Math.max(0, Math.min(100, Math.round(100*t.x.hp/t.x.max))) : null;
     const cls = ["ts-c", t.side==="party" ? "pc" : foe ? "foe" : "npc", t.id===c.turn ? "now" : "", battleSel===t.id ? "sel" : "", down ? "down" : "", t.fled ? "fled" : "", S[t.id] ? "hid" : ""].filter(Boolean).join(" ");
     return `<span class="${cls}" title="${esc(t.label)}${S[t.id] ? " (hidden)" : ""}${down ? " (down)" : ""}${t.fled ? " (fled)" : ""}"><span class="ts-i">${t.init ?? "–"}</span><button class="ts-n" data-ts="pick" data-id="${t.id}" title="Open their card">${esc(stripName(t))}</button>${pct!=null ? `<span class="ts-hp"><span class="${pct < 50 ? "lo" : ""}" style="width:${pct}%"></span></span>` : ""}<button class="ts-go" data-ts="turn" data-id="${t.id}" title="Their turn now">▶</button></span>`;
-  }).join("");
+  }).join("")
+    /* and Next round after the last of them (Joseph, 2026-10-31: turns given with ▶ never reached a new round) */
+    + `<button class="btn small ts-next" data-ts="round" title="Round ${c.round + 1}: concentration, spells that stay up and once-a-round uses count on" style="margin:0 0 0 4px">Next round ⏭</button>`;
   const cur = el.querySelector(".ts-c.now");                // keep whoever's turn it is in view when the strip scrolls
   if(cur && (cur.offsetLeft < el.scrollLeft || cur.offsetLeft + cur.offsetWidth > el.scrollLeft + el.clientWidth)) el.scrollLeft = Math.max(0, cur.offsetLeft - 90);
 }
@@ -17040,6 +17067,7 @@ document.addEventListener("click", e=>{
   const a = b.dataset.ts;
   if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
   if(a==="next"){ if(!nextTurn(c)) return; }
+  else if(a==="round"){ newRound(c); flash(`Round ${c.round}.`); }
   else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); }
   touch(); renderBattle(); renderBattlePanel();
 });
@@ -19703,7 +19731,7 @@ function setScene(d, key){
         const st0 = siteOf(n);
         if(st0.combat && (calmOf(st0.combat) || confirm(`A fight is under way at ${placeLabel(n)}. Start this scene's map fresh?`))) delete st0.combat;
         openBattle(n); const c = n.site.combat; c.fromScene = key;
-        /* a creature with ifAny comes only if one of those flags is ticked (Joseph, 2026-10-30: the lich's finale without the armor and a specter) */
+        /* a creature with ifAny comes only if one of those flags is ticked (Joseph, 2026-10-30: the lich's finale with one specter, not two) */
         const want = {}; for(const f of (s.foes||[]).filter(f=>!Array.isArray(f.ifAny) || f.ifAny.some(flagOn))) (want[f.id] = want[f.id] || []).push(f);
         for(const [id, list] of Object.entries(want)){
           const have = c.list.filter(x=>x.foe===id && !(x.max!=null && x.hp<=0) && !x.fled);
