@@ -1,0 +1,22 @@
+by itself: hypnotic-pattern full/any, suggestion order/theirs, command order, dominate-person turn, sleep full/any, charm-person half/theirs, hold-person full, fireball none
+order: Gawain, Wren, Bathilda, Ogre 1, Ogre 2 · an ogre a round 13, Gawain 22.2
+pattern: Wren casts Hypnotic Pattern on Ogre 1, Ogre 2 (saves: x; x). Ogre 1 is held. · holds ["ogre1"]
+form: Held now: Ogre 1 (Wren's Hypnotic Pattern: held) End
+ogre 1's turn: Ogre 1 is held by Wren's Hypnotic Pattern (13 control). · Wren control 13
+again, same turn: Ogre 1 is held by Wren's Hypnotic Patter · Wren control 13
+Gawain hits it: Gawain makes a Greatsword on Ogre 1 — hits, 9 damage. The damage shakes Ogre 1 out of it. · held false
+command: Wren casts Command on Ogre 2 — save failed (saves: x). Ogre 2 is made to do something else.
+ogre 2's turn: Ogre 2 is made to do something else by Wren's Command (19.5 control). · Wren control 32.5 · held after false
+a plain attack shows Control: false
+by hand: Wren uses whispers to it on Ogre 2. Ogre 2 is turned on their own side.
+ogre 2's turn: Ogre 2 is turned on their own side by Wren's whispers to it (26 control). · Wren control 58.5
+undo that turn: Wren control 32.5, held again true
+Bathilda, turned: Bathilda casts Suggestion on Gawain — save failed (saves: x). Gawain is made to do something else. · she concentrates on Suggestion
+Gawain's turn: Gawain is made to do something else by Bathilda's Suggestion (33.3 control). · Bathilda control 33.3
+she blasts him: Bathilda casts Eldritch Blast on Gawain — hits, 10 damage. The damage shakes Gawain out of it. · her dealt 10
+due: pool 900, turned ["pc"] · ctrl pa 0, pb 32.5, pc 33.3
+card: XP FOR THE FIGHT AT THE HALL 900 XP from the foes brought down, split 2 ways (Bathilda, turned against them, only by how they fought), plus 180 XP more (20%) shared by how they fought, and 50 XP × level for each critical hit (your table rule). SHARE DMG KILLS HEAL AIM CTRL CRIT TOTAL Gawain 450 +60 +0 +0 +0 +0 +0 Wren 450 +0 +0 +0 +0 +30 +0 Bathilda 0 +32 +0 +0 +0 +15 +0 Award these Even split ×
+holds after: null
+board: Kept the most out of the fight★Bathilda332Wren33
+settings: true true
+page errors: 0

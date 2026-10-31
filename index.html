@@ -7463,7 +7463,7 @@ const nextLevelXP = c => clampLv(c.level) >= 20 ? null : XP_LEVELS[clampLv(c.lev
    (half), never below the XP they had when the session started. Every number is a setting
    (root.xpRules), shown in the Party tab.
    ══════════════════════════════════════════════════════════════ */
-const XP_RULES_DEFAULT = { bonus:20, crit:50, heal:1, w:{ dealt:40, kills:25, healed:20, aim:15 }, checks:{ on:true, perPoint:3, upTo:10, past:1, missPct:50, nat20:50 }, v:2 };
+const XP_RULES_DEFAULT = { bonus:20, crit:50, heal:1, w:{ dealt:40, kills:25, healed:20, aim:15, ctrl:20 }, checks:{ on:true, perPoint:3, upTo:10, past:1, missPct:50, nat20:50 }, v:2 };
 function xpRules(){
   const r = root.xpRules || (root.xpRules = JSON.parse(JSON.stringify(XP_RULES_DEFAULT)));
   if(!(r.v >= 2)){ if(r.checks && +r.checks.perPoint===5) r.checks.perPoint = 3; r.v = 2; }     // Joseph, 2026-10-13: 3 a point, not 5
@@ -7471,7 +7471,7 @@ function xpRules(){
   if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; if(!isFinite(+r.heal)) r.heal = XP_RULES_DEFAULT.heal; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
-const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk"];
+const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk","ctrl"];
 /* where every party member's tallies stand now (spells as one count) */
 function statSnap(){
   const out = {};
@@ -7481,15 +7481,18 @@ function statSnap(){
   return out;
 }
 /* the fight's XP shared out: an even share each, then the bonus pool on top, by what each did */
-const XP_CATS = [["dealt","damage"], ["kills","kills"], ["healed","healing"], ["aim","aim"]];
+const XP_CATS = [["dealt","damage"], ["kills","kills"], ["healed","healing"], ["aim","aim"], ["ctrl","control"]];
+/* someone who turned on the party in it (Joseph, 2026-10-31: "not by the room xp level, but by how well she did"): no
+   even share, but their part of the bonus pool, worked out as if they were one more beside the party (what they did to
+   the party counts as theirs), without taking any of the party's */
 function perfAward(due){
-  const R = xpRules(), pcs = partyRoster().filter(c=>due.delta[c.id]), n = pcs.length || 1, pool = +due.pool || 0;
+  const R = xpRules(), T = new Set(due.turned || []), pcs = partyRoster().filter(c=>due.delta[c.id]), side = pcs.filter(c=>!T.has(c.id)), n = side.length || 1, pool = +due.pool || 0;
   const v = (c, k) => { const d = due.delta[c.id] || {}; return k==="aim" ? ((d.attacks||0) >= 2 ? (d.hits||0) / d.attacks : 0) : Math.max(0, d[k]||0); };
   const B = pool * (+R.bonus||0) / 100, wsum = XP_CATS.reduce((s, [k])=>s + Math.max(0, +R.w[k]||0), 0) || 1;
-  const sumOf = k => pcs.reduce((s, c)=>s + v(c, k), 0);
+  const sumOf = (k, c) => side.reduce((s, q)=>s + v(q, k), 0) + (T.has(c.id) ? v(c, k) : 0);
   return pcs.map(c=>{
-    const share = Math.floor(pool / n), bonus = {};
-    for(const [k] of XP_CATS){ const t = sumOf(k); bonus[k] = t > 0 ? B * (Math.max(0, +R.w[k]||0) / wsum) * v(c, k) / t : 0; }
+    const share = T.has(c.id) ? 0 : Math.floor(pool / n), bonus = {};
+    for(const [k] of XP_CATS){ const t = sumOf(k, c); bonus[k] = t > 0 ? B * (Math.max(0, +R.w[k]||0) / wsum) * v(c, k) / t : 0; }
     const crit = Math.max(0, (due.delta[c.id]||{}).crits||0) * Math.max(0, +R.crit||0) * clampLv(c.level);     // each critical hit: so much XP × level
     const auto = Math.max(0, Math.round(share + Object.values(bonus).reduce((a, b)=>a + b, 0) + crit));
     const total = due.edit && due.edit[c.id] != null && due.edit[c.id] !== "" ? Math.max(0, Math.round(+due.edit[c.id]||0)) : auto;
@@ -7512,11 +7515,11 @@ function xpDueBlock(st){
   const R = xpRules(), rows = perfAward(due), f = x => Math.round(x);
   if(!rows.length) return "";
   return `<div class="xpdue"><p class="eyebrow spaced" style="margin-top:4px">XP for the fight${due.place ? ` at ${esc(due.place)}` : ""}</p>
-    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${due.pool.toLocaleString()} XP from the foes brought down, split ${rows.length} ways, plus ${Math.round(due.pool * R.bonus / 100)} XP more (${R.bonus}%) shared by how they fought, and ${R.crit} XP × level for each critical hit (your table rule).</p>
-    <table class="xptab"><tr><th></th><th title="An even share of the fight's XP">share</th><th title="Damage dealt">dmg</th><th title="Foes brought down">kills</th><th title="Healing given">heal</th><th title="Hits for attacks made">aim</th><th title="Critical hits, ${R.crit} XP × level each">crit</th><th>total</th></tr>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${due.pool.toLocaleString()} XP from the foes brought down, split ${rows.filter(r=>!(due.turned||[]).includes(r.c.id)).length} ways${(due.turned||[]).length ? ` (${rows.filter(r=>due.turned.includes(r.c.id)).map(r=>esc((r.c.name||"").split(" ")[0])).join(", ")}, turned against them, only by how they fought)` : ""}, plus ${Math.round(due.pool * R.bonus / 100)} XP more (${R.bonus}%) shared by how they fought, and ${R.crit} XP × level for each critical hit (your table rule).</p>
+    <table class="xptab"><tr><th></th><th title="An even share of the fight's XP">share</th><th title="Damage dealt">dmg</th><th title="Foes brought down">kills</th><th title="Healing given">heal</th><th title="Hits for attacks made">aim</th><th title="Enemies kept out of the fight: control points">ctrl</th><th title="Critical hits, ${R.crit} XP × level each">crit</th><th>total</th></tr>
     ${rows.map(r=>`<tr><td>${esc((r.c.name||"Someone").split(" ")[0])}</td><td>${r.share}</td>
       <td title="${r.d.dealt||0} damage">+${f(r.bonus.dealt)}</td><td title="${r.d.kills||0} brought down">+${f(r.bonus.kills)}</td><td title="${r.d.healed||0} healed">+${f(r.bonus.healed)}</td>
-      <td title="${r.d.hits||0} of ${r.d.attacks||0} hit">+${f(r.bonus.aim)}</td><td title="${r.d.crits||0} critical hit${(r.d.crits||0)===1?"":"s"}">+${f(r.crit)}</td>
+      <td title="${r.d.hits||0} of ${r.d.attacks||0} hit">+${f(r.bonus.aim)}</td><td title="${Math.round(r.d.ctrl||0)} control points">+${f(r.bonus.ctrl)}</td><td title="${r.d.crits||0} critical hit${(r.d.crits||0)===1?"":"s"}">+${f(r.crit)}</td>
       <td><input class="mono" data-xpdue="${r.c.id}" type="number" min="0" value="${r.total}" style="width:62px"></td></tr>`).join("")}</table>
     <div class="pcrow" style="margin-top:6px"><button class="btn calmgo" style="flex:2" data-xpd="award">Award these</button><button class="btn" style="flex:1" data-xpd="split" title="Just the even split, ${Math.floor(due.pool/rows.length)} each">Even split</button><button class="btn" style="flex:0 0 auto" data-xpd="drop" title="No XP for this one">×</button></div></div>`;
 }
@@ -7577,6 +7580,7 @@ const LEADER_BOARDS = [
   /* Joseph, 2026-10-31: "a stat category that is best on checks": the value score's check points (a point for each over
      the DC up to 10, a third past that, half a miss's margin off) */
   ["chk", "Best on checks", r=>r.chk, v=>`+${Math.round(v*10)/10}`, r=>`${r.greats} great${r.greats===1?"":"s"}`],
+  ["ctrl", "Kept the most out of the fight", r=>r.ctrl, v=>Math.round(v).toLocaleString()],      // control points (2026-10-31)
   ["potS", "Player of the session", r=>r.potS, v=>`${v}×`],
   ["potB", "Player of the battle", r=>r.potB, v=>`${v}×`],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
@@ -7587,7 +7591,7 @@ function leaderRows(scope){
   return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
     const d = k => (a[k]||0) - (base ? (b[k]||0) : 0), keep = (k, x) => k==="chk" ? x : Math.max(0, x);
     const inF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d("f_"+k))])), outF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d(k) - d("f_"+k))]));
-    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, inF:statRow(c, inF), outF:statRow(c, outF), xp:+c.xp||0 }; });
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), ctrl:v("ctrl"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, inF:statRow(c, inF), outF:statRow(c, outF), xp:+c.xp||0 }; });
 }
 function leaderHtml(scope, tv){
   const rows = warRows(leaderRows(scope)), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
@@ -7618,7 +7622,7 @@ function xpRulesBlock(){
   return `<details class="partysec" data-invfor="party:xprules" ${openInv.has("party:xprules")?"open":""}><summary class="eyebrow">XP for how they play <small>your table rule</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">The 2024 rules split a fight's XP evenly. This adds to that.</p>
     <div class="xprule">After a fight: an even share, plus ${num("bonus", R.bonus)} % on top shared by
-      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight. And each critical hit: ${num("crit", R.crit, 46)} XP × level.<br>Healing outside a fight (the Action box): ${num("heal", R.heal, 46)} XP × level for each hit point it gives back.</div>
+      damage ${num("w.dealt", R.w.dealt, 46)} · kills ${num("w.kills", R.w.kills, 46)} · healing ${num("w.healed", R.w.healed, 46)} · aim ${num("w.aim", R.w.aim, 46)} · control ${num("w.ctrl", R.w.ctrl, 46)} (weights): each part of the bonus goes to them in proportion to their share of what the party did in that fight. And each critical hit: ${num("crit", R.crit, 46)} XP × level.<br>Healing outside a fight (the Action box): ${num("heal", R.heal, 46)} XP × level for each hit point it gives back.</div>
     <label class="check" style="margin:8px 0 4px"><input type="checkbox" data-xpr="checks.on" ${C.on?"checked":""}> XP for checks outside fights (the Action box, with a DC)</label>
     <div class="xprule">Meet the DC or beat it: ${num("checks.perPoint", C.perPoint, 46)} XP a point over it (meeting it counts as 1), up to ${num("checks.upTo", C.upTo, 46)} over; past that ${num("checks.past", C.past, 46)} more a point. All × level. A natural 20 that makes it gets at least ${num("checks.nat20", C.nat20, 46)} XP × level.<br>
       A miss costs ${num("checks.missPct", C.missPct, 46)} % of what beating it by as much would earn, and never takes them below the XP they had when the session started (a natural 1 is just its margin).${root.statMarks && root.statMarks.xp ? "" : ` <b>Start a session</b> (the log) so misses can cost XP earned in it.`}<br>
@@ -7642,7 +7646,7 @@ document.addEventListener("change", e=>{
 /* ══ THE VALUE SCORE (Joseph's table rule, after baseball's WAR): everything a character does turned into points (a
    point is a hit point of damage), less what a replacement-level fill-in would manage (a share of the party's
    average), over the hit points of a typical fight. +0.25 = a quarter of a fight better than a fill-in. ══ */
-const WAR_DEFAULT = { dealt:1, healed:1, kill:3, loot:10, taken:0.5, miss:0.5, down:5, repl:80 };
+const WAR_DEFAULT = { dealt:1, healed:1, kill:3, loot:10, taken:0.5, miss:0.5, down:5, repl:80, ctrlTurn:2, ctrlOrder:1.5, ctrlFull:1, ctrlHalf:0.5 };
 const warRules = () => (root.warRules = { ...WAR_DEFAULT, ...(root.warRules||{}) });
 /* a check's points: one for each over the DC (meeting it is 1) up to 10, a third of one past that; a miss costs half as much */
 const warCheckPts = over => { const m = Math.abs(over), p = m <= 10 ? Math.max(1, m) : 10 + (m - 10) / 3; return over < 0 ? -p / 2 : p; };
@@ -7651,7 +7655,7 @@ const fightSize = () => { const f = root.fightHp; return f && f.n ? f.hp / f.n :
 function warRows(rows, size){
   const W = warRules(), perHit = rows.reduce((a, r)=>a + r.dealt, 0) / Math.max(1, rows.reduce((a, r)=>a + r.hits, 0)) || 5;
   for(const r of rows){ const lv = clampLv(r.c.level), avg = r.hits ? r.dealt / r.hits : perHit;     // a miss costs part of what their hits do
-    r.pts = r.dealt*W.dealt + r.healed*W.healed + r.kills*W.kill*lv + r.chk + (W.loot ? r.loot / W.loot : 0)
+    r.pts = r.dealt*W.dealt + r.healed*W.healed + (+r.ctrl||0) + r.kills*W.kill*lv + r.chk + (W.loot ? r.loot / W.loot : 0)
           - r.taken*W.taken - Math.max(0, r.attacks - r.hits)*W.miss*avg - r.downs*W.down*lv; }
   const mean = rows.reduce((a, r)=>a + r.pts, 0) / Math.max(1, rows.length), rep = Math.max(0, mean) * W.repl / 100; if(size==null) size = fightSize();
   for(const r of rows) r.war = size && rows.some(q=>q.pts) ? (r.pts - rep) / size : null;
@@ -7662,7 +7666,7 @@ const warWord = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2)
    it ends) and over the session. The DM can change either, then declares them on the players' screen at the end. ══ */
 const awardsOf = () => (root.awards = root.awards || { battles:[], sessions:[] });
 const sessKey = () => root.statMarks ? (root.statMarks.t || root.statMarks.label || "session") : null;
-const statRow = (c, o) => ({ c, kills:0, dealt:0, taken:0, healed:0, attacks:0, hits:0, loot:0, downs:0, chk:0, ...o });
+const statRow = (c, o) => ({ c, kills:0, dealt:0, taken:0, healed:0, attacks:0, hits:0, loot:0, downs:0, chk:0, ctrl:0, ...o });
 function battleAward(place, delta, hp){
   const rows = partyRoster().filter(c=>delta[c.id]).map(c=>statRow(c, delta[c.id]));
   if(!rows.length || !hp) return; warRows(rows, hp); if(!rows.some(r=>r.pts > 0)) return;
@@ -7719,6 +7723,7 @@ function warRulesBlock(){
   return `<details class="partysec" data-invfor="party:warrules" ${openInv.has("party:warrules")?"open":""}><summary class="eyebrow">The value score <small>your table rule, like WAR</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Everything they do as points (a point = a hit point of damage), less a fill-in's points, over a typical fight's hit points${size ? ` (${Math.round(size)} so far)` : " (none ended yet)"}. +0.25 = a quarter of a fight better than a fill-in. It doesn't touch XP.</p>
     <div class="xprule">Points: damage dealt ${num("dealt")} a hit point · healing ${num("healed")} a hit point · each foe brought down ${num("kill")} × level · a check, a point for each over the DC up to 10 and ⅓ past that · 1 for every ${num("loot")} gp of loot found.<br>
+      Control: each turn someone of the other side is kept out of it is worth their damage per round × turned on their own side ${num("ctrlTurn")} · made to do something else ${num("ctrlOrder")} · held ${num("ctrlFull")} · hampered ${num("ctrlHalf")}.<br>
       Against: damage taken ${num("taken")} a hit point · each missed attack ${num("miss")} × what their hits do on average · dropping to 0 hp ${num("down")} × level · a failed check, half its margin.<br>
       The fill-in: ${num("repl")} % of the party's average.</div>
     <button class="btn wide" data-war="reset" style="margin-top:6px">Back to the starting numbers</button></details>`;
@@ -10407,7 +10412,7 @@ function calmAfterBattle(st){
   const c = st.combat; if(!c) return;
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
-  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.holds; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
 }
 /* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
    calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking
@@ -10423,13 +10428,14 @@ function endTheFight(st, n, c, auto){
   gameLog("fight", fightSummary(n, c).split("\n")[0]);
   /* the fight's XP: the foes brought down, and what each party member did in it (shared out on the card that follows) */
   { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
-    const here = new Set(combatants(c).filter(t=>t.kind==="pc" && isMember(t)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
+    const turnedIds = combatants(c).filter(t=>t.kind==="pc" && t.turned).map(t=>t.p.id);     // one who turned on the party: by how they fought (2026-10-31)
+    const here = new Set(combatants(c).filter(t=>t.kind==="pc" && (isMember(t) || t.turned)).map(t=>t.p.id)), now = statSnap(), was = c.statsAt || now, delta = {};
     for(const id of Object.keys(now)) if(here.has(id)){ delta[id] = {}; for(const k of Object.keys(now[id])) delta[id][k] = now[id][k] - ((was[id]||{})[k]||0); }
     /* what each did in this fight goes into their in-fight tallies, so the value score can be split in fights and out of them */
     for(const [id, dl] of Object.entries(delta)){ const p = partyRoster().find(q=>q.id===id); if(!p) continue; const S = statsOf(p), F = S.fight = S.fight || {};
       for(const k of STAT_KEYS) F[k] = Math.round(((+F[k]||0) + (+dl[k]||0)) * 100) / 100; }
     if((pool || Object.values(delta).some(d=>d.crits > 0)) && Object.keys(delta).length){
-      const due = { pool, place:placeLabel(n), delta, at:today() }, was0 = st.xpDue;
+      const due = { pool, place:placeLabel(n), delta, at:today(), ...(turnedIds.length ? { turned:turnedIds } : {}) }, was0 = st.xpDue;
       if(auto && was0 && was0.place===due.place){ due.pool += +was0.pool||0;        // one sword after another: one card for them all
         for(const [id, d] of Object.entries(was0.delta||{})){ const t = due.delta[id] = due.delta[id] || {}; for(const k of Object.keys(d)) t[k] = (+t[k]||0) + (+d[k]||0); } }
       st.xpDue = due; }
@@ -14006,6 +14012,8 @@ function actionForm(c, all){
         <button class="btn small" data-mv="dash" ${M.dash ? "disabled" : ""} title="The Dash action: their speed again (it takes their action)">${M.dash ? "Dashed" : "Dash"}</button>
         <button class="btn small" data-mv="undo" ${M.moves.length ? "" : "disabled"} title="Put their token back where it was before the last move">Undo last move</button></div>`; })(movedOf(c, t.id)) : ""}
     ${(c.ups||[]).length ? `<p class="actspell">Up now: ${c.ups.map(u=>{ const o = all.find(x=>x.id===u.owner); return `${esc(u.name)}${o ? ` (${esc(o.label)})` : ""}${u.left!=null ? `, ${esc(concLeftWords(u.left))}` : ""}${u.thing && c.pos && c.pos[u.id] ? "" : ` <button class="btn small" data-uptok="${u.id}" title="Put a token for it on the battle map, next to its caster">Token</button>`} <button class="btn small" data-upend="${u.id}" title="End it now: its token goes">End</button>`; }).join(" · ")}</p>` : ""}
+    ${Object.keys(c.holds||{}).length ? `<p class="actspell">Held now: ${Object.entries(c.holds).map(([id, H])=>{ const x = all.find(y=>y.id===id), b = all.find(y=>y.id===H.by);
+      return `${esc(x ? x.label : "someone")} (${esc(b ? b.label : "someone")}'s ${esc(H.name)}: ${CTRL_SAY[H.tier]}${H.turns ? `, ${H.turns} turn${H.turns > 1 ? "s" : ""}, ${H.pts} control` : ""}) <button class="btn small" data-holdend="${id}" title="It's over for them: no more control from it">End</button>`; }).join(" · ")}</p>` : ""}
     ${t && fxOf(hOfT(t), true).length ? `<p class="actspell">On ${esc(t.label)}: ${fxOf(hOfT(t), true).map(f=>esc(f.name + fxSay(f.b) + (f.item ? ", worn" : ""))).join(" · ")}</p>` : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
@@ -14040,6 +14048,8 @@ function actionForm(c, all){
     <div class="pcrow">
       <div class="field" style="flex:1"><label>Puts on</label><select id="ac-cond"><option value="">no condition</option>${CONDITIONS.map(cn=>`<option ${cn===act.cond?"selected":""}>${cn}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Note</label><input id="ac-note" type="text" value="${esc(act.note)}" placeholder="knocked prone, pushed 10 ft…"></div></div>
+    ${act.targets.length && info && (ctrlAuto(info) || act.ctrl!=null || info.save || act.cond) ? (A=>`<div class="field"><label title="Someone of the other side kept out of the fight: each of their turns while it lasts is worth their damage per round × this, to whoever did it (the value score, the XP card's control share)">Control</label>
+      <select id="ac-ctrl"><option value="" ${act.ctrl==null?"selected":""}>By itself: ${A ? CTRL_SAY[A] : "none"}</option>${CTRL_TIERS.map(([v, l])=>`<option value="${v}" ${act.ctrl===v?"selected":""}>${l} (×${ctrlMult(v)})</option>`).join("")}<option value="none" ${act.ctrl==="none"?"selected":""}>None</option></select></div>`)(ctrlAuto(info)) : ""}
     <label class="check" style="margin:0 0 7px"><input type="checkbox" id="ac-react" ${act.reaction?"checked":""}> As a reaction${t&&reactedThisRound(c,t.id)?` <i class="rused">— already used one this round</i>`:""}</label>
     <label class="check" style="margin:-4px 0 7px" title="Ticks itself for a bonus-action spell, attack, item or stat-block bonus action; untick or tick it to say otherwise"><input type="checkbox" id="ac-bonus" ${(act.bonus ?? bonusActOf(t, info, act.what))?"checked":""}> As a bonus action${t&&bonusUsed(c,t.id)?` <i class="rused">— already used one this turn</i>`:""}</label>
     ${t && (actionUsed(c, t.id) || ((c.acted||{})[t.id]||{}).more) ? `<p class="actspell" style="margin:-4px 0 7px">${((c.acted||{})[t.id]||{}).swings > 0 ? `${c.acted[t.id].swings} more attack${c.acted[t.id].swings > 1 ? "s" : ""} with this action (Extra Attack, Multiattack) · ` : ""}${actionsLeft(c, t.id) > 0 ? `${actionsLeft(c, t.id)} action${actionsLeft(c, t.id) > 1 ? "s" : ""} left this turn` : ((c.acted||{})[t.id]||{}).swings > 0 ? "no other action left" : `<i class="rused">Their action this turn is used</i>`}</p>` : ""}
@@ -14063,7 +14073,7 @@ function restoreSnap(c, s){
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; if(!p.fx) delete p.fx; } }
   }
 }
-const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
+const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk","ctrl"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
 function damageFoe(x, v){ if(x.max==null) return false; const soak = Math.min(+x.temp || 0, v); if(soak){ x.temp -= soak; v -= soak; }     /* temporary hit points go first */
   const was = x.hp; x.hp = Math.max(0, x.hp - v); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); return was>0 && x.hp<=0; }
 function damagePc(p, v){
@@ -14182,7 +14192,8 @@ function logAction(n, c){
   let biteWords = "";
   if(info.bite && info.bite.onHitHeal && dmg && actor.kind==="pc"){ const back = healAny(actor, info.bite.onHitHeal==="all" ? dmg : Math.floor(dmg / 2));
     biteWords = `, and ${actor.label} regains ${back}`; }
-  if(actor.kind==="pc"){ const S = statsOf(actor.p), foeHit = h => all.find(x=>x.id===h.id).kind==="foe";
+  /* a character who has turned on the party (Bathilda): what they do to the party counts for them, as a hero's does to the enemy */
+  if(actor.kind==="pc"){ const S = statsOf(actor.p), foeHit = h => { const x = all.find(y=>y.id===h.id); return actor.turned ? x.side==="party" : x.kind==="foe"; };
     S.dealt += hits.filter(foeHit).reduce((a,h)=>a+h.dmg,0) + hits2.filter(foeHit).reduce((a,h)=>a+h.dmg,0); S.healed += healed;
     S.kills += new Set([...hits, ...hits2].filter(h=>h.dropped && foeHit(h)).map(h=>h.id)).size; }
   const verb = info.free ? "uses" : info.kind==="spell" ? "casts" : info.kind==="attack" ? "makes a" : "uses";
@@ -14226,7 +14237,19 @@ function logAction(n, c){
     (c.ups = c.ups || []).push(u); c.pos = c.pos || {};
     if(U.thing){ const near = (targets[0] && c.pos[targets[0].id]) || c.pos[actor.id]; if(near) c.pos[u.id] = upSpot(c, near); } }
   const upW = U && (U.thing || U.again) ? ` ${info.spell.name} stays up${U.thing ? `: its ${U.thing} is on the map` : ""}${U.again ? `${U.thing ? "," : ":"} again${U.ba ? " as a Bonus Action" : ""} without a slot` : ""}.` : "";
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW, snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore });
+  /* control: damage shakes someone out of a hold that says so (Hypnotic Pattern); what this one does holds those it lands on */
+  const holdsBefore = JSON.stringify(c.holds || {}), shaken = [], held = [];
+  for(const h of [...hits, ...hits2]){ const H = c.holds && c.holds[h.id], hb = H && all.find(x=>x.id===H.by);     // "any" damage, or only the holder's side's (Suggestion, Charm Person)
+    if(h.dmg > 0 && H && (H.dmgEnds==="any" || (H.dmgEnds==="theirs" && hb && hb.side===actor.side)) && !shaken.includes(h.label)){ delete c.holds[h.id]; shaken.push(h.label); } }
+  { const tier = ctrlOf(info), sp = info.spell, text = String((sp && sp.desc) || info.text || "");
+    if(tier && !part) for(const t of targets){ const sv = svOf(t);
+      if(t.side===actor.side || ["miss","save"].includes(act.outcome) || (sv && sv.made) || (act.cond && condImmune(t, act.cond)) || turned.some(w=>w.startsWith(t.label + ":") && /turns aside/.test(w))) continue;
+      const cs = concSp && concSp.id;
+      (c.holds = c.holds || {})[t.id] = { by:actor.id, tier, name:info.name, sp:cs || null, cond:cs ? "" : (act.cond || ""), dmgEnds:/you or your allies[^.]*damage/i.test(text) ? "theirs" : /\bends?\b[^.]*\b(takes?|taking) (any )?damage\b/i.test(text) ? "any" : "",
+        once:!cs && !act.cond, turns:0, pts:0 };
+      held.push(t.label); } }
+  const holdW = (held.length ? ` ${held.join(", ")} ${held.length > 1 ? "are" : "is"} ${CTRL_SAY[ctrlOf(info)]}.` : "") + (shaken.length ? ` The damage shakes ${shaken.join(", ")} out of it.` : "");
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW, snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore });
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   /* what the spell does to them while it lasts (Bless, Pass without Trace, Shield of Faith…): on its targets (and the
      caster, for an aura or Shield); Bane, Slow, Faerie Fire only on those who failed the save */
@@ -14250,8 +14273,62 @@ function logAction(n, c){
   partySync();                                    // the fight's log has its own undo for this
   touch(); renderBattle(); renderBattlePanel();
 }
+/* ══ CONTROL (Joseph's table rule, 2026-10-31: "let's find a way to value stuff like bathilda did"). Someone kept out of
+   the fight is worth what they would have done. A logged action that lands on someone of the other side (a hit, or a
+   save they failed) and holds them sets c.holds[their id] = { by, tier, name, sp, cond, dmgEnds, once, turns, pts };
+   at the start of each of their turns while it lasts, whoever did it gets their damage per round × the tier's weight
+   as control points (statsOf().ctrl: the value score, the XP card's control share, a leaderboard). The tiers, highest
+   first (Joseph): turned on their own side (charmed into attacking their party: Dominate), made to do something else
+   (a successful Command, Suggestion), held (loses the turn: Incapacitated, Paralyzed, Stunned, Unconscious, Petrified),
+   hampered (Frightened, Restrained, Blinded, Prone, Poisoned, Charmed). Each weight is a setting (the value score's).
+   It lasts while the caster concentrates on it; else while the condition put on is still on them; else for their next
+   turn (Command). It ends when they go down or flee, on damage when the spell says damage ends it (Hypnotic Pattern),
+   or by hand (End). ══ */
+const CTRL_TIERS = [["turn","Turned on their own side"],["order","Made to do something else"],["full","Held: loses the turn"],["half","Hampered"]];
+const CTRL_SAY = { turn:"turned on their own side", order:"made to do something else", full:"held", half:"hampered" };
+const CTRL_SPELLS = { "spell:dominate-beast":"turn", "spell:dominate-person":"turn", "spell:dominate-monster":"turn", "spell:command":"order", "spell:suggestion":"order", "spell:mass-suggestion":"order" };
+const CTRL_FULL = /\b(Incapacitated|Paralyzed|Stunned|Unconscious|Petrified)\b/i, CTRL_HALF = /\b(Frightened|Restrained|Blinded|Prone|Poisoned|Charmed)\b/i;
+const ctrlMult = tier => { const W = warRules(); return Math.max(0, +({ turn:W.ctrlTurn, order:W.ctrlOrder, full:W.ctrlFull, half:W.ctrlHalf })[tier] || 0); };
+/* what an action holds them as by itself: the spell's own (Command, Suggestion, Dominate), the condition picked, else
+   what its text puts on, for something with a save */
+function ctrlAuto(info){
+  if(!info) return "";
+  const sp = info.spell; if(sp && CTRL_SPELLS[sp.id]) return CTRL_SPELLS[sp.id];
+  if(act.cond) return CTRL_FULL.test(act.cond) ? "full" : CTRL_HALF.test(act.cond) ? "half" : "";
+  if(!(info.save || (sp && sp.save))) return "";
+  const text = String((sp && sp.desc) || info.text || "");
+  return CTRL_FULL.test(text) ? "full" : CTRL_HALF.test(text) ? "half" : "";
+}
+const ctrlOf = info => act.ctrl==null ? ctrlAuto(info) : act.ctrl==="none" ? "" : act.ctrl;
+/* what one of them does in a round: a creature's stat block, else its CR's row; a character's sheet (charCR) */
+function ctrlDpr(t){
+  if(!t) return 0;
+  if(t.kind==="foe"){ const m = foeById(t.x.foe), d = m ? crBlockDpr(m) : 0; if(d) return d;
+    const f = /^(\d+)\/(\d+)$/.exec(String(m && m.cr)), cr = f ? f[1] / f[2] : parseFloat(m && m.cr);
+    return isFinite(cr) ? crRowAt(crPos("cr", cr)).dpr : 10; }
+  const r = t.p ? charCR(pcState(t.p)) : null; return (r && r.dpr) || 10;
+}
+function holdLive(H, t, by){
+  if(!t || t.fled || (t.kind==="foe" ? (t.x.max!=null && t.x.hp<=0) : numOr(pcState(t.p).hp, 1) <= 0)) return false;
+  if(H.sp){ const h = by && hOfT(by); return !!(h && h.conc && h.conc.id===H.sp); }
+  if(H.cond){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; return (cs||[]).includes(H.cond); }
+  return true;
+}
+/* the start of their turn: still held, it counts (once a turn: ▶ again on the same turn doesn't) */
+function holdsTurnStart(c, id){
+  const H = c.holds && c.holds[id]; if(!H) return;
+  const all = combatants(c), t = all.find(x=>x.id===id), by = all.find(x=>x.id===H.by);
+  if(!holdLive(H, t, by)){ delete c.holds[id]; return; }
+  if(H.at===turnStamp(c)) return;
+  const pts = Math.round(ctrlDpr(t) * ctrlMult(H.tier) * 10) / 10, snap = by && by.kind==="pc" ? snapOf(c, [by.id]) : {}, before = JSON.stringify(c.holds);
+  H.at = turnStamp(c); H.turns = (H.turns||0) + 1; H.pts = Math.round(((H.pts||0) + pts) * 10) / 10;
+  if(by && by.kind==="pc" && pts){ const S = statsOf(by.p); S.ctrl = Math.round(((+S.ctrl||0) + pts) * 10) / 10; }
+  if(H.once) delete c.holds[id];
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:`${t.label} is ${CTRL_SAY[H.tier]} by ${by ? by.label : "someone"}'s ${H.name} (${pts} control).`, snap, holds:before });
+}
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
+  if(e.holds!=null) c.holds = JSON.parse(e.holds);
   if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
     c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
     const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));
@@ -14455,7 +14532,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-spellopen]").forEach(s=>s.onclick = ()=>{ libPeek("spells", s.dataset.spellopen); });
   el.querySelectorAll("[data-bsel]").forEach(s=>s.onclick = ()=>{ battleSel = s.dataset.bsel; renderBattle(); renderBattlePanel(); });
   /* breaking initiative: jump the turn to someone, or move them in the order by hand */
-  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; fxTurnStart(c, c.turn); act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
+  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn); act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-breact]").forEach(b=>b.onclick = ()=>{
     startReaction(c, b.dataset.breact, null); renderBattle(); renderBattlePanel();
     const box = document.querySelector(".actbox"); if(box) scrollInPane(box, "center");
@@ -14473,6 +14550,7 @@ function renderBattlePanelNow(){
     if(g("#ac-dmg")!==undefined) act.dmg = g("#ac-dmg"); if(g("#ac-heal")!==undefined) act.heal = g("#ac-heal"); if(g("#ac-took")!==undefined) act.took = g("#ac-took");
     if(g("#ac-note")!==undefined) act.note = g("#ac-note"); if(g("#ac-dtype")!==undefined) act.dtype = g("#ac-dtype");
     if(g("#ac-cond")!==undefined) act.cond = g("#ac-cond"); if(g("#ac-spell")!==undefined) act.spellText = g("#ac-spell");
+    if(g("#ac-ctrl")!==undefined){ if(g("#ac-ctrl")==="") delete act.ctrl; else act.ctrl = g("#ac-ctrl"); }
     if(g("#ac-other")!==undefined) act.otherText = g("#ac-other"); const o = document.querySelector('input[name="ac-out"]:checked'); if(o) act.outcome = o.value;
     if(act.p2){ if(g("#ac-dmg2")!==undefined) act.p2.dmg = g("#ac-dmg2"); const o2 = document.querySelector('input[name="ac-out2"]:checked'); if(o2) act.p2.outcome = o2.value; }
     const r = $("#ac-react"); if(r) act.reaction = r.checked; };
@@ -14481,7 +14559,7 @@ function renderBattlePanelNow(){
   $("#ac-actor").onchange = e=>{ act = freshAct(e.target.value); renderBattlePanel(); };
   { const bo = $("#ac-bonus"); if(bo) bo.onchange = ()=>{ act.bonus = bo.checked; }; }     // said by hand: kept till the action changes
   $("#ac-what").onchange = e=>{
-    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.saves; delete act.saveDC; delete act.bonus; delete act.hitBonus; delete act.toHit; act.d20 = "";
+    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.saves; delete act.saveDC; delete act.bonus; delete act.hitBonus; delete act.toHit; delete act.ctrl; act.d20 = "";
     /* Opportunity attack picked by hand: made with their melee weapon, as a reaction, as when the map offers one */
     if(act.what==="atk:Opportunity attack"){ const T = act.targets; startReaction(c, act.actor, null); act.targets = T; if(act.what!=="atk:Opportunity attack"){ renderBattlePanel(); return; } }
     /* Multiattack: its attacks in a row, the first one now (2026-10-30); Eldritch Blast's beams and Scorching Ray's rays the same.
@@ -14548,6 +14626,8 @@ function renderBattlePanelNow(){
     touch(); renderBattle(); renderBattlePanel(); });
   { const fs = $("#ac-fxskill"); if(fs) fs.onchange = ()=>{ act.fxSkill = fs.value; }; }     // Guidance's skill
   el.querySelectorAll("[data-qdone]").forEach(b=>b.onclick = ()=>{ const a = (c.acted||{})[act.actor]; if(a) a.swings = 0; act = freshAct(act.actor); renderBattlePanel(); });     // the rest of a Multiattack (or Extra Attack) not made
+  el.querySelectorAll("[data-holdend]").forEach(b=>b.onclick = ()=>{ if(c.holds) delete c.holds[b.dataset.holdend]; touch(); renderBattlePanel(); });     // a hold over, by hand
+  { const cs = $("#ac-ctrl"); if(cs) cs.onchange = ()=>{ keep(); renderBattlePanel(); }; }
   el.querySelectorAll("[data-upend]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.upend); if(!u) return;     // ending a spell that's up, by hand
     upEnd(c, u, "ended"); if(String(act.what||"")===`again:${u.id}`) act = freshAct(act.actor); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];
@@ -17095,7 +17175,7 @@ function nextTurn(c){
   if(!order.length) return false;
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
   return true;
 }
 document.addEventListener("click", e=>{
@@ -17105,7 +17185,7 @@ document.addEventListener("click", e=>{
   if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
   if(a==="next"){ if(!nextTurn(c)) return; }
   else if(a==="round"){ newRound(c); flash(`Round ${c.round}.`); }
-  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); }
+  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn); }
   touch(); renderBattle(); renderBattlePanel();
 });
 

@@ -1,0 +1,64 @@
+// uses: nothing
+<script>
+/* control (Joseph, 2026-10-31: "let's find a way to value stuff like bathilda did"): someone of the other side kept out
+   of the fight is worth their damage per round × the tier (turned on their own side ×2, made to do something else ×1.5,
+   held ×1, hampered ×½) at each of their turns while it lasts, to whoever did it; the value score, the XP card's control
+   share, a board; and one who turned on the party gets XP only by how they fought */
+const __CT = { format:"ordinate-survey-v1", title:"Control", ppm:10, unit:"mi", party:3,
+  nodes:[{ id:"h", name:"Test House", kind:"town", x:0, y:0 }], roads:[], shapes:[],
+  roster:[{ id:"pa", name:"Gawain", cls:"Fighter", level:5, hp:"53", hpMax:"53", ac:"17", attacks:[{ name:"Greatsword", hit:"+8", dmg:"2d6+5", dtype:"slashing" }] },
+    { id:"pb", name:"Wren", cls:"Wizard", level:5, hp:"28", hpMax:"28", ac:"12", dc:"15", satk:"+7", spells:["spell:hypnotic-pattern","spell:command","spell:fire-bolt"], slots:[{max:0,used:0},{max:4,used:0},{max:3,used:0},{max:2,used:0}], attacks:[] },
+    { id:"pc", name:"Bathilda", cls:"Warlock", level:5, hp:"43", hpMax:"43", ac:"14", dc:"15", satk:"+7", spells:["spell:suggestion","spell:eldritch-blast"], slots:[{max:0,used:0},{max:0,used:0},{max:0,used:0},{max:2,used:0}], attacks:[] }],
+  groups:[{ id:"g1", members:["pa","pb","pc"], at:{ map:"h", node:"hall" } }], library:{ npcs:[], foes:[], encounters:[], shops:[], loot:[] },
+  plans:{ h:{ format:"ordinate-plan-v1", of:"h", title:"Test House", ppm:5, unit:"yd", roads:[], shapes:[], nodes:[
+    { id:"hall", name:"The Hall", kind:"hall", x:100, y:100, w:10, d:8, site:{ kind:"", level:5, once:true, waves:1, loot:{ coin:0 }, items:[], light:"bright", foes:[{ id:"srd:ogre", n:"2" }] },
+      bmap:{ name:"The Hall", rows:["############","#..........#","#..........#","#..........#","############"], start:{ party:[[1,2],[2,2],[3,2]], enemy:[[8,1],[8,3]] } } } ] } } };
+setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out = [];
+ try{
+  out.push('by itself: ' + ['hypnotic-pattern','suggestion','command','dominate-person','sleep','charm-person','hold-person','fireball'].map(k=>{ const s = spellOf('spell:' + k); if(!s) return k + ' MISSING';
+    act = freshAct('x'); return k + ' ' + (ctrlAuto({ spell:s, save:!!s.save }) || 'none') + (/you or your allies[^.]*damage/i.test(s.desc) ? '/theirs' : /\bends?\b[^.]*\b(takes?|taking) (any )?damage\b/i.test(s.desc) ? '/any' : ''); }).join(', '));
+  loadJSONNow(JSON.stringify(__CT)); await wait(300); setDmMode(true); await wait(60);
+  enterPlan('h'); await wait(40); const hall = doc.nodes.find(n=>n.id==='hall'); openBattle(hall); await wait(150);
+  const c = hall.site.combat; beginBattle(hall.site); await wait(60); const [o1, o2] = c.list;
+  combatants(c).forEach((t, k)=>{ c.init[t.id] = 20 - k; }); c.turn = 'pa'; c.order = combatants(c).map(t=>t.id);
+  out.push('order: ' + combatants(c).map(t=>t.label).join(', ') + ' · an ogre a round ' + ctrlDpr(combatants(c).find(t=>t.id===o1.id)) + ', Gawain ' + ctrlDpr(combatants(c).find(t=>t.id==='pa')));
+  window.confirm = () => true;
+  const R = root.roster, S = i => statsOf(R[i]);
+  const cast = async (who, what, targets, saves, o) => { act = freshAct(who); act.what = what; act.targets = targets; Object.assign(act, o || {});
+    if(saves){ act.saves = {}; for(const [id, made] of Object.entries(saves)) act.saves[id] = { tot:made ? 20 : 3, made, said:'x' }; act.outcome = Object.values(saves).every(Boolean) ? 'save' : 'fail'; }
+    const n0 = (c.log||[]).length; logAction(hall, c); await wait(20); return (c.log||[]).length > n0 ? c.log.slice(-1)[0].text : 'not logged'; };
+  const turn = async id => { c.turn = id; fxTurnStart(c, id); holdsTurnStart(c, id); await wait(10); return c.log.slice(-1)[0].text; };
+  /* held: Hypnotic Pattern, one fails */
+  out.push('pattern: ' + await cast('pb', 'sp:spell:hypnotic-pattern', [o1.id, o2.id], { [o1.id]:false, [o2.id]:true }) + ' · holds ' + JSON.stringify(Object.keys(c.holds||{}).map(k=>k===o1.id?'ogre1':k)));
+  renderBattlePanel(); await wait(20); out.push('form: ' + ([...document.querySelectorAll('.actbox .actspell')].map(p=>p.textContent).find(t=>/Held now/.test(t)) || 'no Held now line').replace(/\s+/g, ' '));
+  out.push('ogre 1\'s turn: ' + await turn(o1.id) + ' · Wren control ' + S(1).ctrl);
+  out.push('again, same turn: ' + (await turn(o1.id)).slice(0, 40) + ' · Wren control ' + S(1).ctrl);
+  out.push('Gawain hits it: ' + await cast('pa', 'pca:0', [o1.id], null, { outcome:'hit', dmg:'9' }) + ' · held ' + !!(c.holds||{})[o1.id]);
+  /* made to do something else: Command, one turn */
+  newRound(c);
+  out.push('command: ' + await cast('pb', 'sp:spell:command', [o2.id], { [o2.id]:false }));
+  out.push('ogre 2\'s turn: ' + await turn(o2.id) + ' · Wren control ' + S(1).ctrl + ' · held after ' + !!(c.holds||{})[o2.id]);
+  /* set by hand: turned on its own side */
+  newRound(c);
+  { act = freshAct('pb'); act.what = 'sp:spell:fire-bolt'; act.targets = [o2.id]; renderBattlePanel(); await wait(20); out.push('a plain attack shows Control: ' + !!document.querySelector('#ac-ctrl')); }
+  out.push('by hand: ' + await cast('pb', 'other', [o2.id], null, { outcome:'none', otherText:'whispers to it', ctrl:'turn' }));
+  out.push('ogre 2\'s turn: ' + await turn(o2.id) + ' · Wren control ' + S(1).ctrl);
+  undoAction(c); out.push('undo that turn: Wren control ' + S(1).ctrl + ', held again ' + !!(c.holds||{})[o2.id]);
+  /* Bathilda turns: Suggestion on Gawain, then blasts him */
+  c.turned = { pc:true }; newRound(c);
+  out.push('Bathilda, turned: ' + await cast('pc', 'sp:spell:suggestion', ['pa'], { pa:false }) + ' · she concentrates on ' + ((R[2].conc||{}).name||'nothing'));
+  out.push('Gawain\'s turn: ' + await turn('pa') + ' · Bathilda control ' + S(2).ctrl);
+  out.push('she blasts him: ' + await cast('pc', 'sp:spell:eldritch-blast', ['pa'], null, { outcome:'hit', dmg:'10' }) + ' · her dealt ' + S(2).dealt);
+  /* the end: XP */
+  for(const y of c.list) y.hp = 0; endTheFight(hall.site, hall, c, false); await wait(40); renderBattlePanel(); await wait(40);
+  const due = hall.site.xpDue; out.push('due: pool ' + (due||{}).pool + ', turned ' + JSON.stringify((due||{}).turned) + ' · ctrl ' + Object.entries((due||{}).delta||{}).map(([id, d])=>id + ' ' + d.ctrl).join(', '));
+  out.push('card: ' + (document.querySelector('#pane-inspect .xpdue') || {}).innerText.replace(/\s+/g, ' ').slice(0, 420));
+  out.push('holds after: ' + JSON.stringify(c.holds || null));
+  const dm = leaderHtml('all', false), d = document.createElement('div'); d.innerHTML = dm;
+  out.push('board: ' + ([...d.querySelectorAll('.lb-card')].find(x=>/Kept the most/.test(x.textContent)) || {}).textContent);
+  out.push('settings: ' + /turned on their own side/.test(warRulesBlock()) + ' ' + /control/.test(xpRulesBlock()));
+ }catch(e){ out.push('ERR ' + e.message + ' ' + (e.stack||'').split('\n').slice(1, 3).join(' / ')); }
+ out.push('page errors: ' + (window.__ERR || []).length + ((window.__ERR || []).length ? ' ' + __ERR.slice(0, 3).join(' ; ') : ''));
+ document.title = 'RES ' + out.join(' || ');
+}, 900);
+</script>
