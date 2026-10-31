@@ -7574,6 +7574,9 @@ const LEADER_BOARDS = [
   ["taken", "Took the most punishment", r=>r.taken],
   ["spells", "Most spells cast", r=>r.spells],
   ["loot", "Most loot found", r=>r.loot, v=>`${fmtGp(v)} gp`],
+  /* Joseph, 2026-10-31: "a stat category that is best on checks": the value score's check points (a point for each over
+     the DC up to 10, a third past that, half a miss's margin off) */
+  ["chk", "Best on checks", r=>r.chk, v=>`+${Math.round(v*10)/10}`, r=>`${r.greats} great${r.greats===1?"":"s"}`],
   ["potS", "Player of the session", r=>r.potS, v=>`${v}×`],
   ["potB", "Player of the battle", r=>r.potB, v=>`${v}×`],
   ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
@@ -7594,7 +7597,10 @@ function leaderHtml(scope, tv){
     if(!list.length && !tv) return `<div class="lb-card"><div class="lb-t">${title}</div><p class="lb-none">Nobody yet</p></div>`;
     if(!list.length) return "";
     return `<div class="lb-card"><div class="lb-t">${title}</div>${list.map((x, i)=>`<div class="lb-row${i===0 ? " top" : ""}"><span class="lb-p">${i===0 ? "★" : i+1}</span><span class="lb-n">${esc(x.r.c.name || "Someone")}</span><span class="lb-v">${fmt ? fmt(x.v) : x.v.toLocaleString()}${sub ? `<small>${sub(x.r)}</small>` : ""}</span></div>`).join("")}</div>`;
-  }).join("");
+  }).join("")
+    /* the value score, for the DM only (Joseph, 2026-10-31: "value added should be visible to me, just not on the player's screen") */
+    + (tv ? "" : (L=>`<div class="lb-card"><div class="lb-t">Value added <small>only you see this</small></div>${L.length ? L.map((r, i)=>`<div class="lb-row${i===0 ? " top" : ""}"><span class="lb-p">${i===0 ? "★" : i+1}</span><span class="lb-n">${esc(r.c.name || "Someone")}</span><span class="lb-v">${warWord(r.war)}<small>fights ${r.warF!=null ? warWord(r.warF) : "–"} · outside ${r.warO!=null ? warWord(r.warO) : "–"}</small></span></div>`).join("")
+        : `<p class="lb-none">${fightSize() ? "Nobody yet" : "Once a fight has ended"}</p>`}</div>`)(rows.filter(r=>r.war!=null).sort((a, b)=>b.war - a.war)));
   return `<div class="lb${tv ? " lb-tv" : ""}">${tv ? `<div class="lb-h">Leaderboards</div>` : ""}<div class="lb-when">${esc(when)}</div><div class="lb-grid">${boards || `<p class="lb-none">Nothing to show yet: it fills in as fights and checks are logged.</p>`}</div></div>`;
 }
 let leaderScope = "session", leaderTvTimer = null;
@@ -9254,6 +9260,7 @@ function giveLoot(c, x){
   let from = "";
   if(holds.length===1){ const n = holds[0], st = n.site; st.items.splice(st.items.indexOf(x.id), 1); forgetItem(st, x.id); from = placeLabel(n); touch(); }
   c.inv = Array.isArray(c.inv) ? c.inv : []; c.inv.push(Object.assign({ id:x.id, qty:1, at:today() }, from ? { from } : {}));
+  if(partyRoster().includes(c)) tallyLoot(c, itemGp(x));      // loot they got, for Most loot found
   gameLog("loot", `${c.name||"Someone"} got ${x.name}${from ? ` (from ${from})` : ""}`);
   return from;
 }
@@ -10201,8 +10208,10 @@ function wireLootHere(el, n, st, redraw){
   /* a hidden one too (Joseph, 2026-10-31: "I couldn't find the give to thing for some of them"): handing it over says they found it */
   el.querySelectorAll(".giveto[data-gi]").forEach(s=>s.onchange = ()=>{
     const p = partyRoster().find(q=>q.id===s.value); if(!p) return;
-    const id = n.site.items.splice(+s.dataset.gi,1)[0]; if(!id) return; forgetItem(n.site, id);
+    const id = n.site.items[+s.dataset.gi]; if(!id) return;
     partyDoing(`${(libLootById(id)||{}).name||"Item"} given`, p);
+    if(!(n.site.ours||{})[id]) tallyLoot(p, itemGp(libLootById(id)));     // found loot, as from a container (Joseph, 2026-10-31: none of what was handed over counted)
+    n.site.items.splice(+s.dataset.gi,1); forgetItem(n.site, id);
     p.inv = Array.isArray(p.inv) ? p.inv : []; p.inv.push({ id:baseId(id), from:placeLabel(n), at:today() });
     saveParty(); touch(); redraw();
     flash(`${(libLootById(id)||{}).name||"Item"} goes to ${p.name||"them"}.`);
@@ -10261,10 +10270,9 @@ function foeInvBlock(x, key, canSearch){
         <span class="ptotal">= ${fmtGp(coin)} gp</span></div>
       ${coin && !x.pfound ? `<div class="pcrow ivdc"><span>Finding the coins takes</span><select class="iv-pdc" ${a} title="How hard the coins are to find">${dcOptions(x.pdc)}</select></div>` : ""}
       <label class="grouplab" style="margin-top:6px">Carrying</label>
-      ${inv.length ? items.map(({e,it},k)=>`<div class="librow inv give"><span><span${it?` class="libref" data-libopen="loot:${e.id}"`:""}>${it?esc(it.name):esc(e.text||"(missing item)")}</span>${(e.qty||1)>1?` <b>×${e.qty}</b>`:""}${it&&lootLabel(it)?` <small>· ${esc(lootLabel(it))}</small>`:""}${it&&itemStatLine(it)?` <small class="istat">· ${esc(itemStatLine(it))}</small>`:""} ${status(e.found, e.dc)}</span>
+      ${inv.length ? items.map(({e,it},k)=>`<div class="librow inv give"><span><span${it?` class="libref" data-libopen="loot:${e.id}"`:""}>${it?esc(it.name):esc(e.text||"(missing item)")}</span>${(e.qty||1)>1?` <b>×${e.qty}</b>`:""}${it&&lootLabel(it)?` <small>· ${esc(lootLabel(it))}</small>`:""}${it&&itemStatLine(it)?` <small class="istat">· ${esc(itemStatLine(it))}</small>`:""} ${status(e.found, e.dc)}${e.found ? "" : ` <select class="iv-dc" ${a} data-k="${k}" title="How hard it is to find">${dcOptions(e.dc)}</select>`}</span>
           <input class="iv-qty" ${a} data-k="${k}" type="number" min="1" value="${e.qty||1}" title="How many">
-          ${e.found ? `<select class="iv-give" ${a} data-k="${k}" title="Hand it to a character"><option value="">Give to…</option>${who}</select>`
-            : `<select class="iv-dc" ${a} data-k="${k}" title="How hard it is to find">${dcOptions(e.dc)}</select>`}
+          <select class="iv-give" ${a} data-k="${k}" title="${e.found ? "Hand it to a character" : "Hand it over: they found it however they did"}"><option value="">Give to…</option>${who}</select>
           <button class="fdel" data-ia="del" ${a} data-k="${k}" title="Remove">×</button></div>`).join("")
         : `<p class="empty-note" style="font-size:11px;margin:0 0 4px">Nothing.</p>`}
       ${x.searches.length?`<div class="ivlog">Searched by ${x.searches.map(s=>`${esc(s.who)} <b>${s.roll}</b>`).join(", ")}</div>`:""}
