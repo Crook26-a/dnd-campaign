@@ -17,14 +17,16 @@
     downloads: [], steps: [], lines: [], states: {}, errors: [], keep: {}, done: false, failedAt: 0, at: 0 };
   // what "the app's state" is, per app: the Character Book keeps it in localStorage, the survey in its bundle
   const ADAPT = {
-    // all of the app's own keys (the sheets, the sync settings, the screen it was on), not just the main one
+    // all of the app's own keys (the sheets, the sync settings, the screen it was on), not just the main one; which
+    // keys are the app's: steps.json's "keys" (the Field Book: its own, and the sync setup it shares with the Character Book)
     cb: { key: "character-book",
       pre: s => { try { const o = JSON.parse(s); if (o && o.__all) { for (const [k, v] of Object.entries(o.__all)) localStorage.setItem(k, v); } else localStorage.setItem("character-book", s); } catch (e) {} },
       save: () => { try { if (typeof window.save === "function") window.save(true); } catch (e) {}
-        const all = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("character-book")) all[k] = localStorage.getItem(k); } return JSON.stringify({ __all: all }); } },
+        const mine = window.__KIT_KEYS || ["character-book"], all = {};
+        for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && mine.some(p => k.startsWith(p))) all[k] = localStorage.getItem(k); } return JSON.stringify({ __all: all }); } },
     survey: { post: s => window.loadJSONNow(s), save: () => JSON.stringify(window.exportBundle()) }
   };
-  const A = ADAPT[K.kind] || {};
+  const A = ADAPT[K.kind === "local" ? "cb" : K.kind] || {};   // "local": an app kept in localStorage, like the Character Book
   // the survey also asks for an artifact storage API a plain browser doesn't have: one in memory, empty each run
   if (K.kind === "survey" && !window.storage) { const M = {}; window.storage = { get: async k => { if (!(k in M)) throw new Error("none"); return { key: k, value: M[k] }; },
     set: async (k, v) => { M[k] = v; return { key: k, value: v }; }, delete: async k => { delete M[k]; return { key: k, deleted: true }; }, list: async () => ({ keys: Object.keys(M) }) }; }

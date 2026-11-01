@@ -62,7 +62,8 @@ function Build-Page($case) {
   $state = "null"
   if ($From -gt 1) { $sf = Join-Path (& $outOf $case) "state-$($From - 1).json"; if (-not (Test-Path $sf)) { throw "no saved state for step $($From - 1): run the test from the start once ($sf)" }; $state = [IO.File]::ReadAllText($sf, [Text.Encoding]::UTF8) }
   $confirm = if ($cfg.confirm -eq $false) { "false" } else { "true" }
-  $pre = "<script>window.__KIT_KIND=`"$($cfg.kind)`";window.__CONFIRM=$confirm;window.__FROM=$From;window.__STATE=$state;</script>`n<script>`n$kit`n</script>`n"
+  $keys = if ($cfg.keys) { "[" + ((@($cfg.keys) | ForEach-Object { '"' + $_ + '"' }) -join ",") + "]" } else { "null" }
+  $pre = "<script>window.__KIT_KIND=`"$($cfg.kind)`";window.__KIT_KEYS=$keys;window.__CONFIRM=$confirm;window.__FROM=$From;window.__STATE=$state;</script>`n<script>`n$kit`n</script>`n"
   # the kit goes in after the page says it's UTF-8: that line must stay in the first 1024 bytes, or the page is read
   # in the wrong encoding and long scripts break
   $anchor = if ($app -match '(?i)<meta charset[^>]*>') { '(?i)<meta charset[^>]*>' } else { '(?i)<head(\s[^>]*)?>' }
