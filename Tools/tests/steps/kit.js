@@ -17,9 +17,11 @@
     downloads: [], steps: [], lines: [], states: {}, errors: [], keep: {}, done: false, failedAt: 0, at: 0 };
   // what "the app's state" is, per app: the Character Book keeps it in localStorage, the survey in its bundle
   const ADAPT = {
+    // all of the app's own keys (the sheets, the sync settings, the screen it was on), not just the main one
     cb: { key: "character-book",
-      pre: s => { try { localStorage.setItem("character-book", s); } catch (e) {} },
-      save: () => { try { if (typeof window.save === "function") window.save(true); } catch (e) {} return localStorage.getItem("character-book"); } },
+      pre: s => { try { const o = JSON.parse(s); if (o && o.__all) { for (const [k, v] of Object.entries(o.__all)) localStorage.setItem(k, v); } else localStorage.setItem("character-book", s); } catch (e) {} },
+      save: () => { try { if (typeof window.save === "function") window.save(true); } catch (e) {}
+        const all = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("character-book")) all[k] = localStorage.getItem(k); } return JSON.stringify({ __all: all }); } },
     survey: { post: s => window.loadJSONNow(s), save: () => JSON.stringify(window.exportBundle()) }
   };
   const A = ADAPT[K.kind] || {};
