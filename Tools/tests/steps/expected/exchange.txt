@@ -1,0 +1,6 @@
+1. the party: Ilsa and Wren: Ilsa Brightwater, Wren
+2. bring in the Character Book file: Ilsa Brightwater, Wren, Gnickgnick "Gnick" Gnomeson
+3. Ilsa updated, and the survey's own things kept: hp 30/44, 2 attacks, 3 items
+4. Gnick joined with his numbers, his cart attuned: Quarterstaff +3, Sling +4, Dart +4, Sacred Flame DEX 15
+5. the same file again: nothing doubles: ok
+6. everyone out to the Character Book, without the survey's secrets: ch_test_ilsa, ch_sv_pb, ch_gnick
