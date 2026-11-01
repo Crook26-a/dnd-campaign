@@ -1,0 +1,7 @@
+{
+  "kind": "survey",
+  "confirm": false,
+  "app": "../../../index.html",
+  "inline": { "Tools/srd/srd-data.js": "../../srd/srd-data.js" },
+  "cases": ["cases"]
+}

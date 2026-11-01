@@ -8330,7 +8330,7 @@ function pcCard(c, i, npc){
       <div class="field"><label>${npc?"Look":"Appearance"}</label><textarea data-pc="${i}" data-f="${npc?"look":"looks"}" rows="2" placeholder="What the others see">${esc((npc?c.look:c.looks)||"")}</textarea></div>
       <div class="field"><label>Notes</label><textarea data-pc="${i}" data-f="notes" rows="2" placeholder="Hooks, fears, who they care about…">${esc(c.notes||"")}</textarea></div>`)}
     ${sec("files", "Files", filesBlock(c, (npc?"npc:":"pc:")+c.id, false, true), (c.files||[]).length ? String(c.files.length) : "")}
-    ${npc ? `<div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-libopen="npcs:${c.id}">Open in the library</button><button class="btn" style="flex:1" data-act="leave" data-pc="${i}">Leave the party</button></div>` : ""}`}
+    ${npc ? `<div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-libopen="npcs:${c.id}">Open in the library</button><button class="btn" style="flex:1" data-act="leave" data-pc="${i}">Leave the party</button></div>` : `<div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-act="cbout" data-pc="${i}" title="This sheet as a file for the player's Character Book">Send to the Character Book</button></div>`}`}
   </div>`;
 }
 /* ── companions: people from the library travelling with the party. Their sheet stays in the
@@ -8447,6 +8447,8 @@ function renderParty(){
 
     <div class="pcrow" style="align-items:center;margin-top:14px"><p class="eyebrow" style="flex:1;margin:0">Characters</p>
       <button class="btn" data-act="foldall">${pcs.every(c=>foldedPc.has(c.id)) ? "Open all" : "Fold all"}</button></div>
+    <div class="pcrow" style="margin:0 0 10px"><button class="btn" style="flex:1" data-act="cbin" title="A character from the Character Book, the players' sheet app: one already in the party is updated, anyone else joins">Bring in from the Character Book…</button>
+      <button class="btn" style="flex:1" data-act="cboutall" title="Everyone's sheet as a Character Book file (not the secret favor, notes or fight stats)">Send everyone to the Character Book</button></div>
     ${pcs.map((c,i)=>pcCard(c,i)).join("")}
 
     <p class="eyebrow spaced">Companions <i style="text-transform:none;letter-spacing:0">· NPCs travelling with the party</i></p>
@@ -8564,6 +8566,10 @@ function tokensChanged(){
     if(c){ partyDoing("Level up", c); c.level = clampLv(c.level+1); saveParty(); flash(`${c.name||"Character"} is level ${c.level}.`); gameLog("level", `${c.name||"A character"} reached level ${c.level}`); }
   } else if(act==="undo") undoAward();
   else if(act==="pshort" || act==="plong") return restParty(act==="plong" ? "long" : "short");
+  else if(act==="cbin"){ const f = document.createElement("input"); f.type = "file"; f.accept = ".json,application/json";
+    f.onchange = ()=>{ const file = f.files && f.files[0]; if(!file) return; const r = new FileReader(); r.onload = ()=>cbIn(String(r.result||"")); r.readAsText(file); }; f.click(); return; }
+  else if(act==="cboutall") return cbOut(partyRoster());
+  else if(act==="cbout"){ const c = pcAt(b.dataset.pc); if(c) cbOut([c]); return; }
   else if(act==="addcomp"){
     const w = ($("#pc-addwho")||{}).value; if(!w){ flash("Pick who to bring in."); return; }
     let x = null;
@@ -9122,6 +9128,143 @@ function fieldBookOut(nameOnly){
   a.download = `field-book-from-the-survey-${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}.json`;
   document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   flash(`${pack.loot.length} items, ${pack.npcs.length} people, ${pack.spells.length} spells, ${pack.shops.length} shop kinds and ${pack.factions.length} factions saved for the Field Book: open it there with Send → Bring a file in.`);
+}
+/* ══════════════════════════════════════════════════════════════
+   CHARACTER BOOK — the players' sheet app (Documents\Character Book, crook26-a.github.io/character-book), both ways
+   (Joseph, 2026-11-01: "both right away", and a character already in the party is updated, not added again).
+   In: a Character Book file (its "Send to the survey", or any backup from version 11 on) carries a survey-shaped
+   copy of each character in .survey, worked out by the Character Book (AC, to-hit, saves…). Out: a Character Book
+   backup with from:"Ordinate Survey"; the Character Book updates a character it already has instead of replacing it.
+   Updating, either way: the sheet's numbers are the incoming copy's; lists (attacks, resources, spells, items) go by
+   name, a match updated and anything new added, nothing taken away; each app keeps what only it has (here: favor,
+   XP, crew role, fight stats, files, notes; there: its journal, people, effects, the Auspicious Cart's wager).
+   The secret favor, the notes and the fight stats never go out.
+   ══════════════════════════════════════════════════════════════ */
+const lc = s => String(s||"").trim().toLowerCase();
+const cbSameName = (pc, x) => (x.cbId && pc.cbId===x.cbId) || [x.name, x.short].some(n => n && lc(n)===lc(pc.name));
+/* an item's name: the library's or the SRD's for an id, or the line as written */
+const cbInvName = e => e.id ? ((libLootById(e.id)||{}).name || e.id) : String(e.text||"");
+function cbIn(text){
+  let o; try{ o = JSON.parse(text); }catch(err){ flash("That isn't a Character Book file."); return; }
+  if(!o || o.app!=="character-book"){ flash("That isn't a Character Book file."); return; }
+  if(!Array.isArray(o.survey) || !o.survey.length){ flash("That file is from an older Character Book: save it again from the Character Book (version 11 or later)."); return; }
+  const roster = root.roster = Array.isArray(root.roster) ? root.roster : [];
+  const plan = o.survey.map(x => ({ x, pc:roster.find(pc=>cbSameName(pc, x)) || null }));
+  const adds = plan.filter(p=>!p.pc).length;
+  if(adds && partySize() + adds > 8){ flash("The party can't go over 8: make room first."); return; }
+  if(!confirm(plan.map(p=>`${p.x.name}: ${p.pc ? `updates ${p.pc.name||"their sheet"}` : "joins the party"}`).join("\n") + "\n\nBring them in?")) return;
+  let made = 0;
+  for(const p of plan){
+    partyDoing(p.pc ? "Updated from the Character Book" : "Joined from the Character Book", p.pc || p.x);
+    let pc = p.pc;
+    if(!pc){ pc = blankCharacter(p.x.level); roster.splice(Math.min(partySize(), roster.length), 0, pc); root.party = partySize() + 1; syncParty(); }
+    made += cbIntoPc(pc, p.x);
+    saveParty();
+  }
+  renderPane(true);
+  flash(`${plan.length} character${plan.length===1?"":"s"} in from the Character Book${made ? `; ${made} spell${made===1?"":"s"} not in the SRD went into your Library` : ""}.`);
+}
+/* one Character Book character into a party sheet; back: how many spells it had to add to the Library */
+function cbIntoPc(pc, x){
+  for(const k of ["name","player","species","cls","subcls","bg","align","ac","hpMax","speed","init","pp","dc","satk","saves","skills","senses","langs","looks","persona"]) if(x[k]!=null && x[k]!=="") pc[k] = x[k];
+  for(const k of ["str","dex","con","int","wis","cha","hp","temp"]) if(x[k]!=null) pc[k] = x[k];
+  pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
+  if(x.purse) pc.purse = { ...x.purse };
+  if(x.death) pc.death = { s:+x.death.s||0, f:+x.death.f||0 };
+  if(Array.isArray(x.conds)) pc.conds = x.conds.slice();
+  if(!pc.notes && x.notes) pc.notes = x.notes;                       // the survey's notes are the DM's: only filled when there are none
+  pc.slots = Array.from({ length:10 }, (_, L)=>({ max:+((x.slots||[])[L]||{}).max||0, used:+((x.slots||[])[L]||{}).used||0 }));
+  const byName = (list, y) => list.find(z=>lc(z.name)===lc(y.name));
+  pc.attacks = Array.isArray(pc.attacks) ? pc.attacks : [];
+  for(const a of (x.attacks||[])){ const m = byName(pc.attacks, a); if(m) Object.assign(m, { hit:a.hit, dmg:a.dmg, dtype:a.dtype }); else pc.attacks.push({ name:a.name, hit:a.hit, dmg:a.dmg, dtype:a.dtype }); }
+  pc.res = Array.isArray(pc.res) ? pc.res : [];
+  for(const r of (x.res||[])){ const m = byName(pc.res, r); if(m) Object.assign(m, { max:r.max, used:r.used, rest:r.rest }); else pc.res.push({ id:uid("rs_"), name:r.name, max:r.max, used:r.used||0, rest:r.rest||"long" }); }
+  /* spells by name: the SRD's or your own; one that's neither joins your Library's spells with the sheet's own text */
+  pc.spells = Array.isArray(pc.spells) ? pc.spells : []; let made = 0;
+  for(const s of (x.spells||[])){
+    let sp = spellByName(s.name);
+    if(!sp){ sp = { id:uid("lsp_"), name:s.name, lv:+s.lv||0, school:"", time:s.time||"", range:s.range||"", comp:"", dur:s.dur||"", conc:!!s.conc, rit:false, cls:x.cls||"",
+      save:s.save||"", atk:!!s.atk, dmg:s.dmg||"", dtype:s.dtype||"", desc:s.desc||"", hi:"", notes:`From ${x.name}'s Character Book (${new Date().toISOString().slice(0,10)}).` }; lib().spells.push(sp); made++; }
+    if(!pc.spells.includes(sp.id)) pc.spells.push(sp.id);
+  }
+  /* items by name: what they carry now; one the survey knows becomes its id, anything else a line as written */
+  pc.inv = Array.isArray(pc.inv) ? pc.inv : [];
+  const named = new Map([...lib().loot, ...SRD_LOOT].map(i=>[lc(i.name), i.id]));
+  for(const it of (x.inv||[])){
+    const m = pc.inv.find(e=>lc(cbInvName(e))===lc(it.name));
+    if(m){ m.qty = it.qty; if(it.attuned) m.attuned = true; else delete m.attuned; continue; }
+    const id = named.get(lc(it.name)); const e = id ? { id, qty:it.qty } : { text:it.name, qty:it.qty }; if(it.attuned) e.attuned = true; pc.inv.push(e);
+  }
+  return made;
+}
+/* a party sheet as a Character Book character: its spells and items with their full text, so the player has the rules
+   on their phone. Not the favor (it's secret), notes (the DM's), XP, fight stats or files */
+const CB_CAST = { Cleric:"wis", Druid:"wis", Ranger:"wis", Bard:"cha", Warlock:"cha", Sorcerer:"cha", Paladin:"cha", Wizard:"int", Fighter:"str", Rogue:"dex" };
+const CB_SKILLS = { "Acrobatics":"acrobatics", "Animal Handling":"animal", "Arcana":"arcana", "Athletics":"athletics", "Deception":"deception", "History":"history", "Insight":"insight",
+  "Intimidation":"intimidation", "Investigation":"investigation", "Medicine":"medicine", "Nature":"nature", "Perception":"perception", "Performance":"performance", "Persuasion":"persuasion",
+  "Religion":"religion", "Sleight of Hand":"sleight", "Stealth":"stealth", "Survival":"survival" };
+const CB_SKILL_AB = { acrobatics:"dex", animal:"wis", arcana:"int", athletics:"str", deception:"cha", history:"int", insight:"wis", intimidation:"cha", investigation:"int", medicine:"wis",
+  nature:"int", perception:"wis", performance:"cha", persuasion:"cha", religion:"int", sleight:"dex", stealth:"dex", survival:"wis" };
+function cbSpell(s){
+  const time = { Action:"1 action", "Bonus-Action":"1 bonus action", "Bonus Action":"1 bonus action" }[s.time] || (/^Reaction/.test(s.time||"") ? "1 reaction" : s.time||"");
+  const sp = { id:uid("sp_"), name:s.name, lvl:+s.lv||0, time, range:String(s.range||"").replace(/ feet/, " ft"), dur:s.dur||"", conc:!!s.conc,
+    text:String(s.desc||"").trim() + (s.hi ? "\n\n**Higher levels.** " + String(s.hi).trim() : ""), from:s.id };
+  if(!String(s.id).startsWith("spell:")) sp.tag = "Homebrew";
+  const save = { Strength:"str", Dexterity:"dex", Constitution:"con", Intelligence:"int", Wisdom:"wis", Charisma:"cha" }[s.save] || null;
+  if(s.dmg){
+    const r = { dice:s.dmg }, up = /by (\d+d\d+) for each (?:spell )?slot level above/.exec(s.hi||""); if(up) r.up = up[1];
+    if(/when you reach (?:character )?levels? 5/.test(s.hi||"")) r.cantrip = true;
+    if(/spellcasting ability modifier/.test(s.desc||"")) r.mod = true;
+    if(s.heal || (!s.dtype && /regain/.test(s.desc||""))) r.kind = "heal";
+    else if(s.dtype && save) Object.assign(r, { kind:"save", save, type:s.dtype, half:/half as much/.test(s.desc||"") });
+    else if(s.dtype && s.atk) Object.assign(r, { kind:"atk", type:s.dtype });
+    if(r.kind) sp.roll = r;
+  }
+  if(save && !sp.roll) sp.save = save;
+  return sp;
+}
+function pcToCb(c){
+  const ab = { str:numOr(c.str,10), dex:numOr(c.dex,10), con:numOr(c.con,10), int:numOr(c.int,10), wis:numOr(c.wis,10), cha:numOr(c.cha,10) };
+  const prof = profByLevel(c.level), m = k => modOf(ab[k]);
+  /* a save or skill counts as proficient when its bonus reaches the ability modifier plus proficiency (whatever words the sheet uses) */
+  const saveProf = []; for(const [, a, n] of String(c.saves||"").matchAll(/\b(Str|Dex|Con|Int|Wis|Cha)\w*\s*([+-]\d+)/g)){ const k = a.toLowerCase(); if(+n >= m(k) + prof && !saveProf.includes(k)) saveProf.push(k); }
+  const skills = {}; for(const [nm, k] of Object.entries(CB_SKILLS)){ const r = new RegExp(`\\b${nm}\\s*([+-]\\d+)`).exec(String(c.skills||"")); if(!r) continue; const over = +r[1] - m(CB_SKILL_AB[k]); if(over >= 2*prof) skills[k] = 2; else if(over >= prof) skills[k] = 1; }
+  const hdRes = (c.res||[]).find(r=>/Hit Point Dice \(d(\d+)\)/.test(r.name||"")), die = hdRes ? +/\(d(\d+)\)/.exec(hdRes.name)[1] : 8;
+  const slots = {}; (c.slots||[]).forEach((s, L)=>{ if(L && s && +s.max) slots[L] = { max:+s.max, used:+s.used||0 }; });
+  const attacks = (c.attacks||[]).filter(a=>a && a.name).map((a, n)=>{ const x = { id:`at_${c.id}_${n}`, name:a.name, dmgx:String(a.dmg||""), dtype:a.dtype||"" };
+    const h = String(a.hit||"").trim(), sv = /^(STR|DEX|CON|INT|WIS|CHA)\s+(\d+)$/i.exec(h);
+    if(/^[+-]?\d+$/.test(h)) x.hit = +h; else if(sv) x.save = { ab:sv[1].toLowerCase(), dc:+sv[2] };
+    return x; });
+  const items = (c.inv||[]).map((e, n)=>{ const src = e.id ? libLootById(e.id) : null;
+    const it = { id:`it_${c.id}_${n}`, name:cbInvName(e), qty:numOr(e.qty,1), where:"On me", note:"", from:e.id||"" };
+    if(e.attuned){ it.attune = true; it.attuned = true; }                                // a line as written can be attuned too (the Auspicious Cart)
+    if(src){ const magic = src.kind==="magic item" || src.rarity || !String(src.id).startsWith("srd:");
+      if(magic || src.kind==="potion") it.note = String(src.effect||src.desc||"").trim();          // effect and desc are for the players; notes stay here
+      if(src.attune===true || /attunement/i.test(src.att||"")){ it.attune = true; it.attuned = !!e.attuned; }
+      it.value = src.rarity || src.value || "";
+      const heal = /regains? (\d+d\d+(?:\s*\+\s*\d+)?) Hit Points/i.exec(src.desc||""); if(src.kind==="potion" && heal) it.use = { label:"Drink", heal:heal[1].replace(/\s+/g,"") }; }
+    return it; });
+  const persona = String(c.persona||""), line = k => ((new RegExp(`^${k}:\\s*(.*)$`, "mi").exec(persona)||[])[1]||"");
+  const traits = []; if(c.defenses) traits.push({ name:"Defenses", text:c.defenses, src:"Sheet" }); if(c.senses) traits.push({ name:"Senses", text:c.senses, src:"Sheet" });
+  return { id:c.cbId || "ch_sv_" + c.id, name:c.name||"Character", short:"", player:c.player||"", campaign:campName(), species:c.species||"", cls:c.cls||"", subcls:c.subcls||"", level:clampLv(c.level),
+    bg:c.bg||"", align:c.align||"", ab, saveProf, skills, castAb:CB_CAST[c.cls]||"wis", ac:numOr(c.ac,10), acNote:"", speed:numOr(c.speed,30), initBonus:numOr(c.init, m("dex")) - m("dex"),
+    hpMax:numOr(c.hpMax,1), hp:numOr(c.hp, numOr(c.hpMax,1)), temp:numOr(c.temp,0), hd:{ die, max:hdRes ? +hdRes.max : clampLv(c.level), used:hdRes ? +hdRes.used||0 : 0 },
+    death:{ ok:+((c.death||{}).s)||0, fail:+((c.death||{}).f)||0 }, conds:(c.conds||[]).slice(), exh:0, conc:null, effects:[],
+    res:(c.res||[]).filter(r=>r && r.name && r!==hdRes).map(r=>({ id:r.id||uid("rs_"), name:r.name, max:+r.max||0, used:+r.used||0, rest:["short","long","one"].includes(r.rest) ? r.rest : "long" })),
+    slots, pact:c.cls==="Warlock", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
+    purse:{ cp:0, sp:0, ep:0, gp:0, pp:0, ...(c.purse||{}) }, debtCp:0, marked:false, log:[], sessions:[], people:[],
+    story:{ profs:[c.langs ? `Languages: ${c.langs}` : ""].filter(Boolean).join("\n"), traits:line("Trait") || (/^\w+:/m.test(persona) ? "" : persona), ideals:line("Ideal"), bonds:line("Bond"), flaws:line("Flaw"), looks:c.looks||"", backstory:"", more:"" },
+    rolls:[], inspiration:false };
+}
+function cbOut(pcs){
+  pcs = pcs.filter(c=>c && (c.name||"").trim()); if(!pcs.length){ flash("Nobody with a name to send."); return; }
+  const d = new Date(), p = n => String(n).padStart(2,"0");
+  const pack = { app:"character-book", version:11, from:"Ordinate Survey", campaign:campName(), saved:d.toISOString(), db:{ v:1, chars:pcs.map(pcToCb) }, pics:{} };
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(pack)], { type:"application/json" }));
+  const who = pcs.length===1 ? (pcs[0].name||"character").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() : "party";
+  a.download = `character-book-${who}-${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}.json`;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  flash(`${pcs.length===1 ? pcs[0].name : `${pcs.length} characters`} saved for the Character Book: there, PCs tab → Bring in a backup…`);
 }
 /* ══════════════════════════════════════════════════════════════
    CARDS — a handout for the players (Joseph, 2026-10-28): anything in the library (an item, a spell, a person, a
