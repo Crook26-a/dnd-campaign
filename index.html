@@ -792,7 +792,7 @@
   .ts-c.now{border-color:var(--lead);background:var(--paper-lit);box-shadow:inset 0 -3px 0 var(--lead)} .ts-c.now .ts-n{font-weight:600}
   .ts-c.sel{outline:1px dashed var(--ink-soft);outline-offset:1px} .ts-c.down .ts-n{text-decoration:line-through;opacity:.6} .ts-c.fled,.ts-c.hid{opacity:.55}
   .ts-hp{width:16px;height:4px;background:var(--rule-soft);margin-right:5px;position:relative;display:inline-block} .ts-hp span{position:absolute;left:0;top:0;bottom:0;background:#7a8f4a} .ts-hp span.lo{background:var(--lead)}
-  #bsvg.hand{cursor:grab} #bsvg.panning{cursor:grabbing}
+  #bsvg.hand{cursor:grab} #bsvg.panning{cursor:grabbing} #bsvg.aiming{cursor:crosshair}
   #svg.hand-tool{cursor:grab}
   .planback{margin:0 0 12px}
   .lightrow{margin:4px 0 8px}
@@ -13401,9 +13401,137 @@ function renderBattle(players){
       <text text-anchor="middle" y="${BS*.42+11}" font-size="9" font-family="var(--serif)" fill="var(--ink)">held back</text></g>`; }
   if(players) return g;
   svgB.innerHTML = g;
+  aoePaint();                                     // an area being aimed or placed, over the map
   concPaint();                                    // a concentration save waiting pops up over the map
   sendPlayers();
 }
+/* ══════════════════════════════════════════════════════════════
+   AREAS OF EFFECT (Joseph, 2026-11-01: "Things like Cone of Cold should be able to show an area of effect radiating
+   out from the pc or npc that is using it... fireball would have a radius circle that would show where it would hit
+   depending on who cast it"; 2026-11-02, how to aim: follow the pointer). The shape comes from the spell's or the
+   ability's own words (the SRD 5.2's: a 20-foot-radius Sphere, a 60-foot Cone, a 100-foot-long, 5-foot-wide Line, a
+   15-foot Cube, a 10-foot-radius Cylinder, a 15-foot Emanation), and where it starts: at a point within the spell's
+   range (a dashed ring shows the range), centered on the user, or out from them toward the pointer. While aiming, the
+   shape follows the pointer; a tap or click places it, and everyone caught goes in the targets (allies too), to
+   untick. A square counts when its middle is inside the shape: our table's way of reading an area on a grid. A cone
+   is as wide as it is far (the 2024 rules); a cube from its user sits beside them, turned eight ways. Where the words
+   give no shape, nothing is drawn. Never on the players' screen.
+   aoeAim: { actor, what, a (the shape), on (following the pointer), pt (the pointer), placed, n (how many caught) }
+   ══════════════════════════════════════════════════════════════ */
+let aoeAim = null;
+/* the shape in an action's words: { shape: circle|cone|line|cube|aura, size (feet), wide, word, from: point|on|self, range } */
+function aoeOf(info){
+  if(!info) return null; const s = info.spell, text = String((s && s.desc) || info.text || "");
+  const tries = [[/(\d+)-foot-long,\s*(\d+)-foot-wide Line/i, m=>({ shape:"line", size:+m[1], wide:+m[2] })],
+    [/(\d+)-foot Cone/i, m=>({ shape:"cone", size:+m[1] })],
+    [/(\d+)-foot-radius,?\s*\d+[- ]?foot[- ]?(?:high|tall) Cylinder/i, m=>({ shape:"circle", size:+m[1], word:"Cylinder" })],
+    [/\d+-foot-(?:high|tall),?\s*(\d+)-foot-radius Cylinder/i, m=>({ shape:"circle", size:+m[1], word:"Cylinder" })],
+    [/(\d+)-foot-radius Sphere/i, m=>({ shape:"circle", size:+m[1], word:"Sphere" })],
+    [/(\d+)-foot[- ]Cube/i, m=>({ shape:"cube", size:+m[1] })],
+    [/(\d+)-foot Emanation/i, m=>({ shape:"aura", size:+m[1] })]];
+  let best = null;
+  for(const [re, f] of tries){ const m = re.exec(text); if(m && (!best || m.index < best.i)) best = { i:m.index, a:f(m), end:m.index + m[0].length }; }
+  if(!best || !(best.a.size > 0)) return null;
+  const a = best.a, after = text.slice(best.end, best.end + 50);
+  if(a.shape==="aura") a.from = "on";
+  else if(a.shape==="cone" || a.shape==="line") a.from = "self";
+  else a.from = /^\s*(?:that is\s+)?centered on\s+(?:you|yourself|itself|himself|herself|them)\b/i.test(after) ? "on"
+    : /^\s*originating from\s+(?:you|itself|the \w+)\b/i.test(after) && !/^\s*originating from\s+(?:that|a) point/i.test(after) ? "self" : "point";
+  const rg = s ? /(\d+)\s*(?:feet|foot|ft)/i.exec(String(s.range||"")) : /within (\d+) feet/i.exec(text);
+  a.range = a.from==="point" && rg ? +rg[1] : null;
+  return a;
+}
+const aoeNeedsAim = a => a.from==="point" || a.from==="self";
+function aoeWords(a){
+  const sh = { circle:a.word || "Sphere", cone:"Cone", line:"Line", cube:"Cube", aura:"Emanation" }[a.shape];
+  const size = a.shape==="line" ? `${a.size}-ft-long, ${a.wide || 5}-ft-wide` : a.shape==="circle" ? `${a.size}-ft-radius` : `${a.size}-ft`;
+  const where = a.from==="on" ? (a.shape==="aura" ? "around them" : "centered on them") : a.from==="self" ? "out from them" : a.range!=null ? `at a point within ${a.range} ft` : "at a point (its words give no range)";
+  return `${size} ${sh}, ${where}`;
+}
+/* where it falls, in map pixels: { inside(x, y), path (svg), center, out (beyond the range) } */
+function aoeGeom(c){
+  const A = aoeAim, a = A.a, me = c.pos[A.actor], F = BS / 5, C = { x:(me.x + .5) * BS, y:(me.y + .5) * BS }, P = A.pt || C;
+  let ux = P.x - C.x, uy = P.y - C.y, L = Math.hypot(ux, uy); if(L < 1){ ux = 1; uy = 0; L = 1; } ux /= L; uy /= L;
+  const g = { inside:()=>false, path:"", out:false, C };
+  if(a.shape==="aura"){ const k = a.size / 5;
+    g.inside = (x, y) => { const sx = Math.floor(x / BS), sy = Math.floor(y / BS); return Math.max(Math.abs(sx - me.x), Math.abs(sy - me.y)) <= k && !(sx===me.x && sy===me.y); };
+    g.path = `<rect x="${(me.x - k) * BS}" y="${(me.y - k) * BS}" width="${(2 * k + 1) * BS}" height="${(2 * k + 1) * BS}"/>`; return g; }
+  if(a.shape==="circle" || (a.shape==="cube" && a.from!=="self")){
+    let Q = C;
+    if(a.from==="point"){ const odd = a.shape==="cube" && (a.size / 5) % 2===1;     // an odd cube sits on a square, the rest on a corner
+      Q = odd ? { x:(Math.floor(P.x / BS) + .5) * BS, y:(Math.floor(P.y / BS) + .5) * BS } : { x:Math.round(P.x / BS) * BS, y:Math.round(P.y / BS) * BS };
+      if(a.range!=null) g.out = Math.hypot(Q.x - C.x, Q.y - C.y) > a.range * F + BS * .5; }
+    if(a.shape==="circle"){ const r = a.size * F; g.inside = (x, y) => Math.hypot(x - Q.x, y - Q.y) <= r + .01; g.path = `<circle cx="${Q.x}" cy="${Q.y}" r="${r}"/>`; }
+    else { const h = a.size * F / 2; g.inside = (x, y) => Math.abs(x - Q.x) <= h + .01 && Math.abs(y - Q.y) <= h + .01; g.path = `<rect x="${Q.x - h}" y="${Q.y - h}" width="${2 * h}" height="${2 * h}"/>`; }
+    return g; }
+  if(a.shape==="cube"){                            // beside them, toward the pointer, turned eight ways
+    const k = Math.round(Math.atan2(uy, ux) / (Math.PI / 4)), dx = Math.round(Math.cos(k * Math.PI / 4)), dy = Math.round(Math.sin(k * Math.PI / 4)), S = a.size * F;
+    const x0 = dx > 0 ? (me.x + 1) * BS : dx < 0 ? me.x * BS - S : C.x - S / 2, y0 = dy > 0 ? (me.y + 1) * BS : dy < 0 ? me.y * BS - S : C.y - S / 2;
+    g.inside = (x, y) => x >= x0 - .01 && x <= x0 + S + .01 && y >= y0 - .01 && y <= y0 + S + .01; g.path = `<rect x="${x0}" y="${y0}" width="${S}" height="${S}"/>`; return g; }
+  const O = { x:C.x + ux * BS / 2, y:C.y + uy * BS / 2 }, Ln = a.size * F, px = -uy, py = ux;     // from the edge of their square
+  if(a.shape==="cone"){
+    g.inside = (x, y) => { const vx = x - O.x, vy = y - O.y, along = vx * ux + vy * uy; return along > 0 && along <= Ln + .01 && Math.abs(vx * px + vy * py) <= along / 2 + .01; };
+    g.path = `<path d="M${O.x} ${O.y} L${O.x + ux * Ln + px * Ln / 2} ${O.y + uy * Ln + py * Ln / 2} L${O.x + ux * Ln - px * Ln / 2} ${O.y + uy * Ln - py * Ln / 2} Z"/>`; return g; }
+  const W = (a.wide || 5) * F / 2;
+  g.inside = (x, y) => { const vx = x - O.x, vy = y - O.y, along = vx * ux + vy * uy; return along >= 0 && along <= Ln + .01 && Math.abs(vx * px + vy * py) <= W + .01; };
+  g.path = `<path d="M${[[W, 0], [W, Ln], [-W, Ln], [-W, 0]].map(([s, l]) => `${O.x + ux * l + px * s} ${O.y + uy * l + py * s}`).join(" L")} Z"/>`;
+  return g;
+}
+/* who's in it: anyone on the map whose square's middle is inside (not the fled, not a dead enemy) */
+function aoeCaught(c, g){
+  return combatants(c).filter(t => { const p = c.pos[t.id]; return p && !t.fled && !(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && g.inside((p.x + .5) * BS, (p.y + .5) * BS); }).map(t => t.id);
+}
+const aoeFight = () => { const n = bnode(); return n && n.site && n.site.combat; };
+/* a new action: its area, if it has one; one around or on its user is placed at once, the others are aimed */
+function aoeStart(c, t, info){
+  aoeAim = null; const a = aoeOf(info); if(!a || !t || !c || !c.pos || !c.pos[t.id] || c.layout==="lineup") return;
+  aoeAim = { actor:t.id, what:act.what, a, on:aoeNeedsAim(a), pt:null, placed:false, n:0 };
+  if(!aoeAim.on) aoePlace(true);
+  aoePaint();                                     // the ring (or the shape) at once, before the pointer moves
+}
+function aoeMove(p){ if(!aoeAim) return; aoeAim.pt = { x:p.x, y:p.y }; aoePaint(); }
+function aoePlace(quiet){
+  const c = aoeFight(); if(!aoeAim || !c || !c.pos[aoeAim.actor]) return;
+  if(aoeAim.on && !aoeAim.pt) return;
+  const g = aoeGeom(c); if(g.out){ flash(`Out of range: the point has to be within ${aoeAim.a.range} feet.`); return; }
+  act.targets = aoeCaught(c, g); aoeAim.on = false; aoeAim.placed = true; aoeAim.n = act.targets.length;
+  if(quiet) return;
+  aoePaint(); renderBattlePanel();
+  const all = combatants(c); flash(aoeAim.n ? `Caught: ${andList(act.targets.map(id => (all.find(x => x.id===id) || {}).label || "someone"))}.` : "Nobody's in it.");
+}
+/* drawn over the map (never the players' screen): the range ring while aiming, the shape, its squares, the caught */
+function aoePaint(){
+  const s = $("#bsvg"); if(!s) return; const old = s.querySelector("#aoe-g"); if(old) old.remove();
+  const c = aoeFight();
+  if(aoeAim && (!c || !c.pos || !c.pos[aoeAim.actor] || typeof act==="undefined" || !act || act.actor!==aoeAim.actor || act.what!==aoeAim.what)) aoeAim = null;
+  s.classList.toggle("aiming", !!(aoeAim && aoeAim.on));
+  if(!aoeAim) return;
+  const a = aoeAim.a, F = BS / 5, me = c.pos[aoeAim.actor], C = { x:(me.x + .5) * BS, y:(me.y + .5) * BS };
+  let h = aoeAim.on && a.from==="point" && a.range ? `<circle cx="${C.x}" cy="${C.y}" r="${a.range * F}" fill="none" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="8 6" opacity=".7"/>` : "";
+  if(aoeAim.pt || !aoeAim.on){
+    const g = aoeGeom(c), col = g.out ? "#777" : "#c0392b"; let sq = "";
+    for(let y = 0; y < BH; y++) for(let x = 0; x < BW; x++) if(g.inside((x + .5) * BS, (y + .5) * BS)) sq += `M${x * BS} ${y * BS}h${BS}v${BS}h${-BS}Z`;
+    const rings = aoeCaught(c, g).map(id => { const p = c.pos[id]; return `<circle cx="${(p.x + .5) * BS}" cy="${(p.y + .5) * BS}" r="${BS * .47}" fill="none" stroke="${col}" stroke-width="3"/>`; }).join("");
+    h += `<path d="${sq}" fill="${col}" fill-opacity=".2"/><g fill="${col}" fill-opacity=".08" stroke="${col}" stroke-width="2" ${aoeAim.on ? 'stroke-dasharray="6 4"' : ""}>${g.path}</g>${rings}`;
+  }
+  s.insertAdjacentHTML("beforeend", `<g id="aoe-g" style="pointer-events:none">${h}</g>`);
+}
+/* in the Action box, above the targets */
+function aoeRowHtml(c, t, info){
+  const a = aoeOf(info); if(!a) return "";
+  const live = aoeAim && aoeAim.actor===act.actor && aoeAim.what===act.what, onMap = !!(c && c.pos && t && c.pos[t.id] && c.layout!=="lineup");
+  const say = !onMap ? "Not on a map here: pick who's in it below." : live && aoeAim.on ? "It follows the pointer over the map: tap or click to place it, and everyone caught goes in the targets."
+    : live && aoeAim.placed ? (aoeAim.n ? `${aoeAim.n} caught: in the targets below (untick anyone it spares).` : "Nobody's in it.") : "";
+  const btn = !onMap ? "" : live && aoeAim.on ? `<button class="btn small" data-aoe="stop">Stop aiming</button>` : aoeNeedsAim(a) || !live ? `<button class="btn small" data-aoe="aim">${live && aoeAim.placed ? "Aim again" : "Aim it on the map"}</button>` : "";
+  return `<div class="aoerow" style="margin:4px 0 2px;padding:4px 6px;border-left:3px solid #c0392b;background:var(--paper-lit);font-size:12px"><b>Area</b>: ${esc(aoeWords(a))}. ${esc(say)} ${btn}
+    <br><small>A square counts when its middle is inside the shape.</small></div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-aoe]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
+  const t = combatants(c).find(x => x.id===act.actor); if(!t) return;
+  if(b.dataset.aoe==="stop"){ if(aoeAim){ aoeAim.on = false; if(!aoeAim.placed) aoeAim = null; } }
+  else aoeStart(c, t, actInfo(c, t));
+  aoePaint(); renderBattlePanel(); });
+document.addEventListener("keydown", e => { if(e.key!=="Escape" || !aoeAim || !aoeAim.on) return; aoeAim.on = false; if(!aoeAim.placed) aoeAim = null; aoePaint(); renderBattlePanel(); });
 function bpoint(e){
   const r = $("#bsvg").getBoundingClientRect(), b = bview;
   const s = Math.max(b.w/r.width, b.h/r.height);                          // preserveAspectRatio meet
@@ -13418,6 +13546,8 @@ $("#bsvg").addEventListener("pointerdown", e=>{
   try{ $("#bsvg").setPointerCapture(e.pointerId); }catch(err){}
   /* moving the map, whatever is picked: the middle button, Space held down, or the hand */
   if(e.button===1 || ((spaceDown || bhand) && e.button===0)){ e.preventDefault(); bdrag = { pan:true, sx:e.clientX, sy:e.clientY, vb:{...bview} }; $("#bsvg").classList.add("panning"); return; }
+  /* aiming an area: the shape follows, and lifting places it (a token under it doesn't move) */
+  if(aoeAim && aoeAim.on && e.button===0){ bdrag = { aoe:true }; aoeMove(bpoint(e)); return; }
   const n = bnode(), lineup = n && n.site && n.site.combat && n.site.combat.layout==="lineup";
   /* a way out: click its marker; Build is picking a square for a new one */
   if(exitPick && n && editingInside() && e.button===0 && !tok){ const p = bpoint(e); bdrag = null; addExitAt(n, Math.floor(p.x/BS), Math.floor(p.y/BS)); return; }
@@ -13521,6 +13651,7 @@ $("#pane-inspect").addEventListener("click", e=>{ const b = e.target.closest("[d
 var bhoverSq = null;                                   // the square under the pointer while painting (R turns the piece there)
 $("#bsvg").addEventListener("pointermove", e=>{
   if(bpaint){ const p = bpoint(e); bhoverSq = { x:Math.floor(p.x/BS), y:Math.floor(p.y/BS) }; }
+  if(aoeAim && aoeAim.on && (!bdrag || bdrag.aoe)){ aoeMove(bpoint(e)); return; }
   if(!bdrag) return;
   if(bdrag.paint){ const n = bnode(); if(n && paintAt(n, bpoint(e))){ bdrag.changed = true; renderBattle(); } return; }
   if(bdrag.label!=null){ if(!bdrag.moved && Math.hypot(e.clientX-bdrag.sx, e.clientY-bdrag.sy) < 4) return;
@@ -13550,6 +13681,7 @@ $("#bsvg").addEventListener("pointermove", e=>{
 const bend = e=>{
   if(!bdrag) return;
   const d = bdrag; bdrag = null; $("#bsvg").classList.remove("panning"); $("#bsvg").classList.remove("dragging");
+  if(d.aoe){ aoePlace(); return; }
   if(d.ptok){ if(d.moved){ touch(); renderBattle(); renderEditPanel(); } return; }
   if(d.paint){ if(d.changed){ touch(); renderBattlePanel(); } return; }
   if(d.piece){ if(d.moved){ touch(); renderBattle(); renderBattlePanel(); } return; }
@@ -14206,7 +14338,7 @@ function actionForm(c, all){
     ${D.addons.length ? `<label class="grouplab" style="margin-top:4px">On this attack</label>
       <div class="acttargets">${D.addons.map(a=>{ const on = (act.addons||[]).includes(a.key), used = a.once && addonUsed(c, t.id, a.key);
         return `<button class="chip${on?" on":""}" data-addon="${esc(a.key)}" ${used&&!on?"disabled":""} title="${esc(a.note||(a.once?"Once a turn":""))}">${esc(a.name)}${a.dice?` +${esc(a.dice)}${a.dtype && D.part1 && a.dtype!==D.part1.dtype ? ` ${esc(a.dtype)}` : ""}`:""}${a.adv?" · Advantage":""}${a.once?(used?" · used this turn":" · once a turn"):""}</button>`; }).join("")}</div>` : ""}
-    <label class="grouplab" style="margin-top:4px">Targets</label>
+    ${aoeRowHtml(c, t, info)}<label class="grouplab" style="margin-top:4px">Targets</label>
     <div class="acttargets">${(me=>isAttackAct(info) || (info && info.save) ? [...all.filter(x=>x.id!==act.actor), ...me] : [...me, ...all.filter(x=>x.id!==act.actor)])(all.filter(x=>x.id===act.actor)).map(x=>`<button class="chip${act.targets.includes(x.id)?" on":""}${x.side==="party"?" pc":" foe"}" data-actt="${x.id}" data-side="${x.side}">${x.id===act.actor ? `themself (${esc(x.label)})` : esc(x.label)}</button>`).join("")}</div>
     <div class="actout">${OUTCOMES.map(([v,l])=>`<label><input type="radio" name="ac-out" value="${v}" ${act.outcome===v?"checked":""}> ${l}</label>`).join("")}</div>
     ${toHitRow(c, t, info, all)}
@@ -14749,6 +14881,7 @@ function renderBattlePanelNow(){
       else if(!act.queue && /^(sp|pca|fsp):/.test(act.what) && t0){ const i0 = actInfo(c, t0), s0 = i0 && i0.spell, n0 = beamsOf(t0, s0, s0 && s0.lv);
         if(n0 > 1) act.queue = { word:/scorching/i.test(s0.name) ? "ray" : "beam", items:Array(n0).fill(act.what), i:0 }; } }
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
+    aoeStart(c, t, info);                                         // an area: aimed on the map (or placed at once around them)
     if(info){ act.outcome = (info.spell && info.spell.atk) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
       /* a new choice brings its own damage type (Ice Knife is piercing, not the radiant of the Starry Form picked before it) */

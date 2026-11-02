@@ -26,7 +26,7 @@ step("a fight: the dials say who sizes up the party, and how", async () => {
 step("round 1: each rolls as its turn starts (a d20 of 6: one believes a false read, one learns nothing)", async () => {
   const c = fight(); c.turn = null;
   const seen = withRoll(0.25, () => { const L = []; for (let i = 0; i < combatants(c).length; i++) { nextTurn(c); const t = combatants(c).find(x => x.id === c.turn); const h = t && t.x; L.push(`${t.label}: ${h && h.partyRead ? h.partyRead.split("\n")[0].replace(/^Day [^·]+· /, "") : "no roll"}`); } return L; });
-  return seen.join("\n") + `\nread done: ${JSON.stringify(Object.fromEntries(Object.entries(c.readDone || {}).map(([k, v]) => [combatants(c).find(x => x.id === k).label, v])))}`;
+  return seen.join(" | ") + ` | read done: ${JSON.stringify(Object.fromEntries(Object.entries(c.readDone || {}).map(([k, v]) => [combatants(c).find(x => x.id === k).label, v])))}`;
 });
 step("round 2: only the one who learned nothing rolls again (a 20 this time)", async () => {
   const c = fight(), before = Object.fromEntries(["Gargoyle", "Specter"].map(n => [n, (who(n).x.partyRead || "").split("\n\n").length]));
@@ -39,7 +39,7 @@ step("a creature's courage changed on its card: its line follows, with what was 
   const g = who("Gargoyle"), key = "x:" + g.x.id; g.x.tac = {}; g.x.tactics = tacWords(tacCur(g.x, key)) + " Guards the door.";
   const before = g.x.tactics, box = document.createElement("div"); box.innerHTML = tacEditor(g.x, key); document.body.appendChild(box);
   const s = box.querySelector('[data-tf="courage"]'); s.value = "1"; s.dispatchEvent(new Event("change", { bubbles: true })); box.remove(); await wait(20);
-  return `before: ${before}\nafter: ${g.x.tactics}`;
+  return `before: ${before} | after: ${g.x.tactics}`;
 });
 step("written by hand: left alone, with a button to write it from the dials", async () => {
   const g = who("Gargoyle"), key = "x:" + g.x.id; g.x.tactics = "Bites the nearest wizard.";
@@ -57,5 +57,5 @@ step("a person rolled, not added yet: the dials are on the page, and the line fo
   const dials = [...box.querySelectorAll('[data-tac="d:ln_test"]')].map(e => e.dataset.tf).join(", ");
   const s = box.querySelector('[data-tac="d:ln_test"][data-tf="courage"]'); s.value = "5"; s.dispatchEvent(new Event("change", { bubbles: true })); box.remove(); await wait(20);
   libDraft = null;
-  return `dials: ${dials}\nbefore: ${before}\nafter: ${x.tactics}`;
+  return `dials: ${dials} | before: ${before} | after: ${x.tactics}`;
 });
