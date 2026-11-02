@@ -1,0 +1,3 @@
+1. step by step: the gargoyle walks a square at a time, and each claw's result pops up in a box: the pace starts as "step by step" | squares: (8,2) → (7,2) → (6,3) | boxes: Gargoyle uses Claw (Multiattack 1 of 2) on Bram — hits (to hit: d20 13 / Gargoyle uses Claw (Multiattack 2 of 2) on Bram — hits (to hit: d20 13 | Gawain 53, Wren 28, Bram 17
+2. leaving the fighter's reach, the walk stops for his opportunity attack, and goes on once it's answered: asked at (2,6), 0 attacks logged so far, the turn still going: true | after: at (2,6), 2 attacks logged
+3. Stop ends the turn where it is, and turns off the run of turns: walked 2 square(s) before stopping | the run of turns: off | attacks logged this turn: 0

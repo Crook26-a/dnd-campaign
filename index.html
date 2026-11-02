@@ -793,6 +793,7 @@
   .ts-c.sel{outline:1px dashed var(--ink-soft);outline-offset:1px} .ts-c.down .ts-n{text-decoration:line-through;opacity:.6} .ts-c.fled,.ts-c.hid{opacity:.55}
   .ts-hp{width:16px;height:4px;background:var(--rule-soft);margin-right:5px;position:relative;display:inline-block} .ts-hp span{position:absolute;left:0;top:0;bottom:0;background:#7a8f4a} .ts-hp span.lo{background:var(--lead)}
   #bsvg.hand{cursor:grab} #bsvg.panning{cursor:grabbing} #bsvg.aiming{cursor:crosshair}
+  #auto-say{position:fixed;left:50%;top:110px;transform:translateX(-50%);z-index:60;max-width:min(560px,80vw);padding:10px 14px;background:var(--paper-lit);border:2px solid var(--ink-soft);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);font-family:var(--serif);font-size:15px;line-height:1.35;cursor:pointer}
   #svg.hand-tool{cursor:grab}
   .planback{margin:0 0 12px}
   .lightrow{margin:4px 0 8px}
@@ -13551,8 +13552,8 @@ document.addEventListener("keydown", e => { if(e.key!=="Escape" || !aoeAim || !a
    - it moves first: into reach for melee, to a square in range and out of reach for ranged (staying put if it's there
      already), around walls and enemies, no further than its speed; fleeing, it Dashes away from the nearest enemy;
    - it rolls to hit (or each target's save), the damage, and logs it.
-   Moving away from an enemy offers that enemy its opportunity attack when the turn is done (the usual pop-up), and the
-   run of turns waits for it. Not yet: its spells other than areas, healing, bonus actions, reactions and legendary
+   Step by step (the pace below), moving out of an enemy's reach stops the walk for its opportunity attack (the usual
+   pop-up); all at once, it's offered when the turn is done, and the run of turns waits for it. Not yet: its spells other than areas, healing, bonus actions, reactions and legendary
    actions, hiding, and line of sight: those stay the DM's. "Undo their turn" takes the whole turn back.
    ══════════════════════════════════════════════════════════════ */
 let autoTimer = null, autoChain = 0;
@@ -13599,7 +13600,7 @@ function autoSquares(c, t, n, dash){
   while(q.length){ const a = q.shift(); if(a.cost >= left) continue;
     for(const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){ const x = a.x + dx, y = a.y + dy, k = `${x},${y}`;
       if(seen.has(k) || wall(x, y) || occ[k]==="other" || (dx && dy && (wall(a.x + dx, a.y) || wall(a.x, a.y + dy)))) continue;
-      const b = { x, y, cost:a.cost + 1 }; seen.set(k, b); q.push(b); } }
+      const b = { x, y, cost:a.cost + 1, prev:a }; seen.set(k, b); q.push(b); } }
   return [...seen.values()].filter(s => !occ[`${s.x},${s.y}`] || (s.x===me.x && s.y===me.y));
 }
 /* where to stand: in reach (melee), or in range and out of every enemy's reach (ranged); the nearest such, else as close
@@ -13613,9 +13614,43 @@ function autoWhere(c, t, n, tg, mode, sq){
   if(L.length) return L.sort((a, b) => a.cost - b.cost)[0];
   return S.sort((a, b) => chebSq(a, P) - chebSq(b, P) || a.cost - b.cost)[0];
 }
-function autoMoveTo(c, t, s){
+/* the pace (Joseph, 2026-11-02: "movement happens one space at a time, actions happen and there's a text box that pops up
+   with the result, so that it feels more like it's happening in real time. That'll be true of all the other things we're
+   going to add as well"): step by step, the default (a square at a time; a box on the map with each result, held a
+   moment or till it's tapped), or all at once (root.autoPace "now"). Step by step, leaving someone's reach stops the walk
+   for the opportunity-attack pop-up, and it goes on once that's answered (or logged). "Stop" ends the turn there. */
+const AUTO_MS = { step:300, beat:500, say:1500, perChar:25, sayMax:5500 };
+const autoNow = () => root.autoPace==="now";
+const autoSleep = ms => autoNow() || !ms ? Promise.resolve() : new Promise(r => setTimeout(r, ms));
+let autoBusy = null, autoSkip = null, autoStop = false;
+const autoGone = (c, t) => autoStop || aoeFight()!==c || c.turn!==t.id || isDownT(t) || t.fled;
+async function autoSay(text){
+  if(autoNow() || !text) return;
+  let box = $("#auto-say"); if(!box){ document.body.insertAdjacentHTML("beforeend", `<div id="auto-say" hidden></div>`); box = $("#auto-say"); }
+  box.innerHTML = `<p style="margin:0">${esc(text)}</p><small style="opacity:.6">tap to go on</small>`; box.hidden = false;
+  await new Promise(r => { const tm = setTimeout(r, Math.min(AUTO_MS.sayMax, AUTO_MS.say + String(text).length * AUTO_MS.perChar)); autoSkip = () => { clearTimeout(tm); r(); }; });
+  autoSkip = null; box.hidden = true;
+}
+document.addEventListener("click", e => { if(autoSkip && e.target.closest && e.target.closest("#auto-say")) autoSkip(); });
+/* an opportunity attack offered mid-walk: wait for it to be answered, then go on */
+async function autoWaitReaction(c, t){
+  while(aoeFight()===c && c.turn===t.id && !autoStop && (!$("#bt-pop").hidden || (act && act.reaction))) await new Promise(r => setTimeout(r, 200));
+  renderBattle(); renderBattlePanel();
+}
+/* walking there, a square at a time, along the way it found */
+async function autoWalk(c, t, s){
   const me = c.pos[t.id]; if(!s || (s.x===me.x && s.y===me.y)) return 0;
-  const from = { x:me.x, y:me.y }; c.pos[t.id] = { x:s.x, y:s.y }; moveTrack(c, t.id, from); return s.cost * 5;
+  const path = []; for(let q = s; q && q.prev; q = q.prev) path.unshift(q);
+  let ft = 0;
+  for(const q of path){
+    if(autoGone(c, t)) break;
+    const from = { ...c.pos[t.id] }; c.pos[t.id] = { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5;
+    if(autoNow()) continue;
+    renderBattle(); askOpportunity(t.id, from);
+    if(!$("#bt-pop").hidden) await autoWaitReaction(c, t);
+    await autoSleep(AUTO_MS.step);
+  }
+  return ft;
 }
 /* the Action box, used as the DM would: choose, then press its buttons */
 function autoPick(v){ const s = $("#ac-what"); if(!s) return false; s.value = v; if(s.value!==v) return false; s.dispatchEvent(new Event("change", { bubbles:true })); return true; }
@@ -13637,14 +13672,22 @@ function autoAim(c, t, o){
   return best;
 }
 /* one whole turn */
-function autoTurn(c, t){
-  const n = bnode(); if(!n || !c || c.turn!==t.id || !autoFor(t) || !c.pos || !c.pos[t.id]) return null;
+async function autoTurn(c, t){
+  const n = bnode(); if(!n || !c || c.turn!==t.id || !autoFor(t) || !c.pos || !c.pos[t.id] || autoBusy) return null;
+  autoBusy = t.id; autoStop = false; renderBattlePanel();
+  try{ return await autoTurnNow(c, t, n); } finally { autoBusy = null; autoStop = false; const b = $("#auto-say"); if(b) b.hidden = true; }
+}
+async function autoTurnNow(c, t, n){
   const all = () => combatants(c), log0 = (c.log || []).length, from0 = { ...c.pos[t.id] }, said = [];
   const others = () => all().filter(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id]);
-  const s = tacSuggest(c, t), T = tacOf(c, t);
+  const s = tacSuggest(c, t), T = tacOf(c, t), H = autoHeld(c, t);
+  const lastSaid = () => ((c.log || []).length > log0 ? c.log[c.log.length - 1].text : "");
   const done = () => { const added = (c.log || []).slice(log0).map(e => e.text);
     c.autoLast = { id:t.id, round:c.round, n:(c.log || []).length - log0, from:from0, len:(c.log || []).length, said:[...said, ...added].join(" ") || `${t.label} does nothing it can see to do.` };
-    act = freshAct(t.id); askOpportunity(t.id, from0); return c.autoLast; };
+    if(c.turn===t.id) act = freshAct(t.id); if(autoNow()) askOpportunity(t.id, from0);     // step by step, it was offered as it walked
+    return c.autoLast; };
+  if(H && H.tier==="full"){ said.push(`${t.label} is held by ${autoByName(c, H)}'s ${H.name}: it loses its turn.`); await autoSay(said[0]); return done(); }
+  if(H && (H.tier==="order" || H.tier==="turn")){ said.push(`${t.label} is under ${autoByName(c, H)}'s ${H.name}: ${autoByName(c, H)} says what it does this turn.`); await autoSay(said[0]); const r = done(); r.handed = true; return r; }
   /* fleeing (Joseph, 2026-11-02: "I want to be able to turn off the fleeing, or it becomes something they try to do that
      the players can stop"): off, it fights on; on, it tries: it Dashes for the nearest way out on the map and leaves only
      if it gets there this turn. Grappled or Restrained (speed 0), boxed in, or dropped, it doesn't; moving away offers
@@ -13652,13 +13695,16 @@ function autoTurn(c, t){
   if(s.flee && root.autoFlee!=="off"){ const O = others(), exits = (exitsOf(n) || []).filter(e => e.x!=null && e.y!=null);
     ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true;
     const S = autoSquares(c, t, n, true), out = exits.length ? S.filter(q => exits.some(e => chebSq(e, q) <= 1)) : [];
-    if(out.length){ const ft = autoMoveTo(c, t, out.sort((a, b) => a.cost - b.cost)[0]); said.push(`${t.label} Dashes${ft ? ` ${ft} ft` : ""} to a way out.`);
-      act = freshAct(t.id); renderBattlePanel(); if(autoPick("flee")) autoPress("#ac-go"); return done(); }
+    if(out.length){ await autoSay(`${t.label} turns and runs for a way out!`); const dest = out.sort((a, b) => a.cost - b.cost)[0], ft = await autoWalk(c, t, dest);
+      if(autoGone(c, t) || c.pos[t.id].x!==dest.x || c.pos[t.id].y!==dest.y){ said.push(`${t.label} tried to run, but didn't make it.`); await autoSay(said[said.length - 1]); return done(); }
+      said.push(`${t.label} Dashes${ft ? ` ${ft} ft` : ""} to a way out.`);
+      act = freshAct(t.id); renderBattlePanel(); if(autoPick("flee")) autoPress("#ac-go"); await autoSay(lastSaid()); return done(); }
     const goal = q => exits.length ? Math.min(...exits.map(e => chebSq(e, q))) : O.length ? -Math.min(...O.map(o => chebSq(c.pos[o.id], q))) : 0;
-    const ft = autoMoveTo(c, t, S.sort((a, b) => goal(a) - goal(b) || a.cost - b.cost)[0]);
+    await autoSay(`${t.label} tries to get away!`);
+    const ft = await autoWalk(c, t, S.sort((a, b) => goal(a) - goal(b) || a.cost - b.cost)[0]);
     said.push(ft ? `${t.label} tries to get away: it Dashes ${ft} ft${exits.length ? " toward a way out" : ""}.` : `${t.label} tries to get away, but can't move.`);
     if(!exits.length) said.push("There's no way out on this map, so it keeps its distance (mark it Fled if it gets away).");
-    gameLog("move", said.join(" ")); return done(); }
+    gameLog("move", said.join(" ")); await autoSay(said.join(" ")); return done(); }
   const O = others(); if(!O.length) return done();
   const opts = autoOptions(c, t), tg = all().find(x => x.id===s.to) || O.slice().sort((a, b) => chebSq(c.pos[a.id], c.pos[t.id]) - chebSq(c.pos[b.id], c.pos[t.id]))[0];
   /* an area, if it's worth it from here */
@@ -13666,49 +13712,98 @@ function autoTurn(c, t){
     const best = autoAim(c, t, o); if(!best || !(best.foes >= 2 || O.length===1)) continue;
     act = freshAct(t.id); renderBattlePanel(); if(!autoPick(o.v) || !aoeAim) continue;
     aoeAim.on = true; aoeAim.pt = best.pt; aoePlace();
+    await autoSay(`${t.label} uses ${o.info.name || o.v.replace(/^\w+:/, "")}!`); if(autoGone(c, t)) return done();     // the area shows on the map meanwhile
     for(const id of act.targets.slice()) autoPress(`[data-svroll="${id}"]`);
-    autoPress('[data-acroll="dmg"]'); autoPress("#ac-go"); return done(); }
+    autoPress('[data-acroll="dmg"]'); autoPress("#ac-go"); await autoSay(lastSaid()); return done(); }
   /* an attack: the kind that suits how it fights, then into place, then each swing */
   const atk = opts.filter(o => o.kind!=="area"), keepsAway = ["ranged", "caster"].includes(T.role);
   const ranged = atk.filter(o => o.range && !o.melee), melee = atk.filter(o => o.melee), byMulti = L => L.slice().sort((a, b) => (b.kind==="multi") - (a.kind==="multi"));
   let pick = byMulti(keepsAway && ranged.length ? ranged : melee.length ? melee : ranged)[0] || byMulti(atk)[0];
-  if(!pick){ const ft = autoMoveTo(c, t, autoWhere(c, t, n, tg, "melee", 1)); if(ft) said.push(`${t.label} moves ${ft} ft toward ${tg.label}.`);
-    said.push(`It has nothing the autopilot can use (spells and the like are yours).`); return done(); }
+  if(!pick){ const ft = await autoWalk(c, t, autoWhere(c, t, n, tg, "melee", 1)); if(ft) said.push(`${t.label} moves ${ft} ft toward ${tg.label}.`);
+    said.push(`It has nothing the autopilot can use (spells and the like are yours).`); await autoSay(said.join(" ")); return done(); }
   let mode = pick.melee && !(keepsAway && pick.range) ? "melee" : "ranged", sq = mode==="melee" ? pick.melee : pick.range;
   /* can't get into reach this turn, but has a bow (or the like): it shoots instead of only walking */
   if(mode==="melee" && ranged.length){ const d = autoWhere(c, t, n, tg, "melee", sq); if(!d || chebSq(d, c.pos[tg.id]) > sq){ pick = byMulti(ranged)[0]; mode = "ranged"; sq = pick.range; } }
-  const ft = autoMoveTo(c, t, autoWhere(c, t, n, tg, mode, sq)); if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) <= sq ? "" : ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}`}.`);
-  if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq) return done();
+  const ft = await autoWalk(c, t, autoWhere(c, t, n, tg, mode, sq)); if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) <= sq ? "" : ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}`}.`);
+  if(autoGone(c, t)) return done();
+  if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq){ await autoSay(said[said.length - 1] || `${t.label} can't get to anyone this turn.`); return done(); }
+  await autoSleep(AUTO_MS.beat);
   const inReach = () => { const me = c.pos[t.id]; return others().filter(o => chebSq(c.pos[o.id], me) <= sq); };
   const swings = pick.kind==="multi" ? 1 : Math.max(1, attacksPerAction(t));
   act = freshAct(t.id); act.targets = [tg.id]; renderBattlePanel();
   if(!autoPick(pick.v)) return done();
   if(pick.swap && act.queue){ act.queue.items = act.queue.items.map(() => pick.swap); act.what = pick.swap; }     // every attack of the Multiattack with the one it chose
   for(let i = 0, guard = 0; guard < 12; guard++){
-    if(act.actor!==t.id || !act.what) break;
+    if(act.actor!==t.id || !act.what || autoGone(c, t)) break;
     act.targets = act.targets.filter(id => { const x = all().find(y => y.id===id); return x && !isDownT(x) && !x.fled; });
     if(!act.targets.length){ const L = inReach(); if(!L.length) break; act.targets = [L.sort((a, b) => (tacHp(a).hp || 0) - (tacHp(b).hp || 0))[0].id]; }
     renderBattlePanel(); autoPress('[data-acroll="hit"]');
     if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]');
-    const wasQueue = !!act.queue; autoPress("#ac-go");
+    const wasQueue = !!act.queue, keepAct = act; autoPress("#ac-go");
+    if(act===keepAct) break;                        // not logged (the Action box said why): the rest is the DM's
+    renderBattle(); await autoSay(lastSaid());
     if(wasQueue && act.actor===t.id && act.queue && act.what) continue;     // Multiattack: its next attack is up
     if(++i >= swings) break;
     const next = act; act = freshAct(t.id); act.targets = next.targets && next.targets.length ? next.targets : [tg.id]; renderBattlePanel(); if(!autoPick(pick.v)) break;
   }
   return done();
 }
+/* a control spell on it (Joseph, 2026-11-02: "when a player uses command on an npc, we need to have it so that it puts the
+   player in charge of the next turn of the npc. Like dropping a weapon or moving away"): held as its turn starts
+   (holdsTurnStart notes it in c.heldNow, since a one-turn hold like Command is cleared right then), its turn isn't run:
+   - made to do something else (Command, Suggestion) or turned on its own side (Dominate): the caster's player calls it.
+     Command's choices are buttons, from the spell's own words (the SRD 5.2's: Drop, Flee, Grovel, Halt), done step by
+     step like any turn; anything else is played from the Action box;
+   - held outright (Paralyzed, Stunned, Unconscious and the like): it loses the turn.
+   Hampered (Frightened, Restrained...) it still runs its own turn. */
+const autoHeld = (c, t) => { const H = c.heldNow; return H && t && H.id===t.id && H.at===turnStamp(c) ? H : null; };
+const autoByName = (c, H) => ((combatants(c).find(x => x.id===H.by) || {}).label || "someone");
+function cmdWords(H){
+  const s = H && spellByName(H.name); if(!s) return [];
+  return [...String(s.desc || "").matchAll(/- \*\*([A-Z][a-z]+)\.\*\*\s*([^\n]+)/g)].map(m => ({ word:m[1], text:m[2] }));
+}
+async function autoCommand(c, t, word){
+  const H = autoHeld(c, t); if(!H || autoBusy) return;
+  const n = bnode(), by = combatants(c).find(x => x.id===H.by), who = autoByName(c, H), from0 = { ...c.pos[t.id] }; let line = "";
+  autoBusy = t.id; autoStop = false; renderBattlePanel();
+  try{
+    if(/^flee$/i.test(word)){ ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true;     // "by the fastest available means": a Dash
+      const B = by && c.pos[by.id], S = autoSquares(c, t, n, true), dest = B ? S.sort((a, b) => chebSq(b, B) - chebSq(a, B) || a.cost - b.cost)[0] : null;
+      await autoSay(`${t.label} obeys ${who}'s ${H.name}: “Flee!”`); const ft = dest ? await autoWalk(c, t, dest) : 0;
+      line = ft ? `${t.label} runs ${ft} ft away from ${who} (${H.name}: Flee).` : `${t.label} would run from ${who}, but can't move (${H.name}: Flee).`; }
+    else if(/^grovel$/i.test(word)){ const h = hOfT(t); h.conds = Array.isArray(h.conds) ? h.conds : []; if(!h.conds.includes("Prone")) h.conds.push("Prone");
+      line = `${t.label} throws itself down, Prone, and ends its turn (${who}'s ${H.name}: Grovel).`; }
+    else if(/^drop$/i.test(word)) line = `${t.label} drops whatever it is holding and ends its turn (${who}'s ${H.name}: Drop). What it dropped is on the ground: note it on its card if it matters.`;
+    else if(/^halt$/i.test(word)) line = `${t.label} doesn't move and takes no action or Bonus Action this turn (${who}'s ${H.name}: Halt).`;
+    else line = `${t.label} obeys ${who}'s ${H.name}: “${word}”.`;
+    gameLog("spell", line);
+    c.autoLast = { id:t.id, round:c.round, n:0, from:from0, len:(c.log || []).length, said:line, obeyed:true };
+    renderBattle(); await autoSay(line);
+  } finally { autoBusy = null; autoStop = false; const b = $("#auto-say"); if(b) b.hidden = true; }
+  touch(); renderBattle(); renderBattlePanel(); if(autoNow()) flash(line);
+  if(root.autoEnemies) autoTimer = setTimeout(() => { if(aoeFight()===c && c.turn===t.id){ nextTurn(c); touch(); renderBattle(); renderBattlePanel(); } }, autoNow() ? 600 : AUTO_MS.beat);
+}
+function autoHeldHtml(c, t, H){
+  const who = autoByName(c, H), W = H.tier==="order" ? cmdWords(H) : [];
+  return `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--rule)"><b>${esc(t.label)} is under ${esc(who)}'s ${esc(H.name)}</b>: ${esc(who)} says what it does this turn.
+    ${W.length ? `<div class="pcrow" style="flex-wrap:wrap;gap:4px;margin-top:4px">${W.map(w => `<button class="btn small" data-autocmd="${esc(w.word)}" title="${esc(w.text)}">${esc(w.word)}</button>`).join("")}</div>`
+      : `<br><small>Play it from the Action box (Who: ${esc(t.label)}), then Next turn.</small>`}</div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-autocmd]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
+  const t = combatants(c).find(x => x.id===c.turn); if(t) autoCommand(c, t, b.dataset.autocmd); });
 /* the run of enemy turns, one after another, until it's someone else's (or an opportunity attack waits) */
 function autoNext(c){
   clearTimeout(autoTimer); if(!root.autoEnemies || !c || calmOf(c)){ autoChain = 0; return; }
   const t = combatants(c).find(x => x.id===c.turn); if(!autoFor(t)){ autoChain = 0; return; }
   if(++autoChain > 40){ autoChain = 0; flash("The enemies' turns stopped after 40 in a row: press Next turn to go on."); return; }
-  autoTimer = setTimeout(() => {
+  autoTimer = setTimeout(async () => {
     const c2 = aoeFight(); if(c2!==c || c.turn!==t.id || !root.autoEnemies) return;
-    const r = autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r) flash(r.said);
-    if(!$("#bt-pop").hidden){ autoChain = 0; flash(`${r ? r.said + " " : ""}An opportunity attack is offered: answer it, then press Next turn.`); return; }
-    if(!combatants(c).some(o => o.side==="party" && !o.fled && !isDownT(o))){ autoChain = 0; return; }
-    autoTimer = setTimeout(() => { if(aoeFight()!==c || c.turn!==t.id || !root.autoEnemies) return; nextTurn(c); touch(); renderBattle(); renderBattlePanel(); }, 900);
-  }, 500);
+    const r = await autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r && autoNow()) flash(r.said);
+    if(r && r.handed){ autoChain = 0; flash(r.said); return; }                       // the player calls this one: the run waits for them
+    if(!$("#bt-pop").hidden){ autoChain = 0; flash(`${r && autoNow() ? r.said + " " : ""}An opportunity attack is offered: answer it, then press Next turn.`); return; }
+    if(!root.autoEnemies || !combatants(c).some(o => o.side==="party" && !o.fled && !isDownT(o))){ autoChain = 0; return; }
+    autoTimer = setTimeout(() => { if(aoeFight()!==c || c.turn!==t.id || !root.autoEnemies) return; nextTurn(c); touch(); renderBattle(); renderBattlePanel(); }, autoNow() ? 900 : AUTO_MS.beat);
+  }, autoNow() ? 500 : AUTO_MS.beat);
 }
 function autoUndo(c){
   const L = c.autoLast; if(!L || c.turn!==L.id || (c.log || []).length!==L.len) return false;
@@ -13719,16 +13814,21 @@ function autoUndo(c){
 function autoHtml(c, t){
   if(!c || calmOf(c) || !autoFor(t)) return "";
   const mine = c.turn===t.id, L = c.autoLast && c.autoLast.id===t.id && c.turn===t.id && c.autoLast.round===c.round ? c.autoLast : null, canUndo = L && (c.log || []).length===L.len;
+  { const H = autoHeld(c, t); if(c.turn===t.id && H && (H.tier==="order" || H.tier==="turn") && !(c.autoLast && c.autoLast.obeyed && c.autoLast.id===t.id && c.autoLast.round===c.round) && !autoBusy) return autoHeldHtml(c, t, H); }
+  if(autoBusy) return `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--rule)"><small>${esc((combatants(c).find(x => x.id===autoBusy) || {}).label || "They")}'s turn is playing out…</small> <button class="btn small" data-autostop>Stop</button></div>`;
   return `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--rule)">
     ${L ? `<small>${esc(L.said)}</small><br>` : ""}
     ${mine && !L ? `<button class="btn small" data-autorun>Run their turn</button>` : ""}${canUndo ? `<button class="btn small" data-autoundo>Undo their turn</button>` : ""}
+    <div class="field" style="margin:4px 0 0"><label>Pace</label><select data-autopace><option value="">Step by step: a square at a time, each result in a box</option><option value="now" ${autoNow() ? "selected" : ""}>All at once</option></select></div>
     <label class="check" style="margin:4px 0 0"><input type="checkbox" data-autoall ${root.autoEnemies ? "checked" : ""}> Enemies run their own turns</label>
     <div class="field" style="margin:4px 0 0"><label>When their courage breaks</label><select data-autoflee><option value="">They try to get away (the players can stop them)</option><option value="off" ${root.autoFlee==="off" ? "selected" : ""}>They fight on (fleeing is your call)</option></select></div></div>`;
 }
-document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-autorun],[data-autoundo]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
+document.addEventListener("click", async e => { const b = e.target.closest && e.target.closest("[data-autorun],[data-autoundo],[data-autostop]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
+  if(b.dataset.autostop!=null){ autoStop = true; root.autoEnemies = false; clearTimeout(autoTimer); if(autoSkip) autoSkip(); flash("Stopped: the rest of the turn is yours."); touch(); return; }
   if(b.dataset.autoundo!=null){ if(autoUndo(c)) flash("Their turn is taken back."); touch(); renderBattle(); renderBattlePanel(); return; }
-  const t = combatants(c).find(x => x.id===c.turn); const r = t && autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r) flash(r.said); });
-document.addEventListener("change", e => { const t = e.target; if(t.dataset && t.dataset.autoflee!=null){ if(t.value) root.autoFlee = t.value; else delete root.autoFlee; touch(); return; } });
+  const t = combatants(c).find(x => x.id===c.turn); const r = t && await autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r && autoNow()) flash(r.said); });
+document.addEventListener("change", e => { const t = e.target; if(t.dataset && t.dataset.autoflee!=null){ if(t.value) root.autoFlee = t.value; else delete root.autoFlee; touch(); return; }
+  if(t.dataset && t.dataset.autopace!=null){ if(t.value) root.autoPace = t.value; else delete root.autoPace; touch(); } });
 document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.autoall==null) return; root.autoEnemies = t.checked; touch();
   const c = aoeFight(); if(c && t.checked) autoNext(c); else clearTimeout(autoTimer); renderBattlePanel(); });
 function bpoint(e){
@@ -14832,7 +14932,7 @@ function holdsTurnStart(c, id){
   if(!holdLive(H, t, by)){ delete c.holds[id]; return; }
   if(H.at===turnStamp(c)) return;
   const pts = Math.round(ctrlDpr(t) * ctrlMult(H.tier) * 10) / 10, snap = by && by.kind==="pc" ? snapOf(c, [by.id]) : {}, before = JSON.stringify(c.holds);
-  H.at = turnStamp(c); H.turns = (H.turns||0) + 1; H.pts = Math.round(((H.pts||0) + pts) * 10) / 10;
+  H.at = turnStamp(c); H.turns = (H.turns||0) + 1; c.heldNow = { id, tier:H.tier, name:H.name, sp:H.sp, by:H.by, at:H.at };     // its turn is someone else's to call (the autopilot asks) H.pts = Math.round(((H.pts||0) + pts) * 10) / 10;
   if(by && by.kind==="pc" && pts){ const S = statsOf(by.p); S.ctrl = Math.round(((+S.ctrl||0) + pts) * 10) / 10; }
   if(H.once) delete c.holds[id];
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:`${t.label} is ${CTRL_SAY[H.tier]} by ${by ? by.label : "someone"}'s ${H.name} (${pts} control).`, snap, holds:before });

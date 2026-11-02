@@ -28,7 +28,7 @@ const run = async () => { const b = document.querySelector("[data-autorun]"); ex
 
 step("Run their turn: the goblin walks up to the weakest it can reach and swings", async () => {
   loadJSONNow(JSON.stringify(TC)); await wait(300); setDmMode(true); await wait(60);
-  enterPlan("h"); await wait(40); openBattle(hall()); await wait(150); beginBattle(hall().site); await wait(60); place();
+  enterPlan("h"); await wait(40); openBattle(hall()); await wait(150); beginBattle(hall().site); await wait(60); place(); root.autoPace = "now";     // what it decides; the pace has its own test
   const g = who("Goblin"); await turnOf(g); const box = (document.querySelector(".tacbox") || {}).innerText || "no box";
   const L = await withRoll(0.6, run);
   return `box: ${box.replace(/\s+/g, " ").trim()} || after: ${L.said} | at ${at(g)} | ${party()}`;
@@ -94,4 +94,16 @@ step("its own side in the way: the wolf bites; an evil one set not to care breat
 step("rolled tactics: about one evil person in ten doesn't care; never a good one", () => {
   const b = foeById("srd:bandit"), n = al => Array.from({ length: 400 }, () => rollTac(b, "Warriors", false, al)).filter(T => T.areas === "any").length;
   return `of 400: neutral evil ${n("neutral evil")}, lawful good ${n("lawful good")}`;
+});
+step("Command on the gargoyle: its turn is the player's to call, with the spell's own choices", async () => {
+  place(); const c = fight(), t = who("Gargoyle"), W = who("Wren"); root.autoPace = "now";
+  const hold = tier => { c.holds = { [t.id]: { by: W.id, tier, name: tier === "full" ? "Hold Monster" : "Command", once: tier !== "full" } }; };
+  hold("order"); await turnOf(t); holdsTurnStart(c, t.id); renderBattlePanel(); await wait(30);
+  const box = [...document.querySelectorAll(".tacbox")].map(b => b.innerText.replace(/\s+/g, " ")).join(" ").replace(/^.*?(Gargoyle is under)/, "$1");
+  const before = at(t); document.querySelector('[data-autocmd="Flee"]').click(); await wait(60); const fled = `Flee: ${before} → ${at(t)} (Wren at ${at(W)}), ${c.autoLast.said}`;
+  place(); hold("order"); await turnOf(t); holdsTurnStart(c, t.id); renderBattlePanel(); await wait(30); document.querySelector('[data-autocmd="Grovel"]').click(); await wait(60);
+  const grovel = `Grovel: conditions ${JSON.stringify(t.x.conds)}`; t.x.conds = [];
+  place(); hold("order"); await turnOf(t); holdsTurnStart(c, t.id); const ran = await autoTurn(c, t);
+  place(); hold("full"); await turnOf(t); holdsTurnStart(c, t.id); const lost = await autoTurn(c, t);
+  return `box: ${box.slice(0, 160)} | ${fled} | ${grovel} | Run their turn: ${ran.said} (handed over ${!!ran.handed}) | held outright: ${lost.said}`;
 });
