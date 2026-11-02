@@ -14527,7 +14527,20 @@ function charmersOf(c, t){
   const H = c && t && c.holds && c.holds[t.id]; if(!H || H.cond!=="Charmed") return [];
   const cs = t.kind==="foe" ? (t.x.conds||[]) : ((t.p && pcState(t.p).conds) || []); return cs.includes("Charmed") ? [H.by] : [];
 }
-const fightAdv = (c, actor, x, info) => !!(c && actor && x && info && info.spell && /with Advantage if you or your allies are fighting it/i.test(String(info.spell.desc||"")) && !calmOf(c) && x.side!==actor.side);function condFromText(text){
+const fightAdv = (c, actor, x, info) => !!(c && actor && x && info && info.spell && /with Advantage if you or your allies are fighting it/i.test(String(info.spell.desc||"")) && !calmOf(c) && x.side!==actor.side);/* Great Weapon Master's extra attack (Joseph, 2026-11-02: "Gawain is supposed to be able to attack a third time if he
+   kills an enemy"; his sheet: "a bonus-action attack after a critical hit or dropping a creature to 0"): on their own
+   turn, a melee weapon attack that crits or drops someone, from someone whose sheet has Great Weapon Master, with the
+   Bonus Action still free: the Action box offers one more attack with the same weapon, as the Bonus Action (c.gwm). */
+const gwmHas = t => !!t && t.kind==="pc" && /great weapon master/i.test([t.p.notes, t.p.feats, t.p.features, pcState(t.p).notes].filter(Boolean).join(" "));
+const gwmMelee = info => !!info && !info.spell && !/\b\d+\/\d+\b|\bthrown\b|\brange\b|\branged\b/i.test(`${info.name||""} ${(info.row||{}).name||""} ${info.text||""}`);
+function gwmHtml(c, t){
+  const G = c && c.gwm; if(!t || !G || G.id!==t.id || G.at!==turnStamp(c) || bonusUsed(c, t.id) || act.bonus) return "";
+  return `<div class="tacbox" style="margin:0 0 6px;padding:4px 6px;border-left:3px solid var(--good, #3a7);background:var(--paper-lit);font-size:12px"><b>Great Weapon Master</b>: ${esc(G.why)}, so ${esc(t.label)} can make one more attack with the same weapon as a Bonus Action. <button class="btn small" data-gwm>Make it</button></div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-gwm]"); if(!b || !battleOf) return; const n = bnode(), c = n && n.site && n.site.combat, G = c && c.gwm; if(!G) return;
+  act = freshAct(G.id); act.what = G.what; act.bonus = true; c.gwm = null;
+  const t = combatants(c).find(x=>x.id===G.id), info = t && actInfo(c, t); if(info){ act.outcome = "hit"; act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; }
+  renderBattlePanel(); flash("One more attack, as the Bonus Action: pick the target."); });function condFromText(text){
   const m = /\bthe target has the (\w+) condition/i.exec(String(text||"")); if(!m) return "";
   const c = CONDITIONS.find(k=>k.toLowerCase()===m[1].toLowerCase()); return c || "";
 }
@@ -14639,7 +14652,7 @@ function actionForm(c, all){
     <div class="pcrow">
       <div class="field" style="flex:1"><label>Who</label><select id="ac-actor">${all.map(x=>`<option value="${x.id}" ${x.id===act.actor?"selected":""}>${esc(x.label)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
-    ${t ? tacticsHtml(c, t) : ""}
+    ${t ? gwmHtml(c, t) + tacticsHtml(c, t) : ""}
     ${t && (t.kind==="foe" || t.p) ? `<p class="actspell">${esc(attacksWords(t))}</p>` : ""}
     ${act.queue ? (Q=>{ const n = Q.word==="ray" ? beamsOf(t, info && info.spell, act.lvl) || Q.items.length : Q.items.length;
       return `<div class="pcrow" style="align-items:center;margin:0 0 6px;padding:4px 6px;border:1.5px solid var(--lead);border-radius:3px"><p class="actspell" style="flex:1;margin:0"><b>${esc(Q.word[0].toUpperCase() + Q.word.slice(1))} ${Q.i + 1} of ${n}</b>${Q.word==="Multiattack" ? ` · ${esc(Q.items.map((w, k)=>(k===Q.i ? "▸ " : "") + w.replace(/^fa:/, "").replace(/\s*\(.*\)\s*$/, "")).join(", "))}` : ""}</p>
@@ -14899,7 +14912,7 @@ function logAction(n, c){
     if(B.onFail) on = on.filter(t=>{ const sv = svOf(t); return sv ? !sv.made : act.outcome!=="save"; });
     const by = (concHolders().find(o=>o.h===hOfT(actor)) || {}).key || "";
     if(fxCast(info.spell, by, on.map(hOfT), actor.kind==="pc" ? pcState(actor.p) : null, { skill:act.fxSkill })) c.log[c.log.length - 1].text = c.log[c.log.length - 1].text.replace(/\.$/, "") + `. ${info.spell.name} is on ${on.map(t=>t.id===actor.id ? "themself" : t.label).join(", ")}.`; }
-  const prev = { what:act.what, targets:act.targets.slice(), queue:act.queue, lvl:act.lvl, reaction:act.reaction, addons:(act.addons||[]).slice() };
+  const prev = { what:act.what, targets:act.targets.slice(), queue:act.queue, lvl:act.lvl, reaction:act.reaction, addons:(act.addons||[]).slice(), outcome:act.outcome, bonus:isBonus };
   act = freshAct(act.reaction && c.turn && c.turn!==actor.id ? c.turn : actor.id);     // after a reaction (an opportunity attack), back to whoever's turn it is
   /* the next attack of the action, set up (2026-10-30): a Multiattack's next, the next beam or ray, Extra Attack's next
      swing (the same weapon and target, still standing; changeable) */
@@ -14911,6 +14924,9 @@ function logAction(n, c){
       act.targets = prev.targets.filter(id=>{ const x = all.find(y=>y.id===id); return x && !isDownT(x); });
       if(nx.what===prev.what) act.addons = prev.addons;
       const ni = actInfo(c, actor); if(ni){ act.outcome = ni.save && !isAttackAct(ni) ? "fail" : "hit"; act.dtype = ni.hint && DAMAGE_TYPES.includes(ni.hint.dtype) ? ni.hint.dtype : ""; } } }
+  /* Great Weapon Master: a crit or a creature dropped, with a melee weapon, on their turn: one more attack offered */
+  if(c.turn===actor.id && !prev.reaction && !prev.bonus && isSwing(info, prev.what) && gwmMelee(info) && (prev.outcome==="crit" || kills > 0) && gwmHas(actor) && !bonusUsed(c, actor.id))
+    c.gwm = { id:actor.id, at:turnStamp(c), what:prev.what, why:prev.outcome==="crit" ? "a critical hit" : `${hits.filter(h=>h.dropped).map(h=>h.label).join(" and ")} dropped` };
   partySync();                                    // the fight's log has its own undo for this
   touch(); renderBattle(); renderBattlePanel();
 }
