@@ -12,7 +12,7 @@ by CR, now, Gawain at 12 HP, d20 15 (+4 = 19): believes 1. Gawain, 2. Avery de V
 by level, now, Gawain at 12 HP (budget × hit points left), d20 15: believes 1. Avery de Vonn, 2. Gawain · a true read
 his card, newest read: Day 1, 8 am · as they are now, by level and hit points left (our estimate) · Insight 19 (d20 15 +4) against DC 15: believes 1. Avery de Vonn, 2. Gawain. DM only: a true read.
 reads kept: 9 · game log: Lord Corvin Ashgrave sizes up the party, as they are now: Insight 19 (d20 15 +4) against DC 15. Believes 1. Avery de Vonn, 2. Gawain (DM only: a true read)
-on his card: FIGHTS AS / GOES FOR / HOLDS TO IT / COURAGE / TACTICS: HOW THEY FIGHT / WHAT THEY KNOW ABOUT THE PARTY NEWEST READ ON TOP · open true
+on his card: FIGHTS AS / GOES FOR / HOLDS TO IT / COURAGE / SIZES UP THE PARTY AT THE START OF ITS TURN, UNTIL IT HAS A READ / TACTICS: HOW THEY FIGHT / WHAT THEY KNOW ABOUT THE PARTY NEWEST READ ON TOP · open true
 the Mage picked: SIZE THEM UP BY LEVEL · DM ONLY At full strength · Investigation As they are now · Insight DC Roll (+3) or the d20 you rolled at the table Use it · notes on its card 1
 its read is kept on its fight entry: true (true)
 Data tab: ROOMS SCALE BY: Level (the SRD 5.2 budget) / Character CR (our estimate, for the full day)

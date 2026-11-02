@@ -1,0 +1,14 @@
+1. a fight: the dials say who sizes up the party, and how: Animated Armor: none · Gargoyle: full · Specter: full
+2. round 1: each rolls as its turn starts (a d20 of 6: one believes a false read, one learns nothing): Gawain: no roll
+Wren: no roll
+Animated Armor: no roll
+Gargoyle: at full strength, by level · Investigation 4 (d20 6 -2) against DC 15: believes 1. Wren, 2. Gawain. DM only: a false read: a random order (the real order: 1. Gawain, 2. Wren).
+Specter: at full strength, by level · Investigation 6 (d20 6) against DC 15: learned nothing. DM only: learned nothing.
+read done: {"Gargoyle":"random"}
+3. round 2: only the one who learned nothing rolls again (a 20 this time): reads: before {"Gargoyle":1,"Specter":1}, after {"Gargoyle":1,"Specter":2} | specter's newest: at full strength, by level · Investigation 20 (d20 20) against DC 15: believes 1. Gawain, 2. Wren. DM only: a true read.
+4. a creature's courage changed on its card: its line follows, with what was written after it kept: before: Wades in; goes for whoever hurts it most. Steady: below a quarter. Guards the door.
+after: Wades in; goes for whoever hurts it most. Cowardly: flees when first hurt or outnumbered. Guards the door.
+5. written by hand: left alone, with a button to write it from the dials: kept: Bites the nearest wizard. | button: true | after it: Wades in; goes for the nearest. Cowardly: flees when first hurt or outnumbered.
+6. a person rolled, not added yet: the dials are on the page, and the line follows them: dials: role, aim, rigid, courage, read
+before: Wades in; picks off the weakest unless the strongest closes in. Steady: below a quarter.
+after: Wades in; picks off the weakest unless the strongest closes in. Fearless: never flees.

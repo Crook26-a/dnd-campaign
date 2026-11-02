@@ -8009,6 +8009,7 @@ function fxSweep(){
 function fxNewRound(c){ for(const t of combatants(c)){ const h = hOfT(t); for(const f of (h && h.fx) || []) if(!f.conc && f.left!=null) f.left -= 1; } }
 /* the start of someone's turn: Heroism's temporary hit points (they don't stack: the higher) */
 function fxTurnStart(c, id){
+  autoSizeUp(c, id);                                             // an enemy sizes up the party as its turn starts
   const t = combatants(c).find(x=>x.id===id), h = hOfT(t); if(!h) return;
   for(const f of fxOf(h, false)) if(f.b.temp){ const was = numOr(h.temp, 0); if(f.b.temp > was){ h.temp = f.b.temp;
     const line = `${t.label} has ${f.b.temp} temporary hit points (${f.name})`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("spell", line); } }
@@ -8035,6 +8036,7 @@ var sizeUpOpts = { mode:"full", dc:15 }, sizeUpLast = null;
 function villFind(key){
   const k = String(key||"");
   if(k.startsWith("p:")) return libNpcById(k.slice(2));
+  if(k.startsWith("d:")) return libDraft && libDraft.x && libDraft.x.id===k.slice(2) ? libDraft.x : null;   // rolled, not added yet
   if(k.startsWith("x:")){ const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat; return c ? (c.list||[]).find(x=>x.id===k.slice(2)) || null : null; }
   return null;
 }
@@ -8095,8 +8097,22 @@ function sizeUp(key, mode, dc, forceD20){
   sizeUpLast = { key, text:`${kind==="nothing" ? "Learned nothing" : `Believes ${believed}`} · DM only: ${truth}` };
   return { d20, total, kind, believed, truth, line };
 }
-/* in the picked-one block: mode, DC, Roll, and the last result */
-function sizeUpRow(key){
+/* on its own turn (Joseph, 2026-11-01: "as soon as it is an enemies turn, the intelligence check to check the strength of
+   the party will be done automatically"; 2026-11-02: until they have a read, and which read set per enemy): an enemy
+   rolls at the start of its turn until it believes something (a false read is believed too, so it stops there), in
+   the read its Tactics name (at full strength, as they are now, or none); "Learned nothing" tries again next turn.
+   The row in the Action box still rolls by hand, or takes the table's own d20. */
+function autoSizeUp(c, id){
+  if(!c || calmOf(c)) return;
+  const t = combatants(c).find(x=>x.id===id); if(!t || !tacFor(t) || t.side==="neutral") return;
+  const who = t.kind==="foe" ? null : libNpcById(String(t.id).replace(/^[pn]:/, "")) || (t.p && libNpcById(t.p.id));
+  const key = t.kind==="foe" ? (t.x.npc ? "p:" + t.x.npc : "x:" + t.x.id) : who ? "p:" + who.id : ""; if(!key) return;
+  const mode = tacOf(c, t).read || "full"; c.readDone = c.readDone || {};
+  if(mode==="none" || c.readDone[t.id] || !sizeUpWho().length) return;
+  const r = sizeUp(key, mode, sizeUpOpts.dc); if(!r) return;
+  sizeUpLast.auto = true; if(r.kind!=="nothing") c.readDone[t.id] = r.kind; if(key.startsWith("p:")) saveParty();
+}
+/* in the picked-one block: mode, DC, Roll, and the last result */function sizeUpRow(key){
   const h = villFind(key); if(!h) return "";
   const b = sizeUpBonus(h, sizeUpOpts.mode), opt = (v, l) => `<option value="${v}" ${sizeUpOpts.mode===v?"selected":""}>${l}</option>`;
   return `<div class="sizeup"><p class="grouplab" style="margin-top:4px">Size them up <small>${readByCR() ? "by character CR" : "by level"} · DM only</small></p>
@@ -8104,7 +8120,7 @@ function sizeUpRow(key){
       <label class="mini">DC</label><input data-sizeupopt="dc" class="mono" type="number" min="1" max="30" value="${sizeUpOpts.dc}" style="width:46px">
       <button class="btn" data-sizeupgo="${esc(key)}" title="d20 ${signed(b)}: what ${esc(villName(h, key))} makes of the party; it goes in their card's What they know">Roll (${signed(b)})</button></div>
     <div class="pcrow" style="align-items:center;margin-top:3px"><small style="flex:1">or the d20 you rolled at the table</small><input data-sizeupd20 class="mono" type="number" min="1" max="20" placeholder="d20" title="What the d20 showed (1 to 20): the app adds ${signed(b)}; a 1 is a natural 1" style="width:52px"><button class="btn" data-sizeupgo="${esc(key)}" data-typed="1">Use it</button></div>
-    ${sizeUpLast && sizeUpLast.key===key ? `<p class="sizeres">${esc(sizeUpLast.text)}</p>` : ""}</div>`;
+    ${sizeUpLast && sizeUpLast.key===key ? `<p class="sizeres">${sizeUpLast.auto ? "At the start of its turn: " : ""}${esc(sizeUpLast.text)}</p>` : ""}</div>`;
 }
 /* on a villain's card: their tactics and what they know (DM only) */
 function villNotes(h, key){
@@ -8112,7 +8128,7 @@ function villNotes(h, key){
   const k = "vn:" + key, has = h.tactics || h.partyRead;
   return `<details class="pcset pcsec vnotes" data-invfor="${esc(k)}" ${openInv.has(k) || h.partyRead ? "open" : ""}><summary>Tactics and what they know <small>DM only</small></summary>
     ${tacEditor(h, key)}
-    <div class="field"><label>Tactics: how they fight</label><textarea data-vill="${esc(key)}" data-vf="tactics" rows="2" placeholder="Wades in front, picks the biggest threat and holds the line…">${esc(h.tactics||"")}</textarea></div>
+    <div class="field"><label>Tactics: how they fight</label><textarea data-vill="${esc(key)}" data-vf="tactics" rows="2" placeholder="Wades in front, picks the biggest threat and holds the line…">${esc(h.tactics||"")}</textarea></div>${tacRewriteBtn(h, key)}
     <div class="field"><label>What they know about the party <small>newest read on top</small></label><textarea data-vill="${esc(key)}" data-vf="partyRead" rows="${h.partyRead ? 5 : 2}" placeholder="Nothing yet: Size them up (the Action box, with them picked) writes it here">${esc(h.partyRead||"")}</textarea></div></details>`;
 }
 /* ══════════════════════════════════════════════════════════════
@@ -8134,6 +8150,7 @@ function villNotes(h, key){
 const TAC_ROLES = [["front","Front-liner: wades in"],["skirm","Skirmisher: hits and moves"],["ranged","Ranged: keeps its distance, picks people off"],["caster","Caster: stays back, opens big"],["support","Support: helps an ally"],["lurker","Lurker: hides, strikes first"]];
 const TAC_AIMS = [["nearest","The nearest (mindless)"],["grudge","Whoever hurt it most, against how far (animal-smart)"],["weakest","The weakest, unless the strongest bears down (cunning)"],["strongest","The strongest, if it's in reach (clever)"]];
 const TAC_RIGID = [[1,"Loosely"],[2,"Normally"],[3,"Rigidly"]];
+const TAC_READ = [["full","At full strength: Intelligence (Investigation)"],["now","As they are now: Wisdom (Insight)"],["none","Doesn't size them up"]];
 const TAC_COURAGE = [[1,"1 Cowardly: flees when first hurt or outnumbered"],[2,"2 Cautious: below half, or outnumbered 2 to 1"],[3,"3 Steady: below a quarter"],[4,"4 Brave: only when nearly dead"],[5,"5 Fearless: never flees"]];
 const TAC_STAND = { front:"into the thick of it, beside its target", skirm:"hits, then moves off; flanks; won't stay pinned", ranged:"at range behind cover, away from anyone in melee",
   caster:"at the back, out of reach; opens with its biggest spell", support:"beside the one it's helping", lurker:"hidden; strikes from hiding, then hides again" };
@@ -8155,7 +8172,7 @@ function tacDefault(m){
   const tough = m && (foeMaxHp(m) || 0) >= crRowAt(crPos("cr", +m.cr || 0)).hp;
   const role = casts ? (heals && !/damage/i.test(txt.replace(/healing|hit points/gi, "")) ? "support" : "caster") : ranged ? "ranged" : /stealth|hide action|invisible/i.test(txt) ? "lurker" : mobile && !tough ? "skirm" : "front";
   const courage = /construct/i.test(type) || (/undead/i.test(type) && int <= 7) ? 5 : /undead/i.test(type) ? 4 : /beast/i.test(type) ? 2 : 3;
-  return { role, aim, rigid:2, courage };
+  return { role, aim, rigid:2, courage, read:int <= 3 ? "none" : "full" };
 }
 /* the settings for one combatant: its own, its line's, its kind's, over the defaults */
 function tacOf(c, t){
@@ -8222,8 +8239,26 @@ function tacticsHtml(c, t){
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-tactgt]"); if(!b || !battleOf) return; act.targets = [b.dataset.tactgt]; renderBattlePanel(); });
 /* the dials, on an enemy's card (DM only): a creature's go to its kind unless "this one only"; a person's to them */
+/* the dials as they stand: a creature's from its kind (and this one's own), a person's from their own page */
+function tacCur(h, key){
+  return String(key||"").startsWith("x:") ? Object.assign({}, tacDefault(foeById(h.foe)), (root.tacFoes||{})[h.foe] || {}, h.tac || {})
+    : Object.assign({}, tacDefault(h.statBlock || (h.fightsAs && h.fightsAs!=="self" ? foeById(h.fightsAs) : null)), h.tac || {});
+}
+/* the written line follows the dials (Joseph, 2026-11-02: "If I change something like bravery or who they go for in the
+   randomizer/creator, it should change the text that the tactics gives"): the line the dials wrote is rewritten where
+   it stands, keeping anything written around it; an empty box gets the new line; one written by hand is left, with a
+   button to write it from the dials */
+function tacRetext(h, key, was){
+  const now = tacWords(tacCur(h, key)), cur = String(h.tactics||"");
+  if(now===was) return;
+  if(!cur.trim()) h.tactics = now; else if(was && cur.includes(was)) h.tactics = cur.replace(was, now);
+}
+const tacStale = (h, key) => { const cur = String(h.tactics||"").trim(); return !!cur && !cur.includes(tacWords(tacCur(h, key))); };
+const tacRewriteBtn = (h, key) => tacStale(h, key) ? `<div class="pcrow" style="align-items:center;margin:-4px 0 8px"><small style="flex:1">This doesn't say what the dials say (written by hand, or before they changed).</small><button class="btn" data-tacrewrite="${esc(key)}">Write it from the dials</button></div>` : "";
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-tacrewrite]"); if(!b) return; const key = b.dataset.tacrewrite, h = villFind(key); if(!h) return;
+  h.tactics = tacWords(tacCur(h, key)); if(key.startsWith("x:")) touch(); saveParty(); if(battleOf){ renderBattle(); renderBattlePanel(); } else renderPane(true); });
 function tacEditor(h, key){
-  if(!h) return ""; const k = String(key||""), isX = k.startsWith("x:"), cur = isX ? Object.assign({}, tacDefault(foeById(h.foe)), (root.tacFoes||{})[h.foe] || {}, h.tac || {}) : Object.assign({}, tacDefault(h.statBlock || (h.fightsAs && h.fightsAs!=="self" ? foeById(h.fightsAs) : null)), h.tac || {});
+  if(!h) return ""; const k = String(key||""), isX = k.startsWith("x:"), cur = tacCur(h, k);
   const sel = (f, opts) => `<select data-tac="${esc(k)}" data-tf="${f}">${opts.map(([v, l])=>`<option value="${v}" ${String(v)===String(cur[f])?"selected":""}>${esc(l)}</option>`).join("")}</select>`;
   const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat, me = isX ? h.id : "p:" + k.slice(2);
   const mates = c ? combatants(c).filter(o=>o.side!=="party" && o.side!=="neutral" && o.id!==me) : [];
@@ -8231,13 +8266,15 @@ function tacEditor(h, key){
     ${cur.role==="support" ? `<div class="field"><label>Looks after</label><select data-tac="${esc(k)}" data-tf="ward"><option value="">The ally with the least hit points left</option>${mates.map(o=>`<option value="${esc(o.id)}" ${o.id===cur.ward?"selected":""}>${esc(o.label)}</option>`).join("")}</select></div>` : ""}
     <div class="field"><label>Goes for</label>${sel("aim", TAC_AIMS)}</div>
     <div class="pcrow"><div class="field" style="flex:1"><label>Holds to it</label>${sel("rigid", TAC_RIGID)}</div><div class="field" style="flex:1.6"><label>Courage</label>${sel("courage", TAC_COURAGE)}</div></div>
+    <div class="field"><label>Sizes up the party <small>at the start of its turn, until it has a read</small></label>${sel("read", TAC_READ)}</div>
     ${isX ? `<label class="check" style="margin:0 0 6px"><input type="checkbox" data-tac="${esc(k)}" data-tf="only" ${h.tac?"checked":""}> This one only (else every ${esc((foeById(h.foe)||{}).name || "one of its kind")} in the campaign)</label>` : ""}`;
 }
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.tac) return; const h = villFind(t.dataset.tac); if(!h) return;
-  const isX = t.dataset.tac.startsWith("x:"), f = t.dataset.tf;
+  const isX = t.dataset.tac.startsWith("x:"), f = t.dataset.tf, was = tacWords(tacCur(h, t.dataset.tac));
   if(f==="only"){ if(t.checked) h.tac = Object.assign({}, (root.tacFoes||{})[h.foe] || {}); else delete h.tac; }
   else { const v = ["rigid", "courage"].includes(f) ? +t.value : t.value, box = isX && !h.tac ? ((root.tacFoes = root.tacFoes || {})[h.foe] = (root.tacFoes||{})[h.foe] || {}) : (h.tac = h.tac || {});
     if(v==="" || v==null) delete box[f]; else box[f] = v; }
+  tacRetext(h, t.dataset.tac, was);
   if(isX){ touch(); saveParty(); } else saveParty();
   if(battleOf){ renderBattle(); renderBattlePanel(); } else renderPane(true); });
 document.addEventListener("input", e=>{ const t = e.target; if(!t.dataset || !t.dataset.vill) return; const h = villFind(t.dataset.vill); if(!h) return;
@@ -8874,7 +8911,7 @@ function libForm(cat, x){
       ${t("voice","Voice","1","Calls everyone \"minnow\"")}
       ${ta("wants","Wants")}${ta("knows","Knows")}
       ${ta("tactics","Tactics: how they fight <small>DM only</small>","Wades in front, picks the biggest threat and holds the line…")}
-      ${!draft && libNpcById(x.id) ? `<details class="pcset pcsec"><summary>Tactics dials <small>${esc(tacWords(Object.assign({}, tacDefault(x.statBlock || (x.fightsAs && x.fightsAs!=="self" ? foeById(x.fightsAs) : null)), x.tac || {})))}</small></summary>${tacEditor(x, "p:" + x.id)}</details>` : ""}
+      ${draft || libNpcById(x.id) ? `${tacRewriteBtn(x, (draft ? "d:" : "p:") + x.id)}<details class="pcset pcsec"><summary>Tactics dials <small>${esc(tacWords(tacCur(x, "p:")))}</small></summary>${tacEditor(x, (draft ? "d:" : "p:") + x.id)}</details>` : ""}
       ${x.partyRead ? ta("partyRead","What they know about the party <small>DM only, newest read on top</small>","", 4) : ""}
       ${draft ? "" : stagesBlock(x)}
       ${draft ? "" : effectsBlock(x)}
@@ -10555,7 +10592,7 @@ function calmAfterBattle(st){
   const c = st.combat; if(!c) return;
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
-  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.holds; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.holds; delete c.readDone; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
 }
 /* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
    calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking

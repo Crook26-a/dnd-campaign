@@ -9,7 +9,7 @@ armor as support: Animated Armor → Specter (the ally with the least hit points
 looking after the specter: Animated Armor → Specter (the one it looks after (2/22 HP))
 form: Tactics (Front-liner: wades in; a suggestion) → Gawain: hurt it most for the distance (30 damage), 35 ft away Target Stands: into the thick of it, beside its target Would flee (steady, below a quarter of its hit points; your call)
 Target picked: ["pa"]
-card dials: data-tf="role" data-tf="aim" data-tf="rigid" data-tf="courage" data-tf="only"
+card dials: data-tf="role" data-tf="aim" data-tf="rigid" data-tf="courage" data-tf="read" data-tf="only"
 kind set to cowardly: 1 · this one only: 5
 turned aside: "Gargoyle uses Claw on Wren — hits; Wren: d100 11 ≤ 25, the hit turns aside (a patron's protection)." · Wren HP 28
 lands: "Gargoyle uses Claw on Wren — hits, 7 damage; Wren: d100 91 > 25, it lands." · Wren HP 21 · in her CR? no
