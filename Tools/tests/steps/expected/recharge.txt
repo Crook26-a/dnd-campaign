@@ -1,0 +1,3 @@
+1. its breath used: a 6 at the start of its turn brings it back; a 1 doesn't: Winter Wolf, at the start of its turn: Cold Breath: d6 6 (needs 5–6), it's back. → ready | Winter Wolf, at the start of its turn: Cold Breath: d6 1 (needs 5–6), not yet. → used
+2. undo takes the roll back; a creature with nothing used rolls nothing: rolled: ready, undone: used | the gargoyle's turn start logged 0
+3. the autopilot, step by step: the recharge roll in its box first, then the breath on two of them: boxes: Winter Wolf, at the start of its turn: Cold Breath: d6 6 (needs 5–6), it's back. / Winter Wolf uses Cold Breath! / Winter Wolf uses Cold Breath on Wren, Bram — save made (saves: Wren d20 20 vs DC | breath now: used | page errors 0
