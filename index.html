@@ -7934,6 +7934,7 @@ const SPELL_FX = {
   "spell:slow":{ ac:-2, saveAb:{ dex:-2 }, onFail:true },
   "spell:pass-without-trace":{ skill:{ Stealth:10 }, aura:30 },
   "spell:shield":{ ac:5, self:true },
+  "spell:mirror-image":{ mirror:3, self:true },     // three duplicates: worked out when an attack roll hits them (mirrorCheck)
   "spell:warding-bond":{ ac:1, save:1 },
   "spell:faerie-fire":{ vsAdv:true, onFail:true },
   "spell:heroism":{ temp:"mod" },
@@ -7988,8 +7989,24 @@ function fxSay(b){
   const w = [b.atk!=null ? `attacks ${sg(b.atk)}` : "", b.save!=null ? `saves ${sg(b.save)}` : "", b.check!=null ? `checks ${sg(b.check)}${b.note ? ` (${b.note})` : ""}` : "",
     ...Object.entries(b.skill||{}).map(([k, v])=>`${k} ${sg(v)}`), ...Object.entries(b.skillDice||{}).map(([k, v])=>`${k} checks ${sg(v)}`), ...Object.entries(b.saveAb||{}).map(([k, v])=>`${ABN[k] || k} saves ${sg(v)}`),
     b.ac ? `AC ${sg(b.ac)}` : "", (b.saveAdv||[]).length ? `Advantage on ${b.saveAdv.map(k=>ABN[k] || k).join(", ")} saves` : "", b.vsAdv ? "attacks on them have Advantage" : "",
-    b.temp ? `${b.temp} temp HP each turn` : ""].filter(Boolean);
+    b.temp ? `${b.temp} temp HP each turn` : "", b.mirror!=null ? `${b.mirror} duplicate${b.mirror===1 ? "" : "s"} left` : ""].filter(Boolean);
   return w.length ? ` (${w.join(", ")})` : "";
+}
+/* Mirror Image (Joseph, 2026-11-02: "Does mirror image work?" ... "please add it"), the SRD 5.2's (this app's rules): each
+   time an attack roll hits them, a d6 for each duplicate left; if any shows 3 or higher, a duplicate is hit instead and
+   destroyed (no damage, nothing else); the spell ends with the last one. An attacker that's Blinded, or has Blindsight or
+   Truesight, isn't fooled. The duplicates are kept on the effect (b.mirror), so undo puts one back. */
+function mirrorBlind(a){
+  const conds = a.kind==="foe" ? (a.x.conds||[]) : ((a.p && pcState(a.p).conds) || []); if(conds.includes("Blinded")) return "it's Blinded";
+  const sb = a.kind==="foe" ? foeById(a.x.foe) : (a.p && pcStatBlock(a.p)), sen = [sb && sb.sen, a.p && pcState(a.p).senses].filter(Boolean).join(" ");
+  const m = /blindsight|truesight/i.exec(sen); return m ? `it has ${m[0][0].toUpperCase() + m[0].slice(1).toLowerCase()}` : "";
+}
+function mirrorCheck(actor, t){
+  const h = hOfT(t), M = h && (h.fx||[]).find(f=>f.b && f.b.mirror > 0); if(!M) return null;
+  const why = mirrorBlind(actor); if(why) return { off:false, said:`${t.label}'s Mirror Image doesn't fool ${actor.label}: ${why}` };
+  const rolls = Array.from({ length:M.b.mirror }, ()=>1 + Math.floor(Math.random()*6)), off = rolls.some(r=>r >= 3);
+  if(off){ M.b.mirror--; if(!M.b.mirror) h.fx = h.fx.filter(f=>f!==M); }
+  return { off, said:`${t.label}'s Mirror Image: d6 ${rolls.join(", ")}: ${off ? `a duplicate is hit instead and destroyed (${M.b.mirror ? `${M.b.mirror} left` : "that was the last: the spell ends"})` : "no 3 or higher, so it hits the real one"}` };
 }
 /* a spell cast: its effect on each of them (casting it again replaces theirs) */
 function fxCast(s, by, hs, caster, opts){
@@ -14775,6 +14792,7 @@ function logAction(n, c){
     const mp = actor.side!=="party" && ["hit","crit"].includes(act.outcome) && t.kind==="pc" ? Math.max(0, Math.min(100, Math.round(+pcState(t.p).hitsMiss || 0))) : 0;
     if(mp){ const r = 1 + Math.floor(Math.random()*100), why = String(pcState(t.p).hitsMissWhy||"").trim(); off = r <= mp;
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
+    if(!off && isAttackAct(info) && ["hit","crit"].includes(act.outcome)){ const m = mirrorCheck(actor, t); if(m){ off = m.off; turned.push(m.said); } }     // Mirror Image
     const dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
     if(dm && !off){ got = dm; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
