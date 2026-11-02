@@ -13759,6 +13759,7 @@ async function autoTurnNow(c, t, n){
     const wasQueue = !!act.queue, keepAct = act; autoPress("#ac-go");
     if(act===keepAct) break;                        // not logged (the Action box said why): the rest is the DM's
     renderBattle(); await autoSay(lastSaid());
+    if(!autoNow() && !$("#bt-pop").hidden){ await autoWaitReaction(c, t); if(autoGone(c, t)) break; }     // a Riposte offered: answered (and rolled) first
     if(wasQueue && act.actor===t.id && act.queue && act.what) continue;     // Multiattack: its next attack is up
     if(++i >= swings) break;
     const next = act; act = freshAct(t.id); act.targets = next.targets && next.targets.length ? next.targets : [tg.id]; renderBattlePanel(); if(!autoPick(pick.v)) break;
@@ -14420,6 +14421,8 @@ function attackAddons(t){
       const m = /until the spell ends[^.]*\bextra (\d+d\d+) ([A-Z][a-z]+) damage/i.exec(s.desc||"");
       if(m) out.push({ key:`spell:${s.id}`, name:s.name, dice:m[1], dtype:m[2].toLowerCase(), note:"while the spell lasts" });
     }
+    { const r = (c.res||[]).find(x=>/superiority di/i.test(x.name||"")), d = r && (/d(\d+)/i.exec(r.name||"")||[])[1];     /* a Battle Master's die (Riposte, Trip Attack...): spent when logged */
+      if(r && (+r.max||0) - (+r.used||0) > 0) out.push({ key:"sup", name:"Superiority die", dice:`1d${d||8}`, dtype:"", note:"a maneuver that adds it to the damage (Riposte, Trip Attack...): spends one", sup:true }); }
   }
   if(t.kind==="pc") out.push(...itemExtras(pcState(t.p)));
   const sb = t.kind==="foe" ? foeById(t.x.foe) : pcStatBlock(t.p);
@@ -14540,7 +14543,32 @@ function gwmHtml(c, t){
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-gwm]"); if(!b || !battleOf) return; const n = bnode(), c = n && n.site && n.site.combat, G = c && c.gwm; if(!G) return;
   act = freshAct(G.id); act.what = G.what; act.bonus = true; c.gwm = null;
   const t = combatants(c).find(x=>x.id===G.id), info = t && actInfo(c, t); if(info){ act.outcome = "hit"; act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; }
-  renderBattlePanel(); flash("One more attack, as the Bonus Action: pick the target."); });function condFromText(text){
+  renderBattlePanel(); flash("One more attack, as the Bonus Action: pick the target."); });/* Riposte (Joseph, 2026-11-02: "if a melee attack is missed he's supposed to be able to take a reactive opportunity"):
+   a Battle Master maneuver on Gawain's sheet. The SRD doesn't have the Battle Master, so this follows the Player's
+   Handbook as his sheet names it: when a creature misses them with a melee attack, they can use their Reaction and a
+   superiority die to make a melee attack against it, adding the die to the damage on a hit. The miss offers it (the
+   pop-up, as an opportunity attack is); taking it sets up the reaction with their melee weapon and the die on it
+   (spent when it's logged, hit or miss), and the attacker's turn picks up where it was (the rest of a Multiattack). */
+let reactResume = null;   // the turn's action that a reaction interrupted: { act, turn }
+const supRes = t => t && t.kind==="pc" ? (pcState(t.p).res || []).find(x=>/superiority di/i.test(x.name||"")) : null;
+const supLeft = t => { const r = supRes(t); return r ? Math.max(0, (+r.max || 0) - (+r.used || 0)) : 0; };
+const meleeAtk = info => !!info && (/\bMelee\b/i.test(String(info.text || "")) || !!(info.spell && /melee spell attack|melee attack/i.test(String(info.spell.desc || ""))) || (!info.text && !info.spell && gwmMelee(info)));
+function riposteCan(c, t, attacker){
+  return !!t && t.kind==="pc" && !isDownT(t) && !t.fled && !reactedThisRound(c, t.id) && supLeft(t) > 0 && attacker && attacker.side!==t.side
+    && /\briposte\b/i.test([t.p.notes, t.p.feats, t.p.features, pcState(t.p).notes].filter(Boolean).join(" "));
+}
+function riposteOffer(c, t, attacker){
+  const pop = $("#bt-pop"), r = supRes(t), die = (/d(\d+)/i.exec((r && r.name) || "") || [])[1] || "8";
+  pop.innerHTML = `<p><b>${esc(attacker.label)}</b> missed <b>${esc(t.label)}</b> with a melee attack. <b>Riposte?</b> ${esc(t.label)}'s Reaction and a superiority die (d${die}, ${supLeft(t)} left): a melee attack back, the die added to the damage on a hit.</p>
+    <div class="pcrow"><button class="btn" data-rip="yes">Riposte</button><button class="btn" data-rip="">No</button></div>`;
+  pop.hidden = false;
+  pop.querySelectorAll("[data-rip]").forEach(b=>b.onclick = ()=>{
+    pop.hidden = true; if(!b.dataset.rip) return;
+    reactResume = { act, turn:c.turn };
+    startReaction(c, t.id, attacker.id); act.addons = [...new Set([...(act.addons || []), "sup"])];
+    renderBattle(); renderBattlePanel(); flash(`${t.label} ripostes: roll to hit, then the damage (the superiority die is on it).`);
+  });
+}function condFromText(text){
   const m = /\bthe target has the (\w+) condition/i.exec(String(text||"")); if(!m) return "";
   const c = CONDITIONS.find(k=>k.toLowerCase()===m[1].toLowerCase()); return c || "";
 }
@@ -14839,6 +14867,7 @@ function logAction(n, c){
     for(const h of [...hits, ...hits2]) if(h.dmg > 0){ const H = (c.hurt = c.hurt || {})[h.id] = (c.hurt[h.id] || {}), A = (c.hurtAt = c.hurtAt || {})[h.id] = (c.hurtAt[h.id] || {});
       H[actor.id] = (H[actor.id] || 0) + h.dmg; A[actor.id] = c.round; } }
   /* once-a-turn add-ons (Sneak Attack) are spent for this turn */
+  if((act.addons||[]).includes("sup")){ const r = supRes(actor); if(r && (+r.used||0) < (+r.max||0)) r.used = (+r.used||0) + 1; }     // a superiority die, spent hit or miss
   for(const a of D.on) if(a.once){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {})[a.key] = turnStamp(c); }
   /* a carried thing's On a hit (Glaive Bite), its own choice after the hit: the charge went above (an item); it heals
      the wielder all or half of the damage it did */
@@ -14913,7 +14942,9 @@ function logAction(n, c){
     const by = (concHolders().find(o=>o.h===hOfT(actor)) || {}).key || "";
     if(fxCast(info.spell, by, on.map(hOfT), actor.kind==="pc" ? pcState(actor.p) : null, { skill:act.fxSkill })) c.log[c.log.length - 1].text = c.log[c.log.length - 1].text.replace(/\.$/, "") + `. ${info.spell.name} is on ${on.map(t=>t.id===actor.id ? "themself" : t.label).join(", ")}.`; }
   const prev = { what:act.what, targets:act.targets.slice(), queue:act.queue, lvl:act.lvl, reaction:act.reaction, addons:(act.addons||[]).slice(), outcome:act.outcome, bonus:isBonus };
-  act = freshAct(act.reaction && c.turn && c.turn!==actor.id ? c.turn : actor.id);     // after a reaction (an opportunity attack), back to whoever's turn it is
+  act = freshAct(act.reaction && c.turn && c.turn!==actor.id ? c.turn : actor.id);
+  if(prev.reaction && reactResume && reactResume.turn===c.turn && reactResume.act && reactResume.act.actor===c.turn){ act = reactResume.act; }     // back to the attack it interrupted (the rest of a Multiattack)
+  if(prev.reaction) reactResume = null;     // after a reaction (an opportunity attack), back to whoever's turn it is
   /* the next attack of the action, set up (2026-10-30): a Multiattack's next, the next beam or ray, Extra Attack's next
      swing (the same weapon and target, still standing; changeable) */
   { let nx = null; const Q = prev.queue;
@@ -14924,6 +14955,8 @@ function logAction(n, c){
       act.targets = prev.targets.filter(id=>{ const x = all.find(y=>y.id===id); return x && !isDownT(x); });
       if(nx.what===prev.what) act.addons = prev.addons;
       const ni = actInfo(c, actor); if(ni){ act.outcome = ni.save && !isAttackAct(ni) ? "fail" : "hit"; act.dtype = ni.hint && DAMAGE_TYPES.includes(ni.hint.dtype) ? ni.hint.dtype : ""; } } }
+  /* Riposte: a melee miss on someone who has it, with their Reaction and a superiority die free */
+  if(prev.outcome==="miss" && !prev.reaction && isAttackAct(info) && meleeAtk(info)){ const tg = targets.find(x=>riposteCan(c, x, actor)); if(tg) riposteOffer(c, tg, actor); }
   /* Great Weapon Master: a crit or a creature dropped, with a melee weapon, on their turn: one more attack offered */
   if(c.turn===actor.id && !prev.reaction && !prev.bonus && isSwing(info, prev.what) && gwmMelee(info) && (prev.outcome==="crit" || kills > 0) && gwmHas(actor) && !bonusUsed(c, actor.id))
     c.gwm = { id:actor.id, at:turnStamp(c), what:prev.what, why:prev.outcome==="crit" ? "a critical hit" : `${hits.filter(h=>h.dropped).map(h=>h.label).join(" and ")} dropped` };
