@@ -82,13 +82,37 @@ function Read-Shared($path) {
 }
 function Stop-Mine($prof) { Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | Where-Object { $_.CommandLine -like "*$prof*" } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} } }
 
+# Edge on a desktop of its own (Joseph, 2026-11-02: the test pages, hidden as they were, filled his window list while a
+# run went on). A second Windows desktop that nothing on the screen shows; Edge runs there as usual. Start-OffScreen
+# starts a program there and returns its process; -Out sends what it prints to a file (cmd, started there too, does it).
+if (-not ("OffDesk" -as [type])) { Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class OffDesk {
+  [DllImport("user32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern IntPtr CreateDesktop(string name, IntPtr dev, IntPtr mode, int flags, uint access, IntPtr sa);
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct SI { public int cb; public string lpReserved, lpDesktop, lpTitle; public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags; public short wShowWindow, cbReserved2; public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError; }
+  [StructLayout(LayoutKind.Sequential)] struct PI { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern bool CreateProcess(string app, string cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref SI si, out PI pi);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  static IntPtr desk = IntPtr.Zero;
+  public static int Start(string name, string cmd){
+    if (desk == IntPtr.Zero) { desk = CreateDesktop(name, IntPtr.Zero, IntPtr.Zero, 0, 0x10000000, IntPtr.Zero); if (desk == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(); }
+    var si = new SI(); si.cb = Marshal.SizeOf(typeof(SI)); si.lpDesktop = name; PI pi;
+    if (!CreateProcess(null, cmd, IntPtr.Zero, IntPtr.Zero, false, 0x08000000, IntPtr.Zero, null, ref si, out pi)) throw new System.ComponentModel.Win32Exception();
+    CloseHandle(pi.hThread); CloseHandle(pi.hProcess); return pi.dwProcessId; } }
+"@ }
+function Start-OffScreen([string]$Exe, [string[]]$Argv, [string]$Out) {
+  $cmd = '"' + $Exe + '" ' + ($Argv -join ' ')
+  if ($Out) { $cmd = 'cmd.exe /d /s /c "' + $cmd + ' > "' + $Out + '" 2> "' + $Out + '.err""' }
+  return Get-Process -Id ([OffDesk]::Start("ordinate-tests", $cmd))
+}
+
 # run them, a few at a time; a test that's still going after -Timeout seconds is stopped (only its own browser)
 $results = @{}; $queue = New-Object System.Collections.Queue; $cases | ForEach-Object { $queue.Enqueue($_) }; $running = @{}
 $started = Get-Date
 while ($queue.Count -or $running.Count) {
   while ($queue.Count -and $running.Count -lt $Jobs) {
     $case = $queue.Dequeue(); $page = Build-Page $case; $prof = Join-Path $work "prof-$($case.BaseName)"; $outFile = Join-Path $work "$($case.BaseName).dom"
-    $p = Start-Process -FilePath $edge -PassThru -WindowStyle Hidden -RedirectStandardOutput $outFile -RedirectStandardError "$outFile.err" -ArgumentList @("--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions",
+    $p = Start-OffScreen $edge -Out $outFile -Argv @("--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions",
       "--allow-file-access-from-files", "--user-data-dir=`"$prof`"", "--virtual-time-budget=60000", "--dump-dom", ([Uri]$page).AbsoluteUri)
     $running[$case.BaseName] = @{ case = $case; proc = $p; prof = $prof; out = $outFile; at = Get-Date }
   }

@@ -87,13 +87,37 @@ function Build-Page($case) {
   return $path
 }
 
+# Edge on a desktop of its own (Joseph, 2026-11-02: the test pages, hidden as they were, filled his window list while a
+# run went on). A second Windows desktop that nothing on the screen shows; Edge runs there as usual. Start-OffScreen
+# starts a program there and returns its process; -Out sends what it prints to a file (cmd, started there too, does it).
+if (-not ("OffDesk" -as [type])) { Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class OffDesk {
+  [DllImport("user32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern IntPtr CreateDesktop(string name, IntPtr dev, IntPtr mode, int flags, uint access, IntPtr sa);
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct SI { public int cb; public string lpReserved, lpDesktop, lpTitle; public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags; public short wShowWindow, cbReserved2; public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError; }
+  [StructLayout(LayoutKind.Sequential)] struct PI { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern bool CreateProcess(string app, string cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref SI si, out PI pi);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  static IntPtr desk = IntPtr.Zero;
+  public static int Start(string name, string cmd){
+    if (desk == IntPtr.Zero) { desk = CreateDesktop(name, IntPtr.Zero, IntPtr.Zero, 0, 0x10000000, IntPtr.Zero); if (desk == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(); }
+    var si = new SI(); si.cb = Marshal.SizeOf(typeof(SI)); si.lpDesktop = name; PI pi;
+    if (!CreateProcess(null, cmd, IntPtr.Zero, IntPtr.Zero, false, 0x08000000, IntPtr.Zero, null, ref si, out pi)) throw new System.ComponentModel.Win32Exception();
+    CloseHandle(pi.hThread); CloseHandle(pi.hProcess); return pi.dwProcessId; } }
+"@ }
+function Start-OffScreen([string]$Exe, [string[]]$Argv, [string]$Out) {
+  $cmd = '"' + $Exe + '" ' + ($Argv -join ' ')
+  if ($Out) { $cmd = 'cmd.exe /d /s /c "' + $cmd + ' > "' + $Out + '" 2> "' + $Out + '.err""' }
+  return Get-Process -Id ([OffDesk]::Start("ordinate-tests", $cmd))
+}
+
 # One headless Edge for the whole run, driven through its debugging port: each test opens in a tab of its own, and the
 # tab closes as soon as the page's title says RES (or the test runs out of time).
 $port = 9300 + (Get-Random -Maximum 600)
 $cdp = "http://127.0.0.1:$port"
 $profDir = Join-Path $work "browser-$runKey"
 Get-ChildItem $work -Directory -Filter "browser*" -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }      # old runs, unless still in use
-$browser = Start-Process -FilePath $edge -PassThru -WindowStyle Hidden -ArgumentList ("--headless --disable-gpu --no-first-run --disable-extensions " +
+$browser = Start-OffScreen $edge @("--headless --disable-gpu --no-first-run --disable-extensions " +
   "--remote-debugging-port=$port --user-data-dir=`"$profDir`" --window-size=1920,1000 --disable-background-timer-throttling " +
   "--disable-renderer-backgrounding --disable-backgrounding-occluded-windows about:blank")
 $ready = $false
