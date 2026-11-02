@@ -13604,7 +13604,7 @@ function autoOptions(c, t){
     const info = autoInfo(c, t, v); if(!info) continue;
     const a = aoeOf(info), text = String(info.text || (info.spell && info.spell.desc) || "");
     if(a && (info.save || /damage/i.test(text)) && !(info.spell && info.spell.lv > 0)){ out.push({ v, kind:"area", a, info }); continue; }
-    if(info.isAtk){ const r = autoReachOf(c, t, v); if(r && (r.melee || r.range)) out.push({ v, kind:"attack", ...r }); }
+    if(info.isAtk && !info.spell){ const r = autoReachOf(c, t, v); if(r && (r.melee || r.range)) out.push({ v, kind:"attack", ...r }); }     // its spells are weighed apart (autoSpellPlan)
   }
   return out;
 }
@@ -13689,6 +13689,93 @@ function autoAim(c, t, o){
   } finally { aoeAim = keep; }
   return best;
 }
+/* its spells (Joseph, 2026-11-02, the autopilot's list, item 2: "slot and per-day spells chosen by what they do (damage,
+   control, a buff), with concentration kept"). Each spell it can cast now (at will, a use left, or a slot) is weighed
+   against its weapons, by what it's expected to do:
+   - damage: the dice's average × the chance to hit (or that the save fails, half on a made one where it says so);
+     an area counts everyone of the other side it would catch, and catches none of its own (autoAim);
+   - control (a condition from its words, or Command, Suggestion, Dominate): what the target deals in a round
+     (ctrlDpr) × the hold's weight × two rounds × the chance it fails, on the most dangerous one in range not held already;
+   - a buff (Bless, Shield of Faith, Haste...): in the first two rounds, on its side in range;
+   not a concentration spell while it's concentrating, not a reaction or bonus action spell, not healing (later items).
+   A "Caster" (its dials) weighs spells a quarter more, and in the first round leans to its biggest. It walks to a square
+   in range (out of reach if it can), then casts through the Action box, step by step like the rest. */
+const avgDice = s => { let n = 0; String(s || "").replace(/(\d*)d(\d+)/gi, (m, k, d) => { n += (+k || 1) * (+d + 1) / 2; return ""; }).replace(/[+-]\s*\d+/g, m => { n += +m.replace(/\s/g, ""); return ""; }); return n; };
+const spellRangeSq = s => { const r = String((s && s.range) || ""); if(/touch/i.test(r)) return 1; const m = /(\d+)\s*(?:feet|foot|ft)/i.exec(r); return m ? Math.max(1, Math.floor(+m[1] / 5)) : /self/i.test(r) ? 0 : 6; };
+/* what it can cast this turn, with its info: { v, s, info, lvl (a person's slot) } */
+function autoSpellOpts(c, t){
+  const out = [], conc = !!(hOfT(t) || {}).conc;
+  for(const g of actionChoices(t)) for(const o of g.items){
+    const v = o.v; if(!/^(fsp|sp):/.test(v)) continue;
+    const info = autoInfo(c, t, v), s = info && info.spell; if(!s) continue;
+    if(!/^(1 )?action$/i.test(String(s.time || "").trim())) continue;     // an action: not a reaction, bonus action, or ritual
+    if(s.conc && conc) continue; if(s.heal || (/regains? .*hit points/i.test(s.desc || "") && !s.dmg)) continue;
+    let lvl = null;
+    if(v.startsWith("fsp:")){ const R = foeResources(foeById(t.x.foe)), r = R.find(q=>q.key===v.slice(4)); if(!r) continue;
+      const used = k => (t.x.used || {})[k] || 0;
+      if(r.kind==="uses" && used(r.key) >= r.max) continue;
+      if(r.kind==="slotspell"){ const sl = R.find(q=>q.key===r.slot); if(!sl || used(sl.key) >= sl.max) continue; } }
+    else if(s.lv > 0){ const sl = pcState(t.p).slots || []; for(let L = s.lv; L <= 9; L++){ const q = sl[L]; if(q && (+q.max || 0) - (+q.used || 0) > 0){ lvl = L; break; } } if(!lvl) continue; }
+    out.push({ v, s, info, lvl });
+  }
+  return out;
+}
+/* the best spell to cast, if one beats its weapons: { v, name, kind: area|single|control|buff, score, targets, pt, lvl, dest } */
+function autoSpellPlan(c, t, n, tg, O, opts){
+  const L = autoSpellOpts(c, t); if(!L.length) return null;
+  const T = tacOf(c, t), me = c.pos[t.id], S = autoSquares(c, t, n, false), all = combatants(c);
+  const pHit = (b, o) => Math.min(.95, Math.max(.05, (21 - (tacAc(o) - (b || 0))) / 20));
+  const pFail = (dc, o, abil) => Math.min(.95, Math.max(.05, ((dc || 13) - 1 - saveBonusOf(o, abil)) / 20));
+  const withAct = (v, f) => { const keep = act; act = freshAct(t.id); act.what = v; try{ return f(actInfo(c, t)); } catch(err){ return null; } finally { act = keep; } };
+  const reachFor = (o, R) => S.filter(q => chebSq(q, c.pos[o.id]) <= R).sort((a, b) => a.cost - b.cost)[0] || null;
+  const mine = all.filter(o => o.side===t.side && !o.fled && !isDownT(o) && c.pos[o.id]);
+  let best = null;
+  const offer = P => { if(!P || !(P.score > 0)) return; P.score *= T.role==="caster" ? 1.25 : 1; if((c.round || 1)===1 && T.role==="caster") P.score *= 1 + .1 * (P.s.lv || 0); if(!best || P.score > best.score) best = P; };
+  for(const o of L){
+    const s = o.s, info = o.info, R = spellRangeSq(s), a = aoeOf(info), save = s.save ? withAct(o.v, i => saveOfAct(c, t, i)) : null, atkB = s.atk ? withAct(o.v, i => toHitOf(c, t, i)) : null;
+    const dmg = avgDice(s.dmg), cond = spellCond(s.desc), rounds = s.conc ? 2.5 : cond && /minute|hour|round/i.test(String(s.dur || "")) ? 2 : 1, tier = CTRL_SPELLS[s.id] || (cond ? (CTRL_FULL.test(cond) ? "full" : CTRL_HALF.test(cond) ? "half" : "") : "");
+    const base = { v:o.v, name:s.name, s, lvl:o.lvl };
+    if(a && dmg){ const b = autoAim(c, t, { v:o.v, a, info }); if(b && (b.foes >= 2 || O.length===1)){ const one = (save ? pFail(save.dc, tg, save.abil) + (save.half ? (1 - pFail(save.dc, tg, save.abil)) / 2 : 0) : 1);
+      offer({ ...base, kind:"area", pt:b.pt, score:dmg * one * b.foes }); } continue; }
+    if(a) continue;                                                       // an area that does nothing it can weigh (Fog Cloud): left to the DM
+    if(dmg){ const tgs = O.filter(x => reachFor(x, R)); if(!tgs.length) continue;
+      const pick = tgs.includes(tg) ? tg : tgs[0], p = s.atk ? pHit(atkB, pick) : save ? pFail(save.dc, pick, save.abil) + (save.half ? (1 - pFail(save.dc, pick, save.abil)) / 2 : 0) : 1;
+      offer({ ...base, kind:"single", targets:[pick.id], dest:reachFor(pick, R), score:dmg * p }); continue; }
+    if(tier && tier!=="half" || (tier==="half" && cond)){ const tgs = O.filter(x => reachFor(x, R) && !(c.holds && c.holds[x.id]) && !(cond && condImmune(x, cond)) && !(cond && ((x.kind==="foe" ? x.x.conds : (x.p && pcState(x.p).conds)) || []).includes(cond)));
+      if(!tgs.length) continue; const pick = tgs.slice().sort((a, b) => ctrlDpr(b) - ctrlDpr(a))[0];
+      offer({ ...base, kind:"control", targets:[pick.id], dest:reachFor(pick, R), score:ctrlDpr(pick) * ctrlMult(tier) * rounds * (save ? pFail(save.dc, pick, save.abil) : 1) }); continue; }
+    const B = SPELL_FX[s.id];
+    if(B && !B.self && (c.round || 1) <= 2 && (B.atk || B.save || B.ac || s.id==="spell:haste")){ const k = Math.max(1, +(((/up to (\w+) creatures/i.exec(s.desc || "") || [])[1] || "").replace(/^(one|two|three|four|five|six)$/i, w => ({ one:1, two:2, three:3, four:4, five:5, six:6 })[w.toLowerCase()])) || 1);
+      const near = mine.filter(x => chebSq(c.pos[x.id], me) <= Math.max(R, 1) && !(hOfT(x).fx || []).some(f => f.sp===s.id)).slice(0, k); if(!near.length) continue;
+      offer({ ...base, kind:"buff", targets:near.map(x => x.id), score:near.length * (s.id==="spell:haste" ? 6 : B.ac ? 2 : 2.5) }); }
+  }
+  if(!best) return null;
+  /* its weapons, weighed the same way, against the target the tactics chose */
+  let weapon = 0;
+  for(const o of (opts || []).filter(o => o.kind==="attack" || o.kind==="multi")){
+    const Q = o.kind==="multi" ? multiQueue(foeById(t.x.foe)).map(q => o.swap || q) : Array(Math.max(1, attacksPerAction(t))).fill(o.v);
+    const v = Q.reduce((sum, q) => { const i = autoInfo(c, t, q), b = withAct(q, x => toHitOf(c, t, x)); return sum + avgDice(i && i.hint && i.hint.dice) * pHit(b, tg); }, 0);
+    if(v > weapon) weapon = v; }
+  return best.score > weapon ? best : null;
+}
+/* cast it: into range, the box, then the Action box's rolls */
+async function autoCast(c, t, n, P, said){
+  if(P.dest){ const ft = await autoWalk(c, t, P.dest); if(ft) said.push(`${t.label} moves ${ft} ft.`); if(autoGone(c, t)) return true; }
+  act = freshAct(t.id); renderBattlePanel(); if(!autoPick(P.v)) return false;
+  if(P.lvl) act.lvl = P.lvl;
+  if(P.kind==="area"){ if(!aoeAim) return false; aoeAim.on = true; aoeAim.pt = P.pt; aoePlace(); }
+  else { act.targets = P.targets.slice(); renderBattlePanel(); }
+  const all = combatants(c), who = act.targets.map(id => (all.find(x => x.id===id) || {}).label).filter(Boolean);
+  const word = P.s.id==="spell:command" ? "Halt" : "";     /* its Command's word: Halt, the one that costs them the turn */
+  if(word) act.note = word;
+  await autoSay(`${t.label} casts ${P.name}${P.kind==="area" ? "!" : ` on ${andList(who)}${word ? `: “${word}!”` : "!"}`}`); if(autoGone(c, t)) return true;
+  renderBattlePanel();
+  if(P.s.atk){ autoPress('[data-acroll="hit"]'); if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
+  else { for(const id of act.targets.slice()) autoPress(`[data-svroll="${id}"]`); if(P.s.dmg) autoPress('[data-acroll="dmg"]'); }
+  const keepAct = act; autoPress("#ac-go"); if(act===keepAct) return false;
+  renderBattle(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
+  return true;
+}
 /* one whole turn */
 async function autoTurn(c, t){
   const n = bnode(); if(!n || !c || c.turn!==t.id || !autoFor(t) || !c.pos || !c.pos[t.id] || autoBusy) return null;
@@ -13734,6 +13821,8 @@ async function autoTurnNow(c, t, n){
     await autoSay(`${t.label} uses ${o.info.name || o.v.replace(/^\w+:/, "")}!`); if(autoGone(c, t)) return done();     // the area shows on the map meanwhile
     for(const id of act.targets.slice()) autoPress(`[data-svroll="${id}"]`);
     autoPress('[data-acroll="dmg"]'); autoPress("#ac-go"); await autoSay(lastSaid()); return done(); }
+  /* a spell, if it's worth more than its weapons */
+  { const P = autoSpellPlan(c, t, n, tg, O, opts); if(P && await autoCast(c, t, n, P, said)) return done(); }
   /* an attack: the kind that suits how it fights, then into place, then each swing */
   const atk = opts.filter(o => o.kind!=="area"), keepsAway = ["ranged", "caster"].includes(T.role);
   const ranged = atk.filter(o => o.range && !o.melee), melee = atk.filter(o => o.melee), byMulti = L => L.slice().sort((a, b) => (b.kind==="multi") - (a.kind==="multi"));
@@ -14583,6 +14672,13 @@ function riposteOffer(c, t, attacker){
     startReaction(c, t.id, attacker.id); act.addons = [...new Set([...(act.addons || []), "sup"])];
     renderBattle(); renderBattlePanel(); flash(`${t.label} ripostes: roll to hit, then the damage (the superiority die is on it).`);
   });
+}/* a spell's condition from its words: "the target has the Charmed condition" (Charm Person), "succeed on a Wisdom saving
+   throw or have the Paralyzed condition" (Hold Person); not from a list of choices (Command's "- **Grovel.** The target has
+   the Prone condition" is the caster's pick, not the spell's) */
+function spellCond(text){
+  const body = String(text||"").split(/\n/).filter(l=>!/^\s*(-\s*)?\*\*/.test(l)).join(" ");
+  const m = /\bthe target has the (\w+) condition/i.exec(body) || /saving throw or (?:have|has|be|is) the (\w+) condition/i.exec(body) || /failed save,? (?:the target|it|that creature) (?:has|is) the (\w+) condition/i.exec(body);
+  return m ? (CONDITIONS.find(k=>k.toLowerCase()===m[1].toLowerCase()) || "") : "";
 }function condFromText(text){
   const m = /\bthe target has the (\w+) condition/i.exec(String(text||"")); if(!m) return "";
   const c = CONDITIONS.find(k=>k.toLowerCase()===m[1].toLowerCase()); return c || "";
@@ -15275,7 +15371,7 @@ function renderBattlePanelNow(){
         if(n0 > 1) act.queue = { word:/scorching/i.test(s0.name) ? "ray" : "beam", items:Array(n0).fill(act.what), i:0 }; } }
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
     aoeStart(c, t, info);                                         // an area: aimed on the map (or placed at once around them)
-    if(info && info.spell && info.spell.save && !info.cond) info.cond = condFromText(info.spell.desc);     // Charm Person's Charmed, Hold Person's Paralyzed: the spell's own words
+    if(info && info.spell && info.spell.save && !info.cond) info.cond = spellCond(info.spell.desc);     // Charm Person's Charmed, Hold Person's Paralyzed: the spell's own words
     if(info){ act.outcome = (info.spell && info.spell.atk) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
       /* a new choice brings its own damage type (Ice Knife is piercing, not the radiant of the Starry Form picked before it) */
