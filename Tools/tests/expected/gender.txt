@@ -1,11 +1,11 @@
-man: 60 rolled, names off-list 0, beards 6, kept 60
+man: 60 rolled, names off-list 0, beards 7, kept 60
 woman: 60 rolled, names off-list 0, beards 0, kept 60
 either: 100 rolled, men about half
 lists: men 241, women 239, either 36, all 516, no repeats true
 Roll tab picker: Either/Man/Woman
 picked: genOpts.gender woman
 Roll tab roll is a woman, card says true
-library: gender Woman, summary "Neutral · Halfling commoner · woman · CE"
+library: gender Woman, summary "Neutral · Halfling paladin · woman · CN"
 Field Book back with Man: Man
 cleared on the phone: undefined
 known out and back true, cleared on the phone undefined

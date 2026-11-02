@@ -1,6 +1,6 @@
 encounter of bakers: crowd, 8 people, budget 900
-then a person: person Silas Netherby (Baker), shown true
-reroll: Silas Netherby -> Yusuf Varga
+then a person: person Esteban Osprey (Baker), shown true
+reroll: Esteban Osprey -> Hugo Mudgett
 High: budget 1600
 exactly 1000: budget 1000, rolled 0 XP in 8
 panel difficulty true

@@ -55,7 +55,7 @@ step("the winter wolf breathes on two of them rather than biting one", async () 
   const L = await withRoll(0.3, run);
   return `${L.said} | ${party()} | its breath spent: ${!!(t.x.spent && Object.values(t.x.spent).some(Boolean))}`;
 });
-step("a cowardly goblin, hurt, Dashes away and flees", async () => {
+step("a cowardly goblin, hurt, tries to get away: no way out on this map, so it Dashes off and stays in the fight", async () => {
   place(); const g = who("Goblin"); g.x.tac = { courage: 1 }; g.x.hp = 3; fight().pos[g.id] = { x: 6, y: 4 }; renderBattle(); await turnOf(g); const L = await withRoll(0.6, run);
   const p = $("#bt-pop"); if (!p.hidden) p.hidden = true;
   return `${L.said} | at ${at(g)} | fled ${!!g.x.fled}`;
@@ -69,4 +69,29 @@ step("the setting: every enemy's turn runs by itself, one after another, until a
     if (label() !== turns[turns.length - 1]) turns.push(label()); const t = all().find(x => x.id === c.turn); if (t && t.side === "party") break; } });
   root.autoEnemies = false;
   return `turns came to: ${turns.join(" → ")} | logged: ${(c.log || []).slice(log0).map(e => e.text.slice(0, 60)).join(" / ")} | page errors ${__KIT.errors.length}`;
+});
+step("with a way out: within a Dash of it, the goblin gets there and leaves the fight", async () => {
+  place(); hall().bmap.exits = [{ x: 30, y: 4, to: "" }]; const g = who("Goblin"); g.x.fled = false; g.x.tac = { courage: 1 }; g.x.hp = 3; fight().pos[g.id] = { x: 18, y: 4 }; renderBattle(); await turnOf(g);
+  const L = await withRoll(0.6, run); const p = $("#bt-pop"); if (!p.hidden) p.hidden = true;
+  return `${L.said} | at ${at(g)} | fled ${!!g.x.fled}`;
+});
+step("grappled, it can't get away; and with fleeing turned off it fights on", async () => {
+  place(); const g = who("Goblin"); g.x.fled = false; g.x.tac = { courage: 1 }; g.x.hp = 3; g.x.conds = ["Grappled"]; fight().pos[g.id] = { x: 18, y: 4 }; renderBattle(); await turnOf(g);
+  const held = (await withRoll(0.6, run)).said;
+  g.x.conds = []; root.autoFlee = "off"; fight().pos[g.id] = { x: 6, y: 4 }; renderBattle(); await turnOf(g);
+  const sel = document.querySelector("[data-autoflee]"), shown = sel ? sel.options[sel.selectedIndex].text : "no setting";
+  const L = await withRoll(0.6, run); delete root.autoFlee; const p = $("#bt-pop"); if (!p.hidden) p.hidden = true;
+  return `grappled: ${held} | the setting shows "${shown}" | fleeing off: ${L.said} | fled ${!!g.x.fled}`;
+});
+step("its own side in the way: the wolf bites; an evil one set not to care breathes on them all", async () => {
+  place(); const t = who("Winter"), gar = who("Gargoyle"); t.x.spent = {}; Object.assign(fight().pos, { [t.id]: { x: 7, y: 4 }, [gar.id]: { x: 6, y: 4 } });
+  fight().pos[who("Wren").id] = { x: 5, y: 4 }; fight().pos[who("Bram").id] = { x: 4, y: 4 }; renderBattle(); await turnOf(t);
+  const spared = (await withRoll(0.3, run)).said;
+  const dials = k => (tacEditor(k.x, "x:" + k.x.id).match(/data-tf="(\w+)"/g) || []).join(" ");
+  t.x.spent = {}; t.x.tac = { areas: "any" }; await turnOf(t); const L = await withRoll(0.3, run);
+  return `sparing: ${spared} | not caring: ${L.said} | its line: ${tacWords(tacCur(t.x, "x:" + t.x.id))} | dials, the wolf (${foeById(t.x.foe).align}): ${dials(t)}; the scout (${foeById(who("Scout").x.foe).align}): ${dials(who("Scout"))}`;
+});
+step("rolled tactics: about one evil person in ten doesn't care; never a good one", () => {
+  const b = foeById("srd:bandit"), n = al => Array.from({ length: 400 }, () => rollTac(b, "Warriors", false, al)).filter(T => T.areas === "any").length;
+  return `of 400: neutral evil ${n("neutral evil")}, lawful good ${n("lawful good")}`;
 });

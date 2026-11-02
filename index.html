@@ -8151,6 +8151,11 @@ const TAC_ROLES = [["front","Front-liner: wades in"],["skirm","Skirmisher: hits 
 const TAC_AIMS = [["nearest","The nearest (mindless)"],["grudge","Whoever hurt it most, against how far (animal-smart)"],["weakest","The weakest, unless the strongest bears down (cunning)"],["strongest","The strongest, if it's in reach (clever)"]];
 const TAC_RIGID = [[1,"Loosely"],[2,"Normally"],[3,"Rigidly"]];
 const TAC_READ = [["full","At full strength: Intelligence (Investigation)"],["now","As they are now: Wisdom (Insight)"],["none","Doesn't size them up"]];
+/* areas that catch its own side (Joseph, 2026-11-02: "the majority won't do it if their breath catches ally's, but I want that to be an
+   option for npcs. It'd be a rare thing in the tactics, and would only appear in evil characters"): a dial shown for an evil
+   one only, and rolled for one in ten evil people */
+const TAC_AREAS = [["","Spares its own side: no area that catches them"],["any","Doesn't care who its breath or spells catch"]];
+const tacEvil = (h, key) => /evil/i.test(String(String(key||"").startsWith("x:") ? ((foeById(h.foe)||{}).align || "") : (h.align || (h.statBlock||{}).align || ((h.fightsAs && h.fightsAs!=="self" && foeById(h.fightsAs)) || {}).align || "")));
 const TAC_COURAGE = [[1,"1 Cowardly: flees when first hurt or outnumbered"],[2,"2 Cautious: below half, or outnumbered 2 to 1"],[3,"3 Steady: below a quarter"],[4,"4 Brave: only when nearly dead"],[5,"5 Fearless: never flees"]];
 const TAC_STAND = { front:"into the thick of it, beside its target", skirm:"hits, then moves off; flanks; won't stay pinned", ranged:"at range behind cover, away from anyone in melee",
   caster:"at the back, out of reach; opens with its biggest spell", support:"beside the one it's helping", lurker:"hidden; strikes from hiding, then hides again" };
@@ -8267,6 +8272,7 @@ function tacEditor(h, key){
     <div class="field"><label>Goes for</label>${sel("aim", TAC_AIMS)}</div>
     <div class="pcrow"><div class="field" style="flex:1"><label>Holds to it</label>${sel("rigid", TAC_RIGID)}</div><div class="field" style="flex:1.6"><label>Courage</label>${sel("courage", TAC_COURAGE)}</div></div>
     <div class="field"><label>Sizes up the party <small>at the start of its turn, until it has a read</small></label>${sel("read", TAC_READ)}</div>
+    ${tacEvil(h, k) || cur.areas ? `<div class="field"><label>Its areas <small>evil ones only</small></label>${sel("areas", TAC_AREAS)}</div>` : ""}
     ${isX ? `<label class="check" style="margin:0 0 6px"><input type="checkbox" data-tac="${esc(k)}" data-tf="only" ${h.tac?"checked":""}> This one only (else every ${esc((foeById(h.foe)||{}).name || "one of its kind")} in the campaign)</label>` : ""}`;
 }
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.tac) return; const h = villFind(t.dataset.tac); if(!h) return;
@@ -13616,7 +13622,7 @@ function autoPick(v){ const s = $("#ac-what"); if(!s) return false; s.value = v;
 function autoPress(sel){ const b = document.querySelector(`#pane-inspect ${sel}`) || document.querySelector(sel); if(!b || b.disabled) return false; b.click(); return true; }
 /* the best place for an area: most of the other side caught, none of its own */
 function autoAim(c, t, o){
-  const keep = aoeAim, all = combatants(c), side = id => (all.find(x => x.id===id) || {}).side; let best = null;
+  const keep = aoeAim, all = combatants(c), side = id => (all.find(x => x.id===id) || {}).side, ruthless = tacOf(c, t).areas==="any"; let best = null;
   aoeAim = { actor:t.id, what:o.v, a:o.a, on:false, pt:null };
   try{
     const C = c.pos[t.id], pts = [];
@@ -13626,7 +13632,7 @@ function autoAim(c, t, o){
     else pts.push({ x:(C.x + .5) * BS, y:(C.y + .5) * BS });
     for(const p of pts){ aoeAim.pt = p; const g = aoeGeom(c); if(g.out) continue;
       const ids = aoeCaught(c, g), foes = ids.filter(id => side(id)!==t.side && side(id)!=="neutral" && id!==t.id).length, own = ids.filter(id => side(id)===t.side || id===t.id).length;
-      if(own || !foes) continue; if(!best || foes > best.foes) best = { pt:p, foes }; }
+      if(ids.includes(t.id) || (own && !ruthless) || !foes) continue; if(!best || foes > best.foes || (foes===best.foes && own < best.own)) best = { pt:p, foes, own }; }
   } finally { aoeAim = keep; }
   return best;
 }
@@ -13639,12 +13645,20 @@ function autoTurn(c, t){
   const done = () => { const added = (c.log || []).slice(log0).map(e => e.text);
     c.autoLast = { id:t.id, round:c.round, n:(c.log || []).length - log0, from:from0, len:(c.log || []).length, said:[...said, ...added].join(" ") || `${t.label} does nothing it can see to do.` };
     act = freshAct(t.id); askOpportunity(t.id, from0); return c.autoLast; };
-  /* fleeing: Dash away from the nearest enemy, and out of the fight */
-  if(s.flee){ const O = others();
-    if(O.length){ const S = autoSquares(c, t, n, true), far = q => Math.min(...O.map(o => chebSq(c.pos[o.id], q)));
-      ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true;
-      const ft = autoMoveTo(c, t, S.sort((a, b) => far(b) - far(a) || a.cost - b.cost)[0]); if(ft) said.push(`${t.label} Dashes ${ft} ft away.`); }
-    act = freshAct(t.id); renderBattlePanel(); if(autoPick("flee")) autoPress("#ac-go"); return done(); }
+  /* fleeing (Joseph, 2026-11-02: "I want to be able to turn off the fleeing, or it becomes something they try to do that
+     the players can stop"): off, it fights on; on, it tries: it Dashes for the nearest way out on the map and leaves only
+     if it gets there this turn. Grappled or Restrained (speed 0), boxed in, or dropped, it doesn't; moving away offers
+     opportunity attacks. With no way out on the map it keeps its distance, and the DM marks it Fled if it gets away. */
+  if(s.flee && root.autoFlee!=="off"){ const O = others(), exits = (exitsOf(n) || []).filter(e => e.x!=null && e.y!=null);
+    ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true;
+    const S = autoSquares(c, t, n, true), out = exits.length ? S.filter(q => exits.some(e => chebSq(e, q) <= 1)) : [];
+    if(out.length){ const ft = autoMoveTo(c, t, out.sort((a, b) => a.cost - b.cost)[0]); said.push(`${t.label} Dashes${ft ? ` ${ft} ft` : ""} to a way out.`);
+      act = freshAct(t.id); renderBattlePanel(); if(autoPick("flee")) autoPress("#ac-go"); return done(); }
+    const goal = q => exits.length ? Math.min(...exits.map(e => chebSq(e, q))) : O.length ? -Math.min(...O.map(o => chebSq(c.pos[o.id], q))) : 0;
+    const ft = autoMoveTo(c, t, S.sort((a, b) => goal(a) - goal(b) || a.cost - b.cost)[0]);
+    said.push(ft ? `${t.label} tries to get away: it Dashes ${ft} ft${exits.length ? " toward a way out" : ""}.` : `${t.label} tries to get away, but can't move.`);
+    if(!exits.length) said.push("There's no way out on this map, so it keeps its distance (mark it Fled if it gets away).");
+    gameLog("move", said.join(" ")); return done(); }
   const O = others(); if(!O.length) return done();
   const opts = autoOptions(c, t), tg = all().find(x => x.id===s.to) || O.slice().sort((a, b) => chebSq(c.pos[a.id], c.pos[t.id]) - chebSq(c.pos[b.id], c.pos[t.id]))[0];
   /* an area, if it's worth it from here */
@@ -13708,11 +13722,13 @@ function autoHtml(c, t){
   return `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--rule)">
     ${L ? `<small>${esc(L.said)}</small><br>` : ""}
     ${mine && !L ? `<button class="btn small" data-autorun>Run their turn</button>` : ""}${canUndo ? `<button class="btn small" data-autoundo>Undo their turn</button>` : ""}
-    <label class="check" style="margin:4px 0 0"><input type="checkbox" data-autoall ${root.autoEnemies ? "checked" : ""}> Enemies run their own turns</label></div>`;
+    <label class="check" style="margin:4px 0 0"><input type="checkbox" data-autoall ${root.autoEnemies ? "checked" : ""}> Enemies run their own turns</label>
+    <div class="field" style="margin:4px 0 0"><label>When their courage breaks</label><select data-autoflee><option value="">They try to get away (the players can stop them)</option><option value="off" ${root.autoFlee==="off" ? "selected" : ""}>They fight on (fleeing is your call)</option></select></div></div>`;
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-autorun],[data-autoundo]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
   if(b.dataset.autoundo!=null){ if(autoUndo(c)) flash("Their turn is taken back."); touch(); renderBattle(); renderBattlePanel(); return; }
   const t = combatants(c).find(x => x.id===c.turn); const r = t && autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r) flash(r.said); });
+document.addEventListener("change", e => { const t = e.target; if(t.dataset && t.dataset.autoflee!=null){ if(t.value) root.autoFlee = t.value; else delete root.autoFlee; touch(); return; } });
 document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.autoall==null) return; root.autoEnemies = t.checked; touch();
   const c = aoeFight(); if(c && t.checked) autoNext(c); else clearTimeout(autoTimer); renderBattlePanel(); });
 function bpoint(e){
@@ -16713,7 +16729,7 @@ function completeSheet(x, who){
   if(who===false) return n;
   if(blank("persona")){ x.persona = rollPersona(x.align); n++; }
   const grp = groupOfClass(x.cls) || (b && /^(Beast|Monstrosity)/.test(b.type||"") ? "" : "Warriors");
-  if(!x.tac){ x.tac = rollTac(b, grp, (x.spells||[]).length > 0); n++; }      // the dials (2026-10-30)
+  if(!x.tac){ x.tac = rollTac(b, grp, (x.spells||[]).length > 0, x.align); n++; }      // the dials (2026-10-30)
   if(!x.tactics && !/Tactics:/.test(x.notes||"")){                 // their own field now (2026-10-29); one already in their notes stays there
     x.tactics = tacWords(x.tac); n++;                                // written from the dials, so the two agree
   }
@@ -16724,12 +16740,13 @@ function completeSheet(x, who){
    brave they are from their kind's range (the fearless stay fearless); the written line is made from the dials */
 const TAC_GROUP_ROLE = { Warriors:["front","front","skirm"], Experts:["skirm","lurker","ranged"], Mages:["caster"], Priests:["support","support","caster"], Folk:["front"] };
 const TAC_GROUP_COURAGE = { Warriors:[3,4,4,5], Experts:[2,3,3,4], Mages:[2,2,3,4], Priests:[3,4,4,5], Folk:[1,1,2,2] };
-function rollTac(b, grp, casts){
+function rollTac(b, grp, casts, align){
   const T = tacDefault(b), L = TAC_GROUP_ROLE[grp], canCast = casts || /spellcasting/i.test(tacText(b));
   if(L) T.role = pickOne(L);
   if((T.role==="caster" || T.role==="support") && !canCast) T.role = "front";            // no spells: no caster, no healer
   T.rigid = pickOne([1, 2, 2, 3]);
   const C = TAC_GROUP_COURAGE[grp]; T.courage = T.courage >= 5 ? 5 : C ? pickOne(C) : Math.max(1, Math.min(5, T.courage + pickOne([-1, 0, 0, 1])));
+  if(/evil/i.test(String(align||"")) && Math.random() < .1) T.areas = "any";             // rare, and only the evil
   return T;
 }
 function tacWords(T){
@@ -16737,7 +16754,7 @@ function tacWords(T){
   const role = ((TAC_ROLES.find(x=>x[0]===T.role)||[])[1] || "").replace(/^[^:]+: /, ""), cour = ((TAC_COURAGE.find(x=>x[0]===+T.courage)||[])[1] || "").replace(/^\d /, "");
   const aim = { nearest:"goes for the nearest", grudge:"goes for whoever hurts it most", weakest:"picks off the weakest unless the strongest closes in", strongest:"goes for the strongest in reach" }[T.aim] || "";
   const hold = T.aim==="nearest" ? "" : T.rigid==1 ? ", easily distracted" : T.rigid==3 ? ", single-minded" : "";
-  return `${role[0] ? role[0].toUpperCase() + role.slice(1) : ""}; ${aim}${hold}. ${cour}.`;
+  return `${role[0] ? role[0].toUpperCase() + role.slice(1) : ""}; ${aim}${hold}. ${cour}.${T.areas==="any" ? " Its breath and spells don't spare its own side." : ""}`;
 }
 /* a saved person of a casting class gets a fresh set of spells for their class and level (their sheet's numbers count) */
 function respellPerson(x){
