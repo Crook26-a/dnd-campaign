@@ -4,9 +4,9 @@ Guidance form: damage roll false, skill picker true
 Guidance on Gawain: hp 40 -> 40 · "Wren casts Guidance on Gawain. Guidance is on Gawain." · on him: Guidance (Stealth checks +1d4) · a Stealth check rolls + 1d4 (Guidance) 3, Athletics nothing
 Bless: "Guidance (Wren) ends: concentration ended." · on Gawain: Bless (attacks +1d4, saves +1d4) · Cloak of Protection (saves +1, AC +1)
 the form for Gawain: On Gawain: Bless (attacks +1d4, saves +1d4) · Cloak of Protection (saves +1, AC +1), worn
-to hit: To hit: d20 10 + 8 + 1d4 (Bless) 3 = 21 vs AC 11 (Ogre): hit
+to hit: To hit: d20 10 + 8 + 1d4 (Bless) 3 = 21 vs AC 13 (Ogre, half cover +2): hit
 save row: Dex +1 +1d4 Bless | Dex +2 +1d4 Bless
-saves: Gawain d20 7 + 1 + 1d4 (Bless) 3 = 11 vs DC 12: failed ; Wren d20 13 + 2 + 1d4 (Bless) 1 = 16 vs DC 12: made
+saves: Gawain d20 7 + 3 (half cover +2) + 1d4 (Bless) 3 = 13 vs DC 12: made ; Wren d20 13 + 2 + 1d4 (Bless) 1 = 16 vs DC 12: made
 Wren's concentration save: Wren keeps concentrating on Bless: made the Constitution save (d20 11 + 2 + 1d4 (Bless) 2 = 15 against DC 10)
 Shield: "Wren casts Shield (1st) on Wren. Shield is on themself."
 the ogre on Wren: Roll to hit vs AC 17

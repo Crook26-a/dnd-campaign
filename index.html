@@ -8261,7 +8261,10 @@ function tacSuggest(c, t){
     const h = w || hurt; if(h){ const P = tacHp(h); return Object.assign(out, { help:h.id, helpLabel:h.label, why:w ? `the one it looks after (${P.hp}/${P.max} HP)` : `the ally with the least hit points left (${P.hp}/${P.max})` }); } }
   if(!foes.length) return Object.assign(out, { why:"nobody left to fight" });
   let to = null, why = "";
-  if(T.aim==="nearest"){ to = near(foes); why = "the nearest"; }
+  /* someone helpless it can get to (Paralyzed, Stunned, Unconscious: Advantage, and a crit within 5 ft for two of them) comes first, unless it holds a grudge */
+  const helpless = T.aim==="grudge" ? [] : foes.filter(o=>["Paralyzed","Stunned","Unconscious"].some(k=>condsOfT(o).includes(k)) && gap(o) <= move);
+  if(helpless.length){ to = near(helpless); why = `helpless (${["Paralyzed","Stunned","Unconscious"].filter(k=>condsOfT(to).includes(k)).join(", ")}): an easy kill`; }
+  else if(T.aim==="nearest"){ to = near(foes); why = "the nearest"; }
   else if(T.aim==="grudge"){ const hurt = (c.hurt||{})[t.id] || {}, pen = rigid===1 ? 4 : rigid===3 ? 1 : 2;
     const S = foes.map(o=>({ o, g:hurt[o.id] || 0, s:(hurt[o.id] || 0) - pen * gap(o) / 5 })).sort((a, b)=>b.s - a.s || (dist(a.o) ?? 0) - (dist(b.o) ?? 0));
     if(S[0].g > 0){ to = S[0].o; why = `hurt it most for the distance (${S[0].g} damage)`; } else { to = near(foes); why = "the nearest (nobody has hurt it yet)"; } }
@@ -13638,7 +13641,8 @@ function autoOptions(c, t){
 function autoSquares(c, t, n, dash, ftLimit){
   const bm = bmapOf(n), st = n.site || {}, me = c.pos[t.id], allow = ftLimit!=null ? ftLimit : speedOf(t) * (dash || movedOf(c, t.id).dash ? 2 : 1) - movedOf(c, t.id).ft, left = Math.max(0, Math.floor(allow / 5));
   const occ = {}; for(const o of combatants(c)){ const p = c.pos[o.id]; if(p && o.id!==t.id && !o.fled && !isDownT(o)) occ[`${p.x},${p.y}`] = o.side===t.side ? "own" : "other"; }
-  const wall = (x, y) => x < 0 || y < 0 || x >= BW || y >= BH || opaqueAt(bm, st, x, y);
+  const fear = fearOf(c, t), fP = fear && c.pos[fear.id], fD = fP ? chebSq(me, fP) : 0;     // Frightened: never closer to what it fears
+  const wall = (x, y) => x < 0 || y < 0 || x >= BW || y >= BH || opaqueAt(bm, st, x, y) || (fP && chebSq({ x, y }, fP) < fD);
   const seen = new Map(), start = { x:me.x, y:me.y, cost:0 }; seen.set(`${me.x},${me.y}`, start); const q = [start];
   while(q.length){ const a = q.shift(); if(a.cost >= left) continue;
     for(const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){ const x = a.x + dx, y = a.y + dy, k = `${x},${y}`;
@@ -13799,7 +13803,7 @@ async function autoCast(c, t, n, P, said){
   if(word) act.note = word;
   await autoSay(`${t.label} casts ${P.name}${P.kind==="area" ? "!" : ` on ${andList(who)}${word ? `: “${word}!”` : "!"}`}`); if(autoGone(c, t)) return true;
   renderBattlePanel();
-  if(P.s.atk){ const o = combatants(c).find(x => x.id===act.targets[0]); if(o && autoSense(c, n, t, o)==="unseen"){ act.adv = "dis"; renderBattlePanel(); } autoPress('[data-acroll="hit"]'); if(!act.toHit) return false; if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
+  if(P.s.atk){ const o = combatants(c).find(x => x.id===act.targets[0]); if(o && autoSense(c, n, t, o)==="unseen"){ act.unseen = true; renderBattlePanel(); } autoPress('[data-acroll="hit"]'); if(!act.toHit) return false; if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
   else { for(const id of act.targets.slice()) autoPress(`[data-svroll="${id}"]`); if(P.s.dmg) autoPress('[data-acroll="dmg"]'); }
   const keepAct = act; autoPress("#ac-go"); if(act===keepAct) return false;
   renderBattle(); let last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
@@ -13981,6 +13985,88 @@ async function autoAfter(c, t, n, said){
     const q = retreatSq(c, t, n, false); if(q){ const ft = await autoWalk(c, t, q); if(ft) said.push(`${t.label} falls back ${ft} ft.`); }
   }
 }
+/* conditions (Joseph's autopilot list, item 8: "conditions on its own turn"), by the 2024 rules:
+   - Incapacitated, Paralyzed, Petrified, Stunned, Unconscious: no actions, Bonus Actions or Reactions (no opportunity
+     attacks, Parry, legendary actions); on the autopilot's turn it does nothing;
+   - Prone: it stands up first (half its Speed), if it has the Speed;
+   - Grappled or Restrained (Speed 0): if it can fight from where it is, it does; else it uses its action to break free:
+     Athletics or Acrobatics (whichever is better) against the grapple's escape DC, from whoever is holding it (a creature
+     beside it whose attack says "Grappled condition (escape DC N)", or a character: 8 + Str + proficiency); a spell's
+     (Web, Entangle) Athletics against the caster's spell save DC. Free, it moves (its action is spent);
+   - Frightened: it can't move closer to what it fears (the hold's caster, gripOf/fearOf).
+   Attack rolls (anyone's, rollAdvOf, unless Advantage or Disadvantage is set by hand): Disadvantage when the attacker is
+   Poisoned, Prone, Restrained, Blinded, Frightened with the source in line, Grappled and attacking someone else than its
+   grappler, or can't see the target (Invisible); Advantage when the attacker is Invisible to them, or the target is
+   Paralyzed, Stunned, Unconscious, Petrified, Restrained, Blinded, Prone within 5 ft (beyond 5 ft, Disadvantage), or in
+   Faerie Fire. Both: they cancel. A hit within 5 ft on someone Paralyzed or Unconscious is a critical hit. */
+const CANT_ACT = ["Incapacitated","Paralyzed","Petrified","Stunned","Unconscious"];
+const condsOfT = t => (t ? (t.kind==="foe" ? t.x.conds : (t.p && pcState(t.p).conds)) : null) || [];
+const cantAct = t => CANT_ACT.filter(k => condsOfT(t).includes(k));
+function fearOf(c, t){
+  if(!condsOfT(t).includes("Frightened")) return null;
+  const H = c.holds && c.holds[t.id], sp = H && H.name ? spellByName(H.name) : null;
+  if(!H || !(H.cond==="Frightened" || /Frightened/i.test(String((sp && sp.desc) || "")))) return null;
+  return combatants(c).find(x => x.id===H.by && !x.fled && !isDownT(x) && c.pos && c.pos[x.id]) || null;
+}
+function foeSkill(t, skill, i){
+  const m = foeById(t.x.foe), k = new RegExp(`${skill}\\s*([+-]\\d+)`, "i").exec(String((m && m.sk) || ""));
+  return k ? +k[1] : Math.floor(((+((m && m.ab) || [])[i] || 10) - 10) / 2);
+}
+const checkOf = (t, skill) => t.kind==="foe" ? foeSkill(t, skill, skill==="Athletics" ? 0 : 1) : skillMod(pcState(t.p), skill);
+function spellDcOfT(t){
+  if(t.kind==="foe"){ const m = /spell save DC (\d+)/i.exec(foeEntries(foeById(t.x.foe)).map(e => e[1]).join(" ")); return m ? +m[1] : null; }
+  const o = pcState(t.p), d = parseInt(String(o.dc || "")); return isFinite(d) ? d : 8 + profOf(o) + spellModOf(o);
+}
+/* who's holding it and the DC to break free: { by, dc, how, ends } (ends: the other conditions that go with the grapple) */
+function gripOf(c, t){
+  const cs = condsOfT(t), P = c.pos || {}, me = P[t.id]; if(!me) return null;
+  if(cs.includes("Restrained") && !cs.includes("Grappled")){ const H = c.holds && c.holds[t.id], sp = H && H.name ? spellByName(H.name) : null, by = H && combatants(c).find(x => x.id===H.by);
+    if(sp && by && /Restrained/i.test(sp.desc || "") && /Athletics\)? check/i.test(sp.desc || "")){ const dc = spellDcOfT(by); return dc ? { by, dc, how:"Athletics", what:sp.name, cond:"Restrained", ends:[] } : null; }
+    return null; }
+  if(!cs.includes("Grappled")) return null;
+  const L = [];
+  for(const o of combatants(c)){ if(o.id===t.id || o.side===t.side || o.fled || isDownT(o) || !P[o.id] || chebSq(P[o.id], me) > Math.max(1, reachSq(o))) continue;
+    if(o.kind==="foe"){ const m = foeById(o.x.foe), txt = [...pairs(m && m.act), ...pairs(m && m.bon)].map(a => a[1]).join(" "), k = /Grappled condition \(escape DC (\d+)\)/i.exec(txt);
+      if(k) L.push({ by:o, dc:+k[1], cond:"Grappled", ends:(/Until the grapple ends[^.]*?\b(Blinded|Restrained)\b(?: and (?:the )?(Blinded|Restrained))?/i.exec(txt) || []).slice(1).filter(Boolean) }); }
+    else if(o.p){ const s = pcState(o.p); L.push({ by:o, dc:8 + abBonus(s, "str") + profOf(s), cond:"Grappled", ends:[] }); } }
+  return L.length===1 ? L[0] : null;     // nobody, or more than one who could be: the DM's to say
+}
+/* Advantage or Disadvantage from conditions on an attack roll: { v: "adv"|"dis"|"", why, crit } */
+function rollAdvOf(c, t, tg, info){
+  const A = [], D = [], me = condsOfT(t), them = condsOfT(tg), P = (c && c.pos) || {}, n = bnode();
+  const near = P[t.id] && P[tg.id] ? chebSq(P[t.id], P[tg.id]) <= 1 : /Melee/i.test(String((info && info.text) || ""));
+  const line = (a, b) => !n || !P[a.id] || !P[b.id] || losClear(bmapOf(n), n.site || {}, P[a.id].x, P[a.id].y, P[b.id].x, P[b.id].y);
+  const sees = (a, b) => { const v = visionOf(c, a), d = P[a.id] && P[b.id] ? Math.hypot(P[a.id].x - P[b.id].x, P[a.id].y - P[b.id].y) * 5 : 0; return !!((v.ts && d <= v.ts) || (v.bs && d <= v.bs)); };
+  for(const k of ["Poisoned","Prone","Restrained","Blinded"]) if(me.includes(k)) D.push(`${t.label} is ${k}`);
+  if(me.includes("Frightened")){ const f = fearOf(c, t); if(!f || line(t, f)) D.push(`${t.label} is Frightened${f ? ` of ${f.label}` : ""}`); }
+  if(me.includes("Grappled")){ const g = gripOf(c, t); if(g && g.by.id!==tg.id) D.push(`${t.label} is Grappled by ${g.by.label}`); }
+  if(them.includes("Invisible") && !sees(t, tg)) D.push(`${tg.label} is Invisible`);
+  else if(act.unseen) D.push(`${t.label} can't see ${tg.label}`);
+  if(me.includes("Invisible") && !sees(tg, t)) A.push(`${t.label} is Invisible`);
+  for(const k of ["Paralyzed","Stunned","Unconscious","Petrified","Restrained","Blinded"]) if(them.includes(k)) A.push(`${tg.label} is ${k}`);
+  if(them.includes("Prone")) (near ? A : D).push(`${tg.label} is Prone${near ? "" : ", more than 5 ft off"}`);
+  if(fxVsAdv(hOfT(tg))) A.push("an effect on them");
+  return { v:A.length && D.length ? "" : A.length ? "adv" : D.length ? "dis" : "", why:A.length && D.length ? `Advantage (${A.join(", ")}) and Disadvantage (${D.join(", ")}) cancel` : [...A, ...D].join(", "),
+    crit:near && (them.includes("Paralyzed") || them.includes("Unconscious")) };
+}
+/* a line on the fight's log that undo takes back (its conditions as they were) */
+const autoLogLine = (c, t, text) => (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text, snap:snapOf(c, [t.id]) });
+/* the start of its turn: stand up, or try to break free (true: its action is spent) */
+async function autoConds(c, t, n, wantsOut, canFight){
+  const cs = condsOfT(t);
+  if(cs.includes("Prone")){ const sp = speedOf(t), half = Math.ceil(sp / 2);
+    if(sp > 0 && sp - movedOf(c, t.id).ft >= half){ autoLogLine(c, t, `${t.label} stands up (half its Speed, ${half} ft).`); cs.splice(cs.indexOf("Prone"), 1);
+      const M = (c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }; M.ft += half; renderBattle(); await autoSay(c.log[c.log.length - 1].text); } }
+  if(!(cs.includes("Grappled") || cs.includes("Restrained")) || (!wantsOut && canFight())) return false;
+  const g = gripOf(c, t);
+  if(!g){ const line = `${t.label} is ${cs.includes("Grappled") ? "Grappled" : "Restrained"}, but who or what holds it isn't on the map (no escape DC to roll against): yours to call.`; await autoSay(line); return false; }
+  const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath, d = 1 + Math.floor(Math.random() * 20), tot = d + b;
+  const roll = `${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against DC ${g.dc}`, from = g.what ? `${g.by.label}'s ${g.what}` : g.by.label;
+  await autoSay(`${t.label} tries to break free of ${from}!`);
+  autoLogLine(c, t, `${t.label} uses its action to break free of ${from}: ${roll}: ${tot >= g.dc ? `free${g.ends.length ? ` (no longer ${andList([g.cond, ...g.ends])})` : ""}` : "still held"}.`);
+  if(tot >= g.dc) for(const k of [g.cond, ...g.ends]){ const i = cs.indexOf(k); if(i >= 0) cs.splice(i, 1); }
+  const A = (c.acted = c.acted || {})[t.id] = (c.acted || {})[t.id] || { n:0, more:0 }; A.n++; renderBattle(); await autoSay(c.log[c.log.length - 1].text); return true;
+}
 /* one whole turn */
 async function autoTurn(c, t){
   const n = bnode(); if(!n || !c || c.turn!==t.id || !autoFor(t) || !c.pos || !c.pos[t.id] || autoBusy) return null;
@@ -14001,6 +14087,25 @@ async function autoTurnNow(c, t, n){
     return c.autoLast; };
   if(H && H.tier==="full"){ said.push(`${t.label} is held by ${autoByName(c, H)}'s ${H.name}: it loses its turn.`); await autoSay(said[0]); return done(); }
   if(H && (H.tier==="order" || H.tier==="turn")){ said.push(`${t.label} is under ${autoByName(c, H)}'s ${H.name}: ${autoByName(c, H)} says what it does this turn.`); await autoSay(said[0]); const r = done(); r.handed = true; return r; }
+  /* its conditions (item 8): can't act; stands up; breaks free if it can't fight from where it is (then it moves, its action spent) */
+  { const no = cantAct(t); if(no.length){ said.push(`${t.label} is ${andList(no)}: it can't act this turn.`); await autoSay(said[0]); return done(); } }
+  { const fleeing = s.flee && root.autoFlee!=="off";
+    const canFightHere = () => { const O = others(), me = c.pos[t.id], bm = bmapOf(n), st = n.site || {}, opts = autoOptions(c, t);
+      if(O.some(o => opts.some(a => a.kind!=="area" && ((a.melee && chebSq(c.pos[o.id], me) <= a.melee) || (a.range && chebSq(c.pos[o.id], me) <= a.range && losClear(bm, st, me.x, me.y, c.pos[o.id].x, c.pos[o.id].y)))))) return true;
+      if(opts.some(a => a.kind==="area" && (b => b && b.foes >= 1)(autoAim(c, t, a)))) return true;
+      return !!(O.length && autoSpellPlan(c, t, n, O[0], O, opts)); };
+    if(await autoConds(c, t, n, fleeing, canFightHere)){ if(autoGone(c, t) || speedOf(t) <= 0) return done();
+      const O = others(), exits = (exitsOf(n) || []).filter(e => e.x!=null && e.y!=null), S = autoSquares(c, t, n, false);
+      if(fleeing){ const out = exits.length ? S.filter(q => exits.some(e => chebSq(e, q) <= 1)).sort((a, b) => a.cost - b.cost) : [];
+        const goal = q => exits.length ? Math.min(...exits.map(e => chebSq(e, q))) : O.length ? -Math.min(...O.map(o => chebSq(c.pos[o.id], q))) : 0;
+        const ft = await autoWalk(c, t, out[0] || S.sort((a, b) => goal(a) - goal(b) || a.cost - b.cost)[0]); if(ft) said.push(`${t.label} runs ${ft} ft${exits.length ? " toward a way out" : ""}.`);
+        if(!autoGone(c, t) && out[0] && c.pos[t.id].x===out[0].x && c.pos[t.id].y===out[0].y){ act = freshAct(t.id); renderBattlePanel(); if(autoPick("flee")) autoPress("#ac-go"); }
+        await autoSay(said[said.length - 1] || lastSaid()); return done(); }
+      const tg = all().find(x => x.id===s.to) || O.slice().sort((a, b) => chebSq(c.pos[a.id], c.pos[t.id]) - chebSq(c.pos[b.id], c.pos[t.id]))[0];
+      const away = ["ranged", "caster"].includes(T.role), dest = away ? retreatSq(c, t, n, false) : tg ? autoWhere(c, t, n, tg, "melee", 1) : null;
+      const ft = dest ? await autoWalk(c, t, dest) : 0; if(ft) said.push(away ? `${t.label} gets ${ft} ft clear.` : `${t.label} moves ${ft} ft toward ${tg.label}.`);
+      if(ft) await autoSay(said[said.length - 1]); return done(); }
+    if(autoGone(c, t)) return done(); }
   /* fleeing (Joseph, 2026-11-02: "I want to be able to turn off the fleeing, or it becomes something they try to do that
      the players can stop"): off, it fights on; on, it tries: it Dashes for the nearest way out on the map and leaves only
      if it gets there this turn. Grappled or Restrained (speed 0), boxed in, or dropped, it doesn't; moving away offers
@@ -14070,7 +14175,7 @@ async function autoTurnNow(c, t, n){
     if(act.actor!==t.id || !act.what || autoGone(c, t)) break;
     act.targets = act.targets.filter(id => { const x = all().find(y => y.id===id); return x && !isDownT(x) && !x.fled; });
     if(!act.targets.length){ const L = inReach(); if(!L.length) break; act.targets = [L.sort((a, b) => (tacHp(a).hp || 0) - (tacHp(b).hp || 0))[0].id]; }
-    act.adv = act.targets[0] && senseOf(act.targets[0])==="unseen" ? "dis" : "";     // it can't see them: Disadvantage
+    act.adv = ""; act.unseen = !!(act.targets[0] && senseOf(act.targets[0])==="unseen");     // it can't see them: Disadvantage (rollAdvOf, with its conditions)
     renderBattlePanel(); autoPress('[data-acroll="hit"]');
     if(!act.toHit || act.toHit.tg!==act.targets[0]) break;     // not rolled (total cover): the rest is the DM's
     if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]');
@@ -14148,7 +14253,7 @@ function rechargeTurnStart(c, id){
      20 still hits). Logged as its own line, so undo takes it back;
    - someone moving out of its reach: its opportunity attack, taken without asking (party members are still asked). */
 function autoDefend(c, a, tg, tot, ac, info){
-  if(!root.autoEnemies || !tg || tg.kind!=="foe" || !autoFor(tg) || reactedThisRound(c, tg.id) || !a || a.side===tg.side) return null;
+  if(!root.autoEnemies || !tg || tg.kind!=="foe" || !autoFor(tg) || reactedThisRound(c, tg.id) || !a || a.side===tg.side || cantAct(tg).length) return null;
   const m = foeById(tg.x.foe), R = foeResources(m);
   for(const [nm, text] of pairs(m && m.rea)){
     const base = String(nm).replace(/\s*\(.*\)\s*$/, ""), lim = R.find(r=>r.key===base);
@@ -14192,7 +14297,7 @@ function legAfterTurn(c, prev){
 }
 const legCandidates = c => { const O = c.legOffer; if(!O || O.at!==turnStamp(c)) return [];
   /* not the one whose turn just ended, nor the one whose turn is starting (its own turn is next) */
-  return combatants(c).filter(t=>legOf(t).length && t.id!==O.prev && t.id!==c.turn && !O.done.includes(t.id) &&!t.fled && !isDownT(t) && !t.x.dormant && legLeft(t) > 0 && c.pos && c.pos[t.id]); };
+  return combatants(c).filter(t=>legOf(t).length && t.id!==O.prev && t.id!==c.turn && !O.done.includes(t.id) &&!t.fled && !isDownT(t) && !t.x.dormant && legLeft(t) > 0 && c.pos && c.pos[t.id] && !cantAct(t).length); };
 /* the one worth doing now, if any: { kind: attack|spell, name, attack (its fa:), dest, targets, value, legOnce } */
 function legPlan(c, t){
   const n = bnode(); if(!n) return null;
@@ -14480,7 +14585,7 @@ function askOpportunity(moverId, from){
   const all = combatants(c), mover = all.find(t=>t.id===moverId); if(!mover || mover.fled) return;
   const isDown = t => t.kind==="foe" ? (t.x.max!=null && t.x.hp<=0) : (numOr(t.p.hp)!==null && numOr(t.p.hp)<=0);
   const dist = (a,b) => Math.max(Math.abs(a.x-b.x), Math.abs(a.y-b.y));
-  const can = all.filter(t=>t.side!==mover.side && !t.fled && !isDown(t) && !reactedThisRound(c,t.id) && c.pos[t.id]
+  const can = all.filter(t=>t.side!==mover.side && !t.fled && !isDown(t) && !reactedThisRound(c,t.id) && c.pos[t.id] && !cantAct(t).length
     && dist(c.pos[t.id], from) <= reachSq(t) && dist(c.pos[t.id], to) > reachSq(t));
   if(!can.length) return;
   /* the autopilot's enemies take theirs without asking (one after another, step by step); the rest are asked */
@@ -15041,7 +15146,7 @@ function hintFromText(text){
   /* what rides on the same hit (2026-10-30): "… Slashing damage plus 7 (2d6) Fire damage" */
   const more = [];
   for(let rest = String(text).slice(m.index + m[0].length), x; (x = /^\s*,?\s*(?:plus|and)\s+\d+\s*\((\d+d\d+(?:\s*[+-]\s*\d+)?)\)\s*([A-Za-z]+) damage/i.exec(rest)); rest = rest.slice(x[0].length))
-    more.push({ dice:x[1].replace(/\s+/g,""), dtype:x[2].toLowerCase() });
+    more.push({ dice:x[1].replace(/\s+/g,""), dtype:x[2].toLowerCase(), ...(/^\s*if (?:the attack roll|it) had Advantage/i.test(rest.slice(x[0].length)) ? { ifAdv:true } : {}) });     // the goblin's "plus 2 (1d4) ... if the attack roll had Advantage"
   return { dice:m[1].replace(/\s+/g,""), dtype:m[2].toLowerCase(), ...(more.length ? { more } : {}) };
 }
 function actInfo(c, t){
@@ -15113,7 +15218,7 @@ function actDice(c, t, info){
     if(p) p.dice = addDice(p.dice, dice); else parts.push({ dice, dtype:k }); };
   const tempOnly = !!(info && info.spell && spellTemp(info.spell) && !String(info.spell.dtype||"").trim());     // False Life: its "damage" is its temporary hit points
   if(part1 && !tempOnly) put(part1.dice, baseType);
-  if(!(info && info.spell)) ((info && info.hint && info.hint.more) || []).forEach(x=>put(x.dice, x.dtype));
+  if(!(info && info.spell)) ((info && info.hint && info.hint.more) || []).forEach(x=>{ if(!x.ifAdv || act.hadAdv) put(x.dice, x.dtype); });     // "if the attack roll had Advantage": only then
   on.filter(a=>a.dice).forEach(a=>put(a.dice, a.dtype));
   if(parts.length && dmgMod) parts[0].dice = addDice(parts[0].dice, String(dmgMod));
   const dmgDice = addDice(...parts.map(p=>p.dice));
@@ -15475,7 +15580,7 @@ function holdsTurnStart(c, id){
   if(!holdLive(H, t, by)){ delete c.holds[id]; return; }
   if(H.at===turnStamp(c)) return;
   const pts = Math.round(ctrlDpr(t) * ctrlMult(H.tier) * 10) / 10, snap = by && by.kind==="pc" ? snapOf(c, [by.id]) : {}, before = JSON.stringify(c.holds);
-  H.at = turnStamp(c); H.turns = (H.turns||0) + 1; c.heldNow = { id, tier:H.tier, name:H.name, sp:H.sp, by:H.by, at:H.at };     // its turn is someone else's to call (the autopilot asks) H.pts = Math.round(((H.pts||0) + pts) * 10) / 10;
+  H.at = turnStamp(c); H.turns = (H.turns||0) + 1; c.heldNow = { id, tier:H.tier, name:H.name, sp:H.sp, by:H.by, at:H.at }; H.pts = Math.round(((H.pts||0) + pts) * 10) / 10;     // heldNow: its turn is someone else's to call (the autopilot asks)
   if(by && by.kind==="pc" && pts){ const S = statsOf(by.p); S.ctrl = Math.round(((+S.ctrl||0) + pts) * 10) / 10; }
   if(H.once) delete c.holds[id];
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:`${t.label} is ${CTRL_SAY[H.tier]} by ${by ? by.label : "someone"}'s ${H.name} (${pts} control).`, snap, holds:before });
@@ -15816,13 +15921,13 @@ function renderBattlePanelNow(){
       const bonus = /^\s*[+-]?\d+\s*$/.test(String(act.hitBonus ?? "")) ? parseInt(act.hitBonus) : (toHitOf(c, t, info) ?? 0), cv = coverOf(c, t.id, tg.id), ac = acOf(tg) + cv.ac, typed = Math.round(+act.d20);
       if(cv.level===3){ flash(`${tg.label} has total cover from ${t.label}: no line to attack them from there.`); return; }
       const r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), mine = typed >= 1 && typed <= 20;
-      const adv = act.adv || (fxVsAdv(hOfT(tg)) ? "adv" : "");     // Faerie Fire on the target: Advantage, unless set by hand
-      const d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1;
-      const how = mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${act.adv ? "" : " (an effect on them)"}: ${d}` : `d20 ${d}`;
+      const CA = act.adv ? null : rollAdvOf(c, t, tg, info), adv = act.adv || CA.v;     // conditions and Faerie Fire: Advantage or Disadvantage, unless set by hand
+      const d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1; act.hadAdv = adv==="adv";
+      const how = mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA ? ` (${CA.why})` : ""}: ${d}` : `d20 ${d}${CA && CA.why ? ` (${CA.why})` : ""}`;
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
-      const rx = out==="hit" ? autoDefend(c, t, tg, tot, ac, info) : null, res = rx ? "miss" : out;     // its Parry or Shield, if the autopilot runs it
-      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : out}${rx ? ` — ${rx}` : ""}` };
+      const rx = out==="hit" ? autoDefend(c, t, tg, tot, ac, info) : null, sure = !rx && out==="hit" && CA && CA.crit, res = rx ? "miss" : sure ? "crit" : out;     // its Parry or Shield, if the autopilot runs it; Paralyzed or Unconscious within 5 ft: a crit
+      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
       D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
