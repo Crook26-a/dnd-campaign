@@ -1,0 +1,3 @@
+1. Gawain ticks a Luck point: Advantage on his attack, and a point spent: the box offers it true | To hit: d20 5 and 17, Advantage (Gawain's Luck point): 17 + 8 = 25 vs AC 15 (Goblin Warrior): hit | Luck left 2
+2. the goblin attacks Gawain; he ticks a Luck point: Disadvantage on it: To hit: d20 19 and 3, Disadvantage (Gawain's Luck point): 3 + 4 = 7 vs AC 17 (Gawain): miss | Luck left 1
+3. Pip the halfling rolls a 1: it's rerolled, and the new roll stands: no Luck box for Pip true | To hit: d20 1 (a 1: Halfling Luck rerolls it: 13) + 7 = 20 vs AC 15 (Goblin Warrior): hit | page errors 0

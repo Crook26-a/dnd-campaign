@@ -14971,10 +14971,21 @@ function saveRow(c, t, info, all){
     ${tg.map(x=>{ const k = String(S.abil).slice(0, 3).toLowerCase(), b = saveBonusOf(x, S.abil) + fxNum(hOfT(x), "save", k, false), dw = fxDiceWords(hOfT(x), "save"), adv = fxAdv(hOfT(x), k) || fightAdv(c, t, x, info) || (k==="dex" && dodging(c, x)), r = sv[x.id];
       return `<div class="pcrow" style="align-items:center;margin:0 0 3px"><span style="flex:1;min-width:0">${esc(x.label)} <small class="mono">${S.abil ? S.abil.slice(0, 3) : "save"} ${signed(b)}${dw ? ` ${esc(dw)}` : ""}${adv ? ` · Advantage${fightAdv(c, t, x, info) && !fxAdv(hOfT(x), k) ? " (you're fighting it)" : ""}` : ""}</small></span>
         <input class="mono" type="number" data-svtot="${x.id}" value="${esc(r && r.typed ? String(r.tot) : "")}" placeholder="total" style="width:58px" title="Rolled at the table? Their total">
+        ${luckLeft(x) && !adv ? `<label style="font-size:11px;white-space:nowrap" title="Lucky: Advantage on this save (a Luck point)"><input type="checkbox" data-svluck="${x.id}" ${(act.svLuck || {})[x.id] ? "checked" : ""}> Luck (${luckLeft(x)})</label>` : ""}
         <button class="btn small" data-svroll="${x.id}">Roll</button>
         ${r ? `<button class="btn small${r.made ? "" : " danger"}" data-svflip="${x.id}" title="${esc(r.said)} · click to flip">${r.made ? "made" : "failed"} ${r.tot}</button>` : `<span style="width:64px"></span>`}</div>`; }).join("")}
     ${tg.length > 1 ? `<button class="btn wide" data-svroll="all">Roll every save</button>` : ""}</div>`;
 }
+/* Lucky (Joseph, 2026-11-03, with the Character Book: "I like the flat 3 though"), the 2024 feat with 3 Luck points
+   (their "Lucky" use, back on a long rest): ticked in the Action box before the roll, a point gives Advantage on their own
+   attack roll or saving throw (Disadvantage and Advantage cancel), or Disadvantage on an attack roll against them.
+   A halfling's Luck rerolls a 1 on their attack roll or save, and the new roll stands (done for them). */
+const luckOf = t => t && t.kind==="pc" && t.p ? (pcState(t.p).res || []).find(r => r.name==="Lucky") : null;
+const luckLeft = t => { const r = luckOf(t); return r ? Math.max(0, (+r.max || 0) - (+r.used || 0)) : 0; };
+const luckSpend = (t, why) => { const r = luckOf(t); if(!r || luckLeft(t) < 1) return false; r.used = (+r.used || 0) + 1; return true; };
+const halflingOf = t => !!(t && t.kind==="pc" && t.p && /halfling/i.test(String(t.p.species || "")));
+// a 1 on a halfling's d20, rerolled once
+const hLuck = (t, d) => halflingOf(t) && d===1 ? { d:1 + Math.floor(Math.random()*20), said:" (a 1: Halfling Luck rerolls it" } : null;
 function toHitRow(c, t, info, all){
   if(!isAttackAct(info) || !act.targets.length) return "";
   const tg = all.find(x=>x.id===act.targets[0]), b = act.hitBonus ?? toHitOf(c, t, info);
@@ -14984,6 +14995,9 @@ function toHitRow(c, t, info, all){
       <select id="ac-adv" style="flex:1;min-width:0"><option value="">Straight roll</option><option value="adv" ${act.adv==="adv"?"selected":""}>Advantage</option><option value="dis" ${act.adv==="dis"?"selected":""}>Disadvantage</option></select>
       <input id="ac-d20" class="mono" type="number" min="1" max="20" value="${esc(act.d20||"")}" placeholder="d20" style="width:52px" title="The d20 rolled at the table (empty: the app rolls)">
       <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
+    ${(() => { const me = luckLeft(t), vs = tg && tg.side!==t.side ? luckLeft(tg) : 0; if(!me && !vs) return "";
+      return `<div class="pcrow" style="align-items:center;margin:-2px 0 6px;font-size:12px">${me ? `<label title="Lucky: Advantage on this attack roll (the 2024 rule; 3 points a long rest)"><input type="checkbox" id="ac-luckme" ${act.luckMe ? "checked" : ""}> ${esc(t.label)} spends a Luck point: Advantage (${me} left)</label>` : ""}
+        ${vs ? `<label title="Lucky: an attack roll against them has Disadvantage"><input type="checkbox" id="ac-luckvs" ${act.luckVs ? "checked" : ""}> ${esc(tg.label)} spends a Luck point: Disadvantage on it (${vs} left)</label>` : ""}</div>`; })()}
     ${act.toHit ? `<p class="empty-note" style="font-size:11.5px;margin:-2px 0 6px">${esc(act.toHit.said)}</p>` : ""}`;
 }
 let act = null;                                          // the action being filled in
@@ -16450,6 +16464,7 @@ function renderBattlePanelNow(){
   const keep = () => { const g = id => { const e = $(id); return e ? e.value : undefined; };
     if(g("#ac-dmgmod")!==undefined) act.dmgMod = g("#ac-dmgmod"); if(g("#ac-hitmod")!==undefined) act.hitMod = g("#ac-hitmod"); if(g("#ac-hitbonus")!==undefined) act.hitBonus = g("#ac-hitbonus"); if(g("#ac-adv")!==undefined) act.adv = g("#ac-adv"); if(g("#ac-d20")!==undefined) act.d20 = g("#ac-d20");     // rolling to hit
     if(g("#ac-dmg")!==undefined) act.dmg = g("#ac-dmg"); if(g("#ac-heal")!==undefined) act.heal = g("#ac-heal"); if(g("#ac-took")!==undefined) act.took = g("#ac-took");
+    { const lm = $("#ac-luckme"), lv = $("#ac-luckvs"); if(lm) act.luckMe = lm.checked; if(lv) act.luckVs = lv.checked; }     // Lucky, ticked before the roll
     if(g("#ac-note")!==undefined) act.note = g("#ac-note"); if(g("#ac-dtype")!==undefined) act.dtype = g("#ac-dtype");
     if(g("#ac-cond")!==undefined) act.cond = g("#ac-cond"); if(g("#ac-spell")!==undefined) act.spellText = g("#ac-spell");
     if(g("#ac-ctrl")!==undefined){ if(g("#ac-ctrl")==="") delete act.ctrl; else act.ctrl = g("#ac-ctrl"); }
@@ -16502,12 +16517,14 @@ function renderBattlePanelNow(){
      following (all made: Save made, else Save failed) */
   const svCtx = () => { const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t), S = info && saveOfAct(c, t, info); return S ? { S, dc:Math.round(+(act.saveDC ?? S.dc)) || 0 } : null; };
   const svOutcome = () => { const R = act.targets.map(id=>(act.saves||{})[id]).filter(Boolean); if(R.length) act.outcome = R.every(r=>r.made) ? "save" : "fail"; };
+  el.querySelectorAll("[data-svluck]").forEach(b=>b.onchange = ()=>{ (act.svLuck = act.svLuck || {})[b.dataset.svluck] = b.checked; });
+  el.querySelectorAll("#ac-luckme, #ac-luckvs").forEach(b=>b.onchange = ()=>{ act[b.id==="ac-luckme" ? "luckMe" : "luckVs"] = b.checked; });
   el.querySelectorAll("[data-svroll]").forEach(b=>b.onclick = ()=>{ keep(); const X = svCtx(); if(!X) return; if(!X.dc){ flash("Type in the DC first."); return; }
     for(const id of b.dataset.svroll==="all" ? act.targets : [b.dataset.svroll]){ const x = all.find(y=>y.id===id); if(!x) continue;
-      const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), adv = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)) || (k==="dex" && dodging(c, x)), r1 = 1 + Math.floor(Math.random()*20), r2 = adv ? 1 + Math.floor(Math.random()*20) : 0, d = Math.max(r1, r2);
+      const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), adv = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)) || (k==="dex" && dodging(c, x)), lk = !adv && !!(act.svLuck && act.svLuck[x.id]) && luckSpend(x), r1 = 1 + Math.floor(Math.random()*20), r2 = adv || lk ? 1 + Math.floor(Math.random()*20) : 0, d0 = Math.max(r1, r2), hl = hLuck(x, d0), d = hl ? hl.d : d0; if(act.svLuck) delete act.svLuck[x.id];     // Lucky: Advantage; a halfling's 1 rerolled
       const cvr = k==="dex" ? coverOf(c, act.actor, x.id, aoeOrigin()) : { level:0, ac:0, word:"" }, cb = cvr.level===3 ? 0 : cvr.ac;     // cover: +2 or +5 to a Dexterity save
       const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false) + cb, F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
-      const how = `${adv ? `d20 ${r1} and ${r2}, Advantage: ${d}` : `d20 ${d}`}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
+      const how = `${adv || lk ? `d20 ${r1} and ${r2}, Advantage${lk ? " (a Luck point)" : ""}: ${d0}` : `d20 ${d0}`}${hl ? `${hl.said}: ${d})` : ""}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
       (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` };
       if(tot < X.dc){ const lr = legResist(c, x); if(lr){ act.saves[x.id].made = true; act.saves[x.id].said += ` — ${lr}`; } } }     // Legendary Resistance, when it matters
     svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
@@ -16565,9 +16582,16 @@ function renderBattlePanelNow(){
       if(cv.level===3){ flash(`${tg.label} has total cover from ${t.label}: no line to attack them from there.`); return; }
       { const wn = String(act.what || "").replace(/^\w+:/, "").replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase(); if(t.kind==="foe" && t.x.dropped && t.x.dropped[wn]){ flash(`${t.label} dropped its ${itemName(baseId(t.x.dropped[wn]))}: it has to pick it up first (it's on the ground).`); return; } }
       const r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), mine = typed >= 1 && typed <= 20;
-      const CA = act.adv ? null : rollAdvOf(c, t, tg, info), adv = act.adv || CA.v;     // conditions and Faerie Fire: Advantage or Disadvantage, unless set by hand
-      const d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1; act.hadAdv = adv==="adv";
-      const how = mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA ? ` (${CA.why})` : ""}: ${d}` : `d20 ${d}${CA && CA.why ? ` (${CA.why})` : ""}`;
+      const CA = act.adv ? null : rollAdvOf(c, t, tg, info); let adv = act.adv || CA.v;     // conditions and Faerie Fire: Advantage or Disadvantage, unless set by hand
+      // Lucky: a point ticked by the attacker (Advantage) or the one attacked (Disadvantage); any of each, they cancel
+      const LK = []; if(!mine && (act.luckMe || act.luckVs)){ const me = act.luckMe && luckSpend(t), vs = act.luckVs && luckSpend(tg);
+        if(me) LK.push(`${t.label}'s Luck point`); if(vs) LK.push(`${tg.label}'s Luck point`);
+        if(me || vs){ const A = adv==="adv" || me, Dd = adv==="dis" || vs; adv = A && Dd ? "" : A ? "adv" : "dis"; } }
+      if(mine && (act.luckMe || act.luckVs)) flash("A d20 typed in: roll the Luck point's d20 at the table too, and type the one that counts (no point was spent here).");
+      act.luckMe = act.luckVs = false;
+      let d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1; act.hadAdv = adv==="adv";
+      const hl = !mine ? hLuck(t, d) : null; if(hl) d = hl.d;     // a halfling's 1, rerolled
+      const how = (mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")})` : ""}: ${hl ? 1 : d}` : `d20 ${hl ? 1 : d}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")}: Advantage and Disadvantage cancel)` : ""}`) + (hl ? `${hl.said}: ${d})` : "");
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
       const rx = out==="hit" ? autoDefend(c, t, tg, tot, ac, info) : null, sure = !rx && out==="hit" && CA && CA.crit, res = rx ? "miss" : sure ? "crit" : out;     // its Parry or Shield, if the autopilot runs it; Paralyzed or Unconscious within 5 ft: a crit
