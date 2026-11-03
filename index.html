@@ -8049,11 +8049,38 @@ function fxSweep(){
     h.fx = h.fx.filter(fxLive); if(!h.fx.length) delete h.fx; }
 }
 function fxNewRound(c){ for(const t of combatants(c)){ const h = hOfT(t); for(const f of (h && h.fx) || []) if(!f.conc && f.left!=null) f.left -= 1; } }
-/* the start of someone's turn: Heroism's temporary hit points (they don't stack: the higher) */
+/* group morale (Joseph's autopilot list, item 11): at the start of an enemy's turn, if its side's leader has fallen or
+   fled, or half its group is down or gone, it checks its nerve once for each: a DC 10 Wisdom saving throw (the morale
+   check of the 2014 Dungeon Master's Guide's optional rule). Courage 1 (Cowardly) breaks without a roll; 5 (Fearless)
+   never checks; a room set "Nobody flees" doesn't check. Broken (c.morale.broken[id]: why), its tactics say it would
+   flee and the autopilot runs for it. The leader: a boss, or a legendary creature, else the one worth the most XP if it's
+   worth at least twice the next and there are three or more. c.morale = { n: the most it's had, rolled, broken }. */
+function moraleLeader(side){
+  const xp = o => +((foeById(o.x.foe) || {}).xp) || 0, boss = side.find(o => (foeById(o.x.foe) || {}).boss || legOf(o).length);
+  if(boss) return boss; if(side.length < 3) return null;
+  const S = side.slice().sort((a, b) => xp(b) - xp(a)); return xp(S[0]) >= 2 * Math.max(1, xp(S[1])) ? S[0] : null;
+}
+function moraleTurnStart(c, id){
+  const all = combatants(c), t = all.find(x => x.id===id); if(!t || t.kind!=="foe" || t.side==="party" || t.side==="neutral" || t.fled || isDownT(t) || t.x.dormant) return;
+  const side = all.filter(o => o.kind==="foe" && o.side===t.side && !o.x.dormant), M = c.morale = c.morale || { n:0, rolled:{}, broken:{} };
+  M.n = Math.max(M.n || 0, side.length); if(fleeOff() || M.broken[id]) return;
+  const cg = +tacOf(c, t).courage || 3; if(cg >= 5) return;
+  const lead = moraleLeader(side), lost = side.filter(o => o.fled || isDownT(o)).length, R = M.rolled[id] = M.rolled[id] || {};
+  const why = []; if(lead && lead.id!==id && (lead.fled || isDownT(lead)) && !R.lead) why.push(`${lead.label} ${lead.fled ? "fled" : "fell"}`);
+  if(M.n >= 2 && lost * 2 >= M.n && !R.half) why.push(`${lost} of ${M.n} of its side down or gone`); if(!why.length) return;
+  const before = JSON.stringify(M), snap = snapOf(c, [t.id]); if(/fell|fled/.test(why[0]) && lead && !R.lead) R.lead = true; if(why.some(w => /of its side/.test(w))) R.half = true;
+  let line;
+  if(cg <= 1){ M.broken[id] = why.join("; "); line = `${t.label} sees ${why.join(" and ")}: Cowardly, its nerve breaks.`; }
+  else { const b = saveBonusOf(t, "wis"), d = 1 + Math.floor(Math.random() * 20), tot = d + b, ok = tot >= 10;
+    if(!ok) M.broken[id] = why.join("; ");
+    line = `${t.label} sees ${why.join(" and ")}: morale, Wisdom save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC 10: ${ok ? "it holds" : "its nerve breaks"}.`; }
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, morale:before }); gameLog("fight", line); c.moraleNow = { id, at:turnStamp(c), said:line }; flash(line);
+}/* the start of someone's turn: Heroism's temporary hit points (they don't stack: the higher) */
 function fxTurnStart(c, id){
   rechargeTurnStart(c, id);                      // its used recharges roll first
   legTurnStart(c, id);                           // its legendary uses come back
   autoSizeUp(c, id);                                             // an enemy sizes up the party as its turn starts
+  moraleTurnStart(c, id);                                        // its side's leader fallen, or half of them: its nerve
   const t = combatants(c).find(x=>x.id===id), h = hOfT(t); if(!h) return;
   for(const f of fxOf(h, false)) if(f.b.temp){ const was = numOr(h.temp, 0); if(f.b.temp > was){ h.temp = f.b.temp;
     const line = `${t.label} has ${f.b.temp} temporary hit points (${f.name})`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("spell", line); } }
@@ -8262,7 +8289,8 @@ function tacSuggest(c, t){
   const H = tacHp(t), frac = H.max > 0 ? H.hp / H.max : 1, outn = foes.length / Math.max(1, mates.length + 1), cg = +T.courage || 3;
   const flee = cg>=5 ? "" : cg===1 && (frac < 1 || outn > 1) ? "first hurt or outnumbered" : cg===2 && (frac < .5 || outn >= 2) ? (frac < .5 ? "below half its hit points" : "outnumbered 2 to 1")
     : cg===3 && frac < .25 ? "below a quarter of its hit points" : cg===4 && frac < .1 ? "nearly dead" : "";
-  const out = { stand:TAC_STAND[T.role] || "", flee:flee && !fleeOff() ? `${TAC_COURAGE.find(x=>x[0]===cg)[1].split(":")[0].replace(/^\d /, "").toLowerCase()}, ${flee}` : "", role:T.role, aim:T.aim };
+  const broke = cg < 5 && c.morale && c.morale.broken && c.morale.broken[t.id];     // group morale broke it (item 11)
+  const out = { stand:TAC_STAND[T.role] || "", flee:broke && !fleeOff() ? `its nerve broke (${broke})` : flee && !fleeOff() ? `${TAC_COURAGE.find(x=>x[0]===cg)[1].split(":")[0].replace(/^\d /, "").toLowerCase()}, ${flee}` : "", role:T.role, aim:T.aim };
   if(T.role==="support"){ const w = T.ward && mates.find(o=>o.id===T.ward);
     const hurt = mates.filter(o=>tacHp(o).max > 0).sort((a, b)=>tacHp(a).hp / tacHp(a).max - tacHp(b).hp / tacHp(b).max)[0];
     const h = w || hurt; if(h){ const P = tacHp(h); return Object.assign(out, { help:h.id, helpLabel:h.label, why:w ? `the one it looks after (${P.hp}/${P.max} HP)` : `the ally with the least hit points left (${P.hp}/${P.max})` }); } }
@@ -14143,6 +14171,7 @@ async function autoTurnNow(c, t, n){
   const s = tacSuggest(c, t), T = tacOf(c, t), H = autoHeld(c, t);
   const lastSaid = () => ((c.log || []).length > log0 ? c.log[c.log.length - 1].text : "");
   if(c.rechargeNow && c.rechargeNow.id===t.id && c.rechargeNow.at===turnStamp(c)) await autoSay(c.rechargeNow.said);     // its recharge roll, first
+  if(c.moraleNow && c.moraleNow.id===t.id && c.moraleNow.at===turnStamp(c)) await autoSay(c.moraleNow.said);     // its morale check
   const done = () => { const added = [...said.map((s, i) => ({ s, at:saidAt[i] ?? -1 })), ...(c.log || []).slice(log0).map((e, i) => ({ s:e.text, at:log0 + i + .5 }))].sort((a, b) => a.at - b.at).map(x => x.s);
     c.autoLast = { id:t.id, round:c.round, n:(c.log || []).length - log0, from:from0, len:(c.log || []).length, said:added.join(" ") || `${t.label} does nothing it can see to do.` };
     if(c.turn===t.id) act = freshAct(t.id); if(autoNow()) askOpportunity(t.id, from0);     // step by step, it was offered as it walked
@@ -15659,7 +15688,7 @@ function holdsTurnStart(c, id){
 }
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
-  if(e.holds!=null) c.holds = JSON.parse(e.holds);
+  if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.morale!=null) c.morale = JSON.parse(e.morale);
   if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
     c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
     const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));
