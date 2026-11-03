@@ -785,6 +785,7 @@
   #bsvg{flex:1;width:100%;min-height:0;touch-action:none;cursor:grab}
   #bt-strip{display:flex;gap:3px;align-items:center;padding:4px 8px;background:var(--paper-lit);border-bottom:1px solid var(--rule);overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
   #bt-strip[hidden]{display:none} #bt-strip .ts-r{font:10px var(--mono);color:var(--ink-soft);margin-right:2px} #bt-strip .ts-next{margin-right:4px;white-space:nowrap;flex:0 0 auto}
+  #bt-strip .ts-blink{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-right:6px;padding:2px 6px;border:2px solid var(--accent,#b0402a);border-radius:6px;font-size:12px;font-weight:600} #bt-strip .ts-blink .btn{margin:0}
   .ts-c{display:inline-flex;align-items:center;flex:0 0 auto;border:1px solid var(--rule);background:var(--paper);font:11.5px var(--sans)}
   .ts-c .ts-i{font:10.5px var(--mono);color:var(--ink-faint);padding:2px 0 2px 5px} .ts-c .ts-n{border:0;background:none;padding:2px 4px;font:inherit;cursor:pointer}
   .ts-c.pc .ts-n{color:#2f6170} .ts-c.foe .ts-n{color:var(--lead)} .ts-c.npc .ts-n{color:var(--ink-soft)}
@@ -7935,6 +7936,7 @@ const SPELL_FX = {
   "spell:pass-without-trace":{ skill:{ Stealth:10 }, aura:30 },
   "spell:shield":{ ac:5, self:true },
   "spell:mirror-image":{ mirror:3, self:true },     // three duplicates: worked out when an attack roll hits them (mirrorCheck)
+  "spell:blink":{ blink:true, self:true },     // a d6 at the end of each of their turns (blinkTurnEnd)
   "spell:warding-bond":{ ac:1, save:1 },
   "spell:faerie-fire":{ vsAdv:true, onFail:true },
   "spell:heroism":{ temp:"mod" },
@@ -7989,7 +7991,7 @@ function fxSay(b){
   const w = [b.atk!=null ? `attacks ${sg(b.atk)}` : "", b.save!=null ? `saves ${sg(b.save)}` : "", b.check!=null ? `checks ${sg(b.check)}${b.note ? ` (${b.note})` : ""}` : "",
     ...Object.entries(b.skill||{}).map(([k, v])=>`${k} ${sg(v)}`), ...Object.entries(b.skillDice||{}).map(([k, v])=>`${k} checks ${sg(v)}`), ...Object.entries(b.saveAb||{}).map(([k, v])=>`${ABN[k] || k} saves ${sg(v)}`),
     b.ac ? `AC ${sg(b.ac)}` : "", (b.saveAdv||[]).length ? `Advantage on ${b.saveAdv.map(k=>ABN[k] || k).join(", ")} saves` : "", b.vsAdv ? "attacks on them have Advantage" : "",
-    b.temp ? `${b.temp} temp HP each turn` : "", b.mirror!=null ? `${b.mirror} duplicate${b.mirror===1 ? "" : "s"} left` : ""].filter(Boolean);
+    b.temp ? `${b.temp} temp HP each turn` : "", b.mirror!=null ? `${b.mirror} duplicate${b.mirror===1 ? "" : "s"} left` : "", b.blink ? "a d6 at the end of each of their turns: 4–6 to the Ethereal Plane" : ""].filter(Boolean);
   return w.length ? ` (${w.join(", ")})` : "";
 }
 /* Mirror Image (Joseph, 2026-11-02: "Does mirror image work?" ... "please add it"), the SRD 5.2's (this app's rules): each
@@ -8008,6 +8010,34 @@ function mirrorCheck(actor, t){
   if(off){ M.b.mirror--; if(!M.b.mirror) h.fx = h.fx.filter(f=>f!==M); }
   return { off, said:`${t.label}'s Mirror Image: d6 ${rolls.join(", ")}: ${off ? `a duplicate is hit instead and destroyed (${M.b.mirror ? `${M.b.mirror} left` : "that was the last: the spell ends"})` : "no 3 or higher, so it hits the real one"}` };
 }
+/* Blink (Joseph, 2026-11-03: "I want it in the test fight" ... "It should remind me to roll at the end of a turn where
+   blink is cast"), the SRD 5.2's: 1 minute; at the end of each of the caster's turns a d6, and on 4-6 they vanish to the
+   Ethereal Plane until the start of their next turn, then come back within 10 feet of where they left. Away, they're
+   c.stealth[id].ethereal (only Truesight finds them; they can't be targeted from here) with .blink, so the start of their
+   turn brings them back. A party member's roll is asked for at the end of their turn (c.blinkAsk, at the front of the
+   turn strip: roll it here, or say what the table's die showed), unless the autopilot plays them; anyone else's is rolled. */
+const blinkUp = t => { const h = hOfT(t); return !!h && fxOf(h, false).some(f => f.b && f.b.blink); };
+function blinkTurnEnd(c, id){
+  const t = combatants(c).find(x => x.id===id); if(!t || isDownT(t) || !blinkUp(t)) return;
+  if(t.side==="party" && !autoOn(t)){ c.blinkAsk = { id }; flash(`${t.label}'s turn ends with Blink up: roll its d6 (at the front of the turn strip).`); return; }
+  const d = 1 + Math.floor(Math.random() * 6); blinkSet(c, t, d >= 4, `d6 ${d}`);
+}
+function blinkSet(c, t, go, said){
+  if(c.blinkAsk && c.blinkAsk.id===t.id) delete c.blinkAsk;
+  if(go){ c.stealth = c.stealth || {}; const s = c.stealth[t.id] = c.stealth[t.id] || {}; s.ethereal = true; s.blink = true; }
+  const line = `${t.label}'s Blink, ${said}: ${go ? "they vanish to the Ethereal Plane until the start of their next turn" : "they stay"}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("spell", line); flash(line);
+}
+function blinkTurnStart(c, id){
+  if(c.blinkAsk && c.blinkAsk.id===id) delete c.blinkAsk;     // never answered: it's past
+  const s = c.stealth && c.stealth[id]; if(!s || !s.blink) return;
+  delete s.blink; delete s.ethereal; if(!Object.keys(s).some(k => s[k]!=null && s[k]!==false)) delete c.stealth[id];
+  const t = combatants(c).find(x => x.id===id); if(!t) return;
+  const line = `${t.label} comes back from the Ethereal Plane (Blink), to a space they choose within 10 feet of where they left.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("spell", line); flash(line);
+}
+const blinkAskHtml = c => { const t = c.blinkAsk && combatants(c).find(x => x.id===c.blinkAsk.id); if(!t) return "";
+  return `<span class="ts-blink" title="Blink: at the end of each of their turns, a d6; 4 to 6, they vanish to the Ethereal Plane until the start of their next turn">${esc(t.label)}'s Blink d6: <button class="btn small" data-ts="blink" data-v="roll">Roll it</button><button class="btn small" data-ts="blink" data-v="go">Rolled 4–6</button><button class="btn small" data-ts="blink" data-v="stay">Rolled 1–3</button></span>`; };
 /* cover (Joseph, 2026-11-02, with line of sight: "Ya, add that"): half cover is +2 to AC and Dexterity saves,
    three-quarters +5, total cover can't be targeted directly (the 2024 rules). Worked out on the grid the Dungeon Master's
    Guide's way: from the corner of the attacker's square that sees best (or from an area's point of origin), a line to
@@ -8084,6 +8114,7 @@ function moraleTurnStart(c, id){
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, morale:before }); gameLog("fight", line); c.moraleNow = { id, at:turnStamp(c), said:line }; flash(line);
 }/* the start of someone's turn: Heroism's temporary hit points (they don't stack: the higher) */
 function fxTurnStart(c, id){
+  blinkTurnStart(c, id);                         // back from the Ethereal Plane (Blink)
   rechargeTurnStart(c, id);                      // its used recharges roll first
   legTurnStart(c, id);                           // its legendary uses come back
   autoSizeUp(c, id);                                             // an enemy sizes up the party as its turn starts
@@ -19041,7 +19072,7 @@ function renderTurnStrip(){
   if(!c || editingInside() || calmOf(c)){ el.hidden = true; return; }
   const all = combatants(c).filter(t=>!(t.kind==="foe" && t.x.dormant)), S = c.stealth || {};
   el.hidden = false;
-  el.innerHTML = `<span class="ts-r" title="Round ${c.round}">R${c.round}</span><button class="btn small ts-next" data-ts="next" title="Next turn">${c.turn ? "Next" : "Start"} ⏭</button>` + all.map(t=>{
+  el.innerHTML = blinkAskHtml(c) + `<span class="ts-r" title="Round ${c.round}">R${c.round}</span><button class="btn small ts-next" data-ts="next" title="Next turn">${c.turn ? "Next" : "Start"} ⏭</button>` + all.map(t=>{
     const foe = t.kind==="foe", down = foe && t.x.max!=null && t.x.hp<=0, pct = foe && t.x.max ? Math.max(0, Math.min(100, Math.round(100*t.x.hp/t.x.max))) : null;
     const cls = ["ts-c", t.side==="party" ? "pc" : foe ? "foe" : "npc", t.id===c.turn ? "now" : "", battleSel===t.id ? "sel" : "", down ? "down" : "", t.fled ? "fled" : "", S[t.id] ? "hid" : ""].filter(Boolean).join(" ");
     return `<span class="${cls}" title="${esc(t.label)}${S[t.id] ? " (hidden)" : ""}${down ? " (down)" : ""}${t.fled ? " (fled)" : ""}"><span class="ts-i">${t.init ?? "–"}</span><button class="ts-n" data-ts="pick" data-id="${t.id}" title="Open their card">${esc(stripName(t))}</button>${pct!=null ? `<span class="ts-hp"><span class="${pct < 50 ? "lo" : ""}" style="width:${pct}%"></span></span>` : ""}<button class="ts-go" data-ts="turn" data-id="${t.id}" title="Their turn now">▶</button></span>`;
@@ -19055,7 +19086,7 @@ function renderTurnStrip(){
 function nextTurn(c){
   const order = combatants(c).filter(t=>!(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && !t.fled && !(t.kind==="foe" && t.x.dormant) && !deadT(t));   // a dormant thing gets no turn, nor the dead
   if(!order.length) return false;
-  if(c.turn){ zonesTurn(c, c.turn, "end"); effectsTurnEnd(c, c.turn); gripSweep(c); }     // the end of its turn: an area it ends in; what lasts "until the end of its next turn" ends, repeat saves
+  if(c.turn){ zonesTurn(c, c.turn, "end"); effectsTurnEnd(c, c.turn); gripSweep(c); blinkTurnEnd(c, c.turn); }     // the end of its turn: an area it ends in; what lasts "until the end of its next turn" ends, repeat saves
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
   const legPrev = c.turn;
@@ -19069,6 +19100,8 @@ document.addEventListener("click", e=>{
   const n = bnode(), c = n && n.site && n.site.combat; if(!c) return;
   const a = b.dataset.ts;
   if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
+  if(a==="blink"){ const t = c.blinkAsk && combatants(c).find(x => x.id===c.blinkAsk.id); if(!t) return; const v = b.dataset.v, d = 1 + Math.floor(Math.random() * 6);
+    blinkSet(c, t, v==="roll" ? d >= 4 : v==="go", v==="roll" ? `d6 ${d}` : v==="go" ? "the table rolled 4–6" : "the table rolled 1–3"); touch(); renderBattle(); renderBattlePanel(); return; }
   if(a==="next"){ if(!nextTurn(c)) return; }
   else if(a==="round"){ newRound(c); flash(`Round ${c.round}.`); }
   else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn); }
