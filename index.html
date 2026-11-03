@@ -926,8 +926,8 @@
   .pv-board{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:3vh 3vw;box-sizing:border-box;overflow:auto}
   /* the leaderboards: in the Party tab, and big on the players' screen */
   .lb-when{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 6px}
-  .lb-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .lb-card{border:1px solid var(--rule);background:var(--paper);padding:6px 8px;border-radius:3px}
+  .lb-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}     /* minmax(0,…): a long name shortens (…) instead of pushing the cards past the panel's edge (Joseph, 2026-11-03) */
+  .lb-card{min-width:0;border:1px solid var(--rule);background:var(--paper);padding:6px 8px;border-radius:3px}
   .lb-t{font-family:var(--serif);font-size:12.5px;font-weight:600;margin-bottom:3px}
   .lb-row{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:1px 0}
   .lb-row.top{font-weight:600} .lb-row.top .lb-p{color:var(--lead)}
@@ -9424,6 +9424,7 @@ function cbIntoPc(pc, x){
   for(const k of ["name","player","species","cls","subcls","bg","align","ac","hpMax","speed","init","pp","dc","satk","saves","skills","senses","langs","looks","persona"]) if(x[k]!=null && x[k]!=="") pc[k] = x[k];
   for(const k of ["str","dex","con","int","wis","cha","hp","temp"]) if(x[k]!=null) pc[k] = x[k];
   pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
+  if((+pc.xp || 0) < XP_LEVELS[pc.level]) pc.xp = XP_LEVELS[pc.level];     // the Character Book keeps no XP: a level it raised brings the XP up to that level's start (Joseph, 2026-11-03: "I updated Gnick, but it didn't update the xp")
   if(x.purse) pc.purse = { ...x.purse };
   if(x.death) pc.death = { s:+x.death.s||0, f:+x.death.f||0 };
   if(Array.isArray(x.conds)) pc.conds = x.conds.slice();
