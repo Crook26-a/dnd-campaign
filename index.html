@@ -13681,7 +13681,9 @@ function aoePlace(quiet){
   const c = aoeFight(); if(!aoeAim || !c || !c.pos[aoeAim.actor]) return;
   if(aoeAim.on && !aoeAim.pt) return;
   const g = aoeGeom(c); if(g.out){ flash(`Out of range: the point has to be within ${aoeAim.a.range} feet.`); return; }
-  act.targets = aoeCaught(c, g); aoeAim.on = false; aoeAim.placed = true; aoeAim.n = act.targets.length; aoeAim.Q = g.Q || null;
+  act.targets = aoeCaught(c, g); aoeAim.on = false; aoeAim.placed = true; aoeAim.n = act.targets.length;
+  { const s = actInfo(c, combatants(c).find(x => x.id===aoeAim.actor)), sp = s && s.spell;     // a lingering area that only acts on entering or a turn there (Spirit Guardians, Web, Spike Growth) hits nobody as it's cast
+    if(sp && zoneOf(sp) && !/When the \w+ appears|Each creature in (?:the|its|that) (?:\w+ )?(?:area|Sphere|Cylinder|Cube|Emanation)[^.]*(?:makes|must make)/i.test(sp.desc || "")){ act.targets = []; aoeAim.n = 0; } } aoeAim.Q = g.Q || null;
   if(quiet) return;
   aoePaint(); renderBattlePanel();
   const all = combatants(c); flash(aoeAim.n ? `Caught: ${andList(act.targets.map(id => (all.find(x => x.id===id) || {}).label || "someone"))}.` : "Nobody's in it.");
@@ -13832,9 +13834,10 @@ function moveGrid(c, t, n, from, left){
   const fear = fearOf(c, t), fP = fear && c.pos[fear.id], fD = fP ? chebSq({ ...from, n:N }, fP) : 0;     // Frightened: never closer to what it fears
   const each = (x, y, f) => { for(let i = 0; i < N; i++) for(let j = 0; j < N; j++) if(f(x + i, y + j)) return true; return false; };
   const fits = (x, y) => !each(x, y, (a, b) => a < 0 || b < 0 || a >= BW || b >= BH || blocksMove(bm, st, a, b, opens)) && !(fP && chebSq({ x, y, n:N }, fP) < fD);
-  const pass = (x, y) => fly || !each(x, y, (a, b) => occ[`${a},${b}`]==="other");
+  const pass = (x, y) => (fly || !each(x, y, (a, b) => occ[`${a},${b}`]==="other")) && !(zoneAvoid && each(x, y, (a, b) => ZS.harm.has(zk(a, b))));
   const freeEnd = (x, y) => !each(x, y, (a, b) => occ[`${a},${b}`]);
-  const cost = (x, y) => !fly && each(x, y, (a, b) => difficultAt(bm, a, b, swim)) ? 2 : 1;
+  const ZS = zoneSquaresFor(c, t, fly), zk = (a, b) => `${a},${b}`;     // lingering areas: double cost where it says, kept out of when they'd hurt (the autopilot)
+  const cost = (x, y) => (!fly && each(x, y, (a, b) => difficultAt(bm, a, b, swim))) || each(x, y, (a, b) => ZS.diff.has(zk(a, b))) ? 2 : 1;
   const seen = new Map(), start = { x:from.x, y:from.y, cost:0, n:N }, Q = [[start]]; seen.set(`${from.x},${from.y}`, start);
   for(let d = 0; d < Q.length; d++) for(const a of Q[d] || []){ if(seen.get(`${a.x},${a.y}`)!==a || a.cost >= left) continue;
     for(const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){ const x = a.x + dx, y = a.y + dy, k = `${x},${y}`;
@@ -13846,6 +13849,11 @@ function moveGrid(c, t, n, from, left){
 /* where to stand: in reach (melee), or in range and out of every enemy's reach (ranged); the nearest such, else as close
    as it can get */
 function autoWhere(c, t, n, tg, mode, sq){
+  let r0 = null; zoneAvoid = true; try{ r0 = autoWhere0(c, t, n, tg, mode, sq); } finally { zoneAvoid = false; }     // around a harmful area if it can; through it only if that's what gets it there
+  const at = r => !!r && chebSq({ ...r, n:footOf(t) }, c.pos[tg.id]) <= sq; if(at(r0)) return r0;
+  const r1 = autoWhere0(c, t, n, tg, mode, sq); return at(r1) || !r0 ? r1 : r0;
+}
+function autoWhere0(c, t, n, tg, mode, sq){
   const S = autoSquares(c, t, n, false), P = c.pos[tg.id], others = combatants(c).filter(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id]);
   const safe = s => others.every(o => chebSq(c.pos[o.id], s) > reachSq(o));
   const bm = bmapOf(n), st = n.site || {}, line = s => losClear(bm, st, s.x, s.y, P.x, P.y);     // a clear line from where it stands
@@ -13886,7 +13894,7 @@ async function autoWalk(c, t, s){
   let ft = 0; const n = bnode(), st = (n && n.site) || {}, N = footOf(t);
   for(const q of path){
     if(autoGone(c, t)) break;
-    const from = { ...c.pos[t.id] }; c.pos[t.id] = N > 1 ? { x:q.x, y:q.y, n:N } : { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5 * (q.cost - (q.prev ? q.prev.cost : 0)); hideSweep(c);
+    const from = { ...c.pos[t.id] }; c.pos[t.id] = N > 1 ? { x:q.x, y:q.y, n:N } : { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5 * (q.cost - (q.prev ? q.prev.cost : 0)); hideSweep(c); zonesStep(c, t, q); zonesMoved(c);
     /* a shut door on the way: opened as it goes (Undo their turn shuts it again) */
     for(let i = 0; i < N; i++) for(let j = 0; j < N; j++){ const k = `${q.x + i},${q.y + j}`; if(!(st.doorsShut && st.doorsShut[k])) continue;
       delete st.doorsShut[k]; if(!c.autoOpened || c.autoOpened.at!==turnStamp(c)) c.autoOpened = { at:turnStamp(c), keys:[] }; c.autoOpened.keys.push(k);
@@ -14796,10 +14804,12 @@ const bend = e=>{
       if(t && (t.lamp || t.fire || t.chandelier || t.candles)){ toggleLamp(n, s); return; }
       if(t && t.door) return doorClick(n, s);
       battleSpot = t && (t.box || t.notice) ? s : null; renderBattle(); renderBattlePanel(); } return; }
-  if(d.tok && ((bnode() && bnode().site && bnode().site.combat && bnode().site.combat.ups) || []).some(u=>u.id===d.tok)){ if(d.moved){ touch(); renderBattle(); } return; }     // a spell's token: just moved
+  if(d.tok && ((bnode() && bnode().site && bnode().site.combat && bnode().site.combat.ups) || []).some(u=>u.id===d.tok)){ if(d.moved){ zonesMoved(bnode().site.combat); touch(); renderBattle(); renderBattlePanel(); } return; }     // a spell's token: moved (Moonbeam onto someone)     // a spell's token: just moved
   if(d.tok){
     if(d.moved && !d.fixed){ { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ stopDance(cc, d.tok); moveTrack(cc, d.tok, d.from); } }     /* their own move, counted first, so the redraw shows it (Joseph, 2026-10-30: it lagged a move behind) */
-      touch(); renderBattlePanel(); if(exitDrop(d.tok, e.shiftKey)) return; { const cc = bnode() && bnode().site && bnode().site.combat; if(cc && hideSweep(cc).length) renderBattle(); } askOpportunity(d.tok, d.from); }
+      touch(); renderBattlePanel(); if(exitDrop(d.tok, e.shiftKey)) return; { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ const mover = combatants(cc).find(x => x.id===d.tok), bn = bnode();     // a drag through Spike Growth: a hit a square; then who's newly in an area
+        if(mover && bn && cc.pos[d.tok]){ const way = moveGrid(cc, mover, bn, d.from, 60).seen.get(`${cc.pos[d.tok].x},${cc.pos[d.tok].y}`); for(let q = way; q && q.prev; q = q.prev) zonesStep(cc, mover, q); }
+        const z = zonesMoved(cc).length; if(hideSweep(cc).length || z) renderBattle(); } } askOpportunity(d.tok, d.from); }
     else { battleSel = battleSel===d.tok ? null : d.tok; renderBattle(); renderPane(true); }
   }
 };
@@ -15265,7 +15275,7 @@ function spellUp(s){
   const area = s.conc && s.dmg && lasts ? (/\b(Cylinder|Sphere|Cube|cloud|wall)\b/.exec(String(s.desc||"")) || [])[1] : null;
   const thing = mv && !UP_NOT.test(mv[1]) ? mv[1].toLowerCase() : area ? area.toLowerCase() : null;
   const rep = S.find(x=>/(later turns?|each of your turns|until the spell ends, you can)/i.test(x) && /\b(again|repeat|deal)\b/i.test(x))
-    || (thing && (s.dmg || s.atk) ? (S.find(x=>new RegExp(`\\b(move|teleport) the ${thing}\\b`, "i").test(x)) || "moves into a creature's space") : null);
+    || (thing && (s.dmg || s.atk) ? (S.find(x=>new RegExp(`\\b(move|teleport) the ${thing}\\b`, "i").test(x)) || null) : null);     /* only what its words say can be moved again (not Web, Spike Growth) */
   if(!thing && !rep && !s.conc) return null;                  // a concentration spell is listed as up, to see and end, either way
   return { thing, again:!!rep, ba:!!rep && /Bonus Action/i.test(rep), said:rep ? rep.trim() : "" };
 }
@@ -15578,6 +15588,7 @@ function logAction(n, c){
   const all = combatants(c), actor = all.find(x=>x.id===act.actor); if(!actor || !act.what) return;
   const info = actInfo(c, actor); if(!info) return;
   const targets = act.targets.map(id=>all.find(x=>x.id===id)).filter(Boolean);
+  if(!targets.length && info.spell && zoneOf(info.spell)){ act.outcome = "none"; act.dmg = ""; act.saves = null; }     // a lingering area cast with nobody in it yet: it's just up
   /* attacking themself is nearly always a slip of the finger (2026-10-31: a Specter's Life Drain landed on itself) */
   if(isAttackAct(info) && targets.some(t=>t.id===actor.id) && !confirm(`${actor.label} is attacking themself. Log it anyway?`)) return;
   { const ch = charmersOf(c, actor), bad = targets.filter(x=>ch.includes(x.id));     /* Charmed: not at the charmer */
@@ -15727,7 +15738,11 @@ function logAction(n, c){
   if(U){ for(const o of (c.ups||[]).filter(o=>o.owner===actor.id && o.sp===info.spell.id)){ c.ups = c.ups.filter(x=>x!==o); if(c.pos) delete c.pos[o.id]; }
     const u = { id:uid("up"), sp:info.spell.id, name:info.spell.name, owner:actor.id, lvl:act.lvl ?? null, left:concRounds(info.spell.dur), conc:!!info.spell.conc, thing:U.thing, again:U.again, ba:U.ba };
     (c.ups = c.ups || []).push(u); c.pos = c.pos || {};
-    if(U.thing){ const near = (targets[0] && c.pos[targets[0].id]) || c.pos[actor.id]; if(near) c.pos[u.id] = upSpot(c, near); } }
+    const Zn = zoneOf(info.spell), Q = aoeAim && aoeAim.placed && aoeAim.Q ? { x:aoeAim.Q.x / BS, y:aoeAim.Q.y / BS } : null;     // an area that lingers (item 2): where it is
+    if(Zn) u.zone = { ...Zn, Q };
+    if(U.thing){ const near = Q ? { x:Math.max(0, Math.min(BW - 1, Math.floor(Q.x))), y:Math.max(0, Math.min(BH - 1, Math.floor(Q.y))) } : (targets[0] && c.pos[targets[0].id]) || c.pos[actor.id];
+      if(near) c.pos[u.id] = Q ? near : upSpot(c, near); if(u.zone && Q && c.pos[u.id]) u.zone.off = { x:Q.x - c.pos[u.id].x, y:Q.y - c.pos[u.id].y }; }
+    if(u.zone){ (c.zoneIn = c.zoneIn || {})[u.id] = combatants(c).filter(t => zoneHas(c, u, t)).map(t => t.id); u.hit = {}; for(const t of targets) u.hit[t.id] = turnStamp(c); } }     // those it caught as it was cast don't save again this turn
   const upW = U && (U.thing || U.again) ? ` ${info.spell.name} stays up${U.thing ? `: its ${U.thing} is on the map` : ""}${U.again ? `${U.thing ? "," : ":"} again${U.ba ? " as a Bonus Action" : ""} without a slot` : ""}.` : "";
   /* control: damage shakes someone out of a hold that says so (Hypnotic Pattern); what this one does holds those it lands on */
   const holdsBefore = JSON.stringify(c.holds || {}), shaken = [], held = [];
@@ -15912,7 +15927,90 @@ function effectsSweep(c, id, when){
   const line = out.join(" ");
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, effects:before, holds:holdsBefore }); gameLog("fight", line); flash(line);
 }
-const effectsTurnEnd = (c, id) => effectsSweep(c, id, "end"), effectsTurnStart = (c, id) => effectsSweep(c, id, "start");/* the fight in a paragraph, for the session log */
+const effectsTurnEnd = (c, id) => effectsSweep(c, id, "end"), effectsTurnStart = (c, id) => effectsSweep(c, id, "start");/* lingering areas (Joseph's arena list, item 2): a concentration spell whose area stays (Spirit Guardians' Emanation
+   around the caster, Moonbeam's Cylinder, Cloudkill's Sphere, Web's Cube, Spike Growth's Sphere) does what its words say
+   while it's up (zoneOf reads them):
+   - "enters ... / ends its turn there / starts its turn there": that creature saves (the caster's spell save DC) or takes
+     the spell's damage (at the slot it was cast with; half on a made save where it says so), or has its condition (Web:
+     Restrained, broken free with an Athletics check like any spell hold); "only once per turn" / "the first time ... on a
+     turn" is kept to once;
+   - "for every 5 feet it travels" (Spike Growth): its damage for each square moved into or within it, no save;
+   - "Difficult Terrain" or "Speed is halved": its squares cost double to those it affects (flyers skip the ground ones);
+   - "designate creatures to be unaffected" (Spirit Guardians): the caster's side isn't.
+   Entering is checked after anyone moves (a drag, or the autopilot's every step), so a creature walking in and the area
+   moving onto someone (the caster walking up with Spirit Guardians, Moonbeam's token dragged) both count. The autopilot
+   keeps out of an area that would hurt it unless that's the only way to its target. Each hit is a line in the fight's
+   log (undo puts the hit points back). u.zone on the spell that's up: { shape, size, Q (its center, in squares), off }. */
+function zoneOf(s){
+  if(!s || !s.conc) return null; const d = String(s.desc || ""), a = aoeOf({ spell:s }); if(!a || !["circle", "cube", "aura"].includes(a.shape)) return null;
+  const enter = /\benters? (?:the spell's|the|that|its) ?(?:\w+ )?(?:area|Emanation|Cylinder|Sphere|Cube|webs|fog|cloud)\b|enters the webs/i.test(d);
+  const endT = /ends its turn (?:there|in|within)/i.test(d), startT = /starts its turn (?:there|in|within)/i.test(d), per5 = /for every 5 feet it travels/i.test(d);
+  if(!enter && !endT && !startT && !per5) return null;
+  const cm = /saving throw or have the (\w+) condition/i.exec(d), cond = cm ? (CONDITIONS.find(k => k.toLowerCase()===cm[1].toLowerCase()) || "") : "";
+  return { shape:a.shape, size:a.size, enter, endT, startT, per5, once:/only once per turn|the first time a creature enters [^.]*on a turn/i.test(d), cond,
+    half:/half as much damage/i.test(d), save:cond || !per5 ? String(s.save || "").split(/[ ,]/)[0] : "", choose:/designate creatures to be unaffected/i.test(d),
+    diff:/Difficult Terrain|Speed is halved/i.test(d), ground:/\b(?:ground|floor)\b/i.test(d) && !/Emanation/i.test(d) };
+}
+const zonesOf = c => ((c && c.ups) || []).filter(u => u.zone && (!c.pos || c.pos[u.owner]));
+function zoneCenter(c, u){ const Z = u.zone; if(Z.shape==="aura") return null; if(u.thing && c.pos[u.id] && Z.off) return { x:c.pos[u.id].x + Z.off.x, y:c.pos[u.id].y + Z.off.y }; return Z.Q || null; }
+function zoneSquare(c, u, x, y){
+  const Z = u.zone, owner = combatants(c).find(o => o.id===u.owner), op = owner && c.pos[owner.id];
+  if(Z.shape==="aura") return !!op && chebSq({ x, y }, { ...op, n:footOf(owner) }) <= Z.size / 5 && !(x >= op.x && x < op.x + footOf(owner) && y >= op.y && y < op.y + footOf(owner));
+  const Q = zoneCenter(c, u); if(!Q) return false; const cx = x + .5, cy = y + .5;
+  return Z.shape==="circle" ? Math.hypot(cx - Q.x, cy - Q.y) <= Z.size / 5 + .01 : Math.abs(cx - Q.x) <= Z.size / 10 + .01 && Math.abs(cy - Q.y) <= Z.size / 10 + .01;
+}
+function zoneHas(c, u, t, p){ p = p || (c.pos && c.pos[t.id]); if(!p || t.id===u.owner) return false; const k = footOf(t);
+  for(let i = 0; i < k; i++) for(let j = 0; j < k; j++) if(zoneSquare(c, u, p.x + i, p.y + j)) return true; return false; }
+function zoneHurts(c, u, t){
+  const owner = combatants(c).find(o => o.id===u.owner); if(!owner || t.id===u.owner || t.fled || deadT(t) || (t.kind==="foe" && t.x.max!=null && t.x.hp<=0)) return false;
+  return !(u.zone.choose && t.side===owner.side);
+}
+function zoneHit(c, u, t, why, squares){
+  const Z = u.zone, s = SPELL_BY.get(u.sp) || spellByName(u.name), owner = combatants(c).find(o => o.id===u.owner); if(!s || !owner || !zoneHurts(c, u, t)) return "";
+  if(Z.once){ const H = u.hit = u.hit || {}; if(H[t.id]===turnStamp(c)) return ""; H[t.id] = turnStamp(c); }
+  const snap = snapOf(c, [t.id]), holdsBefore = JSON.stringify(c.holds || {}), bits = [];
+  let made = false;
+  if(Z.save){ const dc = spellDcOfT(owner) || 10, b = saveBonusOf(t, Z.save), d = 1 + Math.floor(Math.random() * 20), tot = d + b; made = tot >= dc;
+    bits.push(`${Z.save} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made" : "failed"}`); }
+  if(Z.cond){ if(!made && !condImmune(t, Z.cond)){ const cs = condsOfT(t); if(!cs.includes(Z.cond)) cs.push(Z.cond);
+      (c.holds = c.holds || {})[t.id] = { by:owner.id, tier:"half", name:s.name, sp:s.id, cond:"", dmgEnds:"", once:false, turns:0, pts:0 }; bits.push(Z.cond); } }
+  else { const sc = scaledSpell(s, u.lvl, owner.kind==="pc" && owner.p ? clampLv(pcState(owner.p).level) : 0), P = /\(if you are\b/i.test(s.desc || "") ? sc.parts.slice(0, 1) : sc.parts, dice = addDice(...P.map(p => p.dice)) || s.dmg;
+    const dtype = String((sc.parts[0] || {}).dtype || s.dtype || "").split(/[ ,]/)[0].toLowerCase(); let raw = 0, said = [];
+    for(let k = 0; k < Math.max(1, squares || 1); k++){ const r = rollTerms(diceTerms(dice)); raw += r.total; said.push(r.total); }
+    const dmg = dmgAfter(made ? (Z.half ? Math.floor(raw / 2) : 0) : raw, dmgTakes(t, dtype)), ds = [];
+    if(dmg > 0){ if(t.kind==="foe") damageFoe(t.x, dmg); else damagePc(t.p, dmg, false, ds); }
+    bits.push(`${dmg} ${dtype} damage (${dice}${squares > 1 ? ` × ${squares} squares` : ""}: ${said.join(" + ")}${made && Z.half ? ", halved" : ""})`, ...ds); }
+  const line = `${t.label} ${why} ${owner.label}'s ${s.name}: ${bits.join("; ")}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, holds:holdsBefore }); gameLog("spell", line); return line;
+}
+/* after anyone moves: who's newly inside each area that acts on entering */
+function zonesMoved(c){
+  if(!c || !c.pos || calmOf(c)) return []; const out = [], all = combatants(c);
+  for(const u of zonesOf(c)){ const before = new Set(((c.zoneIn = c.zoneIn || {})[u.id]) || []), now = all.filter(t => zoneHas(c, u, t)).map(t => t.id);
+    c.zoneIn[u.id] = now; if(!u.zone.enter) continue;
+    for(const id of now) if(!before.has(id)){ const t = all.find(x => x.id===id), L = zoneHit(c, u, t, u.zone.shape==="aura" && t.id!==c.turn ? "is caught by" : "enters"); if(L) out.push(L); } }
+  if(out.length){ flash(out.join(" ")); concSweep(); }
+  return out;
+}
+/* a step into or within an area that hurts for every 5 feet (Spike Growth) */
+function zonesStep(c, t, sq){
+  const out = []; for(const u of zonesOf(c)) if(u.zone.per5 && zoneHas(c, u, t, sq)){ const L = zoneHit(c, u, t, "moves through", 1); if(L) out.push(L); }
+  if(out.length){ flash(out.join(" ")); concSweep(); } return out;
+}
+/* the start or end of someone's turn inside one */
+function zonesTurn(c, id, when){
+  const t = combatants(c).find(x => x.id===id); if(!t || !c.pos || !c.pos[id]) return; const out = [];
+  for(const u of zonesOf(c)) if(((when==="start" && u.zone.startT) || (when==="end" && u.zone.endT)) && zoneHas(c, u, t)){ const L = zoneHit(c, u, t, when==="start" ? "starts its turn in" : "ends its turn in"); if(L) out.push(L); }
+  if(out.length){ flash(out.join(" ")); concSweep(); if(when==="start") c.zoneNow = { id, at:turnStamp(c), said:out.join(" ") }; }
+}
+/* the squares an area makes cost double for this one, and the ones that would hurt it (the autopilot keeps out) */
+let zoneAvoid = false;
+function zoneSquaresFor(c, t, fly){
+  const diff = new Set(), harm = new Set(); if(!c || !c.ups) return { diff, harm };
+  for(const u of zonesOf(c)){ if(!zoneHurts(c, u, t)) continue; const Z = u.zone, d = Z.diff && !(fly && Z.ground), h = !!(Z.enter || Z.endT || Z.startT || Z.per5);
+    for(let y = 0; y < BH; y++) for(let x = 0; x < BW; x++) if(zoneSquare(c, u, x, y)){ if(d) diff.add(`${x},${y}`); if(h) harm.add(`${x},${y}`); } }
+  return { diff, harm };
+}/* the fight in a paragraph, for the session log */
 function fightSummary(n, c){
   const L = (c.log||[]).map(e=>`R${e.round}: ${e.text}`);
   const E = c.list.filter(x=>!x.ally && !x.neutral && !x.dormant), ran = E.filter(x=>x.fled).length;     // the ones still asleep weren't in it
@@ -18754,11 +18852,11 @@ function renderTurnStrip(){
 function nextTurn(c){
   const order = combatants(c).filter(t=>!(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && !t.fled && !(t.kind==="foe" && t.x.dormant) && !deadT(t));   // a dormant thing gets no turn, nor the dead
   if(!order.length) return false;
-  if(c.turn) effectsTurnEnd(c, c.turn);          // the end of its turn: what lasts "until the end of its next turn" ends, repeat saves
+  if(c.turn){ zonesTurn(c, c.turn, "end"); effectsTurnEnd(c, c.turn); }     // the end of its turn: an area it ends in; what lasts "until the end of its next turn" ends, repeat saves
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
   const legPrev = c.turn;
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); effectsTurnStart(c, c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); effectsTurnStart(c, c.turn); zonesTurn(c, c.turn, "start"); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
   legAfterTurn(c, legPrev);                      // a legendary creature's chance, after someone else's turn
   autoNext(c);                                   // an enemy's turn runs by itself, if that's set
   return true;

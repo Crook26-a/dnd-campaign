@@ -3,5 +3,5 @@
 3. Burning Hands: a 15-foot cone out from her, toward the goblin beside the fighter: Goblin Warrior 4 | 5 squares lit
 4. Lightning Bolt: a 100-foot line, 5 feet wide, along row 4: Goblin Warrior 2, Goblin Warrior 4 | 20 squares lit
 5. Thunderwave: a 15-foot cube beside her, turned toward the pointer: toward the east: Goblin Warrior 1, Goblin Warrior 2, Goblin Warrior 3 | toward the west: Goblin Warrior 4
-6. Web, 60 feet: a point 75 feet off is out of range and isn't placed: 75 ft: still aiming, targets nobody | 40 ft: Goblin Warrior 1, Goblin Warrior 2, Goblin Warrior 3
+6. Web, 60 feet: a point 75 feet off is out of range and isn't placed: 75 ft: still aiming, targets nobody | 40 ft: nobody
 7. the dragon's breath from 25 feet off: a 30-foot cone at the party, its own goblin too; Escape stops aiming; never on the players' screen: breath at the party: Gawain, Wren, Goblin Warrior 4 | after Escape: stopped, nothing drawn | players' screen has it: false | page errors 0
