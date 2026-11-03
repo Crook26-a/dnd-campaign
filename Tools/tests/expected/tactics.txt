@@ -7,7 +7,7 @@ round 3, Wren has dealt 40: Gargoyle → Wren (the strongest (dealt 40 this figh
 specter at 2 HP: Specter → Wren (the weakest it can get at (20 HP), 25 ft away) · would flee: brave, nearly dead
 armor as support: Animated Armor → Specter (the ally with the least hit points left (2/22))
 looking after the specter: Animated Armor → Specter (the one it looks after (2/22 HP))
-form: Tactics (Front-liner: wades in; a suggestion) → Gawain: hurt it most for the distance (30 damage), 35 ft away Target Stands: into the thick of it, beside its target Would flee (steady, below a quarter of its hit points; your call) PACE Step by step: a square at a time, each result in a box All at once Enemies run their own turns WHEN THEIR COURAGE BREAKS They try to get away (the players can stop them) They fight on (fleeing is your call)
+form: Tactics (Front-liner: wades in; a suggestion) → Gawain: hurt it most for the distance (30 damage), 35 ft away Target Stands: into the thick of it, beside its target Would flee (steady, below a quarter of its hit points; your call) PACE Step by step: a square at a time, each result in a box All at once Enemies run their own turns WHEN THEIR COURAGE BREAKS (THIS ENCOUNTER) They try to get away (the players can stop them) Nobody flees: they fight to the end
 Target picked: ["pa"]
 card dials: data-tf="role" data-tf="aim" data-tf="rigid" data-tf="courage" data-tf="read" data-tf="areas" data-tf="only"
 kind set to cowardly: 1 · this one only: 5
