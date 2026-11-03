@@ -8014,15 +8014,22 @@ function mirrorCheck(actor, t){
    each of the target's four corners; a line through a wall, a shut door, or another creature (friend or foe) is
    blocked. One or two blocked: half; three: three-quarters; four: total. coverOf(c, attackerId, targetId, origin):
    { level 0-3, ac 0/2/5, word }; origin is a point in squares (an area's center), else the attacker's square. */
+/* (Joseph, 2026-11-03: "cover is far too generous") a line blocks only where it runs through a square's inside, not
+   where it grazes an edge or a corner (GRAZE: a tenth of a square), and a creature down at 0 hit points gives none */
+const GRAZE = 0.1;
 function coverOf(c, fromId, toId, origin){
   const none = { level:0, ac:0, word:"" }, n = bnode(); if(!n || !c || !c.pos || c.layout==="lineup") return none;
   const P = c.pos, A = origin ? null : P[fromId], B = P[toId]; if(!B || (!A && !origin)) return none;
-  const bm = bmapOf(n), st = n.site || {}, occ = new Set(combatants(c).filter(o=>o.id!==fromId && o.id!==toId && !o.fled && P[o.id]).flatMap(o=>{ const m = footOf(o), out = []; for(let i = 0; i < m; i++) for(let j = 0; j < m; j++) out.push(`${P[o.id].x + i},${P[o.id].y + j}`); return out; }));     // every square of a big one
+  const bm = bmapOf(n), st = n.site || {}, occ = new Set(combatants(c).filter(o=>o.id!==fromId && o.id!==toId && !o.fled && !isDownT(o) && P[o.id]).flatMap(o=>{ const m = footOf(o), out = []; for(let i = 0; i < m; i++) for(let j = 0; j < m; j++) out.push(`${P[o.id].x + i},${P[o.id].y + j}`); return out; }));     // every square of a big one
   const inside = (q, x, y) => q && x >= q.x && x < q.x + (q.n || 1) && y >= q.y && y < q.y + (q.n || 1);
   /* what a line runs into first: "wall" (a wall or a shut door) or "creature"; a creature gives no more than half cover */
   const blocked = (x0, y0, x1, y1) => { const k = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 10)); let who = "";
-    for(let i = 1; i < k; i++){ const sx = Math.floor(x0 + (x1 - x0) * i / k), sy = Math.floor(y0 + (y1 - y0) * i / k);
-      if(inside(A, sx, sy) || inside(B, sx, sy)) continue; if(opaqueAt(bm, st, sx, sy)) return "wall"; if(occ.has(`${sx},${sy}`)) who = "creature"; } return who; };
+    for(let i = 1; i < k; i++){ const px = x0 + (x1 - x0) * i / k, py = y0 + (y1 - y0) * i / k, sx = Math.floor(px), sy = Math.floor(py);
+      if(inside(A, sx, sy) || inside(B, sx, sy)) continue;
+      const ex = px - sx < GRAZE ? -1 : px - sx > 1 - GRAZE ? 1 : 0, ey = py - sy < GRAZE ? -1 : py - sy > 1 - GRAZE ? 1 : 0;
+      if(ex || ey){ const wall = (a, b) => opaqueAt(bm, st, a, b);     // only grazing its edge or corner: it doesn't block, unless the wall carries on past that edge
+        if(wall(sx, sy) && ((ex && wall(sx + ex, sy)) || (ey && wall(sx, sy + ey)) || (ex && ey && wall(sx + ex, sy + ey)))) return "wall"; continue; }
+      if(opaqueAt(bm, st, sx, sy)) return "wall"; if(occ.has(`${sx},${sy}`)) who = "creature"; } return who; };
   const e = .08, corners = q => { const w = q.n || 1; return [[q.x + e, q.y + e], [q.x + w - e, q.y + e], [q.x + e, q.y + w - e], [q.x + w - e, q.y + w - e]]; };
   let best = 5, bodies = false;
   for(const [fx, fy] of origin ? [[origin.x, origin.y]] : corners(A)){ const L = corners(B).map(([tx, ty])=>blocked(fx, fy, tx, ty)), w = L.filter(x=>x==="wall").length;
@@ -13377,7 +13384,11 @@ function pcTokAuto(p){
 function pcTokText(p){ const own = String((p && p.tok) || "").trim().slice(0, 3); return own || pcTokAuto(p); }
 function tokenText(t){
   if(t.kind==="pc") return t.npc ? (t.label.trim()[0]||"?").toUpperCase() : pcTokText(t.p);
-  const m = /(\d+)$/.exec(t.label); return m ? m[1] : (t.label.trim()[0]||"?").toUpperCase();
+  /* (Joseph, 2026-11-03: "Goblin 1 and bandit 1 both have 1 as their name. It should have the letter as well") the name's
+     first letters, a word's each for two words (Goblin Warrior 1: GW1, Bandit 1: B1, Bandit Captain: BC), then its number */
+  const m = /^(.*?)\s*(\d+)$/.exec(t.label.trim()), base = (m ? m[1] : t.label.trim()).replace(/\(.*?\)/g, "").trim();
+  const words = base.split(/\s+/).filter(w => /^[A-Za-z]/.test(w)), ini = (words.length >= 2 ? words[0][0] + words[1][0] : (words[0] || "?")[0]).toUpperCase();
+  return ini + (m ? m[2] : "");
 }
 const tokFont = s => s.length>=3 ? 10.5 : s.length===2 ? 12.5 : 14;     // three letters still fit inside the token
 function renderBattle(players){
@@ -13420,6 +13431,8 @@ function renderBattle(players){
   }
   const big = lineup ? 1.5 : 1;
   for(const t of furnish ? [] : combatants(c)){
+    /* (Joseph, 2026-11-03: "the dead ... clutter up space. If it's enemy npcs, they should disappear until after the fight") */
+    if(!lineup && !calmOf(c) && t.kind==="foe" && t.side!=="party" && isDownT(t)) continue;
     const p = c.pos[t.id], N = lineup ? 1 : footOf(t);     // a Large one over 2×2 squares, and so on
     const cx = lineup ? spots[t.id].cx : p.x*BS + N*BS/2, cy = lineup ? spots[t.id].cy : p.y*BS + N*BS/2;
     const isFoe = t.kind==="foe", down = isFoe ? (t.x.max!=null && t.x.hp<=0) : (numOr(t.p.hp)!==null && numOr(t.p.hp)<=0);
@@ -13788,7 +13801,7 @@ async function autoWalk(c, t, s){
   let ft = 0; const n = bnode(), st = (n && n.site) || {}, N = footOf(t);
   for(const q of path){
     if(autoGone(c, t)) break;
-    const from = { ...c.pos[t.id] }; c.pos[t.id] = N > 1 ? { x:q.x, y:q.y, n:N } : { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5 * (q.cost - (q.prev ? q.prev.cost : 0));
+    const from = { ...c.pos[t.id] }; c.pos[t.id] = N > 1 ? { x:q.x, y:q.y, n:N } : { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5 * (q.cost - (q.prev ? q.prev.cost : 0)); hideSweep(c);
     /* a shut door on the way: opened as it goes (Undo their turn shuts it again) */
     for(let i = 0; i < N; i++) for(let j = 0; j < N; j++){ const k = `${q.x + i},${q.y + j}`; if(!(st.doorsShut && st.doorsShut[k])) continue;
       delete st.doorsShut[k]; if(!c.autoOpened || c.autoOpened.at!==turnStamp(c)) c.autoOpened = { at:turnStamp(c), keys:[] }; c.autoOpened.keys.push(k);
@@ -13932,7 +13945,21 @@ function autoHidden(c, t, o){
   if(s.ethereal) return !(v.ts && d <= v.ts && los);
   return !(los && ((v.ts && d <= v.ts) || (v.bs && d <= v.bs)));
 }
-let autoVG = null;   // what it sees from where it stands, worked out once a square
+/* found by being seen (Joseph, 2026-11-03: "if a creature is hidden, but then comes into another player's line of sight,
+   they should lose hidden"): after anyone moves, a hidden creature that someone on the other side can see plainly (a
+   clear line, not three-quarters or total cover from them, not where they can't see: darkness without Darkvision) is
+   hidden no longer. Invisible ones aren't seen this way. Its attack from hiding still has Advantage until then. */
+function hideSweep(c){
+  const n = bnode(); if(!n || !c || !c.pos || c.layout==="lineup" || !c.stealth) return [];
+  const bm = bmapOf(n), st = n.site || {}, all = combatants(c), out = []; let L = null; const grids = {};
+  for(const h of all){ const S = c.stealth[h.id], p = c.pos[h.id]; if(!S || S.hide==null || !p || h.fled || condsOfT(h).includes("Invisible")) continue;     // the Invisible condition (a spell), not just hiding
+    const by = all.find(o => o.id!==h.id && o.side!==h.side && o.side!=="neutral" && !o.fled && !isDownT(o) && !cantAct(o).length && c.pos[o.id]
+      && losClear(bm, st, c.pos[o.id].x, c.pos[o.id].y, p.x, p.y) && coverOf(c, o.id, h.id).level < 2
+      && ((grids[o.id] = grids[o.id] || viewGrid(bm, st, c, L = L || lightGrid(bm, st, c), o))[p.y * BW + p.x] >= 1));
+    if(by){ delete S.hide; out.push(`${h.label} is no longer hidden: ${by.label} can see them`); } }
+  if(out.length){ const line = out.join("; ") + "."; gameLog("check", line); flash(line); }
+  return out;
+}let autoVG = null;   // what it sees from where it stands, worked out once a square
 function autoSense(c, n, t, o){
   if(autoHidden(c, t, o)) return "hidden";
   const p = c.pos[o.id], me = c.pos[t.id], bm = bmapOf(n), st = n.site || {}; if(!losClear(bm, st, me.x, me.y, p.x, p.y)) return "unseen";
@@ -14142,6 +14169,8 @@ function rollAdvOf(c, t, tg, info){
   if(them.includes("Invisible") && !sees(t, tg)) D.push(`${tg.label} is Invisible`);
   else if(act.unseen) D.push(`${t.label} can't see ${tg.label}`);
   if(me.includes("Invisible") && !sees(tg, t)) A.push(`${t.label} is Invisible`);
+  else if(P[t.id] && P[tg.id] && autoHidden(c, tg, t)) A.push(`${t.label} is hidden`);     // hidden: Invisible while it lasts (2024), so Advantage, and Sneak Attack applies
+  if(P[t.id] && P[tg.id] && !act.unseen && !them.includes("Invisible") && autoHidden(c, t, tg)) D.push(`${tg.label} is hidden`);
   for(const k of ["Paralyzed","Stunned","Unconscious","Petrified","Restrained","Blinded"]) if(them.includes(k)) A.push(`${tg.label} is ${k}`);
   if(them.includes("Prone")) (near ? A : D).push(`${tg.label} is Prone${near ? "" : ", more than 5 ft off"}`);
   if(fxVsAdv(hOfT(tg))) A.push("an effect on them");
@@ -14678,7 +14707,7 @@ const bend = e=>{
   if(d.tok && ((bnode() && bnode().site && bnode().site.combat && bnode().site.combat.ups) || []).some(u=>u.id===d.tok)){ if(d.moved){ touch(); renderBattle(); } return; }     // a spell's token: just moved
   if(d.tok){
     if(d.moved && !d.fixed){ { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ stopDance(cc, d.tok); moveTrack(cc, d.tok, d.from); } }     /* their own move, counted first, so the redraw shows it (Joseph, 2026-10-30: it lagged a move behind) */
-      touch(); renderBattlePanel(); if(exitDrop(d.tok, e.shiftKey)) return; askOpportunity(d.tok, d.from); }
+      touch(); renderBattlePanel(); if(exitDrop(d.tok, e.shiftKey)) return; { const cc = bnode() && bnode().site && bnode().site.combat; if(cc && hideSweep(cc).length) renderBattle(); } askOpportunity(d.tok, d.from); }
     else { battleSel = battleSel===d.tok ? null : d.tok; renderBattle(); renderPane(true); }
   }
 };
@@ -15613,7 +15642,10 @@ function logAction(n, c){
         once:!cs && !act.cond, turns:0, pts:0 };
       held.push(t.label); } }
   const holdW = (held.length ? ` ${held.join(", ")} ${held.length > 1 ? "are" : "is"} ${CTRL_SAY[ctrlOf(info)]}.` : "") + (shaken.length ? ` The damage shakes ${shaken.join(", ")} out of it.` : "");
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW, snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore });
+  /* an attack roll from hiding gives it away (the 2024 Hide action: it ends after an attack roll); undo hides them again */
+  const stealthBefore = JSON.stringify(c.stealth || {}), outed = isAttackAct(info) && act.toHit && c.stealth && c.stealth[actor.id] && c.stealth[actor.id].hide!=null;
+  if(outed) delete c.stealth[actor.id].hide;
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore });
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   /* what the spell does to them while it lasts (Bless, Pass without Trace, Shield of Faith…): on its targets (and the
      caster, for an aura or Shield); Bane, Slow, Faerie Fire only on those who failed the save */
@@ -15699,7 +15731,7 @@ function holdsTurnStart(c, id){
 }
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
-  if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.morale!=null) c.morale = JSON.parse(e.morale);
+  if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
   if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
     c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
     const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));

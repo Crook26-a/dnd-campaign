@@ -1,0 +1,6 @@
+1. Healing Word: 2d4 at 1st level, 4d4 from a 2nd-level slot, 6d4 from a 3rd: 1: 2d4 | 2: 4d4 | 3: 6d4
+2. token names: the letters and the number: Goblin Warrior 1: GW1, Goblin Warrior 2: GW2, Goblin Warrior 3: GW3, Bandit: B, Bandit Captain: BC
+3. a dead goblin leaves the map during the fight, and is back once it's over: on the map during the fight: false | after: true
+4. cover: Wren beside the line (it only grazes her square) gives none; standing in it, half; the dead give none: beside the line: none | in it: half cover | a dead goblin in it: none
+5. Bram hidden (Stealth 18) behind the pillar attacks the goblin: Advantage (hidden), and he's no longer hidden; undo hides him again: To hit: d20 11 and 11, Advantage (Bram is hidden): 11 + 6 = 17 vs AC 15 (Goblin Warrior 1): hit | logged: ...rior 1): hit). Bram is no longer hidden. | stealth after: {} | after undo: {"hide":18}
+6. hidden Bram walks out where a goblin can see him: found; hidden behind a wall end it can't see past: still hidden: in the open: Bram is no longer hidden: Goblin Warrior 1 can see them (hidden now: no) | behind a wall: nobody (hidden now: 18) | page errors 0
