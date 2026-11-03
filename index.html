@@ -8008,6 +8008,29 @@ function mirrorCheck(actor, t){
   if(off){ M.b.mirror--; if(!M.b.mirror) h.fx = h.fx.filter(f=>f!==M); }
   return { off, said:`${t.label}'s Mirror Image: d6 ${rolls.join(", ")}: ${off ? `a duplicate is hit instead and destroyed (${M.b.mirror ? `${M.b.mirror} left` : "that was the last: the spell ends"})` : "no 3 or higher, so it hits the real one"}` };
 }
+/* cover (Joseph, 2026-11-02, with line of sight: "Ya, add that"): half cover is +2 to AC and Dexterity saves,
+   three-quarters +5, total cover can't be targeted directly (the 2024 rules). Worked out on the grid the Dungeon Master's
+   Guide's way: from the corner of the attacker's square that sees best (or from an area's point of origin), a line to
+   each of the target's four corners; a line through a wall, a shut door, or another creature (friend or foe) is
+   blocked. One or two blocked: half; three: three-quarters; four: total. coverOf(c, attackerId, targetId, origin):
+   { level 0-3, ac 0/2/5, word }; origin is a point in squares (an area's center), else the attacker's square. */
+function coverOf(c, fromId, toId, origin){
+  const none = { level:0, ac:0, word:"" }, n = bnode(); if(!n || !c || !c.pos || c.layout==="lineup") return none;
+  const P = c.pos, A = origin ? null : P[fromId], B = P[toId]; if(!B || (!A && !origin)) return none;
+  const bm = bmapOf(n), st = n.site || {}, occ = new Set(combatants(c).filter(o=>o.id!==fromId && o.id!==toId && !o.fled && P[o.id]).map(o=>`${P[o.id].x},${P[o.id].y}`));
+  /* what a line runs into first: "wall" (a wall or a shut door) or "creature"; a creature gives no more than half cover */
+  const blocked = (x0, y0, x1, y1) => { const k = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 10)); let who = "";
+    for(let i = 1; i < k; i++){ const sx = Math.floor(x0 + (x1 - x0) * i / k), sy = Math.floor(y0 + (y1 - y0) * i / k);
+      if((A && sx===A.x && sy===A.y) || (sx===B.x && sy===B.y)) continue; if(opaqueAt(bm, st, sx, sy)) return "wall"; if(occ.has(`${sx},${sy}`)) who = "creature"; } return who; };
+  const e = .08, corners = q => [[q.x + e, q.y + e], [q.x + 1 - e, q.y + e], [q.x + e, q.y + 1 - e], [q.x + 1 - e, q.y + 1 - e]];
+  let best = 5, bodies = false;
+  for(const [fx, fy] of origin ? [[origin.x, origin.y]] : corners(A)){ const L = corners(B).map(([tx, ty])=>blocked(fx, fy, tx, ty)), w = L.filter(x=>x==="wall").length;
+    if(w < best || (w===best && !L.includes("creature"))){ best = w; bodies = L.includes("creature"); } if(!best && !bodies) break; }
+  const lvl = Math.max(best===0 ? 0 : best <= 2 ? 1 : best===3 ? 2 : 3, bodies ? 1 : 0);
+  return [none, { level:1, ac:2, word:"half cover" }, { level:2, ac:5, word:"three-quarters cover" }, { level:3, ac:0, word:"total cover" }][lvl];
+}
+/* an area's point of origin for cover, in squares: its center for a sphere, cylinder or cube at a point; else from the caster */
+const aoeOrigin = () => aoeAim && aoeAim.placed && aoeAim.a && aoeAim.a.from==="point" && aoeAim.Q ? { x:aoeAim.Q.x / BS, y:aoeAim.Q.y / BS } : null;
 /* a spell cast: its effect on each of them (casting it again replaces theirs) */
 function fxCast(s, by, hs, caster, opts){
   const B = s && SPELL_FX[s.id]; if(!B || !hs.length) return 0;
@@ -13486,6 +13509,7 @@ function aoeGeom(c){
     if(a.from==="point"){ const odd = a.shape==="cube" && (a.size / 5) % 2===1;     // an odd cube sits on a square, the rest on a corner
       Q = odd ? { x:(Math.floor(P.x / BS) + .5) * BS, y:(Math.floor(P.y / BS) + .5) * BS } : { x:Math.round(P.x / BS) * BS, y:Math.round(P.y / BS) * BS };
       if(a.range!=null) g.out = Math.hypot(Q.x - C.x, Q.y - C.y) > a.range * F + BS * .5; }
+    g.Q = Q;
     if(a.shape==="circle"){ const r = a.size * F; g.inside = (x, y) => Math.hypot(x - Q.x, y - Q.y) <= r + .01; g.path = `<circle cx="${Q.x}" cy="${Q.y}" r="${r}"/>`; }
     else { const h = a.size * F / 2; g.inside = (x, y) => Math.abs(x - Q.x) <= h + .01 && Math.abs(y - Q.y) <= h + .01; g.path = `<rect x="${Q.x - h}" y="${Q.y - h}" width="${2 * h}" height="${2 * h}"/>`; }
     return g; }
@@ -13519,7 +13543,7 @@ function aoePlace(quiet){
   const c = aoeFight(); if(!aoeAim || !c || !c.pos[aoeAim.actor]) return;
   if(aoeAim.on && !aoeAim.pt) return;
   const g = aoeGeom(c); if(g.out){ flash(`Out of range: the point has to be within ${aoeAim.a.range} feet.`); return; }
-  act.targets = aoeCaught(c, g); aoeAim.on = false; aoeAim.placed = true; aoeAim.n = act.targets.length;
+  act.targets = aoeCaught(c, g); aoeAim.on = false; aoeAim.placed = true; aoeAim.n = act.targets.length; aoeAim.Q = g.Q || null;
   if(quiet) return;
   aoePaint(); renderBattlePanel();
   const all = combatants(c); flash(aoeAim.n ? `Caught: ${andList(act.targets.map(id => (all.find(x => x.id===id) || {}).label || "someone"))}.` : "Nobody's in it.");
@@ -13772,7 +13796,7 @@ async function autoCast(c, t, n, P, said){
   if(word) act.note = word;
   await autoSay(`${t.label} casts ${P.name}${P.kind==="area" ? "!" : ` on ${andList(who)}${word ? `: “${word}!”` : "!"}`}`); if(autoGone(c, t)) return true;
   renderBattlePanel();
-  if(P.s.atk){ const o = combatants(c).find(x => x.id===act.targets[0]); if(o && autoSense(c, n, t, o)==="unseen"){ act.adv = "dis"; renderBattlePanel(); } autoPress('[data-acroll="hit"]'); if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
+  if(P.s.atk){ const o = combatants(c).find(x => x.id===act.targets[0]); if(o && autoSense(c, n, t, o)==="unseen"){ act.adv = "dis"; renderBattlePanel(); } autoPress('[data-acroll="hit"]'); if(!act.toHit) return false; if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
   else { for(const id of act.targets.slice()) autoPress(`[data-svroll="${id}"]`); if(P.s.dmg) autoPress('[data-acroll="dmg"]'); }
   const keepAct = act; autoPress("#ac-go"); if(act===keepAct) return false;
   renderBattle(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
@@ -13893,6 +13917,7 @@ async function autoTurnNow(c, t, n){
     if(!act.targets.length){ const L = inReach(); if(!L.length) break; act.targets = [L.sort((a, b) => (tacHp(a).hp || 0) - (tacHp(b).hp || 0))[0].id]; }
     act.adv = act.targets[0] && senseOf(act.targets[0])==="unseen" ? "dis" : "";     // it can't see them: Disadvantage
     renderBattlePanel(); autoPress('[data-acroll="hit"]');
+    if(!act.toHit || act.toHit.tg!==act.targets[0]) break;     // not rolled (total cover): the rest is the DM's
     if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]');
     const wasQueue = !!act.queue, keepAct = act; autoPress("#ac-go");
     if(act===keepAct) break;                        // not logged (the Action box said why): the rest is the DM's
@@ -14293,7 +14318,7 @@ function toHitRow(c, t, info, all){
       <input id="ac-hitmod" class="mono" type="number" value="${esc(act.hitMod||"")}" placeholder="±0" style="width:44px" title="A modifier on this roll only: cover, Bless, your call">
       <select id="ac-adv" style="flex:1;min-width:0"><option value="">Straight roll</option><option value="adv" ${act.adv==="adv"?"selected":""}>Advantage</option><option value="dis" ${act.adv==="dis"?"selected":""}>Disadvantage</option></select>
       <input id="ac-d20" class="mono" type="number" min="1" max="20" value="${esc(act.d20||"")}" placeholder="d20" style="width:52px" title="The d20 rolled at the table (empty: the app rolls)">
-      <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${acOf(tg)}</button></div>
+      <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
     ${act.toHit ? `<p class="empty-note" style="font-size:11.5px;margin:-2px 0 6px">${esc(act.toHit.said)}</p>` : ""}`;
 }
 let act = null;                                          // the action being filled in
@@ -15451,8 +15476,9 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-svroll]").forEach(b=>b.onclick = ()=>{ keep(); const X = svCtx(); if(!X) return; if(!X.dc){ flash("Type in the DC first."); return; }
     for(const id of b.dataset.svroll==="all" ? act.targets : [b.dataset.svroll]){ const x = all.find(y=>y.id===id); if(!x) continue;
       const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), adv = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)), r1 = 1 + Math.floor(Math.random()*20), r2 = adv ? 1 + Math.floor(Math.random()*20) : 0, d = Math.max(r1, r2);
-      const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false), F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
-      const how = `${adv ? `d20 ${r1} and ${r2}, Advantage: ${d}` : `d20 ${d}`}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
+      const cvr = k==="dex" ? coverOf(c, act.actor, x.id, aoeOrigin()) : { level:0, ac:0, word:"" }, cb = cvr.level===3 ? 0 : cvr.ac;     // cover: +2 or +5 to a Dexterity save
+      const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false) + cb, F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
+      const how = `${adv ? `d20 ${r1} and ${r2}, Advantage: ${d}` : `d20 ${d}`}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
       (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` }; }
     svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
   el.querySelectorAll("[data-svtot]").forEach(i=>i.onchange = ()=>{ keep(); const X = svCtx(), x = all.find(y=>y.id===i.dataset.svtot); if(!X || !x) return; const v = i.value.trim();
@@ -15505,14 +15531,15 @@ function renderBattlePanelNow(){
     keep(); const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(!info) return;
     const D = actDice(c, t, info), w = b.dataset.acroll;
     if(w==="hit"){ const tg = all.find(x=>x.id===act.targets[0]); if(!tg){ flash("Pick who they're attacking."); return; }     // rolling to hit (2026-10-30)
-      const bonus = /^\s*[+-]?\d+\s*$/.test(String(act.hitBonus ?? "")) ? parseInt(act.hitBonus) : (toHitOf(c, t, info) ?? 0), ac = acOf(tg), typed = Math.round(+act.d20);
+      const bonus = /^\s*[+-]?\d+\s*$/.test(String(act.hitBonus ?? "")) ? parseInt(act.hitBonus) : (toHitOf(c, t, info) ?? 0), cv = coverOf(c, t.id, tg.id), ac = acOf(tg) + cv.ac, typed = Math.round(+act.d20);
+      if(cv.level===3){ flash(`${tg.label} has total cover from ${t.label}: no line to attack them from there.`); return; }
       const r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), mine = typed >= 1 && typed <= 20;
       const adv = act.adv || (fxVsAdv(hOfT(tg)) ? "adv" : "");     // Faerie Fire on the target: Advantage, unless set by hand
       const d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1;
       const how = mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${act.adv ? "" : " (an effect on them)"}: ${d}` : `d20 ${d}`;
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
-      act.outcome = out; act.toHit = { v:out, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
+      act.outcome = out; act.toHit = { v:out, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
       D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
