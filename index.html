@@ -8017,12 +8017,13 @@ function mirrorCheck(actor, t){
 function coverOf(c, fromId, toId, origin){
   const none = { level:0, ac:0, word:"" }, n = bnode(); if(!n || !c || !c.pos || c.layout==="lineup") return none;
   const P = c.pos, A = origin ? null : P[fromId], B = P[toId]; if(!B || (!A && !origin)) return none;
-  const bm = bmapOf(n), st = n.site || {}, occ = new Set(combatants(c).filter(o=>o.id!==fromId && o.id!==toId && !o.fled && P[o.id]).map(o=>`${P[o.id].x},${P[o.id].y}`));
+  const bm = bmapOf(n), st = n.site || {}, occ = new Set(combatants(c).filter(o=>o.id!==fromId && o.id!==toId && !o.fled && P[o.id]).flatMap(o=>{ const m = footOf(o), out = []; for(let i = 0; i < m; i++) for(let j = 0; j < m; j++) out.push(`${P[o.id].x + i},${P[o.id].y + j}`); return out; }));     // every square of a big one
+  const inside = (q, x, y) => q && x >= q.x && x < q.x + (q.n || 1) && y >= q.y && y < q.y + (q.n || 1);
   /* what a line runs into first: "wall" (a wall or a shut door) or "creature"; a creature gives no more than half cover */
   const blocked = (x0, y0, x1, y1) => { const k = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 10)); let who = "";
     for(let i = 1; i < k; i++){ const sx = Math.floor(x0 + (x1 - x0) * i / k), sy = Math.floor(y0 + (y1 - y0) * i / k);
-      if((A && sx===A.x && sy===A.y) || (sx===B.x && sy===B.y)) continue; if(opaqueAt(bm, st, sx, sy)) return "wall"; if(occ.has(`${sx},${sy}`)) who = "creature"; } return who; };
-  const e = .08, corners = q => [[q.x + e, q.y + e], [q.x + 1 - e, q.y + e], [q.x + e, q.y + 1 - e], [q.x + 1 - e, q.y + 1 - e]];
+      if(inside(A, sx, sy) || inside(B, sx, sy)) continue; if(opaqueAt(bm, st, sx, sy)) return "wall"; if(occ.has(`${sx},${sy}`)) who = "creature"; } return who; };
+  const e = .08, corners = q => { const w = q.n || 1; return [[q.x + e, q.y + e], [q.x + w - e, q.y + e], [q.x + e, q.y + w - e], [q.x + w - e, q.y + w - e]]; };
   let best = 5, bodies = false;
   for(const [fx, fy] of origin ? [[origin.x, origin.y]] : corners(A)){ const L = corners(B).map(([tx, ty])=>blocked(fx, fy, tx, ty)), w = L.filter(x=>x==="wall").length;
     if(w < best || (w===best && !L.includes("creature"))){ best = w; bodies = L.includes("creature"); } if(!best && !bodies) break; }
@@ -8233,7 +8234,7 @@ function tacOf(c, t){
   const own = t.kind==="foe" && !person ? t.x.tac : person && person.tac;
   return Object.assign({}, base, person ? {} : (kind || {}), line || {}, own || {});
 }
-const tacDist = (c, a, b) => { const P = c.pos || {}, A = P[a.id], B = P[b.id]; return A && B ? 5 * Math.max(Math.abs(A.x - B.x), Math.abs(A.y - B.y)) : null; };
+const tacDist = (c, a, b) => { const P = c.pos || {}, A = P[a.id], B = P[b.id]; return A && B ? 5 * chebSq(A, B) : null; };     // edge to edge, for the big
 const tacHp = o => o.kind==="foe" ? { hp:+o.x.hp, max:+o.x.max } : { hp:numOr(o.p.hp, 0), max:numOr(o.p.hpMax, 0) };
 const tacAc = o => o.kind==="foe" ? parseInt((foeById(o.x.foe)||{}).ac) || 10 : parseInt(o.p.ac) || 10;
 /* how strong one of them is right now: Now CR for two rounds, then the damage they've dealt this fight */
@@ -13345,7 +13346,7 @@ function renderBattle(players){
   players = players===true;                       // true: the players' screen's copy — no selection, no hit points
   const selB = players ? null : battleSel;
   const furnish = editingInside(), n = bnode(); if(!n || (!furnish && (!n.site || !n.site.combat))){ if(players) return ""; closeBattle(); return; }
-  const c = furnish ? EDIT_STAGE : n.site.combat, bm = useBmap(n); if(!furnish) placeTokens(c);
+  const c = furnish ? EDIT_STAGE : n.site.combat, bm = useBmap(n); if(!furnish){ placeTokens(c); stampFeet(c); }
   if(!players && !furnish && c.ups && c.ups.length) upsSweep(c);     // a spell up ends with its concentration
   if(!players) syncUpBtn();
   if(!players) renderTurnStrip();
@@ -13381,8 +13382,8 @@ function renderBattle(players){
   }
   const big = lineup ? 1.5 : 1;
   for(const t of furnish ? [] : combatants(c)){
-    const p = c.pos[t.id];
-    const cx = lineup ? spots[t.id].cx : p.x*BS + BS/2, cy = lineup ? spots[t.id].cy : p.y*BS + BS/2;
+    const p = c.pos[t.id], N = lineup ? 1 : footOf(t);     // a Large one over 2×2 squares, and so on
+    const cx = lineup ? spots[t.id].cx : p.x*BS + N*BS/2, cy = lineup ? spots[t.id].cy : p.y*BS + N*BS/2;
     const isFoe = t.kind==="foe", down = isFoe ? (t.x.max!=null && t.x.hp<=0) : (numOr(t.p.hp)!==null && numOr(t.p.hp)<=0);
     const col = t.side==="neutral" ? "#8f7d58" : t.side!=="party" ? "var(--lead)" : (isFoe || t.npc) ? "var(--r1)" : pcTokColour(t.p);     // allies and companions in green, neutrals in a bystander's brown, each character their own colour
     const hp = isFoe ? (t.x.max!=null ? `${t.x.hp}/${t.x.max}` : "") : (numOr(t.p.hpMax)!=null ? `${numOr(t.p.hp)??"?"}/${numOr(t.p.hpMax)}` : "");
@@ -13397,7 +13398,7 @@ function renderBattle(players){
         <text text-anchor="middle" dy=".35em" font-size="${BS*.5}" font-family="var(--serif)" fill="#3a2e1e">${esc(dorm.icon || "◆")}</text></g>`; continue; }
     const carried = !lineup ? ((n.site||{}).lights||[]).filter(l=>l.on===t.id) : [];
     const at0 = g.length;
-    g += `<g class="btok${ghost?" ghost":""}" data-tok="${t.id}" transform="translate(${cx} ${cy}) scale(${big})" opacity="${down||t.fled?.35:ghost||dorm?.45:1}">
+    g += `<g class="btok${ghost?" ghost":""}" data-tok="${t.id}" transform="translate(${cx} ${cy}) scale(${big * N})" opacity="${down||t.fled?.35:ghost||dorm?.45:1}">
       ${dorm?`<rect x="${-BS*.47}" y="${-BS*.47}" width="${BS*.94}" height="${BS*.94}" rx="3" fill="none" stroke="#6d5c43" stroke-width="1.5" stroke-dasharray="2 3"/><text text-anchor="middle" y="${-BS*.52}" font-size="8.5" font-family="var(--mono)" fill="#3a3a4a" style="pointer-events:none">dormant</text>`:""}
       ${ghost?`<circle r="${BS*.47}" fill="none" stroke="#5e5e70" stroke-width="1.5" stroke-dasharray="2 3"/><text text-anchor="middle" y="${-BS*.52}" font-size="8.5" font-family="var(--mono)" fill="#3a3a4a" style="pointer-events:none">${esc(stealthWord(stl) || (players ? "" : "unseen by the party"))}</text>`:""}
       ${carried.map(l=>`<g transform="translate(${BS*.34} ${-BS*.3}) scale(.6)" style="pointer-events:none">${lightIcon(l, l.lit)}</g>`).join("")}
@@ -13604,7 +13605,36 @@ document.addEventListener("keydown", e => { if(e.key!=="Escape" || !aoeAim || !a
    ══════════════════════════════════════════════════════════════ */
 let autoTimer = null, autoChain = 0;
 const autoFor = t => !!t && tacFor(t) && t.side!=="neutral" && !t.fled && !isDownT(t) && !(t.kind==="foe" && t.x.dormant);
-const chebSq = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+/* squares apart, edge to edge: a position may carry n, its creature's width in squares (a Large one 2), from its top-left square */
+const chebSq = (a, b) => { const an = a.n || 1, bn = b.n || 1;
+  return Math.max(Math.max(0, b.x - (a.x + an - 1), a.x - (b.x + bn - 1)), Math.max(0, b.y - (a.y + an - 1), a.y - (b.y + bn - 1))); };
+/* ── moving on the map (Joseph's autopilot list, item 9: "big creatures, flying, difficult terrain, and doors"; his calls,
+   2026-11-02: simple flight, and difficult terrain is water and mud, snow and sand, low furniture, stairs and ladders):
+   - size: Large takes 2×2 squares, Huge 3×3, Gargantuan 4×4 (the 2024 rules), from its token's top-left square; it fits
+     only where every square is clear, and reach and distance count from its edge (chebSq);
+   - difficult terrain: entering a square of it costs 10 ft, not 5 (a big one: any of its squares). Deep water is
+     swimming, the same extra cost, unless it has a Swim Speed;
+   - flying (a Fly Speed, or the Fly spell): over difficult terrain at no extra cost, and over other creatures (not
+     stopping on them); no height is kept;
+   - doors: a shut door is opened on the way (its free interaction with an object) by anything with hands (not a Beast
+     or an Ooze); a locked one stops it. Statues, iron bars, windows and tree trunks block movement but not sight. ── */
+const DIFFICULT = "cxuTdknPBXlrtofIsaUL", MOVE_BLOCK = "@|wY";
+function footOf(t){
+  const sb = !t ? null : t.kind==="foe" ? foeById(t.x.foe) : t.p ? (pcStatBlock(t.p) || pcState(t.p)) : null, s = String((sb && sb.size) || "");
+  return /^\s*Gargantuan/i.test(s) ? 4 : /^\s*Huge/i.test(s) ? 3 : /^\s*Large/i.test(s) ? 2 : 1;
+}
+const speedText = t => !t ? "" : t.kind==="foe" ? String((foeById(t.x.foe) || {}).spd || "") : `${(t.p && pcState(t.p).speed) || ""} ${(pcStatBlock(t.p) || {}).spd || ""}`;
+const fliesT = t => /\bfly\s*\d/i.test(speedText(t)) || fxOf(hOfT(t), false).some(f => f.sp==="spell:fly");
+const swimsT = t => /\bswim\s*\d/i.test(speedText(t));
+const opensDoors = t => !(t && t.kind==="foe" && /\b(beast|ooze)\b/i.test(String((foeById(t.x.foe) || {}).type || "")));
+function blocksMove(bm, st, x, y, opens){
+  const ch = bm.rows && bm.rows[y] ? bm.rows[y][x] : null; if(ch==null) return false;
+  if(ch==="D"){ const k = `${x},${y}`; return !!(st && st.doorsShut && st.doorsShut[k]) && (!opens || !!(st.locks && st.locks[k])); }
+  return OPAQUE.includes(ch) || MOVE_BLOCK.includes(ch);
+}
+const difficultAt = (bm, x, y, swim) => { const ch = bm.rows && bm.rows[y] ? bm.rows[y][x] : null; return ch!=null && (DIFFICULT.includes(ch) || (ch==="~" && !swim)); };
+/* each creature's width on its position, for chebSq (a fresh position from a drag or a step has none) */
+function stampFeet(c){ if(!c || !c.pos) return; for(const o of combatants(c)){ const p = c.pos[o.id]; if(!p) continue; const k = footOf(o); if(k > 1) p.n = k; else delete p.n; } }
 /* an option's info, without disturbing the action being filled in */
 function autoInfo(c, t, v){ const keepA = act; act = freshAct(t.id); act.what = v; try{ const i = actInfo(c, t); if(i) i.isAtk = isAttackAct(i); return i; } catch(err){ return null; } finally { act = keepA; } }     // isAttackAct reads the action chosen, so it's asked here
 /* how far an attack reaches, in squares: { melee, range } from its words */
@@ -13639,16 +13669,30 @@ function autoOptions(c, t){
 /* the squares it can get to this turn (a step each way, diagonals too; not through walls, shut doors or an enemy;
    through its own side but not stopping there): [{ x, y, cost (squares) }] */
 function autoSquares(c, t, n, dash, ftLimit){
-  const bm = bmapOf(n), st = n.site || {}, me = c.pos[t.id], allow = ftLimit!=null ? ftLimit : speedOf(t) * (dash || movedOf(c, t.id).dash ? 2 : 1) - movedOf(c, t.id).ft, left = Math.max(0, Math.floor(allow / 5));
-  const occ = {}; for(const o of combatants(c)){ const p = c.pos[o.id]; if(p && o.id!==t.id && !o.fled && !isDownT(o)) occ[`${p.x},${p.y}`] = o.side===t.side ? "own" : "other"; }
-  const fear = fearOf(c, t), fP = fear && c.pos[fear.id], fD = fP ? chebSq(me, fP) : 0;     // Frightened: never closer to what it fears
-  const wall = (x, y) => x < 0 || y < 0 || x >= BW || y >= BH || opaqueAt(bm, st, x, y) || (fP && chebSq({ x, y }, fP) < fD);
-  const seen = new Map(), start = { x:me.x, y:me.y, cost:0 }; seen.set(`${me.x},${me.y}`, start); const q = [start];
-  while(q.length){ const a = q.shift(); if(a.cost >= left) continue;
+  const me = c.pos[t.id], allow = ftLimit!=null ? ftLimit : speedOf(t) * (dash || movedOf(c, t.id).dash ? 2 : 1) - movedOf(c, t.id).ft;
+  const G = moveGrid(c, t, n, me, Math.max(0, Math.floor(allow / 5)));
+  return [...G.seen.values()].filter(s => G.freeEnd(s.x, s.y) || (s.x===me.x && s.y===me.y));
+}
+/* the cheapest way to every square from one (cost in 5-ft steps, a square of difficult terrain two): { seen (Map of
+   { x, y, cost, prev, n }), freeEnd } — its top-left square; not through walls, a locked door or an enemy (a flyer
+   passes over); through its own side but not stopping there */
+function moveGrid(c, t, n, from, left){
+  const bm = bmapOf(n), st = n.site || {}, N = footOf(t), fly = fliesT(t), swim = swimsT(t), opens = opensDoors(t);
+  const occ = {}; for(const o of combatants(c)){ const p = c.pos[o.id]; if(!p || o.id===t.id || o.fled || isDownT(o)) continue; const w = o.side===t.side ? "own" : "other", m = footOf(o);
+    for(let i = 0; i < m; i++) for(let j = 0; j < m; j++) occ[`${p.x + i},${p.y + j}`] = w; }
+  const fear = fearOf(c, t), fP = fear && c.pos[fear.id], fD = fP ? chebSq({ ...from, n:N }, fP) : 0;     // Frightened: never closer to what it fears
+  const each = (x, y, f) => { for(let i = 0; i < N; i++) for(let j = 0; j < N; j++) if(f(x + i, y + j)) return true; return false; };
+  const fits = (x, y) => !each(x, y, (a, b) => a < 0 || b < 0 || a >= BW || b >= BH || blocksMove(bm, st, a, b, opens)) && !(fP && chebSq({ x, y, n:N }, fP) < fD);
+  const pass = (x, y) => fly || !each(x, y, (a, b) => occ[`${a},${b}`]==="other");
+  const freeEnd = (x, y) => !each(x, y, (a, b) => occ[`${a},${b}`]);
+  const cost = (x, y) => !fly && each(x, y, (a, b) => difficultAt(bm, a, b, swim)) ? 2 : 1;
+  const seen = new Map(), start = { x:from.x, y:from.y, cost:0, n:N }, Q = [[start]]; seen.set(`${from.x},${from.y}`, start);
+  for(let d = 0; d < Q.length; d++) for(const a of Q[d] || []){ if(seen.get(`${a.x},${a.y}`)!==a || a.cost >= left) continue;
     for(const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){ const x = a.x + dx, y = a.y + dy, k = `${x},${y}`;
-      if(seen.has(k) || wall(x, y) || occ[k]==="other" || (dx && dy && (wall(a.x + dx, a.y) || wall(a.x, a.y + dy)))) continue;
-      const b = { x, y, cost:a.cost + 1, prev:a }; seen.set(k, b); q.push(b); } }
-  return [...seen.values()].filter(s => !occ[`${s.x},${s.y}`] || (s.x===me.x && s.y===me.y));
+      if(!fits(x, y) || !pass(x, y) || (dx && dy && (!fits(a.x + dx, a.y) || !fits(a.x, a.y + dy)))) continue;
+      const nc = a.cost + cost(x, y), old = seen.get(k); if(nc > left || (old && old.cost <= nc)) continue;
+      const b = { x, y, cost:nc, prev:a, n:N }; seen.set(k, b); (Q[nc] = Q[nc] || []).push(b); } }
+  return { seen, freeEnd };
 }
 /* where to stand: in reach (melee), or in range and out of every enemy's reach (ranged); the nearest such, else as close
    as it can get */
@@ -13690,10 +13734,14 @@ async function autoWaitReaction(c, t){
 async function autoWalk(c, t, s){
   const me = c.pos[t.id]; if(!s || (s.x===me.x && s.y===me.y)) return 0;
   const path = []; for(let q = s; q && q.prev; q = q.prev) path.unshift(q);
-  let ft = 0;
+  let ft = 0; const n = bnode(), st = (n && n.site) || {}, N = footOf(t);
   for(const q of path){
     if(autoGone(c, t)) break;
-    const from = { ...c.pos[t.id] }; c.pos[t.id] = { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5;
+    const from = { ...c.pos[t.id] }; c.pos[t.id] = N > 1 ? { x:q.x, y:q.y, n:N } : { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5 * (q.cost - (q.prev ? q.prev.cost : 0));
+    /* a shut door on the way: opened as it goes (Undo their turn shuts it again) */
+    for(let i = 0; i < N; i++) for(let j = 0; j < N; j++){ const k = `${q.x + i},${q.y + j}`; if(!(st.doorsShut && st.doorsShut[k])) continue;
+      delete st.doorsShut[k]; if(!c.autoOpened || c.autoOpened.at!==turnStamp(c)) c.autoOpened = { at:turnStamp(c), keys:[] }; c.autoOpened.keys.push(k);
+      if(!autoNow()){ renderBattle(); await autoSay(`${t.label} opens the door.`); } }
     if(autoNow()) continue;
     renderBattle(); askOpportunity(t.id, from);
     if(!$("#bt-pop").hidden) await autoWaitReaction(c, t);
@@ -14162,9 +14210,10 @@ async function autoTurnNow(c, t, n){
   { const B = bonusOpts(c, t), me0 = c.pos[t.id];
     if(mode==="ranged" && B.disengage && inSomeReach(c, t, me0)) await doBonus(c, t, B.disengage, "Disengage");
     else if(mode==="melee" && !wardT && (B.dash || B.charge)){ const d0 = autoWhere(c, t, n, tg, mode, sq); if(d0 && chebSq(d0, c.pos[tg.id]) > sq) await doBonus(c, t, B.dash || B.charge, B.dash ? "Dash" : "Charge"); } }
-  const ft = await autoWalk(c, t, wardT ? guardWhere(c, t, n, wardT, tg, sq) : autoWhere(c, t, n, tg, mode, sq)); if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) <= sq ? "" : ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}`}.`);
+  const ft = await autoWalk(c, t, wardT ? guardWhere(c, t, n, wardT, tg, sq) : autoWhere(c, t, n, tg, mode, sq)); const clear = () => { const a = c.pos[t.id], b = c.pos[tg.id]; return losClear(bmapOf(n), n.site || {}, a.x, a.y, b.x, b.y); };     // a door or wall between: no shot from here
+  if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) > sq ? ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}` : !clear() ? ` toward ${tg.label}, with no clear line to them yet` : ""}.`);
   if(autoGone(c, t)) return done();
-  if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq){ await autoSay(said[said.length - 1] || `${t.label} can't get to anyone this turn.`); return done(); }
+  if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq || !clear()){ await autoSay(said[said.length - 1] || `${t.label} can't get to anyone this turn.`); return done(); }
   await autoSleep(AUTO_MS.beat);
   const inReach = () => { const me = c.pos[t.id]; return others().filter(o => chebSq(c.pos[o.id], me) <= sq); };
   const swings = pick.kind==="multi" ? 1 : Math.max(1, attacksPerAction(t));
@@ -14382,6 +14431,7 @@ function autoNext(c){
 function autoUndo(c){
   const L = c.autoLast; if(!L || c.turn!==L.id || (c.log || []).length!==L.len) return false;
   for(let i = 0; i < L.n; i++) undoAction(c);
+  if(c.autoOpened && c.autoOpened.at===turnStamp(c)){ const st = (bnode() || {}).site || {}; st.doorsShut = st.doorsShut || {}; for(const k of c.autoOpened.keys) st.doorsShut[k] = true; c.autoOpened = null; }     // the doors it opened, shut again
   c.pos[L.id] = { ...L.from }; if(c.moved) delete c.moved[L.id]; if(c.acted) delete c.acted[L.id]; c.autoLast = null; act = freshAct(L.id); return true;
 }
 /* in the tactics box, on their turn */
@@ -14547,7 +14597,8 @@ $("#bsvg").addEventListener("pointermove", e=>{
   } else if(bdrag.moved && !bdrag.fixed){
     const n = bnode(), c = n && n.site.combat, p = bpoint(e); if(!c) return;
     $("#bsvg").classList.add("dragging");
-    c.pos[bdrag.tok] = { x:Math.max(0, Math.min(BW-1, Math.floor(p.x/BS))), y:Math.max(0, Math.min(BH-1, Math.floor(p.y/BS))) };
+    const T = combatants(c).find(o=>o.id===bdrag.tok), N = T ? footOf(T) : 1;     // a big one held by its middle
+    c.pos[bdrag.tok] = { x:Math.max(0, Math.min(BW-N, Math.floor(p.x/BS - (N-1)/2))), y:Math.max(0, Math.min(BH-N, Math.floor(p.y/BS - (N-1)/2))) };
     renderBattle();
   }
 });
@@ -14584,7 +14635,7 @@ function askOpportunity(moverId, from){
   if(c.disengaged && c.disengaged[moverId]===turnStamp(c)) return;     /* it took the Disengage action this turn */
   const all = combatants(c), mover = all.find(t=>t.id===moverId); if(!mover || mover.fled) return;
   const isDown = t => t.kind==="foe" ? (t.x.max!=null && t.x.hp<=0) : (numOr(t.p.hp)!==null && numOr(t.p.hp)<=0);
-  const dist = (a,b) => Math.max(Math.abs(a.x-b.x), Math.abs(a.y-b.y));
+  const dist = (a,b) => chebSq(a, b);     // edge to edge, for the big
   const can = all.filter(t=>t.side!==mover.side && !t.fled && !isDown(t) && !reactedThisRound(c,t.id) && c.pos[t.id] && !cantAct(t).length
     && dist(c.pos[t.id], from) <= reachSq(t) && dist(c.pos[t.id], to) > reachSq(t));
   if(!can.length) return;
@@ -14765,6 +14816,7 @@ function speedOf(t){
   if(!t) return 30; const first = s => { const m = /(\d+)/.exec(String(s ?? "")); return m ? +m[1] : null; };
   let sp = t.kind==="foe" ? (first((foeById(t.x.foe)||{}).spd) ?? 30) : (first(t.p && pcState(t.p).speed) ?? first((pcStatBlock(t.p)||{}).spd) ?? 30);
   const h = hOfT(t), F = fxOf(h, false), conds = t.kind==="foe" ? (t.x.conds||[]) : ((t.p && pcState(t.p).conds) || []);
+  const fl = /\bfly\s*(\d+)/i.exec(speedText(t)); if(fl) sp = Math.max(sp, +fl[1]); if(F.some(f=>f.sp==="spell:fly")) sp = Math.max(sp, 60);     // simple flight (item 9): it goes by its Fly Speed when that's faster
   if(F.some(f=>f.sp==="spell:haste")) sp *= 2; if(F.some(f=>f.sp==="spell:slow")) sp = Math.floor(sp / 2);
   if(conds.some(k=>k==="Grappled" || k==="Restrained")) sp = 0;
   return sp;
@@ -14773,7 +14825,9 @@ const movedOf = (c, id) => (c.moved && c.moved[id]) || { ft:0, dash:false, moves
 const moveAllow = (c, t) => speedOf(t) * (movedOf(c, t.id).dash ? 2 : 1);
 function moveTrack(c, id, from){
   const to = c.pos && c.pos[id]; if(!c || calmOf(c) || c.turn!==id || !from || from.x==null || !to) return;
-  const ft = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) * 5; if(!ft) return;
+  const who = combatants(c).find(x=>x.id===id), bn = bnode(), cheb = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+  const way = who && bn && c.layout!=="lineup" && cheb ? moveGrid(c, who, bn, from, cheb * 2 + 8).seen.get(`${to.x},${to.y}`) : null;     // the cheapest way there: difficult terrain costs double
+  const ft = (way ? way.cost : cheb) * 5; if(!ft) return;
   const M = (c.moved = c.moved || {})[id] = c.moved[id] || { ft:0, dash:false, moves:[] };
   M.ft += ft; M.moves.push({ from:{ x:from.x, y:from.y }, to:{ x:to.x, y:to.y }, ft });
   const t = combatants(c).find(x=>x.id===id), lim = t ? moveAllow(c, t) : 30;

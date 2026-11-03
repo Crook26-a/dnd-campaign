@@ -1,0 +1,5 @@
+start 1,2
+1 square: to 2,2: moved 5
+another 1 square: to 3,2: moved 10
+3 squares: to 6,2: moved 25
+page errors: 0
