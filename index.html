@@ -13736,7 +13736,7 @@ function autoSpellOpts(c, t){
     const v = o.v; if(!/^(fsp|sp):/.test(v)) continue;
     const info = autoInfo(c, t, v), s = info && info.spell; if(!s) continue;
     if(!/^(1 )?action$/i.test(String(s.time || "").trim())) continue;     // an action: not a reaction, bonus action, or ritual
-    if(s.conc && conc) continue; if(s.heal || (/regains? .*hit points/i.test(s.desc || "") && !s.dmg)) continue;
+    if(s.conc && conc) continue; if((s.lv || 0) > 0 && t.noSlotAt===turnStamp(c)) continue; if(s.heal || (/regains? .*hit points/i.test(s.desc || "") && !s.dmg)) continue;
     let lvl = null;
     if(v.startsWith("fsp:")){ const R = foeResources(foeById(t.x.foe)), r = R.find(q=>q.key===v.slice(4)); if(!r) continue;
       const used = k => (t.x.used || {})[k] || 0;
@@ -13856,7 +13856,71 @@ async function autoSearch(c, n, t, said){
   for(const o of hid){ const dc = stealthOf(c, o).hidden; if(tot >= dc){ delete c.stealth[o.id].hide; found.push(o.label); } }
   const line = `${t.label} searches: Wisdom (Perception) d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against ${andList(against)}: ${found.length ? `finds ${andList(found)}` : "finds no one"}.`;
   said.push(line); gameLog("check", line); renderBattle(); await autoSay(line); return true;
-}/* one whole turn */
+}/* healing and guarding (Joseph's autopilot list, item 6: "healers heal, and support creatures guard the one they look
+   after"). healPlan: who of its own side is hurt (below half; a person down at 0 most of all; the one it looks after
+   first, if it's a support), and what it can heal them with: its healing spells (Cure Wounds, Healing Word: s.heal),
+   or an ability that casts one (the Priest's Divine Aid: "casts ... Healing Word"), with a use, a slot, or at will, in
+   range with a clear line (walking there first for an action). A bonus-action heal comes first and leaves the action
+   (and then no other slot spell this turn: the 2024 rule); an action heal is taken by a support, or for someone below a
+   quarter. With nobody to heal, a support stands beside the one it looks after (guardWhere) and goes for the enemy
+   nearest them. */
+function castModOf(t){
+  if(t.kind!=="foe") return t.p ? spellModOf(pcState(t.p)) : 0;
+  const m = foeById(t.x.foe), sc = pairs(m && m.act).find(([nm])=>/^Spellcasting/i.test(nm)), ab = /using (Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)/i.exec(String((sc || [])[1] || ""));
+  const i = ab ? ["strength","dexterity","constitution","intelligence","wisdom","charisma"].indexOf(ab[1].toLowerCase()) : 4;
+  return Math.floor(((+((m && m.ab) || [])[i] || 10) - 10) / 2);
+}
+function healPlan(c, t, n){
+  const all = combatants(c), T = tacOf(c, t), me = c.pos[t.id], bm = bmapOf(n), st = n.site || {}, out = { bonus:null, action:null };
+  const hpOf = o => tacHp(o), alive = o => !o.fled && c.pos[o.id] && !(o.kind==="foe" && isDownT(o));
+  const hurt = all.filter(o => o.side===t.side && alive(o) && hpOf(o).max > 0 && hpOf(o).hp < hpOf(o).max / 2)
+    .map(o => { const f = hpOf(o).hp / hpOf(o).max; return { o, urg:f <= 0 ? 3 : f < .25 ? 2 : 1.3, ward:T.ward===o.id }; }).sort((a, b) => (b.ward - a.ward) || (b.urg - a.urg));
+  if(!hurt.length) return out;
+  const opts = [];
+  for(const g of actionChoices(t)) for(const o of g.items){
+    if(/^(fsp|sp):/.test(o.v)){ const info = autoInfo(c, t, o.v), s = info && info.spell; if(!s || !s.heal) continue;
+      let lvl = null;
+      if(o.v.startsWith("fsp:")){ const R = foeResources(foeById(t.x.foe)), r = R.find(q=>q.key===o.v.slice(4)), used = k => (t.x.used || {})[k] || 0; if(!r) continue;
+        if(r.kind==="uses" && used(r.key) >= r.max) continue; if(r.kind==="slotspell"){ const sl = R.find(q=>q.key===r.slot); if(!sl || used(sl.key) >= sl.max) continue; } }
+      else if(s.lv > 0){ const sl = pcState(t.p).slots || []; for(let L = s.lv; L <= 9; L++){ const q = sl[L]; if(q && (+q.max || 0) - (+q.used || 0) > 0){ lvl = L; break; } } if(!lvl) continue; }
+      if((s.lv || 0) > 0 && t.noSlotAt===turnStamp(c)) continue;
+      opts.push({ v:o.v, kind:"spell", s, lvl, bonus:/bonus/i.test(String(s.time || "")), slot:(s.lv || 0) > 0 }); }
+    else if(t.kind==="foe" && /^fa:/.test(o.v)){ const m = foeById(t.x.foe), nm = o.v.slice(3), text = String((foeEntries(m).find(([q])=>q===nm) || [])[1] || "");
+      const k = /\bcasts?\b[^.]*?\b(Healing Word|Cure Wounds|Mass Healing Word|Mass Cure Wounds)\b/i.exec(text); if(!k) continue;
+      const s = allSpells().find(x=>x.name.toLowerCase()===k[1].toLowerCase()); if(!s) continue;
+      const base = nm.replace(/\s*\(.*\)\s*$/, ""), r = foeResources(m).find(q=>q.key===base); if(r && r.kind==="uses" && ((t.x.used || {})[base] || 0) >= r.max) continue;
+      opts.push({ v:o.v, kind:"aid", s, bonus:pairs(m.bon).some(([q])=>q===nm), slot:false }); }
+  }
+  const S = autoSquares(c, t, n, false), mod = castModOf(t);
+  for(const p of opts){ const R = Math.max(1, spellRangeSq(p.s));
+    for(const h of hurt){ const P = c.pos[h.o.id], here = chebSq(me, P) <= R && losClear(bm, st, me.x, me.y, P.x, P.y);
+      const dest = here ? null : S.filter(q=>chebSq(q, P) <= R && losClear(bm, st, q.x, q.y, P.x, P.y)).sort((a, b)=>a.cost - b.cost)[0];
+      if(!here && !dest) continue;     // it can walk there first (moving is free before either)
+      const value = (avgDice(p.s.dmg) + mod) * h.urg * (T.role==="support" ? 1.5 : 1) * (h.ward ? 1.3 : 1);
+      const plan = { ...p, target:h.o.id, dest, value, urgent:h.urg >= 2, name:p.s.name, amount:avgDice(p.s.dmg) + mod };
+      const k = p.bonus ? "bonus" : "action"; if(!out[k] || value > out[k].value) out[k] = plan; break; } }
+  return out;
+}
+async function autoHeal(c, t, n, P, said){
+  if(P.dest){ const ft = await autoWalk(c, t, P.dest); if(ft) said.push(`${t.label} moves ${ft} ft.`); if(autoGone(c, t)) return; }
+  const all = combatants(c), who = (all.find(x=>x.id===P.target) || {}).label || "an ally";
+  act = freshAct(t.id); renderBattlePanel(); if(!autoPick(P.v)) return; if(P.lvl) act.lvl = P.lvl;
+  act.targets = [P.target]; renderBattlePanel();
+  await autoSay(`${t.label} ${P.kind==="aid" ? `uses ${P.v.slice(3).replace(/\s*\(.*\)\s*$/, "")} to cast` : "casts"} ${P.name} on ${who}!`); if(autoGone(c, t)) return;
+  if(P.kind==="aid"){ act.bonus = P.bonus; act.outcome = "none"; act.note = P.name; act.heal = String(Math.max(1, rollDiceExpr(`${P.s.dmg}${castModOf(t) ? `+${castModOf(t)}` : ""}`) || 1)); renderBattlePanel(); }
+  else { renderBattlePanel(); autoPress('[data-acroll="heal"]'); }
+  const k = act; autoPress("#ac-go"); if(act===k) return;
+  if(P.slot && P.bonus) t.noSlotAt = turnStamp(c);     // a bonus-action spell with a slot: no other slot spell this turn
+  renderBattle(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
+}
+/* a support's place: beside the one it looks after, in reach of the enemy nearest them if it can be */
+function guardWhere(c, t, n, ward, tg, sq){
+  const S = autoSquares(c, t, n, false), W = c.pos[ward.id], P = c.pos[tg.id], bm = bmapOf(n), st = n.site || {};
+  const beside = S.filter(q=>chebSq(q, W) <= 1 && !(q.x===W.x && q.y===W.y));
+  const hit = beside.filter(q=>chebSq(q, P) <= sq && losClear(bm, st, q.x, q.y, P.x, P.y)).sort((a, b)=>a.cost - b.cost)[0];
+  return hit || beside.sort((a, b)=>chebSq(a, P) - chebSq(b, P) || a.cost - b.cost)[0] || autoWhere(c, t, n, tg, "melee", sq);
+}
+/* one whole turn */
 async function autoTurn(c, t){
   const n = bnode(); if(!n || !c || c.turn!==t.id || !autoFor(t) || !c.pos || !c.pos[t.id] || autoBusy) return null;
   autoBusy = t.id; autoStop = false; renderBattlePanel();
@@ -13892,8 +13956,15 @@ async function autoTurnNow(c, t, n){
     said.push(ft ? `${t.label} tries to get away: it Dashes ${ft} ft${exits.length ? " toward a way out" : ""}.` : `${t.label} tries to get away, but can't move.`);
     if(!exits.length) said.push("There's no way out on this map, so it keeps its distance (mark it Fled if it gets away).");
     gameLog("move", said.join(" ")); await autoSay(said.join(" ")); return done(); }
+  /* healing first (a bonus-action heal, then on with the turn; an action heal is the turn) */
+  { const H = healPlan(c, t, n);
+    if(H.bonus){ await autoHeal(c, t, n, H.bonus, said); if(autoGone(c, t)) return done(); }
+    if(H.action && (T.role==="support" || H.action.urgent) && !(H.bonus && H.bonus.target===H.action.target)){ await autoHeal(c, t, n, H.action, said); return done(); } }
   const O = others(); if(!O.length){ await autoSearch(c, n, t, said); return done(); }     // everyone it could fight is hidden: it Searches
-  const opts = autoOptions(c, t), tg = all().find(x => x.id===s.to) || O.slice().sort((a, b) => chebSq(c.pos[a.id], c.pos[t.id]) - chebSq(c.pos[b.id], c.pos[t.id]))[0];
+  const opts = autoOptions(c, t); let tg = all().find(x => x.id===s.to) || O.slice().sort((a, b) => chebSq(c.pos[a.id], c.pos[t.id]) - chebSq(c.pos[b.id], c.pos[t.id]))[0];
+  /* a support guards the one it looks after: the enemy nearest them is its target, and it stands beside them */
+  const wardT = T.role==="support" ? (all().find(x => x.id===(T.ward || s.help) && x.side===t.side && !isDownT(x) && c.pos[x.id]) || null) : null;
+  if(wardT){ const W = c.pos[wardT.id], near = O.slice().sort((a, b) => chebSq(c.pos[a.id], W) - chebSq(c.pos[b.id], W))[0]; if(near) tg = near; }
   /* an area, if it's worth it from here */
   for(const o of opts.filter(o => o.kind==="area")){
     const best = autoAim(c, t, o); if(!best || !(best.foes >= 2 || O.length===1)) continue;
@@ -13913,7 +13984,7 @@ async function autoTurnNow(c, t, n){
   let mode = pick.melee && !(keepsAway && pick.range) ? "melee" : "ranged", sq = mode==="melee" ? pick.melee : pick.range;
   /* can't get into reach this turn, but has a bow (or the like): it shoots instead of only walking */
   if(mode==="melee" && ranged.length){ const d = autoWhere(c, t, n, tg, "melee", sq); if(!d || chebSq(d, c.pos[tg.id]) > sq){ pick = byMulti(ranged)[0]; mode = "ranged"; sq = pick.range; } }
-  const ft = await autoWalk(c, t, autoWhere(c, t, n, tg, mode, sq)); if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) <= sq ? "" : ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}`}.`);
+  const ft = await autoWalk(c, t, wardT ? guardWhere(c, t, n, wardT, tg, sq) : autoWhere(c, t, n, tg, mode, sq)); if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) <= sq ? "" : ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}`}.`);
   if(autoGone(c, t)) return done();
   if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq){ await autoSay(said[said.length - 1] || `${t.label} can't get to anyone this turn.`); return done(); }
   await autoSleep(AUTO_MS.beat);
