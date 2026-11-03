@@ -8223,7 +8223,7 @@ const tacDown = o => { const H = tacHp(o); return o.fled || (H.max > 0 && H.hp <
 /* the suggestion for an enemy's turn: { to, why, stand, flee, help } */
 function tacSuggest(c, t){
   const all = combatants(c), T = tacOf(c, t), m = tacBlockOf(t), rigid = +T.rigid || 2, charmers = charmersOf(c, t);
-  const foes = all.filter(o=>o.id!==t.id && o.side!==t.side && o.side!=="neutral" && !tacDown(o) && !charmers.includes(o.id)), mates = all.filter(o=>o.id!==t.id && o.side===t.side && !tacDown(o));
+  const foes = all.filter(o=>o.id!==t.id && o.side!==t.side && o.side!=="neutral" && !tacDown(o) && !charmers.includes(o.id) && !autoHidden(c, t, o)), mates = all.filter(o=>o.id!==t.id && o.side===t.side && !tacDown(o));
   const reach = T.role==="ranged" || T.role==="caster" ? Math.max(tacReach(m), tacRange(m, T.role)) : tacReach(m), move = tacSpeed(m, t.kind==="foe" ? null : t.p);
   const dist = o => tacDist(c, t, o), gap = o => { const d = dist(o); return d==null ? 0 : Math.max(0, d - reach); }, ft = o => { const d = dist(o); return d==null ? "" : `, ${d} ft away`; };
   const near = L => L.slice().sort((a, b)=>(dist(a) ?? 0) - (dist(b) ?? 0))[0];
@@ -13626,8 +13626,9 @@ function autoSquares(c, t, n, dash){
 function autoWhere(c, t, n, tg, mode, sq){
   const S = autoSquares(c, t, n, false), P = c.pos[tg.id], others = combatants(c).filter(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id]);
   const safe = s => others.every(o => chebSq(c.pos[o.id], s) > reachSq(o));
-  const good = mode==="melee" ? S.filter(s => chebSq(s, P) <= sq) : S.filter(s => chebSq(s, P) <= sq && safe(s));
-  const okay = mode==="ranged" && !good.length ? S.filter(s => chebSq(s, P) <= sq) : [];
+  const bm = bmapOf(n), st = n.site || {}, line = s => losClear(bm, st, s.x, s.y, P.x, P.y);     // a clear line from where it stands
+  const good = mode==="melee" ? S.filter(s => chebSq(s, P) <= sq && line(s)) : S.filter(s => chebSq(s, P) <= sq && safe(s) && line(s));
+  const okay = mode==="ranged" && !good.length ? S.filter(s => chebSq(s, P) <= sq && line(s)) : [];
   const L = good.length ? good : okay;
   if(L.length) return L.sort((a, b) => a.cost - b.cost)[0];
   return S.sort((a, b) => chebSq(a, P) - chebSq(b, P) || a.cost - b.cost)[0];
@@ -13675,7 +13676,7 @@ function autoPick(v){ const s = $("#ac-what"); if(!s) return false; s.value = v;
 function autoPress(sel){ const b = document.querySelector(`#pane-inspect ${sel}`) || document.querySelector(sel); if(!b || b.disabled) return false; b.click(); return true; }
 /* the best place for an area: most of the other side caught, none of its own */
 function autoAim(c, t, o){
-  const keep = aoeAim, all = combatants(c), charmers = charmersOf(c, t), side = id => charmers.includes(id) ? t.side : (all.find(x => x.id===id) || {}).side, ruthless = tacOf(c, t).areas==="any"; let best = null;     // its charmer is spared like its own
+  const keep = aoeAim, all = combatants(c), charmers = charmersOf(c, t), hid = new Set(all.filter(x => x.side!==t.side && autoHidden(c, t, x)).map(x => x.id)), side = id => charmers.includes(id) ? t.side : hid.has(id) ? "neutral" : (all.find(x => x.id===id) || {}).side, ruthless = tacOf(c, t).areas==="any"; let best = null;     // its charmer is spared like its own
   aoeAim = { actor:t.id, what:o.v, a:o.a, on:false, pt:null };
   try{
     const C = c.pos[t.id], pts = [];
@@ -13727,7 +13728,8 @@ function autoSpellPlan(c, t, n, tg, O, opts){
   const pHit = (b, o) => Math.min(.95, Math.max(.05, (21 - (tacAc(o) - (b || 0))) / 20));
   const pFail = (dc, o, abil) => Math.min(.95, Math.max(.05, ((dc || 13) - 1 - saveBonusOf(o, abil)) / 20));
   const withAct = (v, f) => { const keep = act; act = freshAct(t.id); act.what = v; try{ return f(actInfo(c, t)); } catch(err){ return null; } finally { act = keep; } };
-  const reachFor = (o, R) => S.filter(q => chebSq(q, c.pos[o.id]) <= R).sort((a, b) => a.cost - b.cost)[0] || null;
+  const bm = bmapOf(n), st = n.site || {}, reachFor = (o, R) => S.filter(q => chebSq(q, c.pos[o.id]) <= R && losClear(bm, st, q.x, q.y, c.pos[o.id].x, c.pos[o.id].y)).sort((a, b) => a.cost - b.cost)[0] || null;
+  const canAim = (s, x) => !needsSight(s) || autoSense(c, n, t, x)==="seen";     // "a creature you can see"
   const mine = all.filter(o => o.side===t.side && !o.fled && !isDownT(o) && c.pos[o.id]);
   let best = null;
   const offer = P => { if(!P || !(P.score > 0)) return; P.score *= T.role==="caster" ? 1.25 : 1; if((c.round || 1)===1 && T.role==="caster") P.score *= 1 + .1 * (P.s.lv || 0); if(!best || P.score > best.score) best = P; };
@@ -13738,10 +13740,10 @@ function autoSpellPlan(c, t, n, tg, O, opts){
     if(a && dmg){ const b = autoAim(c, t, { v:o.v, a, info }); if(b && (b.foes >= 2 || O.length===1)){ const one = (save ? pFail(save.dc, tg, save.abil) + (save.half ? (1 - pFail(save.dc, tg, save.abil)) / 2 : 0) : 1);
       offer({ ...base, kind:"area", pt:b.pt, score:dmg * one * b.foes }); } continue; }
     if(a) continue;                                                       // an area that does nothing it can weigh (Fog Cloud): left to the DM
-    if(dmg){ const tgs = O.filter(x => reachFor(x, R)); if(!tgs.length) continue;
+    if(dmg){ const tgs = O.filter(x => canAim(s, x) && reachFor(x, R)); if(!tgs.length) continue;
       const pick = tgs.includes(tg) ? tg : tgs[0], p = s.atk ? pHit(atkB, pick) : save ? pFail(save.dc, pick, save.abil) + (save.half ? (1 - pFail(save.dc, pick, save.abil)) / 2 : 0) : 1;
       offer({ ...base, kind:"single", targets:[pick.id], dest:reachFor(pick, R), score:dmg * p }); continue; }
-    if(tier && tier!=="half" || (tier==="half" && cond)){ const tgs = O.filter(x => reachFor(x, R) && !(c.holds && c.holds[x.id]) && !(cond && condImmune(x, cond)) && !(cond && ((x.kind==="foe" ? x.x.conds : (x.p && pcState(x.p).conds)) || []).includes(cond)));
+    if(tier && tier!=="half" || (tier==="half" && cond)){ const tgs = O.filter(x => canAim(s, x) && reachFor(x, R) && !(c.holds && c.holds[x.id]) && !(cond && condImmune(x, cond)) && !(cond && ((x.kind==="foe" ? x.x.conds : (x.p && pcState(x.p).conds)) || []).includes(cond)));
       if(!tgs.length) continue; const pick = tgs.slice().sort((a, b) => ctrlDpr(b) - ctrlDpr(a))[0];
       offer({ ...base, kind:"control", targets:[pick.id], dest:reachFor(pick, R), score:ctrlDpr(pick) * ctrlMult(tier) * rounds * (save ? pFail(save.dc, pick, save.abil) : 1) }); continue; }
     const B = SPELL_FX[s.id];
@@ -13770,13 +13772,56 @@ async function autoCast(c, t, n, P, said){
   if(word) act.note = word;
   await autoSay(`${t.label} casts ${P.name}${P.kind==="area" ? "!" : ` on ${andList(who)}${word ? `: “${word}!”` : "!"}`}`); if(autoGone(c, t)) return true;
   renderBattlePanel();
-  if(P.s.atk){ autoPress('[data-acroll="hit"]'); if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
+  if(P.s.atk){ const o = combatants(c).find(x => x.id===act.targets[0]); if(o && autoSense(c, n, t, o)==="unseen"){ act.adv = "dis"; renderBattlePanel(); } autoPress('[data-acroll="hit"]'); if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
   else { for(const id of act.targets.slice()) autoPress(`[data-svroll="${id}"]`); if(P.s.dmg) autoPress('[data-acroll="dmg"]'); }
   const keepAct = act; autoPress("#ac-go"); if(act===keepAct) return false;
   renderBattle(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
   return true;
 }
-/* one whole turn */
+/* what it perceives (Joseph's autopilot list, item 3: "no shooting through walls, and hidden or invisible characters
+   aren't targeted"), by the rules the map's shading already uses (losClear, viewGrid, stealthOf, visionOf):
+   - hidden (the Hide action's Stealth total), on the Ethereal Plane, or burrowed: it doesn't know where they are, so it
+     doesn't go for them, unless Truesight (or, for the hidden, Blindsight) in range and in line shows them;
+   - unseen (Invisible but not hidden, or where it can't see: darkness without Darkvision, round a corner): it knows
+     where, so it can attack, with Disadvantage, but not with a spell that needs "a creature you can see";
+   - seen: as usual. It never attacks or casts without a clear line from its square (autoWhere, reachFor look for one).
+   With no one it knows of left, it Searches: Wisdom (Perception) against each hidden one's Stealth total that it has a
+   line to; a success finds them. */
+function autoHidden(c, t, o){
+  const n = bnode(), p = c.pos && c.pos[o.id], me = c.pos && c.pos[t.id]; if(!n || !p || !me) return false;
+  const s = stealthOf(c, o); if(!(s.hidden!=null || s.ethereal || s.burrowed)) return false; if(s.burrowed) return true;
+  const v = visionOf(c, t), d = Math.hypot(p.x - me.x, p.y - me.y) * 5, los = losClear(bmapOf(n), n.site || {}, me.x, me.y, p.x, p.y);
+  if(s.ethereal) return !(v.ts && d <= v.ts && los);
+  return !(los && ((v.ts && d <= v.ts) || (v.bs && d <= v.bs)));
+}
+let autoVG = null;   // what it sees from where it stands, worked out once a square
+function autoSense(c, n, t, o){
+  if(autoHidden(c, t, o)) return "hidden";
+  const p = c.pos[o.id], me = c.pos[t.id], bm = bmapOf(n), st = n.site || {}; if(!losClear(bm, st, me.x, me.y, p.x, p.y)) return "unseen";
+  const s = stealthOf(c, o), v = visionOf(c, t), d = Math.hypot(p.x - me.x, p.y - me.y) * 5;
+  if(s.invisible) return (v.ts && d <= v.ts) || (v.bs && d <= v.bs) ? "seen" : "unseen";
+  const key = `${t.id}|${me.x},${me.y}|${turnStamp(c)}`;
+  if(!autoVG || autoVG.key!==key) autoVG = { key, g:viewGrid(bm, st, c, lightGrid(bm, st, c), t) };
+  return autoVG.g[p.y * BW + p.x] >= 1 ? "seen" : "unseen";
+}
+const needsSight = s => /\b(?:that )?you can see\b/i.test(String((s && s.desc) || ""));
+function percOf(t){
+  const sb = t.kind==="foe" ? foeById(t.x.foe) : (t.p && pcStatBlock(t.p)), m = /Perception\s*([+-]\d+)/i.exec(`${(sb && sb.sk) || ""} ${(t.p && pcState(t.p).skills) || ""}`);
+  if(m) return +m[1];
+  return t.kind==="foe" ? Math.floor(((+((sb && sb.ab) || [])[4] || 10) - 10) / 2) : abBonus(pcState(t.p), "wis");
+}
+/* the Search action, when everyone it could fight is hidden */
+async function autoSearch(c, n, t, said){
+  const me = c.pos[t.id], bm = bmapOf(n), st = n.site || {};
+  const hid = combatants(c).filter(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id] && stealthOf(c, o).hidden!=null && !stealthOf(c, o).ethereal && !stealthOf(c, o).burrowed
+    && losClear(bm, st, me.x, me.y, c.pos[o.id].x, c.pos[o.id].y));
+  if(!hid.length) return false;
+  await autoSay(`${t.label} searches for whoever is hiding.`);
+  const b = percOf(t), d = 1 + Math.floor(Math.random() * 20), tot = d + b, found = [], against = hid.map(o => `${o.label}'s ${stealthOf(c, o).hidden}`);
+  for(const o of hid){ const dc = stealthOf(c, o).hidden; if(tot >= dc){ delete c.stealth[o.id].hide; found.push(o.label); } }
+  const line = `${t.label} searches: Wisdom (Perception) d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against ${andList(against)}: ${found.length ? `finds ${andList(found)}` : "finds no one"}.`;
+  said.push(line); gameLog("check", line); renderBattle(); await autoSay(line); return true;
+}/* one whole turn */
 async function autoTurn(c, t){
   const n = bnode(); if(!n || !c || c.turn!==t.id || !autoFor(t) || !c.pos || !c.pos[t.id] || autoBusy) return null;
   autoBusy = t.id; autoStop = false; renderBattlePanel();
@@ -13784,7 +13829,8 @@ async function autoTurn(c, t){
 }
 async function autoTurnNow(c, t, n){
   const all = () => combatants(c), log0 = (c.log || []).length, from0 = { ...c.pos[t.id] }, said = [];
-  const charmers = charmersOf(c, t), others = () => all().filter(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id] && !charmers.includes(o.id));
+  const charmers = charmersOf(c, t), others = () => all().filter(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id] && !charmers.includes(o.id) && !autoHidden(c, t, o));     // not the hidden: it doesn't know where they are
+  const senseOf = id => { const o = all().find(x => x.id===id); return o ? autoSense(c, n, t, o) : "seen"; };
   const s = tacSuggest(c, t), T = tacOf(c, t), H = autoHeld(c, t);
   const lastSaid = () => ((c.log || []).length > log0 ? c.log[c.log.length - 1].text : "");
   if(c.rechargeNow && c.rechargeNow.id===t.id && c.rechargeNow.at===turnStamp(c)) await autoSay(c.rechargeNow.said);     // its recharge roll, first
@@ -13811,7 +13857,7 @@ async function autoTurnNow(c, t, n){
     said.push(ft ? `${t.label} tries to get away: it Dashes ${ft} ft${exits.length ? " toward a way out" : ""}.` : `${t.label} tries to get away, but can't move.`);
     if(!exits.length) said.push("There's no way out on this map, so it keeps its distance (mark it Fled if it gets away).");
     gameLog("move", said.join(" ")); await autoSay(said.join(" ")); return done(); }
-  const O = others(); if(!O.length) return done();
+  const O = others(); if(!O.length){ await autoSearch(c, n, t, said); return done(); }     // everyone it could fight is hidden: it Searches
   const opts = autoOptions(c, t), tg = all().find(x => x.id===s.to) || O.slice().sort((a, b) => chebSq(c.pos[a.id], c.pos[t.id]) - chebSq(c.pos[b.id], c.pos[t.id]))[0];
   /* an area, if it's worth it from here */
   for(const o of opts.filter(o => o.kind==="area")){
@@ -13845,6 +13891,7 @@ async function autoTurnNow(c, t, n){
     if(act.actor!==t.id || !act.what || autoGone(c, t)) break;
     act.targets = act.targets.filter(id => { const x = all().find(y => y.id===id); return x && !isDownT(x) && !x.fled; });
     if(!act.targets.length){ const L = inReach(); if(!L.length) break; act.targets = [L.sort((a, b) => (tacHp(a).hp || 0) - (tacHp(b).hp || 0))[0].id]; }
+    act.adv = act.targets[0] && senseOf(act.targets[0])==="unseen" ? "dis" : "";     // it can't see them: Disadvantage
     renderBattlePanel(); autoPress('[data-acroll="hit"]');
     if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]');
     const wasQueue = !!act.queue, keepAct = act; autoPress("#ac-go");
