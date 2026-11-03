@@ -8051,6 +8051,7 @@ function fxNewRound(c){ for(const t of combatants(c)){ const h = hOfT(t); for(co
 /* the start of someone's turn: Heroism's temporary hit points (they don't stack: the higher) */
 function fxTurnStart(c, id){
   rechargeTurnStart(c, id);                      // its used recharges roll first
+  legTurnStart(c, id);                           // its legendary uses come back
   autoSizeUp(c, id);                                             // an enemy sizes up the party as its turn starts
   const t = combatants(c).find(x=>x.id===id), h = hOfT(t); if(!h) return;
   for(const f of fxOf(h, false)) if(f.b.temp){ const was = numOr(h.temp, 0); if(f.b.temp > was){ h.temp = f.b.temp;
@@ -11093,7 +11094,7 @@ function newRound(c){
   concNewRound(c);                                 // a round less for everyone concentrating
   upsNewRound(c);                                  // and for every spell that stays up
   fxNewRound(c);                                   // and every spell effect without concentration (Shield)
-  for(const y of c.list){ for(const r of foeResources(foeById(y.foe))) if(r.perRound) y.used[r.key] = 0; }
+  for(const y of c.list){ for(const r of foeResources(foeById(y.foe))) if(r.perRound && r.key!=="Legendary actions") y.used[r.key] = 0; }     // legendary uses come back at the start of its own turn (legTurnStart)
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -13634,8 +13635,8 @@ function autoOptions(c, t){
 }
 /* the squares it can get to this turn (a step each way, diagonals too; not through walls, shut doors or an enemy;
    through its own side but not stopping there): [{ x, y, cost (squares) }] */
-function autoSquares(c, t, n, dash){
-  const bm = bmapOf(n), st = n.site || {}, me = c.pos[t.id], allow = speedOf(t) * (dash ? 2 : 1) - movedOf(c, t.id).ft, left = Math.max(0, Math.floor(allow / 5));
+function autoSquares(c, t, n, dash, ftLimit){
+  const bm = bmapOf(n), st = n.site || {}, me = c.pos[t.id], allow = ftLimit!=null ? ftLimit : speedOf(t) * (dash ? 2 : 1) - movedOf(c, t.id).ft, left = Math.max(0, Math.floor(allow / 5));
   const occ = {}; for(const o of combatants(c)){ const p = c.pos[o.id]; if(p && o.id!==t.id && !o.fled && !isDownT(o)) occ[`${p.x},${p.y}`] = o.side===t.side ? "own" : "other"; }
   const wall = (x, y) => x < 0 || y < 0 || x >= BW || y >= BH || opaqueAt(bm, st, x, y);
   const seen = new Map(), start = { x:me.x, y:me.y, cost:0 }; seen.set(`${me.x},${me.y}`, start); const q = [start];
@@ -13666,7 +13667,8 @@ const AUTO_MS = { step:300, beat:500, say:1500, perChar:25, sayMax:5500 };
 const autoNow = () => root.autoPace==="now";
 const autoSleep = ms => autoNow() || !ms ? Promise.resolve() : new Promise(r => setTimeout(r, ms));
 let autoBusy = null, autoSkip = null, autoStop = false;
-const autoGone = (c, t) => autoStop || aoeFight()!==c || c.turn!==t.id || isDownT(t) || t.fled;
+let legNow = null;   // the creature taking a legendary action (on someone else's turn)
+const autoGone = (c, t) => autoStop || aoeFight()!==c || (c.turn!==t.id && legNow!==t.id) || isDownT(t) || t.fled;
 async function autoSay(text){
   if(autoNow() || !text) return;
   let box = $("#auto-say"); if(!box){ document.body.insertAdjacentHTML("beforeend", `<div id="auto-say" hidden></div>`); box = $("#auto-say"); }
@@ -13746,8 +13748,8 @@ function autoSpellOpts(c, t){
   return out;
 }
 /* the best spell to cast, if one beats its weapons: { v, name, kind: area|single|control|buff, score, targets, pt, lvl, dest } */
-function autoSpellPlan(c, t, n, tg, O, opts){
-  const L = autoSpellOpts(c, t); if(!L.length) return null;
+function autoSpellPlan(c, t, n, tg, O, opts, onlyV){
+  const L = autoSpellOpts(c, t).filter(o=>!onlyV || o.v===onlyV); if(!L.length) return null;     // onlyV: one spell (a legendary action's)
   const T = tacOf(c, t), me = c.pos[t.id], S = autoSquares(c, t, n, false), all = combatants(c);
   const pHit = (b, o) => Math.min(.95, Math.max(.05, (21 - (tacAc(o) - (b || 0))) / 20));
   const pFail = (dc, o, abil) => Math.min(.95, Math.max(.05, ((dc || 13) - 1 - saveBonusOf(o, abil)) / 20));
@@ -13782,12 +13784,13 @@ function autoSpellPlan(c, t, n, tg, O, opts){
     const Q = o.kind==="multi" ? multiQueue(foeById(t.x.foe)).map(q => o.swap || q) : Array(Math.max(1, attacksPerAction(t))).fill(o.v);
     const v = Q.reduce((sum, q) => { const i = autoInfo(c, t, q), b = withAct(q, x => toHitOf(c, t, x)); return sum + avgDice(i && i.hint && i.hint.dice) * pHit(b, tg); }, 0);
     if(v > weapon) weapon = v; }
-  return best.score > weapon ? best : null;
+  return onlyV || best.score > weapon ? best : null;
 }
 /* cast it: into range, the box, then the Action box's rolls */
 async function autoCast(c, t, n, P, said){
   if(P.dest){ const ft = await autoWalk(c, t, P.dest); if(ft) said.push(`${t.label} moves ${ft} ft.`); if(autoGone(c, t)) return true; }
   act = freshAct(t.id); renderBattlePanel(); if(!autoPick(P.v)) return false;
+  if(P.legendary){ act.legendary = true; act.legOnce = P.legOnce || ""; }
   if(P.lvl) act.lvl = P.lvl;
   if(P.kind==="area"){ if(!aoeAim) return false; aoeAim.on = true; aoeAim.pt = P.pt; aoePlace(); }
   else { act.targets = P.targets.slice(); renderBattlePanel(); }
@@ -13799,7 +13802,15 @@ async function autoCast(c, t, n, P, said){
   if(P.s.atk){ const o = combatants(c).find(x => x.id===act.targets[0]); if(o && autoSense(c, n, t, o)==="unseen"){ act.adv = "dis"; renderBattlePanel(); } autoPress('[data-acroll="hit"]'); if(!act.toHit) return false; if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
   else { for(const id of act.targets.slice()) autoPress(`[data-svroll="${id}"]`); if(P.s.dmg) autoPress('[data-acroll="dmg"]'); }
   const keepAct = act; autoPress("#ac-go"); if(act===keepAct) return false;
-  renderBattle(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
+  renderBattle(); let last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
+  /* Scorching Ray's other rays, Eldritch Blast's other beams: the queue the Action box set up, each rolled in turn */
+  for(let g = 0; g < 8 && act.actor===t.id && act.queue && act.part && act.what && !autoGone(c, t); g++){
+    if(P.legendary) act.legendary = true;
+    act.targets = act.targets.filter(id=>{ const x = combatants(c).find(y=>y.id===id); return x && !isDownT(x); }); if(!act.targets.length) act.targets = (P.targets || []).filter(id=>{ const x = combatants(c).find(y=>y.id===id); return x && !isDownT(x); });
+    if(!act.targets.length) break; renderBattlePanel();
+    if(P.s.atk){ autoPress('[data-acroll="hit"]'); if(!act.toHit) break; if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); }
+    const k2 = act; autoPress("#ac-go"); if(act===k2) break; renderBattle(); last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
+  }
   return true;
 }
 /* what it perceives (Joseph's autopilot list, item 3: "no shooting through walls, and hidden or invisible characters
@@ -14016,12 +14027,99 @@ async function autoOA(c, t, moverId){
   if(act.reaction && act.toHit) autoPress("#ac-go"); else { act = reactResume.act; reactResume = null; }
   renderBattle(); renderBattlePanel(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
 }
+/* legendary actions (Joseph's autopilot list, item 5; his calls: spend one "when it's worth it", Legendary Resistance
+   "automatic", the reminder "both" with and without the autopilot). The 2024 rules: right after another creature's
+   turn it can spend a use; 3 uses (4 in its lair, a tick on the card), all back at the start of its own turn
+   (legTurnStart). After each turn (legAfterTurn, from nextTurn) every legendary creature still able gets its chance:
+   with "Enemies run their own turns" on, it takes one if one's worth it (legPlan: an attack on someone in reach; one
+   that moves half its Speed first; a spell it casts through Spellcasting, weighed like item 2, without spending the
+   spell's own uses), step by step; either way the Action box shows "N legendary actions left: Run one / Skip".
+   "Can't take this action again until the start of its next turn" is kept (legOnce). The SRD 5.2 has no lair actions:
+   "in its lair" only adds the fourth use and the fourth Legendary Resistance. */
+const legOf = t => t && t.kind==="foe" ? pairs((foeById(t.x.foe) || {}).leg) : [];
+const legMax = t => t.x.lair ? 4 : 3;
+const legLeft = t => Math.max(0, legMax(t) - (((t.x.used || {})["Legendary actions"]) || 0));
+function legTurnStart(c, id){ const t = combatants(c).find(x=>x.id===id); if(!t || !legOf(t).length) return; t.x.used = t.x.used || {}; t.x.used["Legendary actions"] = 0; t.x.legOnce = {}; }
+function legAfterTurn(c, prev){
+  if(!c || calmOf(c) || !prev) return; c.legOffer = { prev, at:turnStamp(c), done:[] };
+  if(root.autoEnemies) (async () => { for(const t of legCandidates(c)){ const P = legPlan(c, t); c.legOffer.done.push(t.id); if(P) await legRun(c, t, P); } renderBattlePanel(); })();
+}
+const legCandidates = c => { const O = c.legOffer; if(!O || O.at!==turnStamp(c)) return [];
+  /* not the one whose turn just ended, nor the one whose turn is starting (its own turn is next) */
+  return combatants(c).filter(t=>legOf(t).length && t.id!==O.prev && t.id!==c.turn && !O.done.includes(t.id) &&!t.fled && !isDownT(t) && !t.x.dormant && legLeft(t) > 0 && c.pos && c.pos[t.id]); };
+/* the one worth doing now, if any: { kind: attack|spell, name, attack (its fa:), dest, targets, value, legOnce } */
+function legPlan(c, t){
+  const n = bnode(); if(!n) return null;
+  const all = combatants(c), charmers = charmersOf(c, t), O = all.filter(o=>o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id] && !charmers.includes(o.id) && !autoHidden(c, t, o));
+  if(!O.length) return null;
+  const bm = bmapOf(n), st = n.site || {}, line = (q, o) => losClear(bm, st, q.x, q.y, c.pos[o.id].x, c.pos[o.id].y);
+  let best = null;
+  for(const [nm, text] of legOf(t)){
+    const T = String(text || ""), once = /can't take this action again until the start of its next turn/i.test(T) ? nm : "";
+    if(once && (t.x.legOnce || {})[nm]) continue;
+    const sp = /\bcast (?:the )?([A-Z][A-Za-z' ]+?)(?: \([^)]*\))?(?:[.,]| using| at )/.exec(T);
+    if(sp){ const v = `fsp:spell:${sp[1].trim()}`, P = autoSpellPlan(c, t, n, O[0], O, [], v); if(P && P.dest && P.dest.cost) continue; if(P) P.dest = null;     // cast from where it stands
+      if(P && (!best || P.score > best.value)) best = { ...P, kind:"spell", name:nm, value:P.score, legendary:true, legOnce:once }; continue; }
+    const at = /makes one ([A-Z][A-Za-z ]*?) attack/i.exec(T); if(!at) continue;
+    const v = `fa:${at[1].trim()}`, r = autoReachOf(c, t, v); if(!r || !(r.melee || r.range)) continue;
+    const sq = r.melee || r.range, half = /moves up to half its Speed/i.test(T);
+    const S = half ? autoSquares(c, t, n, false, Math.floor(speedOf(t) / 2)) : [{ x:c.pos[t.id].x, y:c.pos[t.id].y, cost:0 }];
+    let pick = null; for(const o of O){ const q = S.filter(s=>chebSq(s, c.pos[o.id]) <= sq && line(s, o)).sort((a, b)=>a.cost - b.cost)[0]; if(q && (!pick || tacHp(o).hp < tacHp(pick.o).hp)) pick = { o, q }; }
+    if(!pick) continue;
+    const i = r.info, value = avgDice(i && i.hint && i.hint.dice) * .6;
+    if(!best || value > best.value) best = { kind:"attack", name:nm, attack:v, dest:pick.q.cost ? pick.q : null, targets:[pick.o.id], value, legOnce:once };
+  }
+  return best;
+}
+async function legRun(c, t, P){
+  if(autoBusy) return; autoBusy = t.id; legNow = t.id; const wasSel = battleSel; battleSel = t.id; renderBattlePanel(); const said = [];     // the Action box shows whoever's picked: the dragon, for now
+  try{
+    await autoSay(`Legendary action: ${t.label} — ${P.name}!`);
+    if(P.kind==="spell"){ await autoCast(c, t, bnode(), P, said); return; }
+    if(P.dest){ const ft = await autoWalk(c, t, P.dest); if(ft) said.push(`${t.label} moves ${ft} ft.`); }
+    if(t.fled || isDownT(t)) return;
+    act = freshAct(t.id); act.legendary = true; act.legOnce = P.legOnce || ""; renderBattlePanel(); if(!autoPick(P.attack)) return;
+    act.legendary = true; act.legOnce = P.legOnce || ""; act.targets = P.targets.slice(); renderBattlePanel();
+    const o = combatants(c).find(x=>x.id===act.targets[0]); if(o && autoSense(c, bnode(), t, o)==="unseen"){ act.adv = "dis"; renderBattlePanel(); }
+    autoPress('[data-acroll="hit"]'); if(!act.toHit) return; if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]');
+    autoPress("#ac-go"); renderBattle(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
+  } finally { autoBusy = null; legNow = null; battleSel = wasSel; if(c.turn) act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); }
+}
+/* in the Action box: each legendary creature here, its uses, the lair tick, and its chance after a turn */
+function legHtml(c){
+  const L = combatants(c).filter(t=>legOf(t).length && !t.fled && !isDownT(t)); if(!L.length || calmOf(c)) return "";
+  const offer = legCandidates(c).map(x=>x.id);
+  return `<div class="tacbox" style="margin:0 0 6px;padding:4px 6px;border-left:3px solid var(--r2);background:var(--paper-lit);font-size:12px">${L.map(t=>`<div class="pcrow" style="align-items:center;gap:6px;margin:1px 0">
+    <span style="flex:1"><b>${esc(t.label)}</b>: ${legLeft(t)} of ${legMax(t)} legendary actions left${offer.includes(t.id) && !autoBusy ? " — its chance, after that turn" : ""}</span>
+    ${offer.includes(t.id) && !autoBusy ? `<button class="btn small" data-legrun="${esc(t.id)}">Run one</button><button class="btn small" data-legskip="${esc(t.id)}">Skip</button>` : ""}
+    <label class="check" style="margin:0"><input type="checkbox" data-leglair="${esc(t.id)}" ${t.x.lair ? "checked" : ""}> In its lair</label></div>`).join("")}</div>`;
+}
+document.addEventListener("click", async e => { const b = e.target.closest && e.target.closest("[data-legrun],[data-legskip]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c || !c.legOffer) return;
+  const id = b.dataset.legrun || b.dataset.legskip, t = combatants(c).find(x=>x.id===id); if(!t) return; c.legOffer.done.push(id);
+  if(b.dataset.legskip){ renderBattlePanel(); return; }
+  const P = legPlan(c, t); if(!P){ flash(`${t.label} has nothing worth a legendary action right now.`); renderBattlePanel(); return; } await legRun(c, t, P); });
+document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.leglair==null) return; const c = aoeFight(), x = c && combatants(c).find(o=>o.id===t.dataset.leglair); if(!x) return;
+  x.x.lair = t.checked; touch(); renderBattlePanel(); });
+/* Legendary Resistance (automatic, his call): a failed save it rolled that matters (a condition that would take it out
+   of the fight or hamper it, or a hit for a quarter of its hit points or more) becomes a success, while its uses last
+   (3 a day, or 4 in its lair, from its trait's words). */
+function legResist(c, x){
+  if(!x || x.kind!=="foe") return "";
+  const m = foeById(x.x.foe), tr = pairs(m && m.tr).find(([nm])=>/^Legendary Resistance/i.test(nm)); if(!tr) return "";
+  const k = /\((\d+)\/Day(?:, or (\d+)\/Day in Lair)?\)/i.exec(tr[0]) || [], max = x.x.lair && k[2] ? +k[2] : +k[1] || 3, used = ((x.x.used || {})["Legendary Resistance"]) || 0; if(used >= max) return "";
+  const a = combatants(c).find(o=>o.id===act.actor), info = a && actInfo(c, a), cond = act.cond || (info && info.spell ? spellCond(info.spell.desc) : "");
+  const big = avgDice((info && info.spell && info.spell.dmg) || (info && info.hint && info.hint.dice) || act.dmg) >= (+x.x.max || 1) / 4;
+  if(!(cond && (CTRL_FULL.test(cond) || CTRL_HALF.test(cond))) && !(info && info.spell && CTRL_SPELLS[info.spell.id]) && !big) return "";
+  (x.x.used = x.x.used || {})["Legendary Resistance"] = used + 1;
+  return `uses Legendary Resistance (${max - used - 1} left): it succeeds instead`;
+}
 /* the run of enemy turns, one after another, until it's someone else's (or an opportunity attack waits) */
 function autoNext(c){
   clearTimeout(autoTimer); if(!root.autoEnemies || !c || calmOf(c)){ autoChain = 0; return; }
   const t = combatants(c).find(x => x.id===c.turn); if(!autoFor(t)){ autoChain = 0; return; }
   if(++autoChain > 40){ autoChain = 0; flash("The enemies' turns stopped after 40 in a row: press Next turn to go on."); return; }
-  autoTimer = setTimeout(async () => {
+  autoTimer = setTimeout(async function go(){
+    if(autoBusy){ autoTimer = setTimeout(go, 300); return; }     // a legendary action still going
     const c2 = aoeFight(); if(c2!==c || c.turn!==t.id || !root.autoEnemies) return;
     const r = await autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r && autoNow()) flash(r.said);
     if(r && r.handed){ autoChain = 0; flash(r.said); return; }                       // the player calls this one: the run waits for them
@@ -14439,7 +14537,7 @@ function attacksWords(t){
 /* is this one attack of the Attack action (a weapon, a creature's attack), not a spell or an ability */
 const isSwing = (info, what) => !!info && !info.spell && (info.kind==="attack" || isAttackAct(info)) && !/^fa:Multiattack/i.test(what||"");
 function isActionAct(t, info, what, isBonus){
-  if(!info || isBonus || act.reaction || info.kind==="flee" || /action surge/i.test(info.name||"") || /opportunity/i.test(what||"")) return false;
+  if(!info || isBonus || act.reaction || act.legendary || info.kind==="flee" || /action surge/i.test(info.name||"") || /opportunity/i.test(what||"")) return false;
   if(info.spell && /reaction/i.test(info.spell.time||"")) return false;     // Shield, Counterspell: a reaction
   if(info.free) return false;
   const w = String(what||""), nm = w.replace(/^(fa|wsa):/, "");
@@ -14898,7 +14996,7 @@ function actionForm(c, all){
     <div class="pcrow">
       <div class="field" style="flex:1"><label>Who</label><select id="ac-actor">${all.map(x=>`<option value="${x.id}" ${x.id===act.actor?"selected":""}>${esc(x.label)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
-    ${t ? gwmHtml(c, t) + tacticsHtml(c, t) : ""}
+    ${legHtml(c)}${t ? gwmHtml(c, t) + tacticsHtml(c, t) : ""}
     ${t && (t.kind==="foe" || t.p) ? `<p class="actspell">${esc(attacksWords(t))}</p>` : ""}
     ${act.queue ? (Q=>{ const n = Q.word==="ray" ? beamsOf(t, info && info.spell, act.lvl) || Q.items.length : Q.items.length;
       return `<div class="pcrow" style="align-items:center;margin:0 0 6px;padding:4px 6px;border:1.5px solid var(--lead);border-radius:3px"><p class="actspell" style="flex:1;margin:0"><b>${esc(Q.word[0].toUpperCase() + Q.word.slice(1))} ${Q.i + 1} of ${n}</b>${Q.word==="Multiattack" ? ` · ${esc(Q.items.map((w, k)=>(k===Q.i ? "▸ " : "") + w.replace(/^fa:/, "").replace(/\s*\(.*\)\s*$/, "")).join(", "))}` : ""}</p>
@@ -15040,7 +15138,8 @@ function logAction(n, c){
   } else {
     const x = actor.x, r = foeResources(foeById(x.foe));
     const key = act.what.startsWith("fsp:") ? act.what.slice(4) : act.what.slice(3).replace(/^(Bonus|Reaction|Legendary): /,"").replace(/\s*\(.*\)\s*$/,"");
-    const res = part ? null : r.find(q=>q.key===key);     // a follow-on attack spends nothing more
+    const res = part || act.legendary ? null : r.find(q=>q.key===key);     // a follow-on attack spends nothing more; a legendary action spends a legendary use instead
+    if(act.legendary && !part){ x.used = x.used || {}; x.used["Legendary actions"] = (x.used["Legendary actions"] || 0) + 1; if(act.legOnce) (x.legOnce = x.legOnce || {})[act.legOnce] = true; }
     if(res && res.kind==="uses") x.used[key] = info.once && act.outcome==="fail" ? res.max : Math.min(res.max, (x.used[key]||0)+1);   // "once it charms someone, he can't use it again today"
     if(res && res.kind==="recharge") x.spent[key] = true;
     if(res && res.kind==="slotspell"){ const s = r.find(q=>q.key===res.slot); if(s) x.used[s.key] = Math.min(s.max, (x.used[s.key]||0)+1); slotTxt = ` (${ORD[res.lv]})`; }
@@ -15128,7 +15227,7 @@ function logAction(n, c){
     if(swingLeft) a.swings--;                                                 // one more of this action's attacks
     else if(isAction){ a.n++; a.swings = swing ? attacksPerAction(actor) - 1 : /^fa:Multiattack/i.test(act.what||"") ? attacksPerAction(actor) : 0; }
     if(surge) a.more++; }
-  const asWhat = (act.reaction ? " — as a reaction." : isBonus && !/as a Bonus Action/.test(line) ? " — as a bonus action." : ".") + (surge ? " One more action this turn." : "");
+  const asWhat = (act.legendary ? " — as a legendary action." : act.reaction ? " — as a reaction." : isBonus && !/as a Bonus Action/.test(line) ? " — as a bonus action." : ".") + (surge ? " One more action this turn." : "");
   /* a spell that stays up: its token on the map, free again while it lasts (casting it again replaces their old one) */
   const upsBefore = JSON.stringify({ u:c.ups || [], p:Object.fromEntries((c.ups||[]).filter(u=>c.pos && c.pos[u.id]).map(u=>[u.id, c.pos[u.id]])) });
   const U = info.kind==="spell" && !info.free && !part ? spellUp(info.spell) : null;
@@ -15514,7 +15613,8 @@ function renderBattlePanelNow(){
       const cvr = k==="dex" ? coverOf(c, act.actor, x.id, aoeOrigin()) : { level:0, ac:0, word:"" }, cb = cvr.level===3 ? 0 : cvr.ac;     // cover: +2 or +5 to a Dexterity save
       const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false) + cb, F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
       const how = `${adv ? `d20 ${r1} and ${r2}, Advantage: ${d}` : `d20 ${d}`}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
-      (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` }; }
+      (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` };
+      if(tot < X.dc){ const lr = legResist(c, x); if(lr){ act.saves[x.id].made = true; act.saves[x.id].said += ` — ${lr}`; } } }     // Legendary Resistance, when it matters
     svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
   el.querySelectorAll("[data-svtot]").forEach(i=>i.onchange = ()=>{ keep(); const X = svCtx(), x = all.find(y=>y.id===i.dataset.svtot); if(!X || !x) return; const v = i.value.trim();
     if(v===""){ if(act.saves) delete act.saves[x.id]; }
@@ -18089,7 +18189,9 @@ function nextTurn(c){
   if(!order.length) return false;
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
+  const legPrev = c.turn;
   c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
+  legAfterTurn(c, legPrev);                      // a legendary creature's chance, after someone else's turn
   autoNext(c);                                   // an enemy's turn runs by itself, if that's set
   return true;
 }
