@@ -13985,7 +13985,38 @@ function rechargeTurnStart(c, id){
   const line = `${t.label}, at the start of its turn: ${said.join("; ")}.`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap });
   gameLog("fight", line); c.rechargeNow = { id, at:turnStamp(c), said:line }; flash(line);
-}/* the run of enemy turns, one after another, until it's someone else's (or an opportunity attack waits) */
+}/* its own reactions (Joseph's autopilot list, item 4), while "Enemies run their own turns" is on:
+   - an attack that would hit it: Parry ("adds N to its AC against one melee attack", a melee attack) or Shield (a
+     reaction that casts it: +5 AC until the start of its next turn, a use spent), if that makes it a miss (a natural
+     20 still hits). Logged as its own line, so undo takes it back;
+   - someone moving out of its reach: its opportunity attack, taken without asking (party members are still asked). */
+function autoDefend(c, a, tg, tot, ac, info){
+  if(!root.autoEnemies || !tg || tg.kind!=="foe" || !autoFor(tg) || reactedThisRound(c, tg.id) || !a || a.side===tg.side) return null;
+  const m = foeById(tg.x.foe), R = foeResources(m);
+  for(const [nm, text] of pairs(m && m.rea)){
+    const base = String(nm).replace(/\s*\(.*\)\s*$/, ""), lim = R.find(r=>r.key===base);
+    if(lim && lim.kind==="uses" && ((tg.x.used || {})[base] || 0) >= lim.max) continue;
+    const p = /\badds (\d+) to its AC against\b/i.exec(String(text || "")), sh = /\bShield\b/.test(String(text || ""));
+    const add = p && meleeAtk(info) ? +p[1] : sh ? 5 : 0; if(!add || tot >= ac + add) continue;
+    const snap = snapOf(c, [tg.id]), reactedBefore = JSON.stringify(c.reacted || {});
+    (c.reacted = c.reacted || {})[tg.id] = c.round; if(lim && lim.kind==="uses") (tg.x.used = tg.x.used || {})[base] = ((tg.x.used || {})[base] || 0) + 1;
+    if(sh && !p){ const s = allSpells().find(x=>x.id==="spell:shield"); if(s) fxCast(s, tg.id, [tg.x], null); }
+    const line = sh && !p ? `${tg.label} casts Shield as a reaction (${base}): +5 AC until its next turn, so ${a.label}'s ${tot} misses.` : `${tg.label} parries: +${add} AC against that attack, so ${a.label}'s ${tot} misses.`;
+    (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, reacted:reactedBefore }); gameLog("fight", line);
+    return line;
+  }
+  return null;
+}
+/* an enemy's opportunity attack, taken by itself, step by step like a turn */
+async function autoOA(c, t, moverId){
+  const mover = combatants(c).find(x=>x.id===moverId); if(!mover) return;
+  reactResume = { act, turn:c.turn }; startReaction(c, t.id, moverId); renderBattle(); renderBattlePanel();
+  await autoSay(`${t.label} takes an opportunity attack on ${mover.label}!`);
+  autoPress('[data-acroll="hit"]'); if(act.reaction && act.toHit && (act.outcome==="hit" || act.outcome==="crit")) autoPress('[data-acroll="dmg"]');
+  if(act.reaction && act.toHit) autoPress("#ac-go"); else { act = reactResume.act; reactResume = null; }
+  renderBattle(); renderBattlePanel(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
+}
+/* the run of enemy turns, one after another, until it's someone else's (or an opportunity attack waits) */
 function autoNext(c){
   clearTimeout(autoTimer); if(!root.autoEnemies || !c || calmOf(c)){ autoChain = 0; return; }
   const t = combatants(c).find(x => x.id===c.turn); if(!autoFor(t)){ autoChain = 0; return; }
@@ -14207,6 +14238,10 @@ function askOpportunity(moverId, from){
   const can = all.filter(t=>t.side!==mover.side && !t.fled && !isDown(t) && !reactedThisRound(c,t.id) && c.pos[t.id]
     && dist(c.pos[t.id], from) <= reachSq(t) && dist(c.pos[t.id], to) > reachSq(t));
   if(!can.length) return;
+  /* the autopilot's enemies take theirs without asking (one after another, step by step); the rest are asked */
+  const self = root.autoEnemies ? can.filter(t=>autoFor(t)) : [];
+  if(self.length) (async () => { for(const t of self){ if(reactedThisRound(c, t.id) || mover.fled || isDownT(mover)) continue; await autoOA(c, t, moverId); } touch(); })();
+  { const ask = can.filter(t=>!self.includes(t)); can.length = 0; can.push(...ask); } if(!can.length) return;
   const pop = $("#bt-pop");
   pop.innerHTML = `<p><b>${esc(mover.label)}</b> moved out of reach of ${can.map(t=>esc(t.label)).join(", ")}. Opportunity attack?</p>
     <div class="pcrow">${can.map(t=>`<button class="btn" data-oa="${t.id}">${esc(t.label)} attacks</button>`).join("")}<button class="btn" data-oa="">No</button></div>`;
@@ -15539,7 +15574,8 @@ function renderBattlePanelNow(){
       const how = mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${act.adv ? "" : " (an effect on them)"}: ${d}` : `d20 ${d}`;
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
-      act.outcome = out; act.toHit = { v:out, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : out}` };
+      const rx = out==="hit" ? autoDefend(c, t, tg, tot, ac, info) : null, res = rx ? "miss" : out;     // its Parry or Shield, if the autopilot runs it
+      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : out}${rx ? ` — ${rx}` : ""}` };
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
       D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
