@@ -8320,7 +8320,7 @@ function tacSuggest(c, t){
 }
 /* in the action form, on an enemy's turn */
 function tacticsHtml(c, t){
-  if(!tacFor(t)) return ""; const s = tacSuggest(c, t);
+  if(!tacFor(t) && !allyAuto(t)) return ""; const s = tacSuggest(c, t);
   return `<div class="tacbox" style="margin:0 0 6px;padding:4px 6px;border-left:3px solid var(--r2);background:var(--paper-lit);font-size:12px">
     <b>Tactics</b> <small>(${esc((TAC_ROLES.find(x=>x[0]===s.role)||[])[1] || "")}; a suggestion)</small><br>
     ${s.help ? `Helps <b>${esc(s.helpLabel)}</b>: ${esc(s.why)}` : s.to ? `→ <b>${esc(s.toLabel)}</b>: ${esc(s.why)} <button class="btn small" data-tactgt="${esc(s.to)}">Target</button>` : esc(s.why || "")}
@@ -13646,7 +13646,12 @@ let autoTimer = null, autoChain = 0;
    npcs"): the room's "Nobody flees" (site.noFlee), also set from the fight's "When their courage breaks"; a room never
    set follows the old all-fights setting (root.autoFlee). Off: nobody there tries to get away, and tactics don't say they would. */
 const fleeOff = () => { const st = (bnode() || {}).site || {}; return st.noFlee!=null ? !!st.noFlee : root.autoFlee==="off"; };
-const autoFor = t => !!t && tacFor(t) && t.side!=="neutral" && !t.fled && !isDownT(t) && !(t.kind==="foe" && t.x.dormant);
+/* the party's side too (Joseph's autopilot list, item 12): an enemy that's come over (x.ally) or a companion, not a
+   player's character nor a mount sharing its rider's turn; its own setting, "Allies and companions run their own turns"
+   (root.autoAllies), off unless ticked */
+const allyAuto = t => !!t && t.side==="party" && (t.kind==="foe" || (!!t.npc && !t.shared));
+const autoOn = t => !!t && (t.side==="party" ? !!root.autoAllies : !!root.autoEnemies);
+const autoFor = t => !!t && (tacFor(t) || allyAuto(t)) && t.side!=="neutral" && !t.fled && !isDownT(t) && !(t.kind==="foe" && t.x.dormant);
 /* squares apart, edge to edge: a position may carry n, its creature's width in squares (a Large one 2), from its top-left square */
 const chebSq = (a, b) => { const an = a.n || 1, bn = b.n || 1;
   return Math.max(Math.max(0, b.x - (a.x + an - 1), a.x - (b.x + bn - 1)), Math.max(0, b.y - (a.y + an - 1), a.y - (b.y + bn - 1))); };
@@ -13685,7 +13690,11 @@ function autoReachOf(c, t, v){
   const text = String(info.text || (info.spell && info.spell.desc) || (info.row && info.row.name) || info.name || "");
   const rc = /reach (\d+) ft/i.exec(text), rm = /range (\d+)(?:\/\d+)? ft/i.exec(text) || /\((?:[^)]*?)\b(\d+)\/\d+\)/.exec(text);
   const sr = info.spell && /(\d+)\s*feet/i.exec(String(info.spell.range||""));
-  const melee = rc ? +rc[1] : (/Melee/i.test(text) || (!rm && !sr)) ? 5 : 0, range = sr ? +sr[1] : rm ? +rm[1] : 0;
+  /* a character's or companion's line says only its weapon ("Shortbow"): the SRD weapon's properties say how far (item 12) */
+  let wx = ""; if(!rc && !rm && !sr && info.kind==="attack" && !info.spell){ const nm = String(info.name || "").toLowerCase();
+    const w = SRD_LOOT.filter(x => x.kind==="weapon" && nm.includes(String(x.name).toLowerCase())).sort((a, b) => b.name.length - a.name.length)[0]; wx = w ? String(w.desc || "") : ""; }
+  const wr = /Range (\d+)\//.exec(wx), ammo = /Ammunition/.test(wx), wreach = /\bReach\b/.test(wx);
+  const melee = rc ? +rc[1] : wx ? (ammo ? 0 : wreach ? 10 : 5) : (/Melee/i.test(text) || (!rm && !sr)) ? 5 : 0, range = sr ? +sr[1] : rm ? +rm[1] : wr ? +wr[1] : 0;
   return { melee:Math.max(0, Math.round(melee / 5)), range:Math.round(range / 5), info };
 }
 /* what it can do this turn: multiattack, attacks, and areas (not spent, not bonus actions, reactions or legendary) */
@@ -14317,7 +14326,7 @@ async function autoCommand(c, t, word){
     renderBattle(); await autoSay(line);
   } finally { autoBusy = null; autoStop = false; const b = $("#auto-say"); if(b) b.hidden = true; }
   touch(); renderBattle(); renderBattlePanel(); if(autoNow()) flash(line);
-  if(root.autoEnemies) autoTimer = setTimeout(() => { if(aoeFight()===c && c.turn===t.id){ nextTurn(c); touch(); renderBattle(); renderBattlePanel(); } }, autoNow() ? 600 : AUTO_MS.beat);
+  if(autoOn(t)) autoTimer = setTimeout(() => { if(aoeFight()===c && c.turn===t.id){ nextTurn(c); touch(); renderBattle(); renderBattlePanel(); } }, autoNow() ? 600 : AUTO_MS.beat);
 }
 function autoHeldHtml(c, t, H){
   const who = autoByName(c, H), W = H.tier==="order" ? cmdWords(H) : [];
@@ -14346,7 +14355,7 @@ function rechargeTurnStart(c, id){
      20 still hits). Logged as its own line, so undo takes it back;
    - someone moving out of its reach: its opportunity attack, taken without asking (party members are still asked). */
 function autoDefend(c, a, tg, tot, ac, info){
-  if(!root.autoEnemies || !tg || tg.kind!=="foe" || !autoFor(tg) || reactedThisRound(c, tg.id) || !a || a.side===tg.side || cantAct(tg).length) return null;
+  if(!tg || !autoOn(tg) || tg.kind!=="foe" || !autoFor(tg) || reactedThisRound(c, tg.id) || !a || a.side===tg.side || cantAct(tg).length) return null;
   const m = foeById(tg.x.foe), R = foeResources(m);
   for(const [nm, text] of pairs(m && m.rea)){
     const base = String(nm).replace(/\s*\(.*\)\s*$/, ""), lim = R.find(r=>r.key===base);
@@ -14459,17 +14468,17 @@ function legResist(c, x){
 }
 /* the run of enemy turns, one after another, until it's someone else's (or an opportunity attack waits) */
 function autoNext(c){
-  clearTimeout(autoTimer); if(!root.autoEnemies || !c || calmOf(c)){ autoChain = 0; return; }
-  const t = combatants(c).find(x => x.id===c.turn); if(!autoFor(t)){ autoChain = 0; return; }
+  clearTimeout(autoTimer); if(!c || calmOf(c)){ autoChain = 0; return; }
+  const t = combatants(c).find(x => x.id===c.turn); if(!autoFor(t) || !autoOn(t)){ autoChain = 0; return; }
   if(++autoChain > 40){ autoChain = 0; flash("The enemies' turns stopped after 40 in a row: press Next turn to go on."); return; }
   autoTimer = setTimeout(async function go(){
     if(autoBusy){ autoTimer = setTimeout(go, 300); return; }     // a legendary action still going
-    const c2 = aoeFight(); if(c2!==c || c.turn!==t.id || !root.autoEnemies) return;
+    const c2 = aoeFight(); if(c2!==c || c.turn!==t.id || !autoOn(t)) return;
     const r = await autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r && autoNow()) flash(r.said);
     if(r && r.handed){ autoChain = 0; flash(r.said); return; }                       // the player calls this one: the run waits for them
     if(!$("#bt-pop").hidden){ autoChain = 0; flash(`${r && autoNow() ? r.said + " " : ""}An opportunity attack is offered: answer it, then press Next turn.`); return; }
-    if(!root.autoEnemies || !combatants(c).some(o => o.side==="party" && !o.fled && !isDownT(o))){ autoChain = 0; return; }
-    autoTimer = setTimeout(() => { if(aoeFight()!==c || c.turn!==t.id || !root.autoEnemies) return; nextTurn(c); touch(); renderBattle(); renderBattlePanel(); }, autoNow() ? 900 : AUTO_MS.beat);
+    if(!autoOn(t) || !combatants(c).some(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o))){ autoChain = 0; return; }     // nobody left on the other side
+    autoTimer = setTimeout(() => { if(aoeFight()!==c || c.turn!==t.id || !autoOn(t)) return; nextTurn(c); touch(); renderBattle(); renderBattlePanel(); }, autoNow() ? 900 : AUTO_MS.beat);
   }, autoNow() ? 500 : AUTO_MS.beat);
 }
 function autoUndo(c){
@@ -14489,15 +14498,16 @@ function autoHtml(c, t){
     ${mine && !L ? `<button class="btn small" data-autorun>Run their turn</button>` : ""}${canUndo ? `<button class="btn small" data-autoundo>Undo their turn</button>` : ""}
     <div class="field" style="margin:4px 0 0"><label>Pace</label><select data-autopace><option value="">Step by step: a square at a time, each result in a box</option><option value="now" ${autoNow() ? "selected" : ""}>All at once</option></select></div>
     <label class="check" style="margin:4px 0 0"><input type="checkbox" data-autoall ${root.autoEnemies ? "checked" : ""}> Enemies run their own turns</label>
+    <label class="check" style="margin:4px 0 0"><input type="checkbox" data-autoallies ${root.autoAllies ? "checked" : ""}> Allies and companions run their own turns</label>
     <div class="field" style="margin:4px 0 0"><label>When their courage breaks (this encounter)</label><select data-autoflee><option value="">They try to get away (the players can stop them)</option><option value="off" ${fleeOff() ? "selected" : ""}>Nobody flees: they fight to the end</option></select></div></div>`;
 }
 document.addEventListener("click", async e => { const b = e.target.closest && e.target.closest("[data-autorun],[data-autoundo],[data-autostop]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
-  if(b.dataset.autostop!=null){ autoStop = true; root.autoEnemies = false; clearTimeout(autoTimer); if(autoSkip) autoSkip(); flash("Stopped: the rest of the turn is yours."); touch(); return; }
+  if(b.dataset.autostop!=null){ autoStop = true; root.autoEnemies = false; root.autoAllies = false; clearTimeout(autoTimer); if(autoSkip) autoSkip(); flash("Stopped: the rest of the turn is yours."); touch(); return; }
   if(b.dataset.autoundo!=null){ if(autoUndo(c)) flash("Their turn is taken back."); touch(); renderBattle(); renderBattlePanel(); return; }
   const t = combatants(c).find(x => x.id===c.turn); const r = t && await autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r && autoNow()) flash(r.said); });
 document.addEventListener("change", e => { const t = e.target; if(t.dataset && t.dataset.autoflee!=null){ const n = bnode(); if(n && n.site) n.site.noFlee = t.value==="off"; touch(); renderBattlePanel(); return; }
   if(t.dataset && t.dataset.autopace!=null){ if(t.value) root.autoPace = t.value; else delete root.autoPace; touch(); } });
-document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.autoall==null) return; root.autoEnemies = t.checked; touch();
+document.addEventListener("change", e => { const t = e.target; if(!t.dataset || (t.dataset.autoall==null && t.dataset.autoallies==null)) return; if(t.dataset.autoallies!=null) root.autoAllies = t.checked; else root.autoEnemies = t.checked; touch();
   const c = aoeFight(); if(c && t.checked) autoNext(c); else clearTimeout(autoTimer); renderBattlePanel(); });
 function bpoint(e){
   const r = $("#bsvg").getBoundingClientRect(), b = bview;
@@ -14684,7 +14694,7 @@ function askOpportunity(moverId, from){
     && dist(c.pos[t.id], from) <= reachSq(t) && dist(c.pos[t.id], to) > reachSq(t));
   if(!can.length) return;
   /* the autopilot's enemies take theirs without asking (one after another, step by step); the rest are asked */
-  const self = root.autoEnemies ? can.filter(t=>autoFor(t)) : [];
+  const self = can.filter(t=>autoFor(t) && autoOn(t));
   if(self.length) (async () => { for(const t of self){ if(reactedThisRound(c, t.id) || mover.fled || isDownT(mover)) continue; await autoOA(c, t, moverId); } touch(); })();
   { const ask = can.filter(t=>!self.includes(t)); can.length = 0; can.push(...ask); } if(!can.length) return;
   const pop = $("#bt-pop");

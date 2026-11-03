@@ -39,7 +39,7 @@ step("bandit 1 flees (the autopilot runs for the way out); half the side is gone
   c.round += 1; const said = await start(bnd(1).id, 0.2);
   return `${r.said.slice(0, 120)} | fled ${!!bnd(0).x.fled} | ${said}`;
 });
-step("undo takes bandit 2's check back", async () => { const c = fight(); undoAction(c); return `broken now: ${JSON.stringify(c.morale.broken)}`; });
+step("undo takes bandit 2's check back", async () => { const c = fight(); undoAction(c); return `broken now: ${Object.entries(c.morale.broken).map(([id, w]) => `${(all().find(x => x.id === id) || {}).label}: ${w}`).join("; ")}`; });
 step("Cowardly breaks without a roll; Fearless never checks; a room with Nobody flees doesn't check", async () => {
   const c = fight(); c.round += 1; bnd(2).x.tac = { role: "front", aim: "nearest", courage: 1 }; const a = await start(bnd(2).id, 0.9);
   delete c.morale.broken[bnd(2).id]; delete c.morale.rolled[bnd(2).id]; bnd(2).x.tac.courage = 5; c.round += 1; const b = await start(bnd(2).id, 0.1);

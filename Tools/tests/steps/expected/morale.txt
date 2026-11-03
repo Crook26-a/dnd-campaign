@@ -1,5 +1,5 @@
 1. the captain is the leader; he falls; bandit 1 checks its nerve (d20 5): it breaks, its tactics would flee: leader Bandit Captain | Bandit 1 sees Bandit Captain fell: morale, Wisdom save d20 5 = 5 vs DC 10: its nerve breaks. | tactics: its nerve broke (Bandit Captain fell)
 2. bandit 2 rolls 13: it holds; next turn, no second check for the same thing: Bandit 2 sees Bandit Captain fell: morale, Wisdom save d20 13 = 13 vs DC 10: it holds. | again: no check | would flee: ""
 3. bandit 1 flees (the autopilot runs for the way out); half the side is gone: bandit 2 checks again: Bandit 1 takes the Disengage action and makes for a way out. It goes 15 ft. Bandit 1 flees the fight. | fled true | Bandit 2 sees 2 of 4 of its side down or gone: morale, Wisdom save d20 5 = 5 vs DC 10: its nerve breaks.
-4. undo takes bandit 2's check back: broken now: {"fx8w9sh2":"Bandit Captain fell"}
+4. undo takes bandit 2's check back: broken now: Bandit 1: Bandit Captain fell
 5. Cowardly breaks without a roll; Fearless never checks; a room with Nobody flees doesn't check: Bandit 3 sees Bandit Captain fell and 2 of 4 of its side down or gone: Cowardly, its nerve breaks. | Fearless: no check | Nobody flees: no check | page errors 0
