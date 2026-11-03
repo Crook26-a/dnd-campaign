@@ -17,7 +17,8 @@ const hall = () => (doc.nodes || []).find(n => n.id === "hall");
 const fight = () => hall().site.combat;
 const all = () => combatants(fight());
 const who = nm => all().filter(t => t.label.startsWith(nm))[0];
-const strip = () => { const s = document.querySelector("#bt-strip .ts-blink"); return s ? s.textContent.replace(/\s+/g, " ").trim() : "no reminder"; };
+// the reminder: a pop-up under the turn strip (Joseph: "It should pop up under the bar")
+const strip = () => { const s = document.querySelector("#bt-blink"), b = document.querySelector("#bt-strip"); return s && !s.hidden ? `${s.textContent.replace(/\s+/g, " ").trim()} (under the strip: ${s.offsetTop >= b.offsetTop + b.offsetHeight})` : "no reminder"; };
 const away = () => !!((fight().stealth || {})[who("Wren").id] || {}).ethereal;
 const last = () => fight().log.slice(-1)[0].text;
 const withRoll = (v, f) => { const r = Math.random; Math.random = () => v; try { return f(); } finally { Math.random = r; } };
@@ -32,20 +33,19 @@ step("Wren casts Blink from the Action box: it's on her", async () => {
 });
 step("her turn ends: the reminder; Roll it with a 5 sends her to the Ethereal Plane", () => {
   nextTurn(fight()); renderBattle(); const ask = strip();
-  withRoll(0.7, () => document.querySelector('#bt-strip [data-ts="blink"][data-v="roll"]').click());
+  withRoll(0.7, () => document.querySelector('#bt-blink [data-ts="blink"][data-v="roll"]').click());
   return `${ask} || ${last()} | ethereal ${away()} | reminder now: ${strip()}`;
 });
 step("the start of her next turn brings her back; the table's 1-3 keeps her here", () => {
   turnTo(who("Wren").id); const back = `${last()} | ethereal ${away()}`;
-  nextTurn(fight()); renderBattle(); document.querySelector('#bt-strip [data-ts="blink"][data-v="stay"]').click();
+  nextTurn(fight()); renderBattle(); document.querySelector('#bt-blink [data-ts="blink"][data-v="stay"]').click();
   return `${back} || ${last()} | ethereal ${away()} | page errors ${__KIT.errors.length}`;
 });
-step("a turn given by hand (▶) still ends hers: the reminder, in the strip and the battle panel", () => {
+step("a turn given by hand (▶) still ends hers: the reminder pops up under the strip", () => {
   const c = fight(), W = who("Wren"); turnTo(W.id); delete c.blinkAsk;
   const other = all().find(t => t.id !== W.id && !t.fled); renderBattlePanel(); const b = document.querySelector(`[data-bturn="${other.id}"]`); const via = b ? "▶ in the panel" : "by hand";
   if (b) b.click(); else { turnEnds(c); c.turn = other.id; renderBattle(); }
-  renderBattlePanel(); const panel = document.querySelector("#pane-inspect .ts-blinkp");
-  const said = `strip: ${strip()} | panel: ${panel ? panel.textContent.replace(/\s+/g, " ").trim() : "none"}`;
-  if (panel) panel.querySelector('[data-v="stay"]').click();
-  return `given ${via} | ${said} | answered from the panel: ${last()}`;
+  renderBattlePanel(); const said = `pop-up: ${strip()}`, side = !!document.querySelector("#pane-inspect .ts-blink");
+  document.querySelector('#bt-blink [data-v="stay"]').click();
+  return `given ${via} | ${said} | in the side panel too: ${side} | answered: ${last()}; pop-up now: ${strip()}`;
 });

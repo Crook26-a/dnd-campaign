@@ -785,8 +785,6 @@
   #bsvg{flex:1;width:100%;min-height:0;touch-action:none;cursor:grab}
   #bt-strip{display:flex;gap:3px;align-items:center;padding:4px 8px;background:var(--paper-lit);border-bottom:1px solid var(--rule);overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
   #bt-strip[hidden]{display:none} #bt-strip .ts-r{font:10px var(--mono);color:var(--ink-soft);margin-right:2px} #bt-strip .ts-next{margin-right:4px;white-space:nowrap;flex:0 0 auto}
-  .ts-blinkp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px;padding:6px 8px;border:2px solid #b0402a;border-radius:6px;font-weight:600} .ts-blinkp .btn{margin:0}
-  #bt-strip .ts-blink{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-right:6px;padding:2px 6px;border:2px solid var(--accent,#b0402a);border-radius:6px;font-size:12px;font-weight:600} #bt-strip .ts-blink .btn{margin:0}
   .ts-c{display:inline-flex;align-items:center;flex:0 0 auto;border:1px solid var(--rule);background:var(--paper);font:11.5px var(--sans)}
   .ts-c .ts-i{font:10.5px var(--mono);color:var(--ink-faint);padding:2px 0 2px 5px} .ts-c .ts-n{border:0;background:none;padding:2px 4px;font:inherit;cursor:pointer}
   .ts-c.pc .ts-n{color:#2f6170} .ts-c.foe .ts-n{color:var(--lead)} .ts-c.npc .ts-n{color:var(--ink-soft)}
@@ -1044,6 +1042,7 @@
   .rused{font-family:var(--mono);font-size:9.5px;color:var(--r3);font-style:normal}
   #bt-pop{position:absolute;top:52px;left:50%;transform:translateX(-50%);z-index:5;max-width:520px;background:var(--paper-lit);border:1px solid var(--ink-soft);border-left:4px solid var(--r3);border-radius:3px;padding:10px 12px;box-shadow:0 6px 18px rgba(0,0,0,.18);font-family:var(--serif);font-size:13px}
   #bt-pop[hidden]{display:none}
+  #bt-blink{position:absolute;left:50%;transform:translateX(-50%);z-index:5;max-width:min(560px,calc(100% - 16px));display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:var(--paper-lit);border:1px solid var(--ink-soft);border-left:4px solid var(--r3);border-radius:3px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.18);font-family:var(--serif);font-weight:600} #bt-blink[hidden]{display:none} #bt-blink .btn{margin:0}
   #bt-pop p{margin:0 0 8px}
   #bt-pop .pcrow{flex-wrap:wrap}
 
@@ -8037,10 +8036,17 @@ function blinkTurnStart(c, id){
   const line = `${t.label} comes back from the Ethereal Plane (Blink), to a space they choose within 10 feet of where they left.`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("spell", line); flash(line);
 }
-// inner: just what goes inside (the battle panel puts it in a box of its own)
+// inner: just what goes inside (the pop-up under the strip, blinkPop, holds it)
 const blinkAskHtml = (c, inner) => { const t = c.blinkAsk && combatants(c).find(x => x.id===c.blinkAsk.id); if(!t) return "";
   const body = `${esc(t.label)}'s turn ended with Blink up, roll its d6: <button class="btn small" data-ts="blink" data-v="roll">Roll it</button><button class="btn small" data-ts="blink" data-v="go">Rolled 4–6</button><button class="btn small" data-ts="blink" data-v="stay">Rolled 1–3</button>`;
   return inner ? body : `<span class="ts-blink" title="Blink: at the end of each of their turns, a d6; 4 to 6, they vanish to the Ethereal Plane until the start of their next turn">${body}</span>`; };
+/* the reminder pops up under the turn strip, in the middle, as the opportunity attack one does (Joseph, 2026-11-03: "It
+   does pop up, but way to the side. It should pop up under the bar") */
+function blinkPop(c){
+  const p = $("#bt-blink"), s = $("#bt-strip"); if(!p) return; const h = c && blinkAskHtml(c, true);
+  if(!h){ p.hidden = true; p.innerHTML = ""; return; }
+  p.innerHTML = h; p.hidden = false; p.style.top = `${(s && !s.hidden ? s.offsetTop + s.offsetHeight : 40) + 8}px`;
+}
 /* cover (Joseph, 2026-11-02, with line of sight: "Ya, add that"): half cover is +2 to AC and Dexterity saves,
    three-quarters +5, total cover can't be targeted directly (the 2024 rules). Worked out on the grid the Dungeon Master's
    Guide's way: from the corner of the attacker's square that sees best (or from an area's point of origin), a line to
@@ -13248,7 +13254,7 @@ function resizeBmap(n, w, h){
   return b;
 }
 document.getElementById("field").insertAdjacentHTML("beforeend",
-  `<div id="battle" hidden><div class="bt-head"><span id="bt-title"></span><span class="bt-hint">Drag tokens · drag the floor to pan · wheel to zoom · 1 square = 5 ft</span><button class="btn" id="bt-back">Back to the map</button></div><div id="bt-strip" hidden></div><svg id="bsvg"></svg><div id="bt-pop" hidden></div><div id="bt-conc" hidden></div></div>`);
+  `<div id="battle" hidden><div class="bt-head"><span id="bt-title"></span><span class="bt-hint">Drag tokens · drag the floor to pan · wheel to zoom · 1 square = 5 ft</span><button class="btn" id="bt-back">Back to the map</button></div><div id="bt-strip" hidden></div><div id="bt-blink" class="ts-blink" hidden></div><svg id="bsvg"></svg><div id="bt-pop" hidden></div><div id="bt-conc" hidden></div></div>`);
 const bnode = () => battleOf ? (battleOf.doc.nodes||[]).find(x=>x.id===battleOf.nodeId) : null;
 /* every spell name, for typing one in */
 document.body.insertAdjacentHTML("beforeend", `<datalist id="dl-spells"></datalist>`); refreshSpellList();
@@ -16368,7 +16374,7 @@ function renderBattlePanelNow(){
   const hpText = t => t.kind==="foe" ? (t.x.max!=null?`${t.x.hp}/${t.x.max}`:"?") : `${numOr(t.p.hp)??"?"}/${numOr(t.p.hpMax)??"?"}`;
   const log = (c.log||[]).slice().reverse();
   const calm = calmOf(c);
-  let h = calmTop(n, st, c, all) + (c.blinkAsk ? `<div class="ts-blink ts-blinkp">${blinkAskHtml(c, true)}</div>` : "");     // Blink's d6, asked here too
+  let h = calmTop(n, st, c, all);
   const foes = all.filter(t=>t.kind==="foe" && t.side==="enemy" && !(t.x.max && t.x.hp<=0));
   /* the picked one: their card (the same as off the battle map) in the room's panel; what only the battle does with
      them (hidden, a reaction, fled, turned, waking, befriending, into the turn order, off the map) in the battle block */
@@ -19106,10 +19112,11 @@ const stripName = t => t.side==="party" && !t.npc ? String(t.label).split(" ")[0
 function renderTurnStrip(){
   const el = $("#bt-strip"); if(!el) return;
   const n = bnode(), c = n && n.site && n.site.combat;
-  if(!c || editingInside() || calmOf(c)){ el.hidden = true; return; }
+  if(!c || editingInside() || calmOf(c)){ el.hidden = true; const bp = $("#bt-blink"); if(bp) bp.hidden = true; return; }
   const all = combatants(c).filter(t=>!(t.kind==="foe" && t.x.dormant)), S = c.stealth || {};
   el.hidden = false;
-  el.innerHTML = blinkAskHtml(c) + `<span class="ts-r" title="Round ${c.round}">R${c.round}</span><button class="btn small ts-next" data-ts="next" title="Next turn">${c.turn ? "Next" : "Start"} ⏭</button>` + all.map(t=>{
+  blinkPop(c);                                              // Blink's d6, asked in a pop-up under the strip
+  el.innerHTML = `<span class="ts-r" title="Round ${c.round}">R${c.round}</span><button class="btn small ts-next" data-ts="next" title="Next turn">${c.turn ? "Next" : "Start"} ⏭</button>` + all.map(t=>{
     const foe = t.kind==="foe", down = foe && t.x.max!=null && t.x.hp<=0, pct = foe && t.x.max ? Math.max(0, Math.min(100, Math.round(100*t.x.hp/t.x.max))) : null;
     const cls = ["ts-c", t.side==="party" ? "pc" : foe ? "foe" : "npc", t.id===c.turn ? "now" : "", battleSel===t.id ? "sel" : "", down ? "down" : "", t.fled ? "fled" : "", S[t.id] ? "hid" : ""].filter(Boolean).join(" ");
     return `<span class="${cls}" title="${esc(t.label)}${S[t.id] ? " (hidden)" : ""}${down ? " (down)" : ""}${t.fled ? " (fled)" : ""}"><span class="ts-i">${t.init ?? "–"}</span><button class="ts-n" data-ts="pick" data-id="${t.id}" title="Open their card">${esc(stripName(t))}</button>${pct!=null ? `<span class="ts-hp"><span class="${pct < 50 ? "lo" : ""}" style="width:${pct}%"></span></span>` : ""}<button class="ts-go" data-ts="turn" data-id="${t.id}" title="Their turn now">▶</button></span>`;
