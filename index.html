@@ -13894,7 +13894,8 @@ async function autoWalk(c, t, s){
   let ft = 0; const n = bnode(), st = (n && n.site) || {}, N = footOf(t);
   for(const q of path){
     if(autoGone(c, t)) break;
-    const from = { ...c.pos[t.id] }; c.pos[t.id] = N > 1 ? { x:q.x, y:q.y, n:N } : { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5 * (q.cost - (q.prev ? q.prev.cost : 0)); gripDrag(c, t.id, from); hideSweep(c); zonesStep(c, t, q); zonesMoved(c); gripSweep(c);
+    const from = { ...c.pos[t.id] }; c.pos[t.id] = N > 1 ? { x:q.x, y:q.y, n:N } : { x:q.x, y:q.y }; moveTrack(c, t.id, from); ft += 5 * (q.cost - (q.prev ? q.prev.cost : 0)); gripDrag(c, t.id, from); hideSweep(c); zonesStep(c, t, q); zonesMoved(c); gripSweep(c); await readyCheck(c, t.id, from); if(autoGone(c, t)) break;
+    { const sh = shutBehind(c, t, from); if(sh && !autoNow()){ renderBattle(); await autoSay(sh); } }     // running, through a door: shut behind it (item 4)
     /* a shut door on the way: opened as it goes (Undo their turn shuts it again) */
     for(let i = 0; i < N; i++) for(let j = 0; j < N; j++){ const k = `${q.x + i},${q.y + j}`; if(!(st.doorsShut && st.doorsShut[k])) continue;
       delete st.doorsShut[k]; if(!c.autoOpened || c.autoOpened.at!==turnStamp(c)) c.autoOpened = { at:turnStamp(c), keys:[] }; c.autoOpened.keys.push(k);
@@ -14260,6 +14261,8 @@ function rollAdvOf(c, t, tg, info){
   for(const k of ["Poisoned","Prone","Restrained","Blinded"]) if(me.includes(k)) D.push(`${t.label} is ${k}`);
   if(me.includes("Frightened")){ const f = fearOf(c, t); if(!f || line(t, f)) D.push(`${t.label} is Frightened${f ? ` of ${f.label}` : ""}`); }
   if(me.includes("Grappled")){ const g = gripOf(c, t); if(g && g.by.id!==tg.id) D.push(`${t.label} is Grappled by ${g.by.label}`); }
+  if(dodging(c, tg)) D.push(`${tg.label} is Dodging`);
+  { const Hp = c && c.helped && c.helped[tg.id]; if(Hp && Hp.side===t.side && Hp.by!==t.id){ const hb = combatants(c).find(x => x.id===Hp.by); A.push(`helped by ${hb ? hb.label : "an ally"}`); act.helpUsed = tg.id; } }
   if(them.includes("Invisible") && !sees(t, tg)) D.push(`${tg.label} is Invisible`);
   else if(act.unseen) D.push(`${t.label} can't see ${tg.label}`);
   if(me.includes("Invisible") && !sees(tg, t)) A.push(`${t.label} is Invisible`);
@@ -14303,6 +14306,7 @@ async function autoTurnNow(c, t, n){
   const s = tacSuggest(c, t), T = tacOf(c, t), H = autoHeld(c, t);
   const lastSaid = () => ((c.log || []).length > log0 ? c.log[c.log.length - 1].text : "");
   if(c.rechargeNow && c.rechargeNow.id===t.id && c.rechargeNow.at===turnStamp(c)) await autoSay(c.rechargeNow.said);     // its recharge roll, first
+  if(c.zoneNow && c.zoneNow.id===t.id && c.zoneNow.at===turnStamp(c)) await autoSay(c.zoneNow.said);     // an area it started its turn in
   if(c.moraleNow && c.moraleNow.id===t.id && c.moraleNow.at===turnStamp(c)) await autoSay(c.moraleNow.said);     // its morale check
   const done = () => { const added = [...said.map((s, i) => ({ s, at:saidAt[i] ?? -1 })), ...(c.log || []).slice(log0).map((e, i) => ({ s:e.text, at:log0 + i + .5 }))].sort((a, b) => a.at - b.at).map(x => x.s);
     c.autoLast = { id:t.id, round:c.round, n:(c.log || []).length - log0, from:from0, len:(c.log || []).length, said:added.join(" ") || `${t.label} does nothing it can see to do.` };
@@ -14312,6 +14316,7 @@ async function autoTurnNow(c, t, n){
   if(H && (H.tier==="order" || H.tier==="turn")){ said.push(`${t.label} is under ${autoByName(c, H)}'s ${H.name}: ${autoByName(c, H)} says what it does this turn.`); await autoSay(said[0]); const r = done(); r.handed = true; return r; }
   /* its conditions (item 8): can't act; stands up; breaks free if it can't fight from where it is (then it moves, its action spent) */
   { const no = cantAct(t); if(no.length){ said.push(`${t.label} is ${andList(no)}: it can't act this turn.`); await autoSay(said[0]); return done(); } }
+  if(!cantAct(t).length) await autoPotion(c, t, said);     // a healing potion, badly hurt (a Bonus Action; item 4)
   { const fleeing = s.flee && !fleeOff();
     const canFightHere = () => { const O = others(), me = c.pos[t.id], bm = bmapOf(n), st = n.site || {}, opts = autoOptions(c, t);
       if(O.some(o => opts.some(a => a.kind!=="area" && ((a.melee && chebSq(c.pos[o.id], me) <= a.melee) || (a.range && chebSq(c.pos[o.id], me) <= a.range && losClear(bm, st, me.x, me.y, c.pos[o.id].x, c.pos[o.id].y)))))) return true;
@@ -14333,6 +14338,7 @@ async function autoTurnNow(c, t, n){
      the players can stop"): off, it fights on; on, it tries: it Dashes for the nearest way out on the map and leaves only
      if it gets there this turn. Grappled or Restrained (speed 0), boxed in, or dropped, it doesn't; moving away offers
      opportunity attacks. With no way out on the map it keeps its distance, and the DM marks it Fled if it gets away. */
+  c.fleeNow = s.flee && !fleeOff() ? t.id : null;     // running this turn: doors it goes through get shut behind it
   if(s.flee && !fleeOff()){ const O = others(), exits = (exitsOf(n) || []).filter(e => e.x!=null && e.y!=null);
     ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true;
     /* a way out within its ordinary Speed: the Disengage action instead of a Dash, so nobody gets a free swing as it goes */
@@ -14384,6 +14390,7 @@ async function autoTurnNow(c, t, n){
   const ranged = atk.filter(o => o.range && !o.melee), melee = atk.filter(o => o.melee), byMulti = L => L.slice().sort((a, b) => (b.kind==="multi") - (a.kind==="multi"));
   let pick = byMulti(keepsAway && ranged.length ? ranged : melee.length ? melee : ranged)[0] || byMulti(atk)[0];
   if(!pick){ const ft = await autoWalk(c, t, autoWhere(c, t, n, tg, "melee", 1)); if(ft) said.push(`${t.label} moves ${ft} ft toward ${tg.label}.`);
+    if(!autoGone(c, t) && await autoHelp(c, t, said)) return done();     // nothing to attack with: it Helps (item 4)
     said.push(`It has nothing the autopilot can use (spells and the like are yours).`); await autoSay(said.join(" ")); return done(); }
   let mode = pick.melee && !(keepsAway && pick.range) ? "melee" : "ranged", sq = mode==="melee" ? pick.melee : pick.range;
   /* can't get into reach this turn, but has a bow (or the like): it shoots instead of only walking */
@@ -14396,10 +14403,11 @@ async function autoTurnNow(c, t, n){
   const ft = await autoWalk(c, t, wardT ? guardWhere(c, t, n, wardT, tg, sq) : autoWhere(c, t, n, tg, mode, sq)); const clear = () => { const a = c.pos[t.id], b = c.pos[tg.id]; return losClear(bmapOf(n), n.site || {}, a.x, a.y, b.x, b.y); };     // a door or wall between: no shot from here
   if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) > sq ? ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}` : !clear() ? ` toward ${tg.label}, with no clear line to them yet` : ""}.`);
   if(autoGone(c, t)) return done();
-  if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq || !clear()){ await autoSay(said[said.length - 1] || `${t.label} can't get to anyone this turn.`); return done(); }
+  if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq || !clear()){ if(!autoGone(c, t)) await autoWait(c, t, n, pick, mode, sq);     /* nobody in reach: Ready, or Dodge (item 4) */ await autoSay(said[said.length - 1] || `${t.label} can't get to anyone this turn.`); return done(); }
   await autoSleep(AUTO_MS.beat);
   const inReach = () => { const me = c.pos[t.id]; return others().filter(o => chebSq(c.pos[o.id], me) <= sq); };
   const swings = pick.kind==="multi" ? 1 : Math.max(1, attacksPerAction(t));
+  if(mode==="melee" && swings===1 && pick.kind!=="multi"){ const SP = shovePlan(c, t, tg); if(SP){ await autoShove(c, t, tg, SP, said); await autoAfter(c, t, n, said); return done(); } }     // a Shove instead (item 4)
   act = freshAct(t.id); act.targets = [tg.id]; renderBattlePanel();
   if(!autoPick(pick.v)) return done();
   if(pick.swap && act.queue){ act.queue.items = act.queue.items.map(() => pick.swap); act.what = pick.swap;     // every attack of the Multiattack with the one it chose
@@ -14504,10 +14512,10 @@ function autoDefend(c, a, tg, tot, ac, info){
   return null;
 }
 /* an enemy's opportunity attack, taken by itself, step by step like a turn */
-async function autoOA(c, t, moverId){
+async function autoOA(c, t, moverId, said){
   const mover = combatants(c).find(x=>x.id===moverId); if(!mover) return;
   reactResume = { act, turn:c.turn }; startReaction(c, t.id, moverId); renderBattle(); renderBattlePanel();
-  await autoSay(`${t.label} takes an opportunity attack on ${mover.label}!`);
+  await autoSay(said || `${t.label} takes an opportunity attack on ${mover.label}!`);
   autoPress('[data-acroll="hit"]'); if(act.reaction && act.toHit && (act.outcome==="hit" || act.outcome==="crit")) autoPress('[data-acroll="dmg"]');
   if(act.reaction && act.toHit) autoPress("#ac-go"); else { act = reactResume.act; reactResume = null; }
   renderBattle(); renderBattlePanel(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : "");
@@ -14616,7 +14624,7 @@ function autoNext(c){
 function autoUndo(c){
   const L = c.autoLast; if(!L || c.turn!==L.id || (c.log || []).length!==L.len) return false;
   for(let i = 0; i < L.n; i++) undoAction(c);
-  if(c.autoOpened && c.autoOpened.at===turnStamp(c)){ const st = (bnode() || {}).site || {}; st.doorsShut = st.doorsShut || {}; for(const k of c.autoOpened.keys) st.doorsShut[k] = true; c.autoOpened = null; }     // the doors it opened, shut again
+  if(c.autoOpened && c.autoOpened.at===turnStamp(c)){ const st = (bnode() || {}).site || {}; st.doorsShut = st.doorsShut || {}; for(const k of c.autoOpened.keys) st.doorsShut[k] = true; for(const k of c.autoOpened.shut || []) delete st.doorsShut[k]; c.autoOpened = null; }     // the doors it opened, shut again
   c.pos[L.id] = { ...L.from }; if(c.moved) delete c.moved[L.id]; if(c.acted) delete c.acted[L.id]; c.autoLast = null; act = freshAct(L.id); return true;
 }
 /* in the tactics box, on their turn */
@@ -14811,7 +14819,7 @@ const bend = e=>{
     if(d.moved && !d.fixed){ { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ stopDance(cc, d.tok); moveTrack(cc, d.tok, d.from); } }     /* their own move, counted first, so the redraw shows it (Joseph, 2026-10-30: it lagged a move behind) */
       touch(); renderBattlePanel(); if(exitDrop(d.tok, e.shiftKey)) return; { const cc = bnode() && bnode().site && bnode().site.combat; if(cc){ const mover = combatants(cc).find(x => x.id===d.tok), bn = bnode();     // a drag through Spike Growth: a hit a square; then who's newly in an area
         if(mover && bn && cc.pos[d.tok]){ const way = moveGrid(cc, mover, bn, d.from, 60).seen.get(`${cc.pos[d.tok].x},${cc.pos[d.tok].y}`); for(let q = way; q && q.prev; q = q.prev) zonesStep(cc, mover, q); }
-        gripDrag(cc, d.tok, d.from); const z = zonesMoved(cc).length + gripSweep(cc).length; if(hideSweep(cc).length || z) renderBattle(); } } askOpportunity(d.tok, d.from); }
+        gripDrag(cc, d.tok, d.from); readyCheck(cc, d.tok, d.from); const z = zonesMoved(cc).length + gripSweep(cc).length; if(hideSweep(cc).length || z) renderBattle(); } } askOpportunity(d.tok, d.from); }
     else { battleSel = battleSel===d.tok ? null : d.tok; renderBattle(); renderPane(true); }
   }
 };
@@ -14929,7 +14937,7 @@ function saveRow(c, t, info, all){
   const tg = act.targets.map(id=>all.find(x=>x.id===id)).filter(Boolean), sv = act.saves || {};
   return `<div class="saverow" style="margin:2px 0 6px">
     <p class="actspell" style="margin:0 0 4px"><b>${S.abil ? esc(S.abil) + " save" : "Saving throw"}, DC <input id="ac-savedc" class="mono" type="number" value="${esc(String(act.saveDC ?? S.dc ?? ""))}" placeholder="?" style="width:46px"></b>${S.half ? " · half damage on a made save" : " · no damage on a made save"}</p>
-    ${tg.map(x=>{ const k = String(S.abil).slice(0, 3).toLowerCase(), b = saveBonusOf(x, S.abil) + fxNum(hOfT(x), "save", k, false), dw = fxDiceWords(hOfT(x), "save"), adv = fxAdv(hOfT(x), k) || fightAdv(c, t, x, info), r = sv[x.id];
+    ${tg.map(x=>{ const k = String(S.abil).slice(0, 3).toLowerCase(), b = saveBonusOf(x, S.abil) + fxNum(hOfT(x), "save", k, false), dw = fxDiceWords(hOfT(x), "save"), adv = fxAdv(hOfT(x), k) || fightAdv(c, t, x, info) || (k==="dex" && dodging(c, x)), r = sv[x.id];
       return `<div class="pcrow" style="align-items:center;margin:0 0 3px"><span style="flex:1;min-width:0">${esc(x.label)} <small class="mono">${S.abil ? S.abil.slice(0, 3) : "save"} ${signed(b)}${dw ? ` ${esc(dw)}` : ""}${adv ? ` · Advantage${fightAdv(c, t, x, info) && !fxAdv(hOfT(x), k) ? " (you're fighting it)" : ""}` : ""}</small></span>
         <input class="mono" type="number" data-svtot="${x.id}" value="${esc(r && r.typed ? String(r.tot) : "")}" placeholder="total" style="width:58px" title="Rolled at the table? Their total">
         <button class="btn small" data-svroll="${x.id}">Roll</button>
@@ -15771,6 +15779,7 @@ function logAction(n, c){
   if(actor.kind==="foe" && /^fa:/.test(act.what || "") && isAttackAct(info)) actor.x.wield = act.what.slice(3).replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();     // the weapon in its hand, for Command's Drop
   const stealthBefore = JSON.stringify(c.stealth || {}), outed = isAttackAct(info) && act.toHit && c.stealth && c.stealth[actor.id] && c.stealth[actor.id].hide!=null;
   if(outed) delete c.stealth[actor.id].hide;
+  if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
   c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore }); gripSweep(c);
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   /* what the spell does to them while it lasts (Bless, Pass without Trace, Shield of Faith…): on its targets (and the
@@ -15857,7 +15866,7 @@ function holdsTurnStart(c, id){
 }
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
-  if(e.item) itemUndo(c, e.item); if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.effects!=null) c.effects = JSON.parse(e.effects); if(e.grips!=null) c.grips = JSON.parse(e.grips); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
+  if(e.item) itemUndo(c, e.item); if(e.shoved && c.pos) c.pos[e.shoved.who] = { ...e.shoved.from }; if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.effects!=null) c.effects = JSON.parse(e.effects); if(e.grips!=null) c.grips = JSON.parse(e.grips); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
   if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
     c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
     const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));
@@ -16007,7 +16016,81 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
   let line = "";
   if(b.dataset.gripesc){ const t = all.find(x => x.id===b.dataset.gripesc); if(t){ line = gripEscape(c, t); const A = (c.acted = c.acted || {})[t.id] = (c.acted[t.id] || { n:0, more:0 }); A.n++; } }
   else { const before = JSON.stringify(c.grips || {}), snap = snapOf(c, [b.dataset.griplet]); line = gripEnd(c, b.dataset.griplet, "let go"); if(line) (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, grips:before }); }
-  if(line){ flash(line); gameLog("fight", line); } saveParty(); touch(); renderBattle(); renderBattlePanel(); });/* lingering areas (Joseph's arena list, item 2): a concentration spell whose area stays (Spirit Guardians' Emanation
+  if(line){ flash(line); gameLog("fight", line); } saveParty(); touch(); renderBattle(); renderBattlePanel(); });/* more than attacking (Joseph's arena list, item 4), on the autopilot's turn:
+   - a healing potion (in what it carries) drunk as a Bonus Action when it's below a third of its hit points;
+   - nobody it can reach this turn: a melee one not badly hurt Readies its attack for the first enemy who comes within its
+     reach (its Reaction, before its next turn: readyCheck after every move); otherwise the Dodge action (until its next
+     turn, attacks on it have Disadvantage and its Dexterity saves Advantage; not while Incapacitated or at Speed 0);
+   - a Shove in place of a lone attack: into a harmful area right behind them, else Prone when two or more of its side are
+     beside them too (a Strength or Dexterity save, their pick, against 8 + its Strength + proficiency; not on anyone more
+     than one size bigger);
+   - nothing to attack with but an enemy beside it: Help (the next attack on that enemy from its side has Advantage);
+   - fleeing through a door it didn't open this turn: it shuts it behind itself.
+   c.readied[id] = { v, sq }, c.dodging[id], c.helped[enemy] = { by, side }: cleared as its next turn starts. */
+const dodging = (c, t) => !!(c && c.dodging && c.dodging[t.id]) && !cantAct(t).length && speedOf(t) > 0;
+function readyTurnStart(c, id){ if(c.readied) delete c.readied[id]; if(c.dodging) delete c.dodging[id]; if(c.helped) for(const k of Object.keys(c.helped)) if(c.helped[k].by===id) delete c.helped[k]; }
+const POTIONS = /^Potion of (?:Greater |Superior |Supreme )?Healing$/i;
+async function autoPotion(c, t, said){
+  if(t.kind!=="foe" || bonusUsed(c, t.id) || !(t.x.max > 0) || t.x.hp > t.x.max / 3 || t.x.hp <= 0) return false;
+  const inv = foeBelongings(t.x).inv || [], e = inv.find(x => POTIONS.test(itemName(x.id))); if(!e) return false;
+  const it = libLootById(e.id) || {}, m = /regains? (\d+d\d+(?:\s*\+\s*\d+)?) Hit Points/i.exec(String(it.desc || "")); if(!m) return false;
+  const r = rollTerms(diceTerms(m[1].replace(/\s+/g, ""))), snap = snapOf(c, [t.id]), got = healAny(t, r.total);
+  if((e.qty || 1) > 1) e.qty -= 1; else inv.splice(inv.indexOf(e), 1);
+  (c.bonused = c.bonused || {})[t.id] = turnStamp(c);
+  const line = `${t.label} drinks a ${itemName(e.id)} (a Bonus Action): ${m[1]}, ${r.total}, back up ${got} to ${t.x.hp}/${t.x.max}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap }); gameLog("item", line); renderBattle(); await autoSay(line); return true;
+}
+async function autoWait(c, t, n, pick, mode, sq){
+  const hurt = t.kind==="foe" && t.x.max > 0 && t.x.hp < t.x.max / 2, A = (c.acted = c.acted || {})[t.id] = (c.acted[t.id] || { n:0, more:0 }); if(A.n) return;
+  A.n++; let line;
+  if(mode==="melee" && !hurt && pick){ (c.readied = c.readied || {})[t.id] = { v:pick.v, sq }; line = `${t.label} readies its ${String(pick.first || pick.swap || pick.v).replace(/^\w+:/, "").replace(/\s*\(.*\)\s*$/, "")} for the first of you to come within reach (one attack, its Reaction).`; }
+  else { (c.dodging = c.dodging || {})[t.id] = turnStamp(c); line = `${t.label} takes the Dodge action: attacks on it have Disadvantage until its next turn.`; }
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("fight", line); await autoSay(line);
+}
+/* after someone moves: a readied attack whose trigger came (they came within its reach from outside it) */
+async function readyCheck(c, moverId, from){
+  if(!c || !c.readied || !c.pos) return; const all = combatants(c), mover = all.find(x => x.id===moverId), to = c.pos[moverId]; if(!mover || !to || !from) return;
+  for(const [id, R] of Object.entries(c.readied)){ const t = all.find(x => x.id===id), p = t && c.pos[id];
+    if(!t || !p || t.side===mover.side || mover.side==="neutral" || isDownT(t) || cantAct(t).length || reactedThisRound(c, id)) continue;
+    if(chebSq(p, from) > R.sq && chebSq(p, to) <= R.sq){ delete c.readied[id]; await autoOA(c, t, moverId, `${t.label}'s readied attack goes off as ${mover.label} comes within reach!`); } }
+}
+function shovePlan(c, t, tg){
+  if(!tg || sizeRank(tg) > sizeRank(t) + 1 || condsOfT(tg).includes("Prone") && false) return null; const P = c.pos, a = P[t.id], b = P[tg.id]; if(!a || !b || chebSq(a, b) > 1) return null;
+  const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y), q = { x:b.x + dx, y:b.y + dy }, n = bnode(), bm = n && bmapOf(n), st = (n && n.site) || {};
+  const free = q.x >= 0 && q.y >= 0 && q.x < BW && q.y < BH && !(bm && blocksMove(bm, st, q.x, q.y, false)) && !combatants(c).some(o => o.id!==tg.id && c.pos[o.id] && chebSq(c.pos[o.id], q)===0);
+  if(free && zoneSquaresFor(c, tg, fliesT(tg)).harm.has(`${q.x},${q.y}`)) return { kind:"push", q };
+  const mates = combatants(c).filter(o => o.id!==t.id && o.side===t.side && !isDownT(o) && !o.fled && P[o.id] && chebSq(P[o.id], b) <= 1).length;
+  if(mates >= 2 && !condsOfT(tg).includes("Prone")) return { kind:"prone" };
+  return null;
+}
+async function autoShove(c, t, tg, plan, said){
+  const m = t.kind==="foe" ? foeById(t.x.foe) : null, str = m ? Math.floor(((+((m.ab || [])[0]) || 10) - 10) / 2) : abBonus(pcState(t.p), "str"), pb = m ? profOf({ cr:m.cr }) : profOf(pcState(t.p)), dc = 8 + str + pb;
+  const sb = saveBonusOf(tg, "Strength"), db = saveBonusOf(tg, "Dexterity"), ab = db > sb ? "Dexterity" : "Strength", b = Math.max(sb, db), d = 1 + Math.floor(Math.random() * 20), tot = d + b, made = tot >= dc;
+  await autoSay(`${t.label} tries to shove ${tg.label}${plan.kind==="push" ? " back" : " to the ground"}!`);
+  const snap = snapOf(c, [tg.id]), from = { ...c.pos[tg.id] };
+  let what = "";
+  if(!made){ if(plan.kind==="push"){ c.pos[tg.id] = { ...c.pos[tg.id], x:plan.q.x, y:plan.q.y }; what = "pushed back 5 ft"; } else { const cs = condsOfT(tg); if(!cs.includes("Prone")) cs.push("Prone"); what = "knocked Prone"; } }
+  const A = (c.acted = c.acted || {})[t.id] = (c.acted[t.id] || { n:0, more:0 }); A.n++;
+  const line = `${t.label} shoves ${tg.label}: ${ab} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made: it stays put" : what}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, shoved:{ who:tg.id, from } }); gameLog("fight", line); renderBattle(); await autoSay(line);
+  if(!made && plan.kind==="push"){ zonesMoved(c); gripSweep(c); }
+}
+async function autoHelp(c, t, said){
+  const me = c.pos[t.id], O = combatants(c).filter(o => o.side!==t.side && o.side!=="neutral" && !isDownT(o) && !o.fled && c.pos[o.id] && chebSq(c.pos[o.id], me) <= 1);
+  if(!O.length) return false; const tg = O[0]; (c.helped = c.helped || {})[tg.id] = { by:t.id, side:t.side };
+  const A = (c.acted = c.acted || {})[t.id] = (c.acted[t.id] || { n:0, more:0 }); A.n++;
+  const line = `${t.label} takes the Help action: the next attack on ${tg.label} from its side has Advantage.`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("fight", line); await autoSay(line); return true;
+}
+/* fleeing through a door (c.fleeNow: the one running this turn): it shuts it as it steps off, if it hasn't used its free
+   interaction on a door this turn and the ones after it are on the other side; Undo their turn opens it again */
+function shutBehind(c, t, door){
+  const n = bnode(), st = n && n.site, bm = n && bmapOf(n), p = c.pos[t.id], k = `${door.x},${door.y}`;
+  if(!st || !bm || !p || c.fleeNow!==t.id || (c.autoOpened && c.autoOpened.at===turnStamp(c)) || !(bm.rows && bm.rows[door.y] && bm.rows[door.y][door.x]==="D") || (st.doorsShut || {})[k]) return "";
+  if(combatants(c).some(o => c.pos[o.id] && c.pos[o.id].x===door.x && c.pos[o.id].y===door.y)) return "";
+  const foes = combatants(c).filter(o => o.side!==t.side && o.side!=="neutral" && !isDownT(o) && c.pos[o.id]); if(!foes.some(o => chebSq(c.pos[o.id], door) < chebSq(c.pos[o.id], p))) return "";
+  (st.doorsShut = st.doorsShut || {})[k] = true; c.autoOpened = { at:turnStamp(c), keys:[], shut:[k] };
+  const line = `${t.label} shuts the door behind it.`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("move", line); return line;
+}/* lingering areas (Joseph's arena list, item 2): a concentration spell whose area stays (Spirit Guardians' Emanation
    around the caster, Moonbeam's Cylinder, Cloudkill's Sphere, Web's Cube, Spike Growth's Sphere) does what its words say
    while it's up (zoneOf reads them):
    - "enters ... / ends its turn there / starts its turn there": that creature saves (the caster's spell save DC) or takes
@@ -16352,7 +16435,7 @@ function renderBattlePanelNow(){
   const svOutcome = () => { const R = act.targets.map(id=>(act.saves||{})[id]).filter(Boolean); if(R.length) act.outcome = R.every(r=>r.made) ? "save" : "fail"; };
   el.querySelectorAll("[data-svroll]").forEach(b=>b.onclick = ()=>{ keep(); const X = svCtx(); if(!X) return; if(!X.dc){ flash("Type in the DC first."); return; }
     for(const id of b.dataset.svroll==="all" ? act.targets : [b.dataset.svroll]){ const x = all.find(y=>y.id===id); if(!x) continue;
-      const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), adv = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)), r1 = 1 + Math.floor(Math.random()*20), r2 = adv ? 1 + Math.floor(Math.random()*20) : 0, d = Math.max(r1, r2);
+      const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), adv = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)) || (k==="dex" && dodging(c, x)), r1 = 1 + Math.floor(Math.random()*20), r2 = adv ? 1 + Math.floor(Math.random()*20) : 0, d = Math.max(r1, r2);
       const cvr = k==="dex" ? coverOf(c, act.actor, x.id, aoeOrigin()) : { level:0, ac:0, word:"" }, cb = cvr.level===3 ? 0 : cvr.ac;     // cover: +2 or +5 to a Dexterity save
       const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false) + cb, F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
       const how = `${adv ? `d20 ${r1} and ${r2}, Advantage: ${d}` : `d20 ${d}`}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
@@ -18936,7 +19019,7 @@ function nextTurn(c){
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
   const legPrev = c.turn;
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); effectsTurnStart(c, c.turn); zonesTurn(c, c.turn, "start"); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); readyTurnStart(c, c.turn); effectsTurnStart(c, c.turn); zonesTurn(c, c.turn, "start"); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
   legAfterTurn(c, legPrev);                      // a legendary creature's chance, after someone else's turn
   autoNext(c);                                   // an enemy's turn runs by itself, if that's set
   return true;
