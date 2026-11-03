@@ -15627,6 +15627,11 @@ function logAction(n, c){
   const swingLeft = (swing || part) && ((c.acted||{})[actor.id]||{}).swings > 0;     // the second swing of Extra Attack, the next attack of a Multiattack: the same action
   const isAction = isAction0 && !swingLeft;
   if(isAction && actionsLeft(c, actor.id) <= 0 && !confirm(`${actor.label} has already used ${actionUsed(c, actor.id) && (c.acted[actor.id].n > 1) ? "their actions" : "their action"} this turn. Log this one anyway?`)) return;
+  /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
+  { const CS = counterCheck(c, actor, info, part); if(CS && !CS.made){ const acted0 = JSON.stringify(c.acted || {}), bon0 = JSON.stringify(c.bonused || {});
+      if(isAction){ c.acted = c.acted || {}; const a = c.acted[actor.id] = c.acted[actor.id] || { n:0, more:0 }; a.n++; } if(isBonus){ (c.bonused = c.bonused || {})[actor.id] = c.round; }
+      const e = c.log[c.log.length - 1]; e.acted = acted0; e.bonused = bon0; flash(CS.line); act = freshAct(actor.id); touch(); renderBattle(); renderBattlePanel(); return; }
+    if(CS) flash(CS.line); }
   const dmg = act.outcome==="miss" ? 0 : Math.max(0, Math.round(+act.dmg||0)), took = Math.max(0, Math.round(+act.took||0));
   const heal = info.reduce ? reduceCap(info.reduce, Math.max(0, Math.round(+act.heal||0)), took) : Math.max(0, Math.round(+act.heal||0));
   /* spend what the action costs */
@@ -16090,6 +16095,39 @@ function shutBehind(c, t, door){
   const foes = combatants(c).filter(o => o.side!==t.side && o.side!=="neutral" && !isDownT(o) && c.pos[o.id]); if(!foes.some(o => chebSq(c.pos[o.id], door) < chebSq(c.pos[o.id], p))) return "";
   (st.doorsShut = st.doorsShut || {})[k] = true; c.autoOpened = { at:turnStamp(c), keys:[], shut:[k] };
   const line = `${t.label} shuts the door behind it.`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("move", line); return line;
+}/* the smaller ones (Joseph's arena list, item 5):
+   - an enemy's Counterspell: with "Enemies run their own turns" on, a spellcaster whose reaction casts Counterspell
+     (the Mage's, Archmage's or Lich's Protective Magic, uses left, its Reaction free) that can see someone of the other
+     side casting a spell of 1st level or more within 60 feet counters it (its last use is kept for Shield unless the
+     spell is 2nd level or more): the caster makes a Constitution save against its spell save DC; failed, the spell fails,
+     the action (or Bonus Action) is spent but the slot isn't (the 2024 rules); made, it goes ahead;
+   - Sneak Attack ticks itself on a hit when it applies: once a turn, a Finesse or ranged weapon (the SRD weapon its line
+     names), and Advantage on the roll, or an ally of theirs within 5 feet of the target (not Incapacitated) and no
+     Disadvantage (the 2024 rules); the roll says why;
+   - surprise: "Surprised" by Roll initiative: the enemies (their rolls, Disadvantage) or the party (a reminder to roll
+     theirs with Disadvantage; their companions' are rolled so). */
+function counterCheck(c, caster, info, part){
+  const s = info.spell; if(!s || !(s.lv > 0) || part || info.free || !c.pos || !c.pos[caster.id]) return null; const n = bnode(); if(!n) return null;
+  for(const t of combatants(c)){ if(t.kind!=="foe" || t.side===caster.side || t.side==="neutral" || !autoFor(t) || !autoOn(t) || reactedThisRound(c, t.id) || cantAct(t).length || !c.pos[t.id]) continue;
+    const m = foeById(t.x.foe), R = foeResources(m), rea = pairs(m && m.rea).find(([, tx]) => /\bCounterspell\b/.test(String(tx || ""))); if(!rea) continue;
+    const base = String(rea[0]).replace(/\s*\(.*\)\s*$/, ""), lim = R.find(r => r.key===base), left = lim && lim.kind==="uses" ? lim.max - ((t.x.used || {})[base] || 0) : 9;
+    if(left <= 0 || (left===1 && s.lv < 2) || chebSq(c.pos[t.id], c.pos[caster.id]) * 5 > 60 || autoSense(c, n, t, caster)!=="seen") continue;
+    const dc = spellDcOfT(t) || 13, b = saveBonusOf(caster, "Constitution"), d = 1 + Math.floor(Math.random() * 20), tot = d + b, made = tot >= dc;
+    const snap = snapOf(c, [t.id]), reactedBefore = JSON.stringify(c.reacted || {});
+    (c.reacted = c.reacted || {})[t.id] = c.round; if(lim && lim.kind==="uses") (t.x.used = t.x.used || {})[base] = ((t.x.used || {})[base] || 0) + 1;
+    const line = `${t.label} casts Counterspell (${base}) at ${caster.label}'s ${s.name}: ${caster.label}'s Constitution save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? `made: the ${s.name} goes ahead` : `failed: the ${s.name} fails; the action is spent, the spell slot isn't`}.`;
+    (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, reacted:reactedBefore }); gameLog("spell", line);
+    return { made, line };
+  }
+  return null;
+}
+document.addEventListener("change", e => { const s = e.target; if(!s.dataset || s.dataset.surprise==null) return; const n = bnode(), c = n && n.site && n.site.combat; if(!c) return; if(s.value) c.surprise = s.value; else delete c.surprise; touch(); });
+function sneakWhy(c, t, tg, info, adv){
+  if(t.kind==="foe" || !t.p || !tg || adv==="dis") return ""; const nm = String(info.name || "").toLowerCase(), w = SRD_LOOT.filter(x => x.kind==="weapon" && nm.includes(String(x.name).toLowerCase())).sort((a, b) => b.name.length - a.name.length)[0];
+  if(!w || !/\bFinesse\b|\bAmmunition\b|\bThrown\b/i.test(String(w.desc || "")) && !/\bRange\b/.test(String(w.desc || ""))) return "";
+  if(adv==="adv") return "Advantage";
+  const P = c.pos || {}, near = P[tg.id] && combatants(c).find(o => o.id!==t.id && o.side===t.side && !isDownT(o) && !o.fled && !cantAct(o).length && P[o.id] && chebSq(P[o.id], P[tg.id]) <= 1);
+  return near ? `${near.label} beside ${tg.label}` : "";
 }/* lingering areas (Joseph's arena list, item 2): a concentration spell whose area stays (Spirit Guardians' Emanation
    around the caster, Moonbeam's Cylinder, Cloudkill's Sphere, Web's Cube, Spike Growth's Sphere) does what its words say
    while it's up (zoneOf reads them):
@@ -16323,7 +16361,7 @@ function renderBattlePanelNow(){
     ${heldBlock(st, n)}
     ${c.wakeFight ? `<p class="empty-note" style="font-size:11px;margin:2px 0 6px">Started by a waking: it ends by itself, calm again, once whatever woke is down.</p>` : ""}
     ${wakeNextBtn(c)}
-    <div class="pcrow bt-turnctl"><button class="btn" style="flex:1" data-ba="init">Roll initiative</button><button class="btn" style="flex:1" data-ba="next">Next turn</button></div>
+    <div class="pcrow bt-turnctl"><select data-surprise style="flex:1;min-width:0" title="The 2024 rules: a surprised combatant rolls initiative with Disadvantage"><option value="">Nobody surprised</option><option value="enemy" ${c.surprise==="enemy" ? "selected" : ""}>The enemies are surprised</option><option value="party" ${c.surprise==="party" ? "selected" : ""}>The party is surprised</option></select><button class="btn" style="flex:1" data-ba="init">Roll initiative</button><button class="btn" style="flex:1" data-ba="next">Next turn</button></div>
     <div class="pcrow"><button class="btn" style="flex:1" data-ba="layout">${c.layout==="lineup"?"Show the battle map":"Show a simple lineup"}</button></div>
     <p class="grouplab">Turn order${Array.isArray(c.order)&&c.order.length?` <i>· arranged by hand</i>`:""}</p>
     ${all.map((t,k)=>`<div class="initrow${c.turn===t.id?" cur":""}${battleSel===t.id?" sel":""}${t.side==="party"?" pc":""}${t.fled?" fled":""}">
@@ -16503,6 +16541,8 @@ function renderBattlePanelNow(){
       const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
       const rx = out==="hit" ? autoDefend(c, t, tg, tot, ac, info) : null, sure = !rx && out==="hit" && CA && CA.crit, res = rx ? "miss" : sure ? "crit" : out;     // its Parry or Shield, if the autopilot runs it; Paralyzed or Unconscious within 5 ft: a crit
       act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
+      { const SA = ["hit","crit"].includes(res) && attackAddons(t).find(a => /sneak attack/i.test(a.name)), why = SA && !(act.addons || []).includes(SA.key) && !addonUsed(c, t.id, SA.key) ? sneakWhy(c, t, tg, info, mine ? act.adv : adv) : "";     // Sneak Attack, when it applies (item 5)
+        if(why){ (act.addons = act.addons || []).push(SA.key); act.toHit.said += ` · Sneak Attack (${why})`; } }
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
       D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
@@ -16531,9 +16571,9 @@ function renderBattlePanelNow(){
     if(a==="layout"){ c.layout = c.layout==="lineup" ? "map" : "lineup"; bview = { x:-BS, y:-BS, w:(BW+2)*BS, h:(BH+2)*BS }; }
     if(a==="init"){
       const said = [];
-      for(const t of all) if((t.kind==="foe" || t.npc) && !t.shared){ const d = 1 + Math.floor(Math.random()*20), b = t.kind==="foe" ? initBonus(foeById(t.x.foe)) : numOr(String(t.p.init||"").replace("+",""), 0);
-        c.init[t.id] = d + b; said.push(`${t.label} ${d20Words(d, b)}`); }
-      c.turn = null; flash(`Enemies rolled: ${said.join(" · ")}. Type in the players' initiative.`);
+      for(const t of all) if((t.kind==="foe" || t.npc) && !t.shared){ const sur = (c.surprise==="enemy" && t.side!=="party") || (c.surprise==="party" && t.side==="party"), r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), d = sur ? Math.min(r1, r2) : r1, b = t.kind==="foe" ? initBonus(foeById(t.x.foe)) : numOr(String(t.p.init||"").replace("+",""), 0);
+        c.init[t.id] = d + b; said.push(`${t.label} ${sur ? `d20 ${r1} and ${r2}, surprised: ` : ""}${d20Words(d, b)}`); }
+      c.turn = null; flash(`Enemies rolled: ${said.join(" · ")}. Type in the players' initiative${c.surprise==="party" ? " (they're surprised: Disadvantage, the lower of two d20s)" : ""}.`);
       if(said.length) gameLog("fight", `Initiative: ${said.join("; ")}`);
     }
     if(a==="next"){ if(!nextTurn(c)) return; }
