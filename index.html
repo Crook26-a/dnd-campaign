@@ -14272,7 +14272,8 @@ async function autoTurnNow(c, t, n){
   const swings = pick.kind==="multi" ? 1 : Math.max(1, attacksPerAction(t));
   act = freshAct(t.id); act.targets = [tg.id]; renderBattlePanel();
   if(!autoPick(pick.v)) return done();
-  if(pick.swap && act.queue){ act.queue.items = act.queue.items.map(() => pick.swap); act.what = pick.swap; }     // every attack of the Multiattack with the one it chose
+  if(pick.swap && act.queue){ act.queue.items = act.queue.items.map(() => pick.swap); act.what = pick.swap;     // every attack of the Multiattack with the one it chose
+    const si = actInfo(c, t); act.dtype = si && si.hint && DAMAGE_TYPES.includes(si.hint.dtype) ? si.hint.dtype : ""; act.cond = (si && si.cond) || ""; renderBattlePanel(); }     // its own damage type (the Priest's Radiant Flame is radiant, not its Mace's bludgeoning)
   for(let i = 0, guard = 0; guard < 12; guard++){
     if(act.actor!==t.id || !act.what || autoGone(c, t)) break;
     act.targets = act.targets.filter(id => { const x = all().find(y => y.id===id); return x && (!isDownT(x) || (fallenT && x.id===fallenT.id && !deadT(x))) && !x.fled; });
