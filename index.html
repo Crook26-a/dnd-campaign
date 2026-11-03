@@ -8238,7 +8238,65 @@ const TAC_AREAS = [["","Spares its own side: no area that catches them"],["any",
    nobody standing is in reach; some evil people are rolled to, and a few to do it first. A hit within 5 ft is a crit:
    two death save failures. */
 const TAC_FALLEN = [["","Leaves them: goes for whoever's standing"],["last","Finishes them off when nobody standing is in reach"],["first","Finishes them off first"]];
-/* death (Joseph, 2026-11-03: "3 death failures doesn't kill the PC"): three failed death saves and they're dead: no turn,
+/* dropping and picking up (Joseph, 2026-11-03: "add the ability to drop items, that way command can have [them] drop
+   them"; "this would necessarily mean that you can pick up items"): on someone's turn the Action box lists what they're
+   holding (a creature: the weapons it fights with; a character: what's in their inventory, weapons first) with Drop, and
+   what lies on the ground beside them (in their square or next to it, not inside a chest) with Pick up. A dropped item
+   lies on the map where they stand (placeItem); a creature can't attack with a weapon it dropped (x.dropped) until it
+   picks it up, and the autopilot does that when it can get to it this turn (a free interaction with an object), else it
+   fights with what it has. Command's Drop drops the weapon in its hand (the one it last attacked with, else its first).
+   Each is a line in the fight's log, and Undo puts it back. */
+const itemName = id => (libLootById(id) || {}).name || "something";
+const ownerOf = t => t.kind==="foe" ? foeBelongings(t.x) : pcState(t.p);
+function heldOf(t){
+  if(!t || (t.kind!=="foe" && !t.p)) return [];
+  if(t.kind==="foe"){ const atk = foeEntries(foeById(t.x.foe)).map(([nm]) => String(nm).replace(/^(Bonus action|Reaction|Legendary): /i, "").replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase());
+    const L = (foeBelongings(t.x).inv || []).filter(e => e.id && atk.includes(itemName(e.id).toLowerCase()));
+    const w = t.x.wield; return L.sort((a, b) => (itemName(b.id).toLowerCase()===w) - (itemName(a.id).toLowerCase()===w) || atk.indexOf(itemName(a.id).toLowerCase()) - atk.indexOf(itemName(b.id).toLowerCase())); }
+  return (pcState(t.p).inv || []).filter(e => e.id && libLootById(e.id)).sort((a, b) => ((libLootById(b.id) || {}).kind==="weapon") - ((libLootById(a.id) || {}).kind==="weapon"));
+}
+function groundNear(c, t){
+  const n = bnode(), st = n && n.site, p = c && c.pos && c.pos[t.id]; if(!st || !p) return [];
+  const bm = bmapOf(n);
+  return [...new Set(st.items || [])].filter(tok => { const w = (st.where || {})[tok]; if(!w || !itemShown(st, tok)) return false;
+    const [x, y] = w.split(",").map(Number), tile = spotTile(bm, { x, y }); return !(tile && tile.box) && chebSq({ x, y }, p) <= 1; });
+}
+function itemToGround(c, t, e, why){
+  const n = bnode(), st = n && n.site, p = c.pos && c.pos[t.id], o = ownerOf(t), i = (o.inv || []).indexOf(e); if(!st || !p || i < 0) return null;
+  if((e.qty || 1) > 1) e.qty -= 1; else o.inv.splice(i, 1);
+  const tok = placeItem(st, e.id, `${p.x},${p.y}`), name = itemName(e.id);
+  if(t.kind==="foe") (t.x.dropped = t.x.dropped || {})[name.toLowerCase()] = tok;
+  const line = `${t.label} drops ${name}${why ? ` (${why})` : ""}: it lies at their feet.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, item:{ who:t.id, tok, id:baseId(e.id), dir:"drop" } }); gameLog("item", line); return line;
+}
+function itemFromGround(c, t, tok){
+  const n = bnode(), st = n && n.site, k = (st.items || []).indexOf(tok); if(k < 0) return null;
+  st.items.splice(k, 1); if(!st.items.includes(tok) && st.where) delete st.where[tok];
+  const o = ownerOf(t), id = baseId(tok), name = itemName(id); o.inv = o.inv || []; o.inv.push(t.kind==="foe" ? { id, qty:1, dc:0, found:true } : { id, qty:1, at:today() });
+  if(t.kind==="foe" && t.x.dropped) for(const nm in t.x.dropped) if(t.x.dropped[nm]===tok || nm===name.toLowerCase()) delete t.x.dropped[nm];
+  const line = `${t.label} picks up ${name}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, item:{ who:t.id, tok, id, dir:"pick" } }); gameLog("item", line); return line;
+}
+/* undo: the item goes back where it was */
+function itemUndo(c, I){
+  const t = combatants(c).find(x => x.id===I.who), n = bnode(), st = n && n.site; if(!t || !st) return;
+  const o = ownerOf(t), name = itemName(I.id).toLowerCase();
+  if(I.dir==="drop"){ const k = (st.items || []).lastIndexOf(I.tok); if(k >= 0){ st.items.splice(k, 1); if(!st.items.includes(I.tok) && st.where) delete st.where[I.tok]; }
+    o.inv = o.inv || []; o.inv.push(t.kind==="foe" ? { id:I.id, qty:1, dc:0, found:true } : { id:I.id, qty:1, at:today() }); if(t.kind==="foe" && t.x.dropped) delete t.x.dropped[name]; }
+  else { const i = (o.inv || []).map(e => baseId(e.id)).lastIndexOf(I.id); if(i >= 0) o.inv.splice(i, 1); st.items = st.items || []; st.items.push(I.tok);
+    if(t.kind==="foe") (t.x.dropped = t.x.dropped || {})[name] = I.tok; }
+}
+function itemRowHtml(c, t){
+  if(!t || calmOf(c) || c.turn!==t.id || !c.pos || !c.pos[t.id] || c.layout==="lineup") return "";
+  const H = heldOf(t).slice(0, 8), G = groundNear(c, t); if(!H.length && !G.length) return "";
+  return `<div class="pcrow" style="flex-wrap:wrap;gap:4px;align-items:center;margin:0 0 6px;font-size:12px"><span>${H.length ? "Holding:" : ""}</span>
+    ${H.map(e => `<button class="chip" data-itemdrop="${esc(String((ownerOf(t).inv || []).indexOf(e)))}" title="Drop it: it lies on the ground where they stand">${esc(itemName(e.id))} · Drop</button>`).join("")}
+    ${G.length ? `<span>${H.length ? " · " : ""}On the ground here:</span>${G.map(tok => `<button class="chip" data-itempick="${esc(tok)}" title="Pick it up (their one free interaction with an object this turn)">${esc(itemName(tok))} · Pick up</button>`).join("")}` : ""}</div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-itemdrop],[data-itempick]"); if(!b) return;
+  const n = bnode(), c = n && n.site && n.site.combat, t = c && combatants(c).find(x => x.id===c.turn); if(!t) return;
+  const line = b.dataset.itemdrop!=null ? itemToGround(c, t, (ownerOf(t).inv || [])[+b.dataset.itemdrop], "") : itemFromGround(c, t, b.dataset.itempick);
+  if(line) flash(line); saveParty(); touch(); renderBattle(); renderBattlePanel(); });/* death (Joseph, 2026-11-03: "3 death failures doesn't kill the PC"): three failed death saves and they're dead: no turn,
    healing doesn't bring them back (Revivify and the like are the DM's: clear the failures on their card), the token
    says so. On their turn at 0 hit points (not dead, not stable) the Action box has a death save (the 2024 rules): d20,
    10 or more a success, three is Stable; a 1 is two failures; a 20 and they're back with 1 hit point. */
@@ -13742,6 +13800,9 @@ function autoOptions(c, t){
     if(/^(fa|wsa):(Bonus action|Bonus|Reaction|Legendary): /i.test(v) || /^(Bonus|Reaction|Legendary)/i.test(g.group||"")) continue;
     const nm = v.replace(/^\w+:/, ""), base = nm.replace(/\s*\(.*\)\s*$/, "");
     if(t.kind==="foe" && t.x.spent && t.x.spent[base]) continue;
+    const gone = q => t.kind==="foe" && t.x.dropped && t.x.dropped[String(q).replace(/^\w+:/, "").replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase()];     // a weapon it dropped
+    if(gone(v)) continue;
+    if(/^fa:Multiattack/i.test(v) && multiQueue(foeById(t.x.foe)).some(gone)) continue;
     if(/^fa:Multiattack/i.test(v)){ const m = foeById(t.x.foe), Q = multiQueue(m); if(Q.length){ const r = autoReachOf(c, t, Q[0]); if(r) out.push({ v, kind:"multi", first:Q[0], ...r });
       /* "two attacks, using Shortsword and Longbow in any combination": the other one, every time, is a choice too */
       const mt = String((pairs(m.act).find(([q])=>/^Multiattack/i.test(q)) || [])[1] || "");
@@ -14282,6 +14343,12 @@ async function autoTurnNow(c, t, n){
     said.push(ft ? `${t.label} tries to get away: it Dashes ${ft} ft${exits.length ? " toward a way out" : ""}.` : `${t.label} tries to get away, but can't move.`);
     if(!exits.length) said.push("There's no way out on this map, so it keeps its distance (mark it Fled if it gets away).");
     gameLog("move", said.join(" ")); await autoSay(said.join(" ")); return done(); }
+  /* a weapon it dropped, if it can get to it this turn: picked up on the way (a free interaction), then on with the turn */
+  if(t.kind==="foe" && t.x.dropped && Object.keys(t.x.dropped).length && !(s.flee && !fleeOff())){ const st = n.site || {};
+    for(const tok of Object.values(t.x.dropped)){ const w = (st.where || {})[tok]; if(!w || !(st.items || []).includes(tok)) continue; const [x, y] = w.split(",").map(Number);
+      const to = autoSquares(c, t, n, false).filter(q => chebSq({ ...q, n:footOf(t) }, { x, y }) <= 1).sort((a, b) => a.cost - b.cost)[0]; if(!to) continue;
+      const ft = await autoWalk(c, t, to); if(autoGone(c, t)) return done(); if(ft) said.push(`${t.label} goes ${ft} ft to its ${itemName(baseId(tok))}.`);
+      const line = itemFromGround(c, t, tok); if(line){ renderBattle(); await autoSay(line); } break; } }
   /* healing first (a bonus-action heal, then on with the turn; an action heal is the turn) */
   { const H = healPlan(c, t, n);
     if(H.bonus){ await autoHeal(c, t, n, H.bonus, said); if(autoGone(c, t)) return done(); }
@@ -14372,7 +14439,8 @@ async function autoCommand(c, t, word){
       line = ft ? `${t.label} runs ${ft} ft away from ${who} (${H.name}: Flee).` : `${t.label} would run from ${who}, but can't move (${H.name}: Flee).`; }
     else if(/^grovel$/i.test(word)){ const h = hOfT(t); h.conds = Array.isArray(h.conds) ? h.conds : []; if(!h.conds.includes("Prone")) h.conds.push("Prone");
       line = `${t.label} throws itself down, Prone, and ends its turn (${who}'s ${H.name}: Grovel).`; }
-    else if(/^drop$/i.test(word)) line = `${t.label} drops whatever it is holding and ends its turn (${who}'s ${H.name}: Drop). What it dropped is on the ground: note it on its card if it matters.`;
+    else if(/^drop$/i.test(word)){ const held = heldOf(t)[0], c0 = aoeFight();
+      line = held && c0 ? itemToGround(c0, t, held, `${who}'s ${H.name}: Drop`) + " It ends its turn." : `${t.label} drops whatever it is holding and ends its turn (${who}'s ${H.name}: Drop).`; }
     else if(/^halt$/i.test(word)) line = `${t.label} doesn't move and takes no action or Bonus Action this turn (${who}'s ${H.name}: Halt).`;
     else line = `${t.label} obeys ${who}'s ${H.name}: “${word}”.`;
     gameLog("spell", line);
@@ -15410,7 +15478,7 @@ function actionForm(c, all){
     <div class="pcrow">
       <div class="field" style="flex:1"><label>Who</label><select id="ac-actor">${all.map(x=>`<option value="${x.id}" ${x.id===act.actor?"selected":""}>${esc(x.label)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
-    ${legHtml(c)}${t ? deathSaveHtml(c, t) + gwmHtml(c, t) + tacticsHtml(c, t) : ""}
+    ${legHtml(c)}${t ? deathSaveHtml(c, t) + itemRowHtml(c, t) + gwmHtml(c, t) + tacticsHtml(c, t) : ""}
     ${t && (t.kind==="foe" || t.p) ? `<p class="actspell">${esc(attacksWords(t))}</p>` : ""}
     ${act.queue ? (Q=>{ const n = Q.word==="ray" ? beamsOf(t, info && info.spell, act.lvl) || Q.items.length : Q.items.length;
       return `<div class="pcrow" style="align-items:center;margin:0 0 6px;padding:4px 6px;border:1.5px solid var(--lead);border-radius:3px"><p class="actspell" style="flex:1;margin:0"><b>${esc(Q.word[0].toUpperCase() + Q.word.slice(1))} ${Q.i + 1} of ${n}</b>${Q.word==="Multiattack" ? ` · ${esc(Q.items.map((w, k)=>(k===Q.i ? "▸ " : "") + w.replace(/^fa:/, "").replace(/\s*\(.*\)\s*$/, "")).join(", "))}` : ""}</p>
@@ -15667,6 +15735,7 @@ function logAction(n, c){
       held.push(t.label); } }
   const holdW = (held.length ? ` ${held.join(", ")} ${held.length > 1 ? "are" : "is"} ${CTRL_SAY[ctrlOf(info)]}.` : "") + (shaken.length ? ` The damage shakes ${shaken.join(", ")} out of it.` : "");
   /* an attack roll from hiding gives it away (the 2024 Hide action: it ends after an attack roll); undo hides them again */
+  if(actor.kind==="foe" && /^fa:/.test(act.what || "") && isAttackAct(info)) actor.x.wield = act.what.slice(3).replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();     // the weapon in its hand, for Command's Drop
   const stealthBefore = JSON.stringify(c.stealth || {}), outed = isAttackAct(info) && act.toHit && c.stealth && c.stealth[actor.id] && c.stealth[actor.id].hide!=null;
   if(outed) delete c.stealth[actor.id].hide;
   c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore });
@@ -15755,7 +15824,7 @@ function holdsTurnStart(c, id){
 }
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
-  if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
+  if(e.item) itemUndo(c, e.item); if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
   if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
     c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
     const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));
@@ -16113,6 +16182,7 @@ function renderBattlePanelNow(){
     if(w==="hit"){ const tg = all.find(x=>x.id===act.targets[0]); if(!tg){ flash("Pick who they're attacking."); return; }     // rolling to hit (2026-10-30)
       const bonus = /^\s*[+-]?\d+\s*$/.test(String(act.hitBonus ?? "")) ? parseInt(act.hitBonus) : (toHitOf(c, t, info) ?? 0), cv = coverOf(c, t.id, tg.id), ac = acOf(tg) + cv.ac, typed = Math.round(+act.d20);
       if(cv.level===3){ flash(`${tg.label} has total cover from ${t.label}: no line to attack them from there.`); return; }
+      { const wn = String(act.what || "").replace(/^\w+:/, "").replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase(); if(t.kind==="foe" && t.x.dropped && t.x.dropped[wn]){ flash(`${t.label} dropped its ${itemName(baseId(t.x.dropped[wn]))}: it has to pick it up first (it's on the ground).`); return; } }
       const r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), mine = typed >= 1 && typed <= 20;
       const CA = act.adv ? null : rollAdvOf(c, t, tg, info), adv = act.adv || CA.v;     // conditions and Faerie Fire: Advantage or Disadvantage, unless set by hand
       const d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1; act.hadAdv = adv==="adv";

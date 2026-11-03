@@ -1,0 +1,5 @@
+1. the goblin's turn: Holding Scimitar and Shortbow; Drop the scimitar: at its feet, and it can't swing it: before: Scimitar · Drop, Shortbow · Drop | after: Shortbow · Drop, Scimitar · Pick up | ground: Scimitar at 15,4 | dropped: {"scimitar":"srd:scimitar"} | swung: false
+2. undo: the scimitar is back in its hand: ground: nothing | dropped: {} | chips: Scimitar · Drop, Shortbow · Drop
+3. Command: Drop: the weapon in its hand (it last shot its bow): the Shortbow drops: Goblin Warrior 1 drops Shortbow (Wren's Command: Drop): it lies at their feet. It ends its turn. | ground: Shortbow at 15,4
+4. next turn the autopilot picks the bow up on its way, then fights: Goblin Warrior 1 goes 15 ft to its Shortbow. Goblin Warrior 1 picks up Shortbow. Goblin Warrior 1 uses Scimitar on Gawain — hits (to hit: d20 13 + 4 = 17 vs AC 17 (Gawain): hit), 6 slashing damage (1d6+2 slashing: 4 + 2  | ground: nothing | dropped: {}
+5. Gawain drops his greatsword; Bram beside it picks it up on his turn: Gawain: Greatsword · Drop | Bram sees: Greatsword · Pick up | ground now: nothing | Bram has: Greatsword | Gawain has: nothing | page errors 0
