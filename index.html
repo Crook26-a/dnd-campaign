@@ -13636,7 +13636,7 @@ function autoOptions(c, t){
 /* the squares it can get to this turn (a step each way, diagonals too; not through walls, shut doors or an enemy;
    through its own side but not stopping there): [{ x, y, cost (squares) }] */
 function autoSquares(c, t, n, dash, ftLimit){
-  const bm = bmapOf(n), st = n.site || {}, me = c.pos[t.id], allow = ftLimit!=null ? ftLimit : speedOf(t) * (dash ? 2 : 1) - movedOf(c, t.id).ft, left = Math.max(0, Math.floor(allow / 5));
+  const bm = bmapOf(n), st = n.site || {}, me = c.pos[t.id], allow = ftLimit!=null ? ftLimit : speedOf(t) * (dash || movedOf(c, t.id).dash ? 2 : 1) - movedOf(c, t.id).ft, left = Math.max(0, Math.floor(allow / 5));
   const occ = {}; for(const o of combatants(c)){ const p = c.pos[o.id]; if(p && o.id!==t.id && !o.fled && !isDownT(o)) occ[`${p.x},${p.y}`] = o.side===t.side ? "own" : "other"; }
   const wall = (x, y) => x < 0 || y < 0 || x >= BW || y >= BH || opaqueAt(bm, st, x, y);
   const seen = new Map(), start = { x:me.x, y:me.y, cost:0 }; seen.set(`${me.x},${me.y}`, start); const q = [start];
@@ -13920,6 +13920,67 @@ function guardWhere(c, t, n, ward, tg, sq){
   const hit = beside.filter(q=>chebSq(q, P) <= sq && losClear(bm, st, q.x, q.y, P.x, P.y)).sort((a, b)=>a.cost - b.cost)[0];
   return hit || beside.sort((a, b)=>chebSq(a, P) - chebSq(b, P) || a.cost - b.cost)[0] || autoWhere(c, t, n, tg, "melee", sq);
 }
+/* bonus actions and hit-and-run (Joseph's autopilot list, item 7, "include disengaging"). From its stat block's words:
+   "takes the Dash, Disengage, or Hide action" (Nimble Escape, Cunning Action), "moves up to half its Speed ... toward an
+   enemy" (Charge), a bonus attack ("Attack Roll"); a use limit is kept. Disengage: no opportunity attacks against it for
+   the rest of its turn (c.disengaged, askOpportunity). It uses them: a melee one that can't reach anyone Dashes or
+   Charges to close; a ranged one with an enemy beside it Disengages, then steps back to shoot; after attacking, a
+   skirmisher (or anything with a bonus Disengage) Disengages and steps out of reach; a lurker with a bonus Hide gets out
+   of every enemy's line of sight and Hides (a DC 15 Dexterity (Stealth) check, the 2024 rule; its total is the DC to
+   find it); a bonus attack goes on someone in reach. */
+function bonusOpts(c, t){
+  const o = {}; if(t.kind!=="foe" || bonusUsed(c, t.id)) return o;
+  const m = foeById(t.x.foe), R = foeResources(m);
+  for(const [nm, text] of pairs(m && m.bon)){
+    const base = String(nm).replace(/\s*\(.*\)\s*$/, ""), lim = R.find(r=>r.key===base); if(lim && lim.kind==="uses" && ((t.x.used || {})[base] || 0) >= lim.max) continue;
+    const T = String(text || ""), v = `fa:${nm}`, k = /takes the ([^.]*?) action/i.exec(T);
+    if(k){ if(/Disengage/i.test(k[1])) o.disengage = v; if(/\bDash\b/i.test(k[1])) o.dash = v; if(/\bHide\b/i.test(k[1])) o.hide = v; }
+    if(/moves up to half its Speed[^.]*toward/i.test(T)) o.charge = v;
+    if(/Attack Roll/i.test(T)) o.attack = v;
+  }
+  return o;
+}
+/* a bonus action that only says what it does (Disengage, Dash, Hide, Charge): logged through the Action box */
+async function doBonus(c, t, v, word){
+  if(bonusUsed(c, t.id)) return false;
+  act = freshAct(t.id); renderBattlePanel(); if(!autoPick(v)) return false;
+  act.bonus = true; act.targets = []; act.outcome = "none"; act.note = word; renderBattlePanel();
+  const k = act; autoPress("#ac-go"); if(act===k) return false;
+  if(word==="Disengage") (c.disengaged = c.disengaged || {})[t.id] = turnStamp(c);
+  if(word==="Dash"){ ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true; }
+  if(word==="Charge"){ const M = (c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }; M.ft -= Math.floor(speedOf(t) / 2); }
+  renderBattle(); await autoSay(`${t.label}: ${word}${word==="Disengage" ? " (no opportunity attacks against it this turn)" : ""}.`); return true;
+}
+const inSomeReach = (c, t, at) => combatants(c).some(o=>o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id] && chebSq(c.pos[o.id], at) <= reachSq(o));
+/* where to step back to: out of every enemy's reach (and, to hide, out of every enemy's sight), the nearest such */
+function retreatSq(c, t, n, hide){
+  const S = autoSquares(c, t, n, false), bm = bmapOf(n), st = n.site || {}, E = combatants(c).filter(o=>o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id]);
+  const ok = s => E.every(o=>chebSq(c.pos[o.id], s) > reachSq(o)) && (!hide || E.every(o=>!losClear(bm, st, c.pos[o.id].x, c.pos[o.id].y, s.x, s.y)));
+  return S.filter(ok).sort((a, b)=>a.cost - b.cost)[0] || null;
+}
+function stealthOfT(t){
+  const m = t.kind==="foe" ? foeById(t.x.foe) : null, k = /Stealth\s*([+-]\d+)/i.exec(String((m && m.sk) || ""));
+  return k ? +k[1] : Math.floor(((+((m && m.ab) || [])[1] || 10) - 10) / 2);
+}
+async function autoHide(c, t, v, said){
+  if(!(await doBonus(c, t, v, "Hide"))) return;
+  const b = stealthOfT(t), d = 1 + Math.floor(Math.random() * 20), tot = d + b;
+  const line = tot >= 15 ? `${t.label} hides: Dexterity (Stealth) d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}, the DC to find it.` : `${t.label} tries to hide: Dexterity (Stealth) d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}, short of 15.`;
+  if(tot >= 15) ((c.stealth = c.stealth || {})[t.id] = (c.stealth || {})[t.id] || {}).hide = tot;
+  said.push(line); gameLog("check", line); renderBattle(); await autoSay(line);
+}
+/* after its attack: hit and run, hide, or a bonus attack */
+async function autoAfter(c, t, n, said){
+  if(autoGone(c, t) || bonusUsed(c, t.id)) return;
+  const B = bonusOpts(c, t), T = tacOf(c, t), me = c.pos[t.id];
+  if(B.hide && T.role==="lurker"){ const q = retreatSq(c, t, n, true); if(q){ const ft = await autoWalk(c, t, q); if(ft) said.push(`${t.label} slips ${ft} ft out of sight.`); if(!autoGone(c, t)) await autoHide(c, t, B.hide, said); return; } }
+  if(B.attack){ const r = autoReachOf(c, t, B.attack), L = r ? combatants(c).filter(o=>o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id] && chebSq(c.pos[o.id], me) <= (r.melee || r.range) && !autoHidden(c, t, o)) : [];
+    if(L.length){ act = freshAct(t.id); act.targets = [L[0].id]; renderBattlePanel(); if(autoPick(B.attack)){ act.bonus = true; act.targets = [L[0].id]; renderBattlePanel(); autoPress('[data-acroll="hit"]'); if(act.toHit){ if(act.outcome==="hit" || act.outcome==="crit") autoPress('[data-acroll="dmg"]'); autoPress("#ac-go"); renderBattle(); const last = (c.log || []).slice(-1)[0]; await autoSay(last ? last.text : ""); } } return; } }
+  if(inSomeReach(c, t, me) && (B.disengage || T.role==="skirm")){
+    if(B.disengage && !(await doBonus(c, t, B.disengage, "Disengage"))) return;
+    const q = retreatSq(c, t, n, false); if(q){ const ft = await autoWalk(c, t, q); if(ft) said.push(`${t.label} falls back ${ft} ft.`); }
+  }
+}
 /* one whole turn */
 async function autoTurn(c, t){
   const n = bnode(); if(!n || !c || c.turn!==t.id || !autoFor(t) || !c.pos || !c.pos[t.id] || autoBusy) return null;
@@ -13927,14 +13988,15 @@ async function autoTurn(c, t){
   try{ return await autoTurnNow(c, t, n); } finally { autoBusy = null; autoStop = false; const b = $("#auto-say"); if(b) b.hidden = true; }
 }
 async function autoTurnNow(c, t, n){
-  const all = () => combatants(c), log0 = (c.log || []).length, from0 = { ...c.pos[t.id] }, said = [];
+  const all = () => combatants(c), log0 = (c.log || []).length, from0 = { ...c.pos[t.id] }, said = [], saidAt = [];
+  said.push = (...x) => { for(const s of x){ Array.prototype.push.call(said, s); saidAt.push((c.log || []).length); } return said.length; };     /* where each line falls among the logged ones, for the order */
   const charmers = charmersOf(c, t), others = () => all().filter(o => o.side!==t.side && o.side!=="neutral" && !o.fled && !isDownT(o) && c.pos[o.id] && !charmers.includes(o.id) && !autoHidden(c, t, o));     // not the hidden: it doesn't know where they are
   const senseOf = id => { const o = all().find(x => x.id===id); return o ? autoSense(c, n, t, o) : "seen"; };
   const s = tacSuggest(c, t), T = tacOf(c, t), H = autoHeld(c, t);
   const lastSaid = () => ((c.log || []).length > log0 ? c.log[c.log.length - 1].text : "");
   if(c.rechargeNow && c.rechargeNow.id===t.id && c.rechargeNow.at===turnStamp(c)) await autoSay(c.rechargeNow.said);     // its recharge roll, first
-  const done = () => { const added = (c.log || []).slice(log0).map(e => e.text);
-    c.autoLast = { id:t.id, round:c.round, n:(c.log || []).length - log0, from:from0, len:(c.log || []).length, said:[...said, ...added].join(" ") || `${t.label} does nothing it can see to do.` };
+  const done = () => { const added = [...said.map((s, i) => ({ s, at:saidAt[i] ?? -1 })), ...(c.log || []).slice(log0).map((e, i) => ({ s:e.text, at:log0 + i + .5 }))].sort((a, b) => a.at - b.at).map(x => x.s);
+    c.autoLast = { id:t.id, round:c.round, n:(c.log || []).length - log0, from:from0, len:(c.log || []).length, said:added.join(" ") || `${t.label} does nothing it can see to do.` };
     if(c.turn===t.id) act = freshAct(t.id); if(autoNow()) askOpportunity(t.id, from0);     // step by step, it was offered as it walked
     return c.autoLast; };
   if(H && H.tier==="full"){ said.push(`${t.label} is held by ${autoByName(c, H)}'s ${H.name}: it loses its turn.`); await autoSay(said[0]); return done(); }
@@ -13945,6 +14007,12 @@ async function autoTurnNow(c, t, n){
      opportunity attacks. With no way out on the map it keeps its distance, and the DM marks it Fled if it gets away. */
   if(s.flee && root.autoFlee!=="off"){ const O = others(), exits = (exitsOf(n) || []).filter(e => e.x!=null && e.y!=null);
     ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true;
+    /* a way out within its ordinary Speed: the Disengage action instead of a Dash, so nobody gets a free swing as it goes */
+    { const S0 = autoSquares(c, t, n, false, speedOf(t) - movedOf(c, t.id).ft), out0 = exits.length ? S0.filter(q => exits.some(e => chebSq(e, q) <= 1)).sort((a, b) => a.cost - b.cost) : [];
+      if(out0.length){ c.moved[t.id].dash = false; (c.disengaged = c.disengaged || {})[t.id] = turnStamp(c);
+        const line0 = `${t.label} takes the Disengage action and makes for a way out.`; gameLog("move", line0); await autoSay(line0);
+        const ft0 = await autoWalk(c, t, out0[0]); said.push(`${line0} It goes ${ft0} ft.`); if(autoGone(c, t)) return done();
+        act = freshAct(t.id); renderBattlePanel(); if(autoPick("flee")) autoPress("#ac-go"); await autoSay(lastSaid()); return done(); } }
     const S = autoSquares(c, t, n, true), out = exits.length ? S.filter(q => exits.some(e => chebSq(e, q) <= 1)) : [];
     if(out.length){ await autoSay(`${t.label} turns and runs for a way out!`); const dest = out.sort((a, b) => a.cost - b.cost)[0], ft = await autoWalk(c, t, dest);
       if(autoGone(c, t) || c.pos[t.id].x!==dest.x || c.pos[t.id].y!==dest.y){ said.push(`${t.label} tried to run, but didn't make it.`); await autoSay(said[said.length - 1]); return done(); }
@@ -13976,14 +14044,19 @@ async function autoTurnNow(c, t, n){
   /* a spell, if it's worth more than its weapons */
   { const P = autoSpellPlan(c, t, n, tg, O, opts); if(P && await autoCast(c, t, n, P, said)) return done(); }
   /* an attack: the kind that suits how it fights, then into place, then each swing */
-  const atk = opts.filter(o => o.kind!=="area"), keepsAway = ["ranged", "caster"].includes(T.role);
+  const bo = bonusOpts(c, t), atk = opts.filter(o => o.kind!=="area"), keepsAway = ["ranged", "caster"].includes(T.role) || (T.role==="lurker" && !!bo.hide);     /* a lurker that can Hide strikes from range, then hides */
   const ranged = atk.filter(o => o.range && !o.melee), melee = atk.filter(o => o.melee), byMulti = L => L.slice().sort((a, b) => (b.kind==="multi") - (a.kind==="multi"));
   let pick = byMulti(keepsAway && ranged.length ? ranged : melee.length ? melee : ranged)[0] || byMulti(atk)[0];
   if(!pick){ const ft = await autoWalk(c, t, autoWhere(c, t, n, tg, "melee", 1)); if(ft) said.push(`${t.label} moves ${ft} ft toward ${tg.label}.`);
     said.push(`It has nothing the autopilot can use (spells and the like are yours).`); await autoSay(said.join(" ")); return done(); }
   let mode = pick.melee && !(keepsAway && pick.range) ? "melee" : "ranged", sq = mode==="melee" ? pick.melee : pick.range;
   /* can't get into reach this turn, but has a bow (or the like): it shoots instead of only walking */
-  if(mode==="melee" && ranged.length){ const d = autoWhere(c, t, n, tg, "melee", sq); if(!d || chebSq(d, c.pos[tg.id]) > sq){ pick = byMulti(ranged)[0]; mode = "ranged"; sq = pick.range; } }
+  const canDash = (bo.dash || bo.charge) && autoSquares(c, t, n, true).some(q => chebSq(q, c.pos[tg.id]) <= sq);     /* a bonus Dash or Charge gets it there: it closes rather than shooting */
+  if(mode==="melee" && ranged.length && !canDash){ const d = autoWhere(c, t, n, tg, "melee", sq); if(!d || chebSq(d, c.pos[tg.id]) > sq){ pick = byMulti(ranged)[0]; mode = "ranged"; sq = pick.range; } }
+  /* its bonus action before moving: an archer beside an enemy Disengages to step back; a melee one out of reach Dashes or Charges */
+  { const B = bonusOpts(c, t), me0 = c.pos[t.id];
+    if(mode==="ranged" && B.disengage && inSomeReach(c, t, me0)) await doBonus(c, t, B.disengage, "Disengage");
+    else if(mode==="melee" && !wardT && (B.dash || B.charge)){ const d0 = autoWhere(c, t, n, tg, mode, sq); if(d0 && chebSq(d0, c.pos[tg.id]) > sq) await doBonus(c, t, B.dash || B.charge, B.dash ? "Dash" : "Charge"); } }
   const ft = await autoWalk(c, t, wardT ? guardWhere(c, t, n, wardT, tg, sq) : autoWhere(c, t, n, tg, mode, sq)); if(ft) said.push(`${t.label} moves ${ft} ft${chebSq(c.pos[t.id], c.pos[tg.id]) <= sq ? "" : ` toward ${tg.label}, not yet in ${mode==="melee" ? "reach" : "range"}`}.`);
   if(autoGone(c, t)) return done();
   if(chebSq(c.pos[t.id], c.pos[tg.id]) > sq){ await autoSay(said[said.length - 1] || `${t.label} can't get to anyone this turn.`); return done(); }
@@ -14009,6 +14082,8 @@ async function autoTurnNow(c, t, n){
     if(++i >= swings) break;
     const next = act; act = freshAct(t.id); act.targets = next.targets && next.targets.length ? next.targets : [tg.id]; renderBattlePanel(); if(!autoPick(pick.v)) break;
   }
+  /* then its bonus action: hit and run, hide, or a bonus attack */
+  await autoAfter(c, t, n, said);
   return done();
 }
 /* a control spell on it (Joseph, 2026-11-02: "when a player uses command on an npc, we need to have it so that it puts the
@@ -14401,6 +14476,7 @@ const bend = e=>{
 function askOpportunity(moverId, from){
   const n = bnode(), c = n && n.site && n.site.combat; if(!c || !from || from.x==null) return;
   const to = c.pos[moverId]; if(!to || (to.x===from.x && to.y===from.y)) return;
+  if(c.disengaged && c.disengaged[moverId]===turnStamp(c)) return;     /* it took the Disengage action this turn */
   const all = combatants(c), mover = all.find(t=>t.id===moverId); if(!mover || mover.fled) return;
   const isDown = t => t.kind==="foe" ? (t.x.max!=null && t.x.hp<=0) : (numOr(t.p.hp)!==null && numOr(t.p.hp)<=0);
   const dist = (a,b) => Math.max(Math.abs(a.x-b.x), Math.abs(a.y-b.y));
