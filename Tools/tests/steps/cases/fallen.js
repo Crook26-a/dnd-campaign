@@ -48,3 +48,15 @@ step("the dial in the tactics editor, and its words", async () => {
   const g = gob(1), ed = tacEditor(g.x, "x:" + g.x.id), has = /data-tf="fallen"/.test(ed);
   return `editor has it: ${has} | words: ${tacWords({ role: "front", aim: "nearest", courage: 3, fallen: "last" })} | page errors ${__KIT.errors.length}`;
 });
+step("three failures: Wren dies: no turn, healing doesn't bring Wren back, the token says dead", async () => {
+  place(); const c = fight(), W = down("Wren"); W.p.death = { s: 0, f: 3 }; c.pos[who("Zombie").id] = { x: 28, y: 8 }; renderBattle();
+  const order = []; c.turn = who("Gawain").id; for (let k = 0; k < 8; k++) { nextTurn(c); order.push((all().find(x => x.id === c.turn) || {}).label); } clearTimeout(autoTimer);
+  const healed = healAny(W, 10); const tok = document.querySelector(`[data-tok="${W.id}"]`); const word = tok ? tok.textContent.replace(/\s+/g, " ").trim() : "no token";
+  return `turns: ${order.join(" → ")} | Wren in them: ${order.includes("Wren")} | healed ${healed}, hp ${W.p.hp} | token: ${word}`;
+});
+step("on Bram's turn at 0: the death save row; a 15 is a success, a 1 two failures, a 20 back up with 1 hit point", async () => {
+  place(); const c = fight(), B = down("Bram"); c.turn = B.id; act = freshAct(B.id); battleSel = B.id; renderBattle(); renderBattlePanel(); await wait(20);
+  const row = !!document.querySelector("[data-dsroll]"), roll = async v => { const i = $("#ac-ds"); i.value = String(v); document.querySelector("[data-dsroll]").click(); await wait(20); return `${JSON.stringify(B.p.death)} hp ${B.p.hp}`; };
+  const a = await roll(15), b = await roll(1), d = await roll(20); const log = (c.log.slice(-1)[0] || {}).text;
+  return `row: ${row} | 15: ${a} | 1: ${b} | 20: ${d} | ${log} | page errors ${__KIT.errors.length}`;
+});
