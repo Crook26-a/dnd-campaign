@@ -14863,7 +14863,9 @@ function selfOnly(info, t){
   if(info.kind==="item" && !info.bite && t && t.p){ const x = usableOf(pcState(t.p)).find(y=>y.k===info.useK); return !!x && (/\byourself\b/i.test(x.u.effect || "") || (!!x.u.tempHp && !x.u.heal)); }
   return false;
 }
-const isAttackAct = info => !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
+/* an attack that also asks for a save (the Ghoul's Claw: "Melee Attack Roll ... Constitution Saving Throw") is an attack: the save comes on a hit */
+const ATTACK_WORDS = /^(?:Melee|Ranged)(?: or Ranged)? (?:Weapon |Spell )?Attack(?: Roll)?\b/i;
+const isAttackAct = info => !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && (!info.save || ATTACK_WORDS.test(String(info.text || ""))) && /^(fa|wsa|itm):/.test(act.what||"")));
 const acOf = o => !o ? 10 : (o.kind==="foe" ? (parseInt((foeById(o.x.foe)||{}).ac) || 10) : (parseInt(pcState(o.p).ac) || 10)) + fxNum(hOfT(o), "ac", null, false);     // Shield of Faith, Haste, Shield, Slow
 function toHitOf(c, t, info){
   if(!info || !t) return null; const w = act.what || "", num = s => { const m = /([+-]?\d+)/.exec(String(s ?? "")); return m ? +m[1] : null; };
@@ -15641,6 +15643,7 @@ function logAction(n, c){
   const byT = act.rolled && act.rolled.dmg && act.rolled.dmg.by && act.rolled.dmg.v===String(act.dmg) ? act.rolled.dmg.by : null;
   /* each target's own save (2026-10-30): a made one takes half or none, as the text says, and no condition */
   const SV = act.saves ? saveOfAct(c, actor, info) : null, svOf = t => SV ? (act.saves[t.id] || null) : null;
+  const effectsBefore = JSON.stringify(c.effects || []);     // how long what it puts on lasts (effectAdd), for undo
   for(const t of targets){
     let dropped = false, got = 0, hl = 0, off = false;
     const mp = actor.side!=="party" && ["hit","crit"].includes(act.outcome) && t.kind==="pc" ? Math.max(0, Math.min(100, Math.round(+pcState(t.p).hitsMiss || 0))) : 0;
@@ -15651,7 +15654,12 @@ function logAction(n, c){
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
     else if(heal){ hl = healAny(t, heal); healed += hl; }
-    if(act.cond && !off && !["miss","save"].includes(act.outcome) && !(svOf(t) && svOf(t).made) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); }   // a made save, a miss or an immunity puts nothing on
+    /* an attack's save on a hit (the Ghoul's Claw: "Constitution Saving Throw: DC 10. Failure: ... Paralyzed"): rolled for each target it hits */
+    let riderMade = false; act.riderMade = act.riderMade || {};
+    if(act.cond && !off && isAttackAct(info) && !info.spell && ["hit","crit"].includes(act.outcome)){ const R = SAVE_WORD.exec(String(info.text || ""));
+      if(R){ const b = saveBonusOf(t, R[1]), d = 1 + Math.floor(Math.random() * 20), tot = d + b; riderMade = tot >= +R[2]; act.riderMade[t.id] = riderMade;
+        turned.push(`${t.label}: ${R[1]} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${R[2]}, ${riderMade ? "made" : `failed: ${act.cond}`}`); } }
+    if(act.cond && !off && !riderMade && !["miss","save"].includes(act.outcome) && !(svOf(t) && svOf(t).made) && !condImmune(t, act.cond)){ const cs = t.kind==="foe" ? t.x.conds : pcState(t.p).conds; if(!cs.includes(act.cond)) cs.push(act.cond); effectAdd(c, t, act.cond, actor, info, SV, concSp); }   // a made save, a miss or an immunity puts nothing on
     if(dropped) kills++;
     hits.push({ id:t.id, label:t.label, dmg:got, heal:hl, dropped });
   }
@@ -15697,7 +15705,7 @@ function logAction(n, c){
     + (D.temp && heal ? (tempGot.length ? `, ${tempGot.join(", ")} ${tempGot.length > 1 ? "have" : "has"} ${heal} temporary hit points${rolledW("heal", act.heal)}` : `, ${heal} temporary hit points (no more than they had)`) : "")
     + (healed ? (info.reduce ? `, ${took ? `the ${took} ${info.reduce.reduceType ? info.reduce.reduceType.toLowerCase() + " " : ""}damage cut by ${heal}` : `${heal} taken off the damage`}, ${healed} back as hit points${rolledW("heal", heal)}`
       : `, healing ${healed}${rolledW("heal", act.heal)}`) : "")
-    + (act.cond && !["miss","save"].includes(act.outcome) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
+    + (act.cond && !["miss","save"].includes(act.outcome) && !targets.every(t=>(act.riderMade || {})[t.id]) ? (targets.length && targets.every(t=>condImmune(t, act.cond)) ? `, but ${targets.length>1 ? "they're" : "the target is"} immune to ${act.cond.toLowerCase()}` : `, ${act.cond.toLowerCase()}`) : "")
     + (act.note ? ` (${act.note})` : "")
     + (p2 && targets2.length ? `; then ${D.part2.dtype} on ${hits2.map(h=>h.label).join(", ")}${OUT[p2.outcome] ? ` — ${OUT[p2.outcome]}` : ""}${dmg2 ? `, ${dmg2} ${D.part2.dtype} damage${targets2.length>1?" each":""}${rolledW("dmg2", p2.dmg)}` : ""}` : "")
     + (turned.length ? `; ${turned.join("; ")}` : "")
@@ -15728,7 +15736,7 @@ function logAction(n, c){
       if(H.cond){ const x = all.find(y=>y.id===h.id), cs = x && (x.kind==="foe" ? x.x.conds : (x.p && pcState(x.p).conds)); if(cs && cs.includes(H.cond)) cs.splice(cs.indexOf(H.cond), 1); } } }     // Charm Person's Charmed comes off with it
   { const tier = ctrlOf(info), sp = info.spell, text = String((sp && sp.desc) || info.text || "");
     if(tier && !part) for(const t of targets){ const sv = svOf(t);
-      if(t.side===actor.side || ["miss","save"].includes(act.outcome) || (sv && sv.made) || (act.cond && condImmune(t, act.cond)) || turned.some(w=>w.startsWith(t.label + ":") && /turns aside/.test(w))) continue;
+      if(t.side===actor.side || ["miss","save"].includes(act.outcome) || (sv && sv.made) || (act.riderMade || {})[t.id] || (act.cond && condImmune(t, act.cond)) || turned.some(w=>w.startsWith(t.label + ":") && /turns aside/.test(w))) continue;
       const cs = concSp && concSp.id;
       (c.holds = c.holds || {})[t.id] = { by:actor.id, tier, name:info.name, sp:cs || null, cond:cs ? "" : (act.cond || ""), dmgEnds:/you or your allies[^.]*damage/i.test(text) ? "theirs" : /\bends?\b[^.]*\b(takes?|taking) (any )?damage\b/i.test(text) ? "any" : "",
         once:!cs && !act.cond, turns:0, pts:0 };
@@ -15738,7 +15746,7 @@ function logAction(n, c){
   if(actor.kind==="foe" && /^fa:/.test(act.what || "") && isAttackAct(info)) actor.x.wield = act.what.slice(3).replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();     // the weapon in its hand, for Command's Drop
   const stealthBefore = JSON.stringify(c.stealth || {}), outed = isAttackAct(info) && act.toHit && c.stealth && c.stealth[actor.id] && c.stealth[actor.id].hide!=null;
   if(outed) delete c.stealth[actor.id].hide;
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore });
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore });
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   /* what the spell does to them while it lasts (Bless, Pass without Trace, Shield of Faith…): on its targets (and the
      caster, for an aura or Shield); Bane, Slow, Faerie Fire only on those who failed the save */
@@ -15824,7 +15832,7 @@ function holdsTurnStart(c, id){
 }
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
-  if(e.item) itemUndo(c, e.item); if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
+  if(e.item) itemUndo(c, e.item); if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.effects!=null) c.effects = JSON.parse(e.effects); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
   if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
     c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
     const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));
@@ -15861,7 +15869,50 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
   if(c && !calmOf(c)) return downloadText(fightLogName(n), fightLogText(n, c, false));
   const last = (root.fightLogs || []).filter(f => f.node===n.id).slice(-1)[0];
   if(last) downloadText(`${last.at.slice(0, 10)} ${String(last.place || "fight").replace(/[\\/:*?"<>|]+/g, "")} fight log.txt`, last.text); else flash("No fight here to download yet.");
-});/* the fight in a paragraph, for the session log */
+});/* how long a condition lasts, and the saves that end it (Joseph's arena list, item 1: "effects don't run out, and there
+   are no repeat saves"). When an action puts a condition on someone, its own words say how long (effectAdd):
+   - "until the end of its (the target's) next turn": off as the target's next turn ends;
+   - "until the start of your (its, the X's) next turn": off as the one who did it starts its next turn;
+   - "at the end of each of its turns, the target repeats the save": rolled then (its save bonus, the same DC), off on a success;
+   - a concentration spell (Hold Person): off when the caster stops concentrating on it;
+   - "for 1 minute" (no concentration): off after 10 rounds.
+   c.effects [{ id, who, cond, by, name, at (turnStamp), round, end, repeat:{ abil, dc }, sp, rounds }]; each ending or
+   save is a line in the fight's log (undo puts it back), and the hold it was (control) ends with it. */
+const SAVE_WORD = /(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) Saving Throw:\s*DC (\d+)/i;
+function effectAdd(c, t, cond, actor, info, SV, sp){
+  const text = String((info.spell && info.spell.desc) || info.text || ""), r = SAVE_WORD.exec(text);
+  const end = /until the end of (?:its|the target's|their) next turn/i.test(text) ? "targetNext" : /until the start of (?:your|its|the [\w ]+?'s) next turn/i.test(text) ? "srcStart" : "";
+  const rep = /at the end of each of (?:its|their|the target's) turns[^.]*\brepeats? the sav/i.test(text) || /\brepeats? the sav\w* at the end of each of (?:its|their) turns/i.test(text);
+  const abil = (SV && SV.abil) || (r && r[1]) || (info.spell && String(info.spell.save || "").split(/[ ,]/)[0]) || "", dc = (SV && SV.dc) || (r && +r[2]) || null;
+  const rounds = !sp && /\b(?:for|lasts?) 1 minute\b/i.test(text) ? 10 : null;
+  if(!end && !(rep && abil && dc) && !sp && !rounds) return;
+  (c.effects = c.effects || []).push({ id:uid("ef"), who:t.id, cond, by:actor.id, name:info.name || (info.spell && info.spell.name) || "it", at:turnStamp(c), round:c.round,
+    end, repeat:rep && abil && dc ? { abil, dc } : null, sp:sp ? sp.id : null, rounds });
+}
+function effectEnd(c, e, why, extra){
+  const t = combatants(c).find(x => x.id===e.who); c.effects = (c.effects || []).filter(x => x!==e); if(!t) return "";
+  const cs = condsOfT(t), i = cs.indexOf(e.cond); if(i >= 0 && !(c.effects || []).some(x => x.who===e.who && x.cond===e.cond)) cs.splice(i, 1);
+  const H = c.holds && c.holds[e.who]; if(H && (H.cond===e.cond || (e.sp && H.sp===e.sp) || H.name===e.name)) delete c.holds[e.who];
+  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
+}
+function effectsSweep(c, id, when){
+  const all = combatants(c), now = turnStamp(c), out = [], before = JSON.stringify(c.effects || []), holdsBefore = JSON.stringify(c.holds || {}), snapIds = new Set();
+  const snap = snapOf(c, [...new Set((c.effects || []).map(e => e.who))]);     // as they were, for undo
+  for(const e of (c.effects || []).slice()){
+    const t = all.find(x => x.id===e.who); if(!t || t.fled || !condsOfT(t).includes(e.cond)){ c.effects = c.effects.filter(x => x!==e); continue; }     // taken off by hand, or gone
+    if(e.sp){ const by = all.find(x => x.id===e.by), h = by && hOfT(by); if(!(h && h.conc && h.conc.id===e.sp)){ snapIds.add(e.who); out.push(effectEnd(c, e, "concentration ended")); continue; } }
+    if(when==="start" && e.end==="srcStart" && e.by===id && e.at!==now){ snapIds.add(e.who); out.push(effectEnd(c, e, "its time is up")); continue; }
+    if(when!=="end" || e.who!==id || e.at===now) continue;
+    if(e.end==="targetNext"){ snapIds.add(e.who); out.push(effectEnd(c, e, "the end of its turn")); continue; }
+    if(e.rounds && c.round >= e.round + e.rounds){ snapIds.add(e.who); out.push(effectEnd(c, e, `${e.rounds / 10} minute`)); continue; }
+    if(e.repeat){ const b = saveBonusOf(t, e.repeat.abil), d = 1 + Math.floor(Math.random() * 20), tot = d + b, ok = tot >= e.repeat.dc, roll = `${e.repeat.abil} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${e.repeat.dc}`;
+      snapIds.add(e.who); if(ok) out.push(effectEnd(c, e, "", `repeats the save, ${roll}: made`)); else out.push(`${t.label} repeats the save against ${e.name}, ${roll}: still ${e.cond}.`); }
+  }
+  if(!out.length) return;
+  const line = out.join(" ");
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, effects:before, holds:holdsBefore }); gameLog("fight", line); flash(line);
+}
+const effectsTurnEnd = (c, id) => effectsSweep(c, id, "end"), effectsTurnStart = (c, id) => effectsSweep(c, id, "start");/* the fight in a paragraph, for the session log */
 function fightSummary(n, c){
   const L = (c.log||[]).map(e=>`R${e.round}: ${e.text}`);
   const E = c.list.filter(x=>!x.ally && !x.neutral && !x.dormant), ran = E.filter(x=>x.fled).length;     // the ones still asleep weren't in it
@@ -16092,7 +16143,7 @@ function renderBattlePanelNow(){
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
     aoeStart(c, t, info);                                         // an area: aimed on the map (or placed at once around them)
     if(info && info.spell && info.spell.save && !info.cond) info.cond = spellCond(info.spell.desc);     // Charm Person's Charmed, Hold Person's Paralyzed: the spell's own words
-    if(info){ act.outcome = (info.spell && info.spell.atk) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
+    if(info){ act.outcome = (info.spell && info.spell.atk) || (info.save && isAttackAct(info)) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
                (info.kind==="spell" && info.spell && !info.spell.atk && !info.spell.save) ? "none" : "hit";
       /* a new choice brings its own damage type (Ice Knife is piercing, not the radiant of the Starry Form picked before it) */
       act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; if(info.cond) act.cond = info.cond;
@@ -18703,10 +18754,11 @@ function renderTurnStrip(){
 function nextTurn(c){
   const order = combatants(c).filter(t=>!(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && !t.fled && !(t.kind==="foe" && t.x.dormant) && !deadT(t));   // a dormant thing gets no turn, nor the dead
   if(!order.length) return false;
+  if(c.turn) effectsTurnEnd(c, c.turn);          // the end of its turn: what lasts "until the end of its next turn" ends, repeat saves
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
   const legPrev = c.turn;
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); effectsTurnStart(c, c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
   legAfterTurn(c, legPrev);                      // a legendary creature's chance, after someone else's turn
   autoNext(c);                                   // an enemy's turn runs by itself, if that's set
   return true;
