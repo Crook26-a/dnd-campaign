@@ -40,3 +40,12 @@ step("the start of her next turn brings her back; the table's 1-3 keeps her here
   nextTurn(fight()); renderBattle(); document.querySelector('#bt-strip [data-ts="blink"][data-v="stay"]').click();
   return `${back} || ${last()} | ethereal ${away()} | page errors ${__KIT.errors.length}`;
 });
+step("a turn given by hand (▶) still ends hers: the reminder, in the strip and the battle panel", () => {
+  const c = fight(), W = who("Wren"); turnTo(W.id); delete c.blinkAsk;
+  const other = all().find(t => t.id !== W.id && !t.fled); renderBattlePanel(); const b = document.querySelector(`[data-bturn="${other.id}"]`); const via = b ? "▶ in the panel" : "by hand";
+  if (b) b.click(); else { turnEnds(c); c.turn = other.id; renderBattle(); }
+  renderBattlePanel(); const panel = document.querySelector("#pane-inspect .ts-blinkp");
+  const said = `strip: ${strip()} | panel: ${panel ? panel.textContent.replace(/\s+/g, " ").trim() : "none"}`;
+  if (panel) panel.querySelector('[data-v="stay"]').click();
+  return `given ${via} | ${said} | answered from the panel: ${last()}`;
+});

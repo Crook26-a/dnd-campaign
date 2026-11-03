@@ -785,6 +785,7 @@
   #bsvg{flex:1;width:100%;min-height:0;touch-action:none;cursor:grab}
   #bt-strip{display:flex;gap:3px;align-items:center;padding:4px 8px;background:var(--paper-lit);border-bottom:1px solid var(--rule);overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
   #bt-strip[hidden]{display:none} #bt-strip .ts-r{font:10px var(--mono);color:var(--ink-soft);margin-right:2px} #bt-strip .ts-next{margin-right:4px;white-space:nowrap;flex:0 0 auto}
+  .ts-blinkp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px;padding:6px 8px;border:2px solid #b0402a;border-radius:6px;font-weight:600} .ts-blinkp .btn{margin:0}
   #bt-strip .ts-blink{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-right:6px;padding:2px 6px;border:2px solid var(--accent,#b0402a);border-radius:6px;font-size:12px;font-weight:600} #bt-strip .ts-blink .btn{margin:0}
   .ts-c{display:inline-flex;align-items:center;flex:0 0 auto;border:1px solid var(--rule);background:var(--paper);font:11.5px var(--sans)}
   .ts-c .ts-i{font:10.5px var(--mono);color:var(--ink-faint);padding:2px 0 2px 5px} .ts-c .ts-n{border:0;background:none;padding:2px 4px;font:inherit;cursor:pointer}
@@ -8036,8 +8037,10 @@ function blinkTurnStart(c, id){
   const line = `${t.label} comes back from the Ethereal Plane (Blink), to a space they choose within 10 feet of where they left.`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("spell", line); flash(line);
 }
-const blinkAskHtml = c => { const t = c.blinkAsk && combatants(c).find(x => x.id===c.blinkAsk.id); if(!t) return "";
-  return `<span class="ts-blink" title="Blink: at the end of each of their turns, a d6; 4 to 6, they vanish to the Ethereal Plane until the start of their next turn">${esc(t.label)}'s Blink d6: <button class="btn small" data-ts="blink" data-v="roll">Roll it</button><button class="btn small" data-ts="blink" data-v="go">Rolled 4–6</button><button class="btn small" data-ts="blink" data-v="stay">Rolled 1–3</button></span>`; };
+// inner: just what goes inside (the battle panel puts it in a box of its own)
+const blinkAskHtml = (c, inner) => { const t = c.blinkAsk && combatants(c).find(x => x.id===c.blinkAsk.id); if(!t) return "";
+  const body = `${esc(t.label)}'s turn ended with Blink up, roll its d6: <button class="btn small" data-ts="blink" data-v="roll">Roll it</button><button class="btn small" data-ts="blink" data-v="go">Rolled 4–6</button><button class="btn small" data-ts="blink" data-v="stay">Rolled 1–3</button>`;
+  return inner ? body : `<span class="ts-blink" title="Blink: at the end of each of their turns, a d6; 4 to 6, they vanish to the Ethereal Plane until the start of their next turn">${body}</span>`; };
 /* cover (Joseph, 2026-11-02, with line of sight: "Ya, add that"): half cover is +2 to AC and Dexterity saves,
    three-quarters +5, total cover can't be targeted directly (the 2024 rules). Worked out on the grid the Dungeon Master's
    Guide's way: from the corner of the attacker's square that sees best (or from an area's point of origin), a line to
@@ -14874,10 +14877,20 @@ function askOpportunity(moverId, from){
   pop.innerHTML = `<p><b>${esc(mover.label)}</b> moved out of reach of ${can.map(t=>esc(t.label)).join(", ")}. Opportunity attack?</p>
     <div class="pcrow">${can.map(t=>`<button class="btn" data-oa="${t.id}">${esc(t.label)} attacks</button>`).join("")}<button class="btn" data-oa="">No</button></div>`;
   pop.hidden = false;
+  oaPopWire(c, pop, mover, can);
+}
+/* each of them can take theirs (Joseph, 2026-11-03: "both people should be able to take opportunity attacks"): picking
+   one sets theirs up in the Action box and the pop-up stays for the rest; log it, then pick the next, or No */
+function oaPopWire(c, pop, mover, can){
   pop.querySelectorAll("[data-oa]").forEach(b=>b.onclick = ()=>{
-    pop.hidden = true;
-    if(!b.dataset.oa) return;
-    startReaction(c, b.dataset.oa, moverId); renderBattle(); renderBattlePanel();
+    if(!b.dataset.oa){ pop.hidden = true; return; }
+    const rest = can.filter(t => t.id!==b.dataset.oa && !reactedThisRound(c, t.id));
+    startReaction(c, b.dataset.oa, mover.id); renderBattle(); renderBattlePanel();
+    if(rest.length){ const t = can.find(x => x.id===b.dataset.oa);
+      pop.innerHTML = `<p>${esc(t ? t.label : "Theirs")}'s opportunity attack on <b>${esc(mover.label)}</b> is in the Action box: log it, then the next. Still in reach: ${rest.map(x=>esc(x.label)).join(", ")}.</p>
+        <div class="pcrow">${rest.map(x=>`<button class="btn" data-oa="${x.id}">${esc(x.label)} attacks</button>`).join("")}<button class="btn" data-oa="">No more</button></div>`;
+      oaPopWire(c, pop, mover, rest); }
+    else pop.hidden = true;
     const box = $("#pane-inspect .actbox"); if(box) scrollInPane(box, "center");
   });
 }
@@ -16355,7 +16368,7 @@ function renderBattlePanelNow(){
   const hpText = t => t.kind==="foe" ? (t.x.max!=null?`${t.x.hp}/${t.x.max}`:"?") : `${numOr(t.p.hp)??"?"}/${numOr(t.p.hpMax)??"?"}`;
   const log = (c.log||[]).slice().reverse();
   const calm = calmOf(c);
-  let h = calmTop(n, st, c, all);
+  let h = calmTop(n, st, c, all) + (c.blinkAsk ? `<div class="ts-blink ts-blinkp">${blinkAskHtml(c, true)}</div>` : "");     // Blink's d6, asked here too
   const foes = all.filter(t=>t.kind==="foe" && t.side==="enemy" && !(t.x.max && t.x.hp<=0));
   /* the picked one: their card (the same as off the battle map) in the room's panel; what only the battle does with
      them (hidden, a reaction, fled, turned, waking, befriending, into the turn order, off the map) in the battle block */
@@ -16448,7 +16461,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-spellopen]").forEach(s=>s.onclick = ()=>{ libPeek("spells", s.dataset.spellopen); });
   el.querySelectorAll("[data-bsel]").forEach(s=>s.onclick = ()=>{ battleSel = s.dataset.bsel; renderBattle(); renderBattlePanel(); });
   /* breaking initiative: jump the turn to someone, or move them in the order by hand */
-  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn); act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
+  el.querySelectorAll("[data-bturn]").forEach(b=>b.onclick = ()=>{ if(c.turn!==b.dataset.bturn) turnEnds(c); c.turn = b.dataset.bturn; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn); act = freshAct(c.turn); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-breact]").forEach(b=>b.onclick = ()=>{
     startReaction(c, b.dataset.breact, null); renderBattle(); renderBattlePanel();
     const box = document.querySelector(".actbox"); if(box) scrollInPane(box, "center");
@@ -19107,10 +19120,13 @@ function renderTurnStrip(){
   if(cur && (cur.offsetLeft < el.scrollLeft || cur.offsetLeft + cur.offsetWidth > el.scrollLeft + el.clientWidth)) el.scrollLeft = Math.max(0, cur.offsetLeft - 90);
 }
 /* the next one's turn (the dead and the fled are skipped; past the last, a new round) */
+/* the end of whoever's turn it is: an area it ends in; what lasts "until the end of its next turn" ends, repeat saves;
+   grapples; Blink's d6. Also when a turn is given by hand (▶), so nothing is skipped (Joseph, 2026-11-03: Blink didn't remind) */
+function turnEnds(c){ if(c.turn){ zonesTurn(c, c.turn, "end"); effectsTurnEnd(c, c.turn); gripSweep(c); blinkTurnEnd(c, c.turn); } }
 function nextTurn(c){
   const order = combatants(c).filter(t=>!(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && !t.fled && !(t.kind==="foe" && t.x.dormant) && !deadT(t));   // a dormant thing gets no turn, nor the dead
   if(!order.length) return false;
-  if(c.turn){ zonesTurn(c, c.turn, "end"); effectsTurnEnd(c, c.turn); gripSweep(c); blinkTurnEnd(c, c.turn); }     // the end of its turn: an area it ends in; what lasts "until the end of its next turn" ends, repeat saves
+  turnEnds(c);     // the end of its turn: an area it ends in; what lasts "until the end of its next turn" ends, repeat saves
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
   const legPrev = c.turn;
@@ -19120,7 +19136,7 @@ function nextTurn(c){
   return true;
 }
 document.addEventListener("click", e=>{
-  const b = e.target.closest && e.target.closest("#bt-strip [data-ts]"); if(!b) return;
+  const b = e.target.closest && e.target.closest("#bt-strip [data-ts], .ts-blink [data-ts]"); if(!b) return;
   const n = bnode(), c = n && n.site && n.site.combat; if(!c) return;
   const a = b.dataset.ts;
   if(a==="pick"){ battleSel = b.dataset.id; renderBattle(); renderPane(true); return; }
@@ -19128,7 +19144,7 @@ document.addEventListener("click", e=>{
     blinkSet(c, t, v==="roll" ? d >= 4 : v==="go", v==="roll" ? `d6 ${d}` : v==="go" ? "the table rolled 4–6" : "the table rolled 1–3"); touch(); renderBattle(); renderBattlePanel(); return; }
   if(a==="next"){ if(!nextTurn(c)) return; }
   else if(a==="round"){ newRound(c); flash(`Round ${c.round}.`); }
-  else if(a==="turn"){ c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn); }
+  else if(a==="turn"){ if(c.turn!==b.dataset.id) turnEnds(c); c.turn = b.dataset.id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn); }
   touch(); renderBattle(); renderBattlePanel();
 });
 
