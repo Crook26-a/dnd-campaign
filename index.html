@@ -8256,7 +8256,7 @@ function tacSuggest(c, t){
   const H = tacHp(t), frac = H.max > 0 ? H.hp / H.max : 1, outn = foes.length / Math.max(1, mates.length + 1), cg = +T.courage || 3;
   const flee = cg>=5 ? "" : cg===1 && (frac < 1 || outn > 1) ? "first hurt or outnumbered" : cg===2 && (frac < .5 || outn >= 2) ? (frac < .5 ? "below half its hit points" : "outnumbered 2 to 1")
     : cg===3 && frac < .25 ? "below a quarter of its hit points" : cg===4 && frac < .1 ? "nearly dead" : "";
-  const out = { stand:TAC_STAND[T.role] || "", flee:flee ? `${TAC_COURAGE.find(x=>x[0]===cg)[1].split(":")[0].replace(/^\d /, "").toLowerCase()}, ${flee}` : "", role:T.role, aim:T.aim };
+  const out = { stand:TAC_STAND[T.role] || "", flee:flee && !fleeOff() ? `${TAC_COURAGE.find(x=>x[0]===cg)[1].split(":")[0].replace(/^\d /, "").toLowerCase()}, ${flee}` : "", role:T.role, aim:T.aim };
   if(T.role==="support"){ const w = T.ward && mates.find(o=>o.id===T.ward);
     const hurt = mates.filter(o=>tacHp(o).max > 0).sort((a, b)=>tacHp(a).hp / tacHp(a).max - tacHp(b).hp / tacHp(b).max)[0];
     const h = w || hurt; if(h){ const P = tacHp(h); return Object.assign(out, { help:h.id, helpLabel:h.label, why:w ? `the one it looks after (${P.hp}/${P.max} HP)` : `the ally with the least hit points left (${P.hp}/${P.max})` }); } }
@@ -13604,6 +13604,10 @@ document.addEventListener("keydown", e => { if(e.key!=="Escape" || !aoeAim || !a
    actions, hiding, and line of sight: those stay the DM's. "Undo their turn" takes the whole turn back.
    ══════════════════════════════════════════════════════════════ */
 let autoTimer = null, autoChain = 0;
+/* fleeing, per encounter (Joseph, 2026-11-02: "I mean in the encounter. Like, you can turn it off as an option for the
+   npcs"): the room's "Nobody flees" (site.noFlee), also set from the fight's "When their courage breaks"; a room never
+   set follows the old all-fights setting (root.autoFlee). Off: nobody there tries to get away, and tactics don't say they would. */
+const fleeOff = () => { const st = (bnode() || {}).site || {}; return st.noFlee!=null ? !!st.noFlee : root.autoFlee==="off"; };
 const autoFor = t => !!t && tacFor(t) && t.side!=="neutral" && !t.fled && !isDownT(t) && !(t.kind==="foe" && t.x.dormant);
 /* squares apart, edge to edge: a position may carry n, its creature's width in squares (a Large one 2), from its top-left square */
 const chebSq = (a, b) => { const an = a.n || 1, bn = b.n || 1;
@@ -14137,7 +14141,7 @@ async function autoTurnNow(c, t, n){
   if(H && (H.tier==="order" || H.tier==="turn")){ said.push(`${t.label} is under ${autoByName(c, H)}'s ${H.name}: ${autoByName(c, H)} says what it does this turn.`); await autoSay(said[0]); const r = done(); r.handed = true; return r; }
   /* its conditions (item 8): can't act; stands up; breaks free if it can't fight from where it is (then it moves, its action spent) */
   { const no = cantAct(t); if(no.length){ said.push(`${t.label} is ${andList(no)}: it can't act this turn.`); await autoSay(said[0]); return done(); } }
-  { const fleeing = s.flee && root.autoFlee!=="off";
+  { const fleeing = s.flee && !fleeOff();
     const canFightHere = () => { const O = others(), me = c.pos[t.id], bm = bmapOf(n), st = n.site || {}, opts = autoOptions(c, t);
       if(O.some(o => opts.some(a => a.kind!=="area" && ((a.melee && chebSq(c.pos[o.id], me) <= a.melee) || (a.range && chebSq(c.pos[o.id], me) <= a.range && losClear(bm, st, me.x, me.y, c.pos[o.id].x, c.pos[o.id].y)))))) return true;
       if(opts.some(a => a.kind==="area" && (b => b && b.foes >= 1)(autoAim(c, t, a)))) return true;
@@ -14158,7 +14162,7 @@ async function autoTurnNow(c, t, n){
      the players can stop"): off, it fights on; on, it tries: it Dashes for the nearest way out on the map and leaves only
      if it gets there this turn. Grappled or Restrained (speed 0), boxed in, or dropped, it doesn't; moving away offers
      opportunity attacks. With no way out on the map it keeps its distance, and the DM marks it Fled if it gets away. */
-  if(s.flee && root.autoFlee!=="off"){ const O = others(), exits = (exitsOf(n) || []).filter(e => e.x!=null && e.y!=null);
+  if(s.flee && !fleeOff()){ const O = others(), exits = (exitsOf(n) || []).filter(e => e.x!=null && e.y!=null);
     ((c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }).dash = true;
     /* a way out within its ordinary Speed: the Disengage action instead of a Dash, so nobody gets a free swing as it goes */
     { const S0 = autoSquares(c, t, n, false, speedOf(t) - movedOf(c, t.id).ft), out0 = exits.length ? S0.filter(q => exits.some(e => chebSq(e, q) <= 1)).sort((a, b) => a.cost - b.cost) : [];
@@ -14445,13 +14449,13 @@ function autoHtml(c, t){
     ${mine && !L ? `<button class="btn small" data-autorun>Run their turn</button>` : ""}${canUndo ? `<button class="btn small" data-autoundo>Undo their turn</button>` : ""}
     <div class="field" style="margin:4px 0 0"><label>Pace</label><select data-autopace><option value="">Step by step: a square at a time, each result in a box</option><option value="now" ${autoNow() ? "selected" : ""}>All at once</option></select></div>
     <label class="check" style="margin:4px 0 0"><input type="checkbox" data-autoall ${root.autoEnemies ? "checked" : ""}> Enemies run their own turns</label>
-    <div class="field" style="margin:4px 0 0"><label>When their courage breaks</label><select data-autoflee><option value="">They try to get away (the players can stop them)</option><option value="off" ${root.autoFlee==="off" ? "selected" : ""}>They fight on (fleeing is your call)</option></select></div></div>`;
+    <div class="field" style="margin:4px 0 0"><label>When their courage breaks (this encounter)</label><select data-autoflee><option value="">They try to get away (the players can stop them)</option><option value="off" ${fleeOff() ? "selected" : ""}>Nobody flees: they fight to the end</option></select></div></div>`;
 }
 document.addEventListener("click", async e => { const b = e.target.closest && e.target.closest("[data-autorun],[data-autoundo],[data-autostop]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
   if(b.dataset.autostop!=null){ autoStop = true; root.autoEnemies = false; clearTimeout(autoTimer); if(autoSkip) autoSkip(); flash("Stopped: the rest of the turn is yours."); touch(); return; }
   if(b.dataset.autoundo!=null){ if(autoUndo(c)) flash("Their turn is taken back."); touch(); renderBattle(); renderBattlePanel(); return; }
   const t = combatants(c).find(x => x.id===c.turn); const r = t && await autoTurn(c, t); touch(); renderBattle(); renderBattlePanel(); if(r && autoNow()) flash(r.said); });
-document.addEventListener("change", e => { const t = e.target; if(t.dataset && t.dataset.autoflee!=null){ if(t.value) root.autoFlee = t.value; else delete root.autoFlee; touch(); return; }
+document.addEventListener("change", e => { const t = e.target; if(t.dataset && t.dataset.autoflee!=null){ const n = bnode(); if(n && n.site) n.site.noFlee = t.value==="off"; touch(); renderBattlePanel(); return; }
   if(t.dataset && t.dataset.autopace!=null){ if(t.value) root.autoPace = t.value; else delete root.autoPace; touch(); } });
 document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.autoall==null) return; root.autoEnemies = t.checked; touch();
   const c = aoeFight(); if(c && t.checked) autoNext(c); else clearTimeout(autoTimer); renderBattlePanel(); });
@@ -20204,6 +20208,7 @@ function sitePanel(n){
       <div class="field"><label>Waves</label><input id="st-waves" class="mono" type="number" min="1" max="6" value="${st.waves||1}"></div>
       <div class="field" style="display:flex;align-items:flex-end;padding-bottom:8px">
         <label class="check"><input id="st-once" type="checkbox" ${st.once!==false?"checked":""}> Clears for good</label>
+        <label class="check" title="Nobody here tries to get away when their courage breaks: they fight to the end"><input id="st-noflee" type="checkbox" ${(st.noFlee!=null ? st.noFlee : root.autoFlee==="off")?"checked":""}> Nobody flees</label>
       </div>
     </div>
 
@@ -20286,6 +20291,7 @@ function wireSite(n){
   numField($("#st-waves"), { min:1, max:6, get:()=>st.waves||1, set:v=>st.waves=v,
                              live:()=>refreshVerdict(n) });
   $("#st-once").onchange = e=>{ st.once = e.target.checked; touch(); };
+  $("#st-noflee").onchange = e=>{ st.noFlee = e.target.checked; touch(); };
 
   $("#pane-inspect").querySelectorAll("[data-foe]").forEach(sel=>{
     sel.onchange = e=>{ st.foes[+e.target.dataset.foe].id = e.target.value; re(); };

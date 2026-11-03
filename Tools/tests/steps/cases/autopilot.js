@@ -107,3 +107,12 @@ step("Command on the gargoyle: its turn is the player's to call, with the spell'
   place(); hold("full"); await turnOf(t); holdsTurnStart(c, t.id); const lost = await autoTurn(c, t);
   return `box: ${box.slice(0, 160)} | ${fled} | ${grovel} | Run their turn: ${ran.said} (handed over ${!!ran.handed}) | held outright: ${lost.said}`;
 });
+step("fleeing set per encounter: 'Nobody flees' on the room, the tactics don't say it would flee and it fights; the fight's choice sets the room", async () => {
+  place(); const g = who("Goblin"); g.x.fled = false; g.x.tac = { courage: 1 }; g.x.hp = 3; g.x.conds = []; fight().pos[g.id] = { x: 6, y: 4 }; delete root.autoFlee;
+  hall().site.noFlee = true; renderBattle(); await turnOf(g);
+  const s = tacSuggest(fight(), g), sel = document.querySelector("[data-autoflee]"), shown = sel ? sel.options[sel.selectedIndex].text : "no setting";
+  const L = await withRoll(0.6, run); const p = $("#bt-pop"); if (!p.hidden) p.hidden = true;
+  await turnOf(g); const sel2 = document.querySelector("[data-autoflee]"); sel2.value = ""; sel2.dispatchEvent(new Event("change", { bubbles: true })); await wait(20);
+  const after = `room noFlee ${hall().site.noFlee}, tactics flee "${tacSuggest(fight(), g).flee}"`; delete hall().site.noFlee;
+  return `would flee: "${s.flee}" | the fight shows "${shown}" | ${L.said.slice(0, 140)} | fled ${!!g.x.fled} | set back from the fight: ${after}`;
+});
