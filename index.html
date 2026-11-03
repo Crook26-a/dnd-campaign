@@ -10697,7 +10697,7 @@ const calmHere = () => { const n = battleOf ? bnode() : null; return !!(n && n.s
 /* Start the battle: whoever is here stays where they stand; the turn order and the battle's action form take over */
 function beginBattle(st){
   if(!st.combat) startFight(st);
-  const c = st.combat; c.calm = false; c.round = c.round || 1;
+  const c = st.combat; c.calm = false; c.round = c.round || 1; c.startedAt = c.startedAt || new Date().toISOString();     // for its log's download
   applyRoomScale(st);                                  // rooms scale to who walks in (the campaign's switch)
   c.statsAt = statSnap();                               // where everyone's tallies stood: the fight's XP card counts from here
   const foesNow = c.list.filter(x=>!x.ally && !x.neutral && !(x.max && x.hp<=0) && !x.fled && !x.dormant), by = {};
@@ -10712,7 +10712,7 @@ function calmAfterBattle(st){
   const c = st.combat; if(!c) return;
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
-  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.holds; delete c.readDone; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled;
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.holds; delete c.readDone; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled; delete c.startedAt;
 }
 /* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
    calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking
@@ -10723,7 +10723,8 @@ function endTheFight(st, n, c, auto){
   if(!auto && !confirm(`End the fight?${left?` ${left} still standing.`:""}${ran?` ${ran} fled.`:""}${asleep?` ${asleep} still dormant.`:""}`)) return false;
   /* Also coming: whatever was still held back never came */
   if(heldTotal(c)){ const E = (c.scaled.expected || []).map(w=>w.name || "someone"); gameLog("fight", `Held back and never came: ${heldWords(c, st, n)}${E.length ? ` (for ${andList(E)}, who didn't arrive)` : ""}`); c.scaled.held = {}; }
-  /* the fight goes into the session log before it's cleared away */
+  /* the fight goes into the session log before it's cleared away, and its whole log into the survey (root.fightLogs) for the download */
+  root.fightLogs = [...(root.fightLogs || []).slice(-19), { at:new Date().toISOString(), node:n.id, place:placeLabel(n), text:fightLogText(n, c, true) }];
   if((c.log||[]).length){ const j = journal(); j.log.push({ id:uid("lg"), at:today(), n:j.log.length+1, text:fightSummary(n, c) }); saveParty(); }
   gameLog("fight", fightSummary(n, c).split("\n")[0]);
   /* the fight's XP: the foes brought down, and what each party member did in it (shared out on the card that follows) */
@@ -15768,7 +15769,30 @@ function undoAction(c){
   flash("Took back the last action.");
   touch(); renderBattle(); renderBattlePanel();
 }
-/* the fight in a paragraph, for the session log */
+/* the fight's log, to download (Joseph, 2026-11-03: "it'd probably be best to download the log"): everyone as they stand,
+   the fight's own log (every action, roll and save, as the battle panel shows it), and the session log's lines from while
+   it went on (size-ups, hiding, morale, moves). Kept in the survey too (root.fightLogs, the last 20) when the fight ends,
+   so "Download the fight log" still works after it, and a downloaded survey carries them. */
+function fightLogText(n, c, ended){
+  const all = combatants(c), since = c.startedAt || null, hp = t => t.kind==="foe" ? `${t.x.hp}/${t.x.max}` : `${numOr(t.p.hp, 0)}/${numOr(t.p.hpMax, 0) || "?"}`;
+  const state = t => { const cs = condsOfT(t), d = t.kind!=="foe" && t.p ? pcState(t.p).death : null;
+    return `${t.label} (${t.side}): ${hp(t)} HP${cs.length ? `, ${cs.join(", ")}` : ""}${d && (d.s || d.f) ? `, death saves ${d.s} made / ${d.f} failed` : ""}${deadT(t) ? ", DEAD" : ""}${t.fled ? ", fled" : ""}`; };
+  const G = since ? gameLogList().filter(e => e.t >= since).map(e => `${new Date(e.t).toLocaleTimeString()} ${e.kind}: ${e.text}`) : [];
+  return [`${placeLabel(n)}: a fight, ${c.round} round${c.round===1 ? "" : "s"}${ended ? ", ended" : ", still going"} (${new Date().toLocaleString()})`, "",
+    "WHO'S IN IT", ...all.map(state), "", "THE FIGHT'S LOG (oldest first)", ...(c.log || []).map(e => `R${e.round}: ${e.text}`), "",
+    "THE SESSION LOG WHILE IT WENT ON", ...(G.length ? G : ["(nothing, or the fight began before this was kept)"])].join("\n");
+}
+function downloadText(name, text){
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type:"text/plain" })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const fightLogName = n => `${new Date().toISOString().slice(0, 10)} ${String(placeLabel(n) || "fight").replace(/[\\/:*?"<>|]+/g, "")} fight log.txt`;
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-fightlog]"); if(!b) return;
+  const n = bnode(), c = n && n.site && n.site.combat; if(!n) return;
+  if(c && !calmOf(c)) return downloadText(fightLogName(n), fightLogText(n, c, false));
+  const last = (root.fightLogs || []).filter(f => f.node===n.id).slice(-1)[0];
+  if(last) downloadText(`${last.at.slice(0, 10)} ${String(last.place || "fight").replace(/[\\/:*?"<>|]+/g, "")} fight log.txt`, last.text); else flash("No fight here to download yet.");
+});/* the fight in a paragraph, for the session log */
 function fightSummary(n, c){
   const L = (c.log||[]).map(e=>`R${e.round}: ${e.text}`);
   const E = c.list.filter(x=>!x.ally && !x.neutral && !x.dormant), ran = E.filter(x=>x.fled).length;     // the ones still asleep weren't in it
@@ -15911,6 +15935,7 @@ function renderBattlePanelNow(){
       ${fillRow(n, st)}
       ${alsoComingRow(n, st)}
       <button class="btn wide calmgo" data-ba="begin">Start the battle</button>
+      ${(root.fightLogs || []).some(f => f.node===n.id) ? `<button class="btn wide" data-fightlog style="margin:-4px 0 8px">Download the last fight's log</button>` : ""}
       <p class="empty-note" style="font-size:11px;margin:-2px 0 8px">${foes.length ? `${foes.length} ${foes.length===1?"enemy":"enemies"} here${(st.foes||[]).length ? ", this place's planned fight" : ""}. ` : ""}Everyone stays where they stand; initiative and turns start with the battle.</p></div>`
     : `<div class="bt-acts"><div class="fighthead"><span>Round <b>${c.round}</b></span><span>${cur?`Turn: <b>${esc(cur.label)}</b>`:"Roll initiative to begin"}</span></div>
     ${scaleOfferHtml(st, n)}
@@ -15932,7 +15957,8 @@ function renderBattlePanelNow(){
     ${log.length ? `<div class="actlog">${log.slice(0,40).map(e=>`<div class="le"><span class="mono">R${e.round}</span> ${esc(e.text)}</div>`).join("")}</div>
       <button class="btn wide" data-ba="undo" style="margin-top:4px">Undo last action</button>` : `<p class="empty-note" style="margin:0 0 6px">Nothing logged yet.</p>`}
     ${stageBlock(st)}
-    <div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-fa="recharge">Roll recharges</button><button class="btn" style="flex:1" data-fa="end" title="Lays out the fallen to search, then it's calm again here">End the battle</button></div></div>`;
+    <div class="pcrow" style="margin-top:8px"><button class="btn" style="flex:1" data-fa="recharge">Roll recharges</button><button class="btn" style="flex:1" data-fa="end" title="Lays out the fallen to search, then it's calm again here">End the battle</button></div>
+    <button class="btn wide" data-fightlog style="margin-top:4px" title="A text file: everyone as they stand, every action and roll, and the session log while it went on">Download the fight log</button></div>`;
   h += bringInBlock(st);
   h += danceBlock(c);
   h += bmapPanel(n);

@@ -64,3 +64,11 @@ step("hidden Bram walks out where a goblin can see him: found; hidden behind a w
   c.pos[B.id] = { x: 11, y: 4 }; [0, 1, 2].forEach(k => { c.pos[gob(k).id] = { x: 20, y: 3 + k }; }); c.stealth = { [B.id]: { hide: 18 } }; renderBattle(); const behind = hideSweep(c).join("; ") || "nobody";
   return `in the open: ${seen} (hidden now: ${was}) | behind a wall: ${behind} (hidden now: ${stealthOf(c, B).hidden ?? "no"}) | page errors ${__KIT.errors.length}`;
 });
+step("the fight log: Download during the fight; kept in the survey when it ends, and downloadable after", async () => {
+  const c = fight(), n = hall(), saved = []; window.downloadText = (name, text) => saved.push({ name, text }); place(); c.startedAt = c.startedAt || new Date().toISOString();
+  c.log = c.log || []; c.log.push({ id: uid("lg"), round: c.round, text: "Gawain hits Goblin Warrior 1 for 9." }); gameLog("check", "Goblin Warrior 2 hides: test line"); renderBattlePanel(); await wait(20);
+  const b1 = document.querySelector("[data-fightlog]"); if (b1) b1.click(); const during = saved[0] ? `${saved[0].name.replace(/^\d{4}-\d\d-\d\d /, "")}: ${saved[0].text.split("\n").filter(l => /hits Goblin|hides: test|^Gawain \(party\)/.test(l)).map(l => l.replace(/^[\d:]+(\s?[AP]M)? /, "")).join(" / ")}` : "no button";
+  window.confirm = () => true; endTheFight(n.site, n, c, true); renderBattle(); renderBattlePanel(); await wait(20);
+  const kept = (root.fightLogs || []).slice(-1)[0], b2 = document.querySelector("[data-fightlog]"); if (b2) b2.click();
+  return `${during} | kept: ${!!kept && /hits Goblin/.test(kept.text)} | after: ${b2 ? b2.textContent.trim() : "no button"}, downloaded ${saved.length} | page errors ${__KIT.errors.length}`;
+});
