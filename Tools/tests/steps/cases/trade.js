@@ -32,7 +32,7 @@ step("aboard: the magic hidden in her hold; seize her cargo; take an item, and i
   const inHold = `${st.items.join(",")} hidden DC ${st.hide["srd:dragon-orb#ctest"]} at ${st.where["srd:dragon-orb#ctest"]}`;
   select("node", "fvrl"); renderPane(true); await wait(30); const card = !!document.querySelector(`[data-seize="silk"]`);
   document.querySelector(`[data-seizeqty="silk"]`).value = "8"; document.querySelector(`[data-seize="silk"]`).click(); await wait(30);
-  st.items = []; fleetBoard(s); leavePlan();
+  st.items = []; fleetBoard(s); if (battleOf) closeBattle(); leavePlan();
   return `in steerage's hold: ${inHold} | seize on her card: ${card} | after seizing 8: hers ${s.cargo.silk.n}, the party's ${JSON.stringify(Object.values(tradeOf().hold))} | the orb taken: hers now ${s.magic.length} | page errors ${__KIT.errors.length}`;
 });
 step("stolen cargo: sold unseen, sold and caught, a pirate's plunder turned in and suspected, a navy search", async () => {
@@ -59,7 +59,7 @@ step("piracy: an honest ship robbed with everyone alive is a deed (once); robbed
   const D = repOf().deeds.slice(d0), first = D.map(d => `${d.text} (${d.size} ${d.fame}, at ${repPlaceName(d.place)}, seen by ${d.seenBy.length})`).join("; ");
   s.cargo = { rum: { n: 5, paid: 10, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; repOf().lastWitness = { day: campaignDay(), place: key, room: key, at: s.name, seen: [], names: [] };
   renderPane(true); await wait(30); document.querySelector(`[data-seize="rum"]`).click(); await wait(30);
-  tradeOf().hold = {};
+  tradeOf().hold = {}; if (battleOf) closeBattle(); if (planOf) leavePlan();
   return `the card said: "${said}" | deeds after two seizures: ${D.length}: ${first} | after a fight with no survivors: ${repOf().deeds.length - d0 - D.length} more | page errors ${__KIT.errors.length}`;
 });
 step("the party: the market on a town's card, buy 5 with a character's coin, sell 5", async () => {
