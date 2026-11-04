@@ -1,0 +1,42 @@
+// uses: save Saves/2026-10-15 kalatecha (roads joined, test island).json
+;setTimeout(async ()=>{ const wait = ms => new Promise(r=>setTimeout(r, ms)); const out=[];
+ /* a campaign's folder is its home (Joseph, 2026-11-04): Current save.json kept up to date there, a newer one brought
+    in on opening (another computer), both changed asks; another store connected without opening it. A folder in memory
+    stands in for a real one (a test can't pick a folder) */
+ function fakeDir(name){ const tree = {}; return { kind:"directory", name, tree,
+   async queryPermission(){ return "granted"; }, async requestPermission(){ return "granted"; },
+   async getFileHandle(n, o){ if(!(n in tree)){ if(!(o && o.create)) throw new Error("NotFound"); tree[n] = { file:"", at:Date.now() }; } const ent = tree[n];
+     return { kind:"file", name:n, async getFile(){ return { text:async()=>ent.file, lastModified:ent.at }; }, async createWritable(){ let buf = ""; return { async write(s){ buf += s; }, async close(){ ent.file = buf; ent.at = Date.now(); } }; } }; },
+   async getDirectoryHandle(n, o){ if(!(n in tree)){ if(!(o && o.create)) throw new Error("NotFound"); tree[n] = fakeDir(n); } return tree[n]; },
+   async *entries(){ for(const [k, v] of Object.entries(tree)) yield [k, v.kind==="directory" ? v : { kind:"file", name:k }]; } }; }
+ try{ loadJSONNow(JSON.stringify(__SAVE)); await wait(300); setDmMode(true); await wait(50);
+  const D = fakeDir('Kalatecha'); campDir = D; let asked = []; window.confirm = q => { asked.push(q.split('\n')[0]); return window.__answer; };
+  out.push('first connect, nothing there yet: ' + await homeSync(D) + ' · in the folder: ' + Object.keys(D.tree).join(', ') + ' · campaign.json ' + D.tree['campaign.json'].file.replace(/\s+/g, ' '));
+  const cur = () => JSON.parse(D.tree['Current save.json'].file);
+  out.push('the save: ' + cur().nodes.length + ' places, savedAt at the end ' + /"savedAt":"[^"]+"}$/.test(D.tree['Current save.json'].file) + ' = home:at ' + (((await idbGet('home:at'))||{}).at===cur().savedAt) + ' · state ' + homeState);
+  /* a change here: written within a minute (here: at once) */
+  root.title = 'Changed here'; markDirty(K_SURVEY); out.push('a change: dirty ' + homeDirty + ', timer set ' + !!homeTimer); await homeWrite(true); out.push('written: ' + cur().title + ', dirty ' + homeDirty);
+  out.push('opened again, nothing new: ' + await homeSync(D));
+  /* another computer saves a newer one */
+  await wait(5); const other = cur(); other.title = 'From the other computer'; other.savedAt = new Date(Date.now() + 60000).toISOString(); D.tree['Current save.json'].file = JSON.stringify(other);
+  out.push('the other computer\'s comes in: ' + await homeSync(D) + ' · title ' + root.title + ' · asked ' + asked.length);
+  /* both changed: keep this browser's */
+  const o2 = cur(); o2.title = 'Folder side'; o2.savedAt = new Date(Date.now() + 120000).toISOString(); D.tree['Current save.json'].file = JSON.stringify(o2);
+  root.title = 'Browser side'; markDirty(K_SURVEY); clearTimeout(homeTimer);
+  window.__answer = false; out.push('both changed, keep ours: ' + await homeSync(D) + ' · asked "' + asked.pop() + '" · folder now ' + cur().title + ' · the folder\'s other copy in Saves ' + Object.keys((D.tree.Saves||{}).tree||{}).some(k=>/Current save \(replaced\)/.test(k)));
+  /* both changed: use the folder's */
+  const o3 = cur(); o3.title = 'Folder wins'; o3.savedAt = new Date(Date.now() + 180000).toISOString(); D.tree['Current save.json'].file = JSON.stringify(o3);
+  root.title = 'Browser again'; markDirty(K_SURVEY); clearTimeout(homeTimer);
+  window.__answer = true; out.push('both changed, use the folder\'s: ' + await homeSync(D) + ' · title ' + root.title);
+  /* another campaign's store, connected without opening it */
+  await idbPutIn('zzother', K_SURVEY, { campaign:'The Other One', nodes:[] }); out.push('another store: ' + await campNameIn('zzother'));
+  /* a folder that needs a click */
+  homeState = 'ask'; campHere(); out.push('needs a click: bar "' + $('#campSwitch').textContent + '" · list has Connect ' + /data-camp="connect"/.test(campRows(await campList())));
+  homeState = 'connected'; campHere(); clearTimeout(homeTimer);
+  pane = 'data'; syncTabs(); renderPane(true); await wait(60); { const t = (document.querySelector('#pane-data')||{}).innerText || '', i = t.search(/campaign's folder/i);
+    out.push('data tab: can use folders ' + canFolder() + ' · ' + (i < 0 ? '(no folder section)' : t.slice(i, i + 400).split('\n').filter(Boolean).slice(0, 4).join(' / ').replace(/\(last written or read: [^)]+\)/, '(last written or read: …)'))); }
+  campDir = null; homeState = '';
+ }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
+ document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');
+},1500);</script>
+</body>

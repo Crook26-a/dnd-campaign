@@ -1,0 +1,11 @@
+first connect, nothing there yet: out · in the folder: Current save.json, campaign.json · campaign.json { "format": "ordinate-campaign", "key": "main", "name": "The Age of Exploration", "kind": "campaign" }
+the save: 58 places, savedAt at the end true = home:at true · state connected
+a change: dirty true, timer set true
+written: Changed here, dirty false
+opened again, nothing new: same
+the other computer's comes in: in · title From the other computer · asked 0
+both changed, keep ours: out · asked "Kalatecha has a save from Nov 4, 11:00 AM, and this browser has changes of its own since they last matched." · folder now Browser side · the folder's other copy in Saves true
+both changed, use the folder's: in · title Folder wins
+another store: The Other One
+needs a click: bar "Folder wins ⚠ ▾" · list has Connect true
+data tab: can use folders true · CAMPAIGN'S FOLDER ITS HOME / Kalatecha is this campaign's home. Current save.json there is kept up to date as you play (last written or read: …). Another computer opening the same folder gets the same campaign. / Pick a different folder Write Current save.json now Save a dated copy in its Saves folder Update from Kalatecha Map.json / Autosave to Saves\autosave.json every 10 minutes, and

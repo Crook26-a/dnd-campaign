@@ -22282,11 +22282,12 @@ function renderData(){
       return `<p class="warn">${names.join(", ")} ${thin.length===1?"has":"have"} buildings but no squares or greens drawn.
         If something removed them, the <b>Square</b> form under Draw puts one back in a drag.</p>`;
     })()}
-    <p class="eyebrow">The campaign folder</p>
-    ${canFolder() ? `${campDir ? `<p class="empty-note" style="margin:0 0 6px">Saving into <b>${esc(campDir.name)}\\Saves</b>${campSavedAt ? `, last at ${esc(campSavedAt)}` : ""}.</p>`
-        : `<p class="empty-note" style="margin:0 0 6px">Pick your campaign folder (the one with ${esc(mapFileName() || "the map file")} and Saves in it) once, and the app saves straight into it.</p>`}
-      <button class="btn wide" id="d-campdir">${campDir ? "Pick a different folder" : "Pick the campaign folder"}</button>
-      ${campDir ? `<button class="btn wide" id="d-campsave">Save to the Saves folder now</button>
+    <p class="eyebrow">The campaign's folder <small>its home</small></p>
+    ${canFolder() ? `${campDir ? `<p class="empty-note" style="margin:0 0 6px"><b>${esc(campDir.name)}</b> is this campaign's home. ${homeState==="connected" ? `${HOME_FILE} there is kept up to date as you play${homeAt ? ` (last written or read: ${esc(fmtAt(homeAt))})` : ""}${homeDirty ? "; changes since go in within a minute" : ""}. Another computer opening the same folder gets the same campaign.` : homeState==="ask" ? `The browser wants a click before the app may use it again: <button class="btn small" data-camp="connect">Connect</button>` : ""}${campSavedAt ? ` Last dated save at ${esc(campSavedAt)}.` : ""}</p>`
+        : `<p class="empty-note" style="margin:0 0 6px">Pick this campaign's folder once (DnD\\Ordinate Survey\\Campaigns\\…). It becomes its home: the app keeps ${HOME_FILE} there up to date, and opens the newer copy when you come back, on this computer or another.</p>`}
+      <button class="btn wide" id="d-campdir">${campDir ? "Pick a different folder" : "Pick the campaign's folder"}</button>
+      ${campDir && homeState==="connected" ? `<button class="btn wide" data-homenow>Write ${HOME_FILE} now</button>` : ""}
+      ${campDir ? `<button class="btn wide" id="d-campsave">Save a dated copy in its Saves folder</button>
       <button class="btn wide" id="d-campupdate" title="Brings in what's new in the map file, keeping everything you've done in the app">Update from ${esc(mapFileName() || "the map file")}</button>
       <label class="check" style="margin:6px 0"><input type="checkbox" id="d-campauto" ${campAuto()?"checked":""}> Autosave to Saves\\autosave.json every 10 minutes, and when the app is closed</label>` : ""}`
       : `<p class="empty-note" style="margin:0 0 6px">This browser can't save straight into a folder: use Download below and move the file into Saves. (Edge or Chrome can.)</p>`}
@@ -22619,7 +22620,8 @@ async function pickCampFolder(){
   if(!canFolder()){ flash("This browser can't save into folders. Use Download instead."); return; }
   try{ campDir = await window.showDirectoryPicker({ id:"campaign", mode:"readwrite" }); }catch(err){ return; }
   try{ await idbPutRaw(CAMP_KEY, campDir); }catch(err){}
-  renderPane(true); flash(`Saving into ${campDir.name}\\Saves.`);
+  await homeSync(campDir).catch(()=>{});               // its home now: the newer copy wins, or it asks
+  renderPane(true); flash(`${campDir.name} is this campaign's home: ${HOME_FILE} is kept up to date there, and dated saves go in its Saves folder.`);
 }
 const stamp = () => { const t = new Date(), p = n => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())} ${p(t.getHours())}${p(t.getMinutes())}`; };
 async function saveToCamp(name, quiet){
@@ -22650,6 +22652,101 @@ function startCampAuto(){
   campAutoTimer = setInterval(()=>{ if(campDirtySince) saveToCamp("autosave.json", true); }, 10*60*1000);
 }
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden" && campAuto() && campDirtySince) saveToCamp("autosave.json", true); });
+/* ══ A CAMPAIGN'S HOME (Joseph, 2026-11-04: its folder is the real home, the browser a working copy). The campaign
+   folder (one per campaign, picked once) holds "Current save.json", the campaign as it stands, and "campaign.json"
+   ({ key, name, kind }: which store it is). The app writes Current save.json a minute after a change, when the tab is
+   hidden, and before switching campaigns; on opening, a newer one in the folder (another computer, through OneDrive) is
+   brought in. In the store: "home:at" (the savedAt last written or read) and "home:dirty" (a change since). Both
+   changed: it asks; the one not kept is kept anyway (the shelf, or the folder's Saves). On a new computer, "Find
+   campaigns in a folder…" (a campaign's folder, or the Campaigns folder with one inside per campaign) connects each to
+   its own store. A browser asks again for a folder after it's restarted: then the list says "Connect". ══ */
+const HOME_FILE = "Current save.json", HOME_META = "campaign.json";
+var homeDirty = false, homeTimer = null, homeState = "", homeAt = "", homeReady = false;      // homeState: "" (no folder), "connected", "ask" (needs a click); homeReady: started (what loading does isn't a change)
+const fmtAt = iso => { try{ return new Date(iso).toLocaleString([], { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); }catch(err){ return iso; } };
+function homeMark(){
+  if(!homeDirty){ homeDirty = true; idbPutRaw("home:dirty", true).catch(()=>{}); }
+  if(homeState==="connected"){ clearTimeout(homeTimer); homeTimer = setTimeout(()=>homeWrite(true), 60*1000); }
+}
+async function homeMeta(dir){
+  const R = campReg(), k = campKeyOf(STORE_NS), e = R[k] || {};
+  const m = { format:"ordinate-campaign", key:k, name:e.name || e.seen || (root && (root.campaign || root.title)) || k, kind:e.kind || campKindGuess(k) };
+  const w = await (await dir.getFileHandle(HOME_META, { create:true })).createWritable(); await w.write(JSON.stringify(m, null, 2)); await w.close();
+}
+async function homeWrite(quiet){
+  clearTimeout(homeTimer);
+  const dir = await campFolder(false); if(!dir) return false;
+  try{
+    await pump().catch(()=>{});
+    const at = new Date().toISOString(), bundle = exportBundle(), files = await filesForExport(); if(Object.keys(files).length) bundle.files = files;
+    bundle.savedAt = at;                                   // last, so it can be read off the end of the file
+    const w = await (await dir.getFileHandle(HOME_FILE, { create:true })).createWritable(); await w.write(JSON.stringify(bundle)); await w.close();
+    await homeMeta(dir);
+    await idbPutRaw("home:at", { at }); await idbPutRaw("home:dirty", false); homeDirty = false; homeAt = at; homeState = "connected";
+    if(!quiet) flash(`Saved: ${dir.name}\\${HOME_FILE}.`);
+    if(pane==="data") renderPane(true);
+    return true;
+  }catch(err){ if(!quiet) flash("Couldn't write into the campaign's folder: " + (err.message || err)); return false; }
+}
+async function homeRead(dir){
+  try{ const f = await (await dir.getFileHandle(HOME_FILE)).getFile(), text = await f.text(), m = /"savedAt":"([^"]+)"\s*\}\s*$/.exec(text.slice(-200));
+    return { text, at:m ? m[1] : new Date(f.lastModified).toISOString() }; }catch(err){ return null; }
+}
+async function homeLoad(file){
+  loadJSONNow(file.text); clearTimeout(homeTimer); await pump().catch(()=>{});
+  await idbPutRaw("home:at", { at:file.at }); await idbPutRaw("home:dirty", false); homeDirty = false; homeAt = file.at; homeState = "connected";
+  campHere(); renderPane(true); flash(`Opened from its folder: the save of ${fmtAt(file.at)}.`);
+}
+/* the browser's copy and the folder's, side by side: the newer comes in or goes out; both changed, it asks */
+async function homeSync(dir){
+  const file = await homeRead(dir), last = ((await idbGet("home:at").catch(()=>null)) || {}).at || "", dirty = !!(await idbGet("home:dirty").catch(()=>false));
+  homeDirty = dirty; homeAt = last; homeState = "connected"; campHere();
+  const has = !!(root && (root.nodes||[]).length);
+  if(!file){ if(has) await homeWrite(true); return "out"; }                       // nothing there yet: this one goes there
+  if(file.at===last){ if(dirty) await homeWrite(true); return dirty ? "out" : "same"; }
+  if(!has || (last && !dirty)){ await homeLoad(file); return "in"; }            // only the folder's changed
+  const useFolder = confirm(`${dir.name} has a save from ${fmtAt(file.at)}, and this browser has ${last ? "changes of its own since they last matched" : "its own copy (it hasn't been connected to this folder before)"}.\n\nOK: use the folder's. This browser's copy goes on the shelf (Data tab).\nCancel: keep this browser's. It's written into the folder, and the folder's goes into its Saves folder.`);
+  if(useFolder){ await shelveBeforeReplacing(); await homeLoad(file); return "in"; }
+  try{ const saves = await dir.getDirectoryHandle("Saves", { create:true }), w = await (await saves.getFileHandle(`${stamp()} Current save (replaced).json`, { create:true })).createWritable(); await w.write(file.text); await w.close(); }catch(err){}
+  await homeWrite(true); flash(`Kept this browser's. The folder's other copy is in ${dir.name}\\Saves.`); return "out";
+}
+/* at the start: the folder, if this session may use it */
+async function homeOpen(){
+  if(!canFolder() || builtInMap()) return;
+  if(!campDir){ try{ campDir = await idbGet(CAMP_KEY) || null; }catch(err){} }
+  if(!campDir) return;
+  const dir = await campFolder(false);
+  if(!dir){ homeState = "ask"; campHere(); return; }
+  await homeSync(dir);
+}
+async function homeConnect(){ const dir = await campFolder(true); if(!dir){ flash("The folder wasn't allowed."); return; } await homeSync(dir); campFill(); }
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden" && homeState==="connected" && homeDirty) homeWrite(true); });
+document.addEventListener("click", e=>{ if(e.target.closest && e.target.closest("[data-homenow]")) homeWrite(false); });
+/* another store's key–value, for connecting a folder to a campaign that isn't open (a new computer) */
+function idbPutIn(k0, k, v){
+  if(k0===campKeyOf(STORE_NS)) return idbPutRaw(k, v);
+  return new Promise((res, rej)=>{ const r = indexedDB.open(k0==="main" ? "ordinate-survey" : `ordinate-survey-${k0}`, 1);
+    r.onupgradeneeded = ()=>r.result.createObjectStore(STORE);
+    r.onsuccess = ()=>{ const db = r.result, tx = db.transaction(STORE, "readwrite"); tx.objectStore(STORE).put(v, k); tx.oncomplete = ()=>{ db.close(); res(); }; tx.onerror = ()=>{ db.close(); rej(tx.error); }; };
+    r.onerror = ()=>rej(r.error); });
+}
+/* "Find campaigns in a folder…": a campaign's own folder, or one with a folder per campaign inside (the Campaigns folder) */
+async function campFind(){
+  if(!canFolder()){ flash("This browser can't open folders. Edge or Chrome can."); return; }
+  let dir; try{ dir = await window.showDirectoryPicker({ id:"campaigns", mode:"readwrite" }); }catch(err){ return; }
+  const look = async d => { let meta = null, has = false;
+    try{ meta = JSON.parse(await (await (await d.getFileHandle(HOME_META)).getFile()).text()); }catch(err){}
+    try{ await d.getFileHandle(HOME_FILE); has = true; }catch(err){}
+    return meta || has ? { d, meta:meta || {} } : null; };
+  const found = [], self = await look(dir);
+  if(self) found.push(self); else for await (const [, h] of dir.entries()) if(h.kind==="directory"){ const f = await look(h); if(f) found.push(f); }
+  if(!found.length){ flash(`No campaigns in ${dir.name}: a campaign's folder has ${HOME_FILE} or ${HOME_META} in it.`); return; }
+  const R = campReg();
+  for(const f of found){ const m = f.meta, key = /^[\w-]+$/.test(m.key || "") ? m.key : (f.d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "campaign") + "-" + Math.random().toString(36).slice(2, 6);
+    R[key] = { ...(R[key] || {}), name:(R[key] || {}).name || m.name || f.d.name, kind:(R[key] || {}).kind || m.kind || "campaign", hidden:false };
+    await idbPutIn(key, CAMP_KEY, f.d);
+    if(key===campKeyOf(STORE_NS)){ campDir = f.d; await homeSync(f.d); } }
+  campRegSave(R); campFill(); flash(`Connected ${found.length}: ${found.map(f=>f.meta.name || f.d.name).join(", ")}. Open one from the list.`);
+}
 $("#ppm").addEventListener("input", e=>{
   doc.ppm = Math.max(1, Math.min(80, +e.target.value||10)); render(); touch();
 });
@@ -22743,6 +22840,7 @@ async function campList(){
 async function campOpen(k){
   try{ localStorage.setItem("ordinate-active", k); }catch(err){}
   try{ await save(); }catch(err){}
+  if(homeState==="connected" && homeDirty) try{ await homeWrite(true); }catch(err){}      // the campaign's folder up to date before leaving it
   location.href = location.pathname + "?c=" + encodeURIComponent(k);
 }
 /* this one, once loaded: listed, its name noted, the page and the bar say which it is */
@@ -22754,13 +22852,15 @@ function campHere(){
   campRegSave(R);
   if(STORE_FROM.how!=="page") try{ localStorage.setItem("ordinate-active", k); }catch(err){}
   const nm = e.name || e.seen || "Ordinate Survey"; document.title = nm==="Ordinate Survey" ? nm : `${nm} — Ordinate Survey`;
-  const b = $("#campSwitch"); if(b){ b.textContent = `${nm} ▾`; b.title = `${campKindWord(e.kind)}. Switch campaigns, start a new one, or a one-shot`; }
+  const b = $("#campSwitch"); if(b){ const ask = typeof homeState!=="undefined" && homeState==="ask";
+    b.textContent = `${nm}${ask ? " ⚠" : ""} ▾`; b.title = ask ? "Its folder needs a click: Connect, in this list" : `${campKindWord(e.kind)}. Switch campaigns, start a new one, or a one-shot`; }
 }
 /* the list: in the Data tab and under the bar's button */
 var campShowHidden = false;
 function campRows(L){
   const shown = L.filter(c=>!c.hidden || c.here || campShowHidden), hid = L.filter(c=>c.hidden && !c.here).length;
-  return shown.map(c=>`<div class="pcrow" style="align-items:center;margin:0 0 4px">
+  return (homeState==="ask" && campDir ? `<div class="pcrow" style="align-items:center;margin:0 0 8px"><span style="flex:1;min-width:0;color:var(--lead)">This campaign's folder, <b>${esc(campDir.name)}</b>, needs a click before the app may use it again.</span><button class="btn" data-camp="connect">Connect</button></div>` : "")
+    + shown.map(c=>`<div class="pcrow" style="align-items:center;margin:0 0 4px">
       <span style="flex:1;min-width:0"><b>${esc(c.name)}</b> <small>${esc(campKindWord(c.kind))}${c.hidden ? " · hidden" : ""}</small></span>
       ${c.here ? `<small class="ivst found">open now</small>` : `<button class="btn small" data-camp="open" data-k="${esc(c.key)}">Open</button>`}
       <select data-camp="kind" data-k="${esc(c.key)}" title="Just a label: a one-shot can grow into a campaign">${CAMPAIGN_KINDS.map(([v, l])=>`<option value="${v}" ${v===c.kind?"selected":""}>${l}</option>`).join("")}</select>
@@ -22768,7 +22868,8 @@ function campRows(L){
       ${c.here ? "" : `<button class="btn small" data-camp="${c.hidden ? "show" : "hide"}" data-k="${esc(c.key)}" title="${c.hidden ? "Back in the list" : "Off the list. Its save stays in this browser: nothing is deleted"}">${c.hidden ? "Show" : "Hide"}</button>`}</div>`).join("")
     + (hid ? `<button class="btn small" data-camp="hidden">${campShowHidden ? "Hide the hidden ones" : `Show the hidden ones (${hid})`}</button>` : "")
     + `<div class="pcrow" style="margin-top:8px"><input id="camp-newname" type="text" placeholder="A new one's name" style="flex:2;min-width:0"><select id="camp-newkind" style="flex:1">${CAMPAIGN_KINDS.map(([v, l])=>`<option value="${v}">${l}</option>`).join("")}</select><button class="btn" data-camp="new">Start it</button></div>
-    <p class="empty-note" style="font-size:11px;margin:4px 0 0">Each keeps its own save and its own Saves folder. A new one starts empty: bring its map in from the Data tab ("Load a survey.json").</p>`;
+    <div class="pcrow" style="margin-top:6px"><button class="btn" style="flex:1" data-camp="find" title="A campaign's folder, or the Campaigns folder with a folder for each inside: each found is connected to its own campaign here (another computer: this is how they come in)">Find campaigns in a folder…</button></div>
+    <p class="empty-note" style="font-size:11px;margin:4px 0 0">Each keeps its own save and its own folder. A new one starts empty: pick its folder in the Data tab, or bring a map in ("Load a survey.json").</p>`;
 }
 function campFill(){ const els = [...document.querySelectorAll("[data-camplist]")]; if(!els.length) return; campList().then(L=>{ for(const el of els) el.innerHTML = campRows(L); }); }
 const campaignsBlock = () => { setTimeout(campFill, 0); return `<p class="eyebrow">Campaigns</p><div data-camplist><p class="empty-note">Looking…</p></div><div style="height:12px"></div>`; };
@@ -22777,6 +22878,8 @@ document.addEventListener("click", e=>{
   if(b.id==="campSwitch"){ const p = $("#campPop"); p.hidden = !p.hidden; if(!p.hidden){ const r = b.getBoundingClientRect(); p.style.left = Math.max(8, r.left) + "px"; p.style.top = (r.bottom + 4) + "px"; p.innerHTML = `<div data-camplist><p class="empty-note">Looking…</p></div>`; campFill(); } return; }
   const a = b.dataset.camp, k = b.dataset.k, R = campReg();
   if(a==="open"){ campOpen(k); return; }
+  if(a==="connect"){ homeConnect(); return; }
+  if(a==="find"){ campFind(); return; }
   if(a==="rename"){ const L0 = (R[k] || {}); const nm = prompt("Its name in the list:", L0.name || L0.seen || ""); if(nm===null) return; R[k] = { ...L0, name:nm.trim() }; campRegSave(R); if(k===campKeyOf(STORE_NS)) campHere(); }
   else if(a==="hide" || a==="show"){ R[k] = { ...(R[k] || {}), hidden:a==="hide" }; campRegSave(R); }
   else if(a==="hidden") campShowHidden = !campShowHidden;
@@ -22875,7 +22978,7 @@ async function pump(){
   if(_dirty.size) return pump();
   if(!flashTimer) setSaved();
 }
-function markDirty(key){ _dirty.add(key); if(typeof campDirtySince!=="undefined" && !campDirtySince) campDirtySince = Date.now(); }   // also tells the folder autosave there's something new
+function markDirty(key){ _dirty.add(key); if(typeof homeReady!=="undefined" && homeReady) homeMark(); if(typeof campDirtySince!=="undefined" && !campDirtySince) campDirtySince = Date.now(); }   // also tells the folder autosave there's something new
 async function save(){ markDirty(currentKey()); return pump().catch(()=>{ storageOK=false; }); }
 function currentKey(){ return planOf ? K_PLAN(planOf) : K_SURVEY; }
 
@@ -23484,6 +23587,7 @@ async function boot(){
     if((root.docs||[]).length){ pane = "session"; syncTabs(); renderPane(true); } }    // open on its first document (a demo's tour)
   /* started: DM mode on a laptop lays out for the table now that everything is loaded */
   applyMode(); syncTabs(); renderPane(true);
+  homeOpen().catch(()=>{}).finally(()=>{ homeReady = true; });      // the campaign's folder: the newer copy comes in or goes out
   arenaStart();                                   // the Test Arena: straight into its blank room
 }
 boot();

@@ -1,7 +1,7 @@
 this page: store "" from default
 title: The Age of Exploration — Ordinate Survey · bar: The Age of Exploration ▾
 list: The Age of Exploration (Campaign, here), Test Arena (Test), The Ashgrave Masquerade (One-shot)
-data tab: The Age of Exploration Campaign open now Campaign One-shot Test Rename Test Arena Test Open Campaign One-shot Test Rename Hide The Ashgrave Masquerade One-shot Open Campaign One-shot Test Rename Hide Campaign One-shot Test Start it Each keeps its own save and
+data tab: The Age of Exploration Campaign open now Campaign One-shot Test Rename Test Arena Test Open Campaign One-shot Test Rename Hide The Ashgrave Masquerade One-shot Open Campaign One-shot Test Rename Hide Campaign One-shot Test Start it Find campaigns in a folder…
 open the one-shot: oneshot
 renamed, now a campaign: {"seen":"The Ashgrave Masquerade","name":"Ashgrave Manor","kind":"campaign"}
 arena hidden: false · Show the hidden ones (1)
