@@ -5,11 +5,18 @@
 const fleetSeed = s => { let x = s; Math.random = () => { x = (x * 16807) % 2147483647; return (x - 1) / 2147483646; }; };
 step("the ports on the water, and the sea lanes from the map: every port joined up", async () => {
   loadJSONNow(JSON.stringify(FIX.kal)); await wait(400); setDmMode(true); await wait(60); fleetSeed(9); delete root.rep; delete root.fleet;
-  const all = (root.nodes || []).filter(n => isPort(n)), real = repPorts(), r = seaLanesFromMap();
+  const all = (root.nodes || []).filter(n => isPort(n)), real = repPorts(), t0 = performance.now(), r = seaLanesFromMap(), ms = Math.round(performance.now() - t0);
   const far = real.find(p => p.kind === "city" && p.region !== real[0].region), path = far ? seaPath(real[0].id, far.id) : null;
   const unreachable = real.filter(p => !seaPath(real[0].id, p.id)).length;
+  /* how much of the lanes crosses land, a mile at a time, past the first and last 4 miles (the ports' own shores) */
+  const G = seaGrid(), ppm = root.ppm || 10; let miles = 0, dry = 0;
+  for (const l of repOf().lanes) { const P = l.pts || []; let walked = 0, tot = 0; for (let i = 1; i < P.length; i++) tot += Math.hypot(P[i].x - P[i-1].x, P[i].y - P[i-1].y);
+    for (let i = 1; i < P.length; i++) { const a = P[i-1], b = P[i], d = Math.hypot(b.x - a.x, b.y - a.y), n = Math.ceil(d / ppm);
+      for (let k = 0; k < n; k++) { walked += d / n; if (walked < 4 * ppm || walked > tot - 4 * ppm) continue; const x = a.x + (b.x - a.x) * k / n, y = a.y + (b.y - a.y) * k / n;
+        miles++; if (G.land[Math.floor((y - G.y0) / G.cell) * G.W + Math.floor((x - G.x0) / G.cell)]) dry++; } } }
+  const kal = real.find(p => p.name === "Kalatecha"), viaKal = repOf().lanes.filter(l => l.from === kal.id || l.to === kal.id);
   expect(unreachable === 0, "every port reachable", unreachable);
-  return `ports by kind ${all.length}, on the water ${real.length} | inland: ${all.filter(p => !real.includes(p)).map(p => p.name).slice(0, 8).join(", ")} | ${r.lanes} lanes | ${real[0].name} to ${far ? far.name : "?"}: ${path ? path.map(repPlaceName).join(" → ") : "none"}`;
+  return `ports by kind ${all.length}, on the water ${real.length} | inland: ${all.filter(p => !real.includes(p)).map(p => p.name).slice(0, 8).join(", ")} | ${r.lanes} lanes (worked out in ${ms < 3000 ? "under 3 s" : ms + " ms"}) | hub ${r.hub}, ${viaKal.length} lanes from it, to ${viaKal.map(l => repPlaceName(l.from === kal.id ? l.to : l.from)).join(", ")} | over land: ${dry} of ${miles} miles | ${real[0].name} to ${far ? far.name : "?"}: ${path ? path.map(repPlaceName).join(" → ") : "none"}`;
 });
 step("a fleet of 18: the mix, the routes, the pirate's hideout", async () => {
   const n = fleetRoll(), F = root.fleet, count = k => F.filter(s => s.kind === k).length;
@@ -31,5 +38,5 @@ step("the charts: lanes and ships on yours; on the players' only what's within 1
   const pl = playerMapScene(), plSvg = String(pl.svg || pl.html || ""), pop = $("#fleetPop");
   const offered = !pop.hidden ? pop.innerText.replace(/\s+/g, " ").slice(0, 160) : "nothing";
   if (!pop.hidden) { pop.querySelector('[data-fleet="meet"]').click(); await wait(20); }
-  return `your chart: ${(dm.match(/<line /g) || []).length} lanes, ${(dm.match(/<path d="M-7 2/g) || []).length} ships | players' chart: ${(plSvg.match(/M-7 2/g) || []).length} ship(s) | offered: ${offered} | met on day ${s.met || "-"} | page errors ${__KIT.errors.length}`;
+  return `your chart: ${(dm.match(/class="sealane"/g) || []).length} lanes, ${(dm.match(/<path d="M-7 2/g) || []).length} ships | players' chart: ${(plSvg.match(/M-7 2/g) || []).length} ship(s) | offered: ${offered} | met on day ${s.met || "-"} | page errors ${__KIT.errors.length}`;
 });
