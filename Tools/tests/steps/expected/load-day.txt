@@ -1,0 +1,1 @@
+1. on day 4, then load a save from day 1: the time bar says day 1: before: day 4 | after loading: the campaign's day 1, the bar 1, night

@@ -23059,6 +23059,9 @@ function refreshAfterLoad(){
   if(typeof sessOpen!=="undefined" && sessOpen && !docsAll().some(d=>d.id===sessOpen)) sessOpen = null;
   if(typeof docOpen!=="undefined" && docOpen && !docsAll().some(d=>d.id===docOpen)) docOpen = null;
   try{ renderSession(); renderDocs(); renderTLog(true); renderChips(); }catch(err){}
+  /* the day, the time of day and the weather from the file, not the ones before it (Joseph, 2026-11-04: loading an old
+     save "is not taking the days back") */
+  try{ syncTimeBar(); }catch(err){}
 }
 function loadJSONNow(text){
   cdChecked = false;                                       // a file with a countdown left running gets the same check as opening the app
