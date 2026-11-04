@@ -1,7 +1,9 @@
 WHAT'S WHERE IN THIS FOLDER
 
 index.html
-    The campaign app. Open this one. Leave it where it is.
+    Claude's working copy of the app (its tests run on it). Open the app from
+    DnD\Ordinate Survey\index.html instead: every campaign and one-shot is there, picked from
+    Campaigns in the top bar (opening this one works too, the same saves). Leave it where it is.
     Everything you do at the table lives in the app: the party, inventories, attunement,
     coins, the library, what's in every place, the documents.
 

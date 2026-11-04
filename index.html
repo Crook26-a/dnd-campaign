@@ -1266,6 +1266,8 @@
 
   <div id="bar">
     <span class="mark">Ordinate Survey</span>
+    <button id="campSwitch" class="btn small" style="white-space:nowrap" title="Switch campaigns">Campaigns ▾</button>
+    <div id="campPop" hidden style="position:fixed;z-index:70;min-width:340px;max-width:min(560px, 94vw);max-height:70vh;overflow:auto;background:var(--paper-lit);border:1.5px solid var(--lead);border-radius:4px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.25)"></div>
     <span id="crumb" hidden></span>
     <span class="barfield">Scale <input id="ppm" type="number" min="1" max="80" step="1" value="10"> px&nbsp;/&nbsp;<span id="unitLab">mile</span></span>
     <span class="barfield">Grid <span class="mono" id="gridLab">10 mi</span></span>
@@ -22267,7 +22269,7 @@ function renderData(){
   const here = doc.libId;
   $("#pane-data").innerHTML = (builtInMap() ? `<p class="eyebrow">A demonstration</p>
     <p class="empty-note" style="margin:0 0 6px">This copy has its own map built in, and keeps its own save: nothing here touches any other campaign on this computer. Change anything you like.</p>
-    <button class="btn wide" data-demoreset style="margin-bottom:12px">Start the demo over</button>` : "") + `
+    <button class="btn wide" data-demoreset style="margin-bottom:12px">Start the demo over</button>` : campaignsBlock()) + `
     ${campNameBlock()}
         ${(()=>{
       /* A plan that has markers and no outlines at all usually means
@@ -22697,11 +22699,94 @@ function touch(){
 /* Where this copy keeps its save. Usually the one store; a page that names its own with
    <meta name="ordinate-store" content="demo"> (a demo, a second campaign) keeps a separate save,
    so two copies on one computer never read or overwrite each other's. */
-const STORE_NS = (()=>{ const m = document.querySelector('meta[name="ordinate-store"]'); return m && m.content ? String(m.content).replace(/[^\w-]/g, "") : ""; })();
+/* One app, every campaign (Joseph, 2026-11-04: "switch between campaigns and one shots rather than have the oneshot and
+   campaign have different apps"). Which one this page opens: ?c=<store> in its address (the switcher; the old folders'
+   launchers), else a page's own <meta name="ordinate-store"> (the demo), else the one opened last. "main" is the first
+   campaign's store (Kalatecha's, the one with no name) */
+const STORE_FROM = (()=>{ const clean = s => String(s||"").replace(/[^\w-]/g, "");
+  try{ const q = new URLSearchParams(location.search).get("c"); if(q!=null) return { ns:q==="main" ? "" : clean(q), how:"address" }; }catch(err){}
+  const m = document.querySelector('meta[name="ordinate-store"]'); if(m && m.content) return { ns:clean(m.content), how:"page" };
+  try{ const l = localStorage.getItem("ordinate-active"); if(l) return { ns:l==="main" ? "" : clean(l), how:"last" }; }catch(err){}
+  return { ns:"", how:"default" }; })();
+const STORE_NS = STORE_FROM.ns;
 const DB_NAME = STORE_NS ? `ordinate-survey-${STORE_NS}` : "ordinate-survey", STORE = "kv";
 /* a page can carry a map of its own (window.__DEMO_MAP): opened with nothing saved yet, it starts there */
 const builtInMap = () => (typeof window.__DEMO_MAP==="object" && window.__DEMO_MAP) ? window.__DEMO_MAP : null;
 const K_SURVEY = "survey", K_PLAN = id=>"plan:"+id, MIGKEY = "ordinate-idb-v1";
+/* ── the campaigns on this computer: each its own store (its own save, its own Saves folder, as before), listed by name
+   and kind (localStorage "ordinate-campaigns": { key:{ name (given in the list), seen (its own name, last opened),
+   kind, hidden } }). A kind is just a label for now: a one-shot can grow into a campaign ── */
+const CAMPAIGN_KINDS = [["campaign","Campaign"],["one-shot","One-shot"],["test","Test"]];
+const campKeyOf = ns => ns || "main";
+function campReg(){ try{ const r = JSON.parse(localStorage.getItem("ordinate-campaigns") || "{}"); return r && typeof r==="object" ? r : {}; }catch(err){ return {}; } }
+function campRegSave(r){ try{ localStorage.setItem("ordinate-campaigns", JSON.stringify(r)); }catch(err){} }
+const campKindGuess = k => k==="oneshot" ? "one-shot" : k==="arena" ? "test" : "campaign";
+const campKindWord = k => (CAMPAIGN_KINDS.find(x=>x[0]===k) || CAMPAIGN_KINDS[0])[1];
+/* a store's own name, read from its save without opening it as the campaign (a store that isn't there isn't made) */
+function campNameIn(k){ return new Promise(res=>{ let done = false; const end = v => { if(!done){ done = true; res(v); } };
+  try{ const r = indexedDB.open(k==="main" ? "ordinate-survey" : `ordinate-survey-${k}`);
+    r.onupgradeneeded = ()=>{ try{ r.transaction.abort(); }catch(err){} end(""); };
+    r.onsuccess = ()=>{ const db = r.result; try{ const g = db.transaction(STORE, "readonly").objectStore(STORE).get(K_SURVEY);
+      g.onsuccess = ()=>{ const d = g.result; db.close(); end(d ? (d.campaign || d.title || "") : ""); }; g.onerror = ()=>{ db.close(); end(""); }; }catch(err){ db.close(); end(""); } };
+    r.onerror = ()=>end(""); }catch(err){ end(""); } }); }
+/* every campaign: the ones listed, the stores this browser has (where it can say), this one */
+async function campList(){
+  const R = campReg(), here = campKeyOf(STORE_NS), keys = new Set([...Object.keys(R), "main", here]);
+  try{ if(indexedDB.databases) for(const d of await indexedDB.databases()){ const m = /^ordinate-survey(?:-([\w-]+))?$/.exec(d.name||""); if(m && m[1]!=="demo") keys.add(m[1] || "main"); } }catch(err){}
+  const out = [];
+  for(const k of keys){ const e = R[k] || {}, mine = k===here;
+    const name = e.name || (mine && root ? (root.campaign || root.title) : "") || e.seen || await campNameIn(k);
+    out.push({ key:k, name:name || (k==="main" ? "The first campaign" : k), kind:e.kind || campKindGuess(k), hidden:!!e.hidden, here:mine }); }
+  return out.sort((a, b)=>(b.here - a.here) || a.name.localeCompare(b.name));
+}
+/* open one: saved first, then the page opens on it */
+async function campOpen(k){
+  try{ localStorage.setItem("ordinate-active", k); }catch(err){}
+  try{ await save(); }catch(err){}
+  location.href = location.pathname + "?c=" + encodeURIComponent(k);
+}
+/* this one, once loaded: listed, its name noted, the page and the bar say which it is */
+function campHere(){
+  const k = campKeyOf(STORE_NS), R = campReg(), e = R[k] = R[k] || {};
+  if(!e.kind) e.kind = campKindGuess(k);
+  if(root && !root.campaign && !root.title && e.name && !(root.nodes||[]).length) root.campaign = e.name;      // a new one: its name from the list
+  if(root && (root.campaign || root.title)) e.seen = root.campaign || root.title;
+  campRegSave(R);
+  if(STORE_FROM.how!=="page") try{ localStorage.setItem("ordinate-active", k); }catch(err){}
+  const nm = e.name || e.seen || "Ordinate Survey"; document.title = nm==="Ordinate Survey" ? nm : `${nm} — Ordinate Survey`;
+  const b = $("#campSwitch"); if(b){ b.textContent = `${nm} ▾`; b.title = `${campKindWord(e.kind)}. Switch campaigns, start a new one, or a one-shot`; }
+}
+/* the list: in the Data tab and under the bar's button */
+var campShowHidden = false;
+function campRows(L){
+  const shown = L.filter(c=>!c.hidden || c.here || campShowHidden), hid = L.filter(c=>c.hidden && !c.here).length;
+  return shown.map(c=>`<div class="pcrow" style="align-items:center;margin:0 0 4px">
+      <span style="flex:1;min-width:0"><b>${esc(c.name)}</b> <small>${esc(campKindWord(c.kind))}${c.hidden ? " · hidden" : ""}</small></span>
+      ${c.here ? `<small class="ivst found">open now</small>` : `<button class="btn small" data-camp="open" data-k="${esc(c.key)}">Open</button>`}
+      <select data-camp="kind" data-k="${esc(c.key)}" title="Just a label: a one-shot can grow into a campaign">${CAMPAIGN_KINDS.map(([v, l])=>`<option value="${v}" ${v===c.kind?"selected":""}>${l}</option>`).join("")}</select>
+      <button class="btn small" data-camp="rename" data-k="${esc(c.key)}" title="Its name in this list">Rename</button>
+      ${c.here ? "" : `<button class="btn small" data-camp="${c.hidden ? "show" : "hide"}" data-k="${esc(c.key)}" title="${c.hidden ? "Back in the list" : "Off the list. Its save stays in this browser: nothing is deleted"}">${c.hidden ? "Show" : "Hide"}</button>`}</div>`).join("")
+    + (hid ? `<button class="btn small" data-camp="hidden">${campShowHidden ? "Hide the hidden ones" : `Show the hidden ones (${hid})`}</button>` : "")
+    + `<div class="pcrow" style="margin-top:8px"><input id="camp-newname" type="text" placeholder="A new one's name" style="flex:2;min-width:0"><select id="camp-newkind" style="flex:1">${CAMPAIGN_KINDS.map(([v, l])=>`<option value="${v}">${l}</option>`).join("")}</select><button class="btn" data-camp="new">Start it</button></div>
+    <p class="empty-note" style="font-size:11px;margin:4px 0 0">Each keeps its own save and its own Saves folder. A new one starts empty: bring its map in from the Data tab ("Load a survey.json").</p>`;
+}
+function campFill(){ const els = [...document.querySelectorAll("[data-camplist]")]; if(!els.length) return; campList().then(L=>{ for(const el of els) el.innerHTML = campRows(L); }); }
+const campaignsBlock = () => { setTimeout(campFill, 0); return `<p class="eyebrow">Campaigns</p><div data-camplist><p class="empty-note">Looking…</p></div><div style="height:12px"></div>`; };
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("button[data-camp], #campSwitch"); if(!b) return;
+  if(b.id==="campSwitch"){ const p = $("#campPop"); p.hidden = !p.hidden; if(!p.hidden){ const r = b.getBoundingClientRect(); p.style.left = Math.max(8, r.left) + "px"; p.style.top = (r.bottom + 4) + "px"; p.innerHTML = `<div data-camplist><p class="empty-note">Looking…</p></div>`; campFill(); } return; }
+  const a = b.dataset.camp, k = b.dataset.k, R = campReg();
+  if(a==="open"){ campOpen(k); return; }
+  if(a==="rename"){ const L0 = (R[k] || {}); const nm = prompt("Its name in the list:", L0.name || L0.seen || ""); if(nm===null) return; R[k] = { ...L0, name:nm.trim() }; campRegSave(R); if(k===campKeyOf(STORE_NS)) campHere(); }
+  else if(a==="hide" || a==="show"){ R[k] = { ...(R[k] || {}), hidden:a==="hide" }; campRegSave(R); }
+  else if(a==="hidden") campShowHidden = !campShowHidden;
+  else if(a==="new"){ const nm = ($("#camp-newname") || {}).value || ""; if(!nm.trim()){ flash("Give it a name first."); return; }
+    const key = (nm.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "campaign") + "-" + Math.random().toString(36).slice(2, 6);
+    R[key] = { name:nm.trim(), kind:($("#camp-newkind") || {}).value || "campaign" }; campRegSave(R); campOpen(key); return; }
+  campFill();
+});
+document.addEventListener("change", e=>{ const s = e.target; if(!s.matches || !s.matches('select[data-camp="kind"]')) return; const R = campReg(), k = s.dataset.k; R[k] = { ...(R[k] || {}), kind:s.value }; campRegSave(R); if(k===campKeyOf(STORE_NS)) campHere(); });
+document.addEventListener("click", e=>{ const p = $("#campPop"); if(p && !p.hidden && !e.target.closest("#campPop, #campSwitch")) p.hidden = true; });
 let USE_IDB = false, _idbConn = null;
 
 function idbOpen(){
@@ -23387,6 +23472,7 @@ async function boot(){
   if(loaded && !loaded.library && (loaded.nodes||[]).length && Object.values(plans).some(p=>(p.nodes||[]).some(n=>loaded.nodes.some(m=>m.id===n.id))))      // the same places as a plan
     setTimeout(()=>alert("The campaign didn't load properly: what's in this browser is a town plan that was saved over the campaign (a bug, fixed on 16 October 2026).\n\nDon't change anything. Load your latest save: Data → Load a survey.json, then bring the Field Book file in again if you've made Library entries since."), 300);
   centreView(); renderCrumb(); resetHist();
+  if(builtInMap()){ const cs = $("#campSwitch"); if(cs) cs.hidden = true; } else campHere();      // which campaign this is (the demo keeps to itself)
   $("#saveState").textContent = doc.nodes.length ? "saved" : "new survey";
   /* the campaign folder picked before, if any, and its autosave */
   if(canFolder()) try{ campDir = await idbGet(CAMP_KEY) || null; }catch(err){}
