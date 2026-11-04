@@ -22910,6 +22910,7 @@ function arenaRoomBlock(){
   const inIds = new Set(root.arenaIn||[]);
   return `<p class="eyebrow spaced" style="margin-top:12px">${esc(placeLabel(n))}: the party</p>
     ${partyRoster().map(p=>{ const on = inIds.has(p.id); return `<div class="pcrow" style="align-items:center;margin:0 0 2px"><span style="flex:1;font-size:12.5px">${esc(p.name || "Someone")} <small>level ${clampLv(p.level)}${p.cls ? ` ${esc(String(p.cls).toLowerCase())}` : ""}</small></span><button class="btn small${on ? "" : " calmgo"}" data-arenapc="${esc(p.id)}">${on ? "Take out" : "Bring in"}</button></div>`; }).join("")}
+    <button class="btn wide" data-arena="reset" style="margin:4px 0 2px" title="Everyone in the party and their companions: full hit points, every slot and resource back, no conditions, temp HP, death saves, concentration or spell effects">Reset the party</button>
     <p class="empty-note" style="font-size:11px;margin:2px 0 4px">${inIds.size ? "" : "Nobody from the party is in yet. "}More characters: raise the party size on the Party tab.</p>
     <p class="eyebrow spaced" style="margin-top:10px">In the room now</p>
     ${them.length ? them.map(t=>`<div class="pcrow" style="align-items:center;margin:0 0 2px"><span style="flex:1;font-size:12.5px">${esc(t.label)} <small>${t.side==="neutral" ? "neutral" : "enemy"}</small></span><button class="btn small" data-arenarm="${esc(t.id)}" title="Take them out of the room">×</button></div>`).join("") : `<p class="empty-note" style="font-size:11px">Nobody but the party.</p>`}
@@ -22961,6 +22962,18 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   if(b.dataset.arenaroom){ const [from, room] = b.dataset.arenaroom.split("|"); Object.assign(arenaPick, { from, room }); }
   else arenaAdd.who = b.dataset.arenawho;
   renderSession(); });
+/* Reset the party (Joseph, 2026-11-04: "the one-click reset"): between test fights, everyone (and their companions)
+   as new: a long rest, and every condition, held spell and spell effect gone too. One step on the Party tab's Undo */
+function arenaReset(){
+  const pcs = [...partyRoster(), ...companions()]; if(!pcs.length) return;
+  partyDoing("Reset the party");
+  for(const p of pcs){ restPc(p, "long"); p.conds = []; delete p.conc; delete p.fx; }
+  const n = battleOf ? bnode() : null, c = n && n.site && n.site.combat, ids = new Set(pcs.map(p=>p.id));      // the open fight's timers on them go too
+  if(c && c.effects) c.effects = c.effects.filter(e=>!ids.has(e.who));
+  saveParty(); renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); }
+  flash("The party is reset: full hit points, slots and resources, no conditions."); gameLog("rest", `The party was reset for the next fight (${partyWord()})`);
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest('[data-arena="reset"]'); if(b) arenaReset(); });
 const arenaAfter = () => { const n = bnode(), c = n && n.site && n.site.combat; if(c && c.pos) placeTokens(c); touch(); renderBattle(); renderBattlePanel(); renderSession(); };
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.arenaadd) return; const k = t.dataset.arenaadd; arenaAdd[k] = t.value;
   if(k==="roll"){ arenaAdd.foe = ""; } if(k==="roll" || k==="kind") renderSession(); });      // the roll's form changes with the type and the kind of person

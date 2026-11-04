@@ -1,7 +1,7 @@
 // The Proving Grounds (Joseph, 2026-11-02: "create a test fight I can do to test all this"): loads the real Test Arena.json
 // (built by Test Arena\Tools\build-arena.ps1), opens each of the five Proving fights in the Proving Grounds, and runs each
 // enemy's turn once on the autopilot, all at once: everyone's there, nothing errors, and each does something sensible.
-const ARENA = "file:///C:/Users/josep/OneDrive/Documents/DnD/Test%20Arena/Test%20Arena.json";
+const ARENA = "file:///C:/Users/josep/OneDrive/Documents/DnD/Ordinate%20Survey/Campaigns/Test%20Arena/Test%20Arena.json";
 const getText = url => { const x = new XMLHttpRequest(); x.open("GET", url, false); x.send(); return x.responseText; };
 const withRoll = async (v, f) => { const r = Math.random; Math.random = () => v; try { return await f(); } finally { Math.random = r; } };
 const openFight = async id => {
