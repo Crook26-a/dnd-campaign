@@ -10566,7 +10566,7 @@ function whoYoullMeet(n){
   return many ? `<details class="pcset" data-invfor="meet:${n.id}" ${openInv.has("meet:"+n.id) ? "open" : ""}><summary>Who you'll meet <small>${people.length} people</small></summary>${inner}</details>`
     : `<p class="eyebrow spaced">Who you'll meet</p>` + inner;
 }
-const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + repHere(n) + tradeHere(n) + whoYoullMeet(n);
+const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + repHere(n) + tradeHere(n) + cargoHere(n) + whoYoullMeet(n);
 const placeTail = n => adderBlock(n) + `<div class="field" style="margin-top:12px"><label>Session notes</label>
     <textarea id="pl-notes" rows="3" placeholder="What happened here, what the players promised, what they took…">${esc(n.dmNotes||"")}</textarea></div>` + boardAdd(n);
 function wirePlaceTail(el, n){
@@ -19838,7 +19838,9 @@ function fleetSight(){
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fleet]"); if(!b) return; const pop = $("#fleetPop"), s = fleetOf().find(x=>x.id===pop.dataset.ship); if(!s) return;
   s.asked = campaignDay(); delete pop.dataset.ship; pop.hidden = true;
-  if(b.dataset.fleet==="meet"){ s.met = campaignDay(); gameLog("sight", `An encounter at sea: ${s.name}, a ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}`); saveParty(); fleetGoAboard(s); return; }     // her place: her crew to meet, her deck for a fight
+  if(b.dataset.fleet==="meet"){ s.met = campaignDay(); gameLog("sight", `An encounter at sea: ${s.name}, a ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}`);
+    if(s.kind==="navy") tradeNavySearch(s.name, null);               // a navy ship may search the party's hold
+    saveParty(); fleetGoAboard(s); return; }     // her place: her crew to meet, her deck for a fight
   saveParty(); fleetSight(); });
 /* ── cargo and trade (Joseph, 2026-11-04): every place makes 4 trade goods and wants 4 others. A good's price there is
    its base × 0.8 if it's made there, × 1.25 if it's wanted, × 2^-glut, held between half and double. The glut goes up
@@ -19895,8 +19897,11 @@ function tradeNextPorts(s, at){
 /* what her cargo would fetch at a port, over what she paid: 0.4 is 40% up */
 function tradeGain(s, id, day){ const C = s.cargo || {}, paid = Object.values(C).reduce((a, c)=>a + c.n * c.paid, 0); if(!paid || !tradeIsPlace(repNode(id))) return 0;
   return Object.entries(C).reduce((a, [g, c])=>a + c.n * (tradeSellAt(id, g, c.n, day) - c.paid), 0) / paid; }
-/* a trading ship in port: sells what pays (or has waited three ports for a buyer), then buys what sells best next */
+/* a trading ship in port: sells what pays (or has waited three ports for a buyer), then buys what sells best next.
+   Every port, a new roll for the magic hidden in her hold; the pirate's hold, new plunder */
 function tradeCall(s, port, day){
+  if(FLEET_MAGIC[s.kind]) fleetMagicRoll(s);
+  if(s.kind==="pirate"){ fleetPlunder(s); return; }
   if(!TRADE_SHIPS.has(s.kind) || !tradeIsPlace(port)) return;
   const id = port.id, C = s.cargo = s.cargo || {}, did = [], soldHere = new Set();
   for(const g of Object.keys(C)){ const c = C[g]; if(!c || !(c.n > 0) || !TRADE_GOODS[g]){ delete C[g]; continue; }
@@ -19909,7 +19914,7 @@ function tradeCall(s, port, day){
   let free = tradeCap(s) - tradeLoaded(C); const next = tradeNextPorts(s, id), lot = Math.max(3, Math.ceil(tradeCap(s) / 8));     // nothing smaller than a lot: an eighth of her hold
   for(let k = 0; k < 3 && free >= lot && next.length; k++){
     let best = null;
-    for(const g of Object.keys(TRADE_GOODS)){ if(C[g] || soldHere.has(g)) continue;
+    for(const g of Object.keys(TRADE_GOODS)){ if(C[g] || soldHere.has(g) || (s.kind==="packet" && TRADE_GOODS[g][2]!=="lux")) continue;     // a passenger ship carries only the best
       for(let n = free; n >= lot; n = n > 8 ? Math.floor(n * 0.75) : n - 1){ const buy = tradeBuyAt(id, g, n, day), sell = Math.max(...next.map(t=>tradeSellAt(t, g, n, day)));
         if(sell >= buy * 1.08){ const profit = n * (sell - buy); if(!best || profit > best.profit) best = { g, n, profit }; break; } } }
     if(!best) break;
@@ -19920,7 +19925,19 @@ function tradeCall(s, port, day){
 /* a place's card (only the DM's): its prices, what it makes and wants, and the party's trading */
 function tradeHere(n){
   const place = repPlaceOf(n), P = repNode(place); if(!tradeIsPlace(P)) return "";
-  const T = tradeOf(), M = tradePlace(place), H = T.hold, pcs = partyRoster(), loaded = tradeLoaded(H), key = "trade:" + place;
+  const T = tradeOf(), M = tradePlace(place), H = T.hold, pcs = partyRoster(), loaded = tradeLoaded(H), key = "trade:" + place, R = stolenRules(), office = tradeOffice(place), navy = tradeNavy();
+  const stolen = Object.entries(H).filter(([, h])=>h && h.stolen);
+  const stolenHtml = `<p class="eyebrow spaced">Stolen cargo <small>${stolen.length ? `${stolen.reduce((a, [, h])=>a + h.n, 0)} loads in the hold` : "none in the hold"}${tradeSuspect() ? ` · ${esc(navy ? navy.name : "the navy")} suspects the party (day ${T.suspect})` : ""}</small></p>
+    ${stolen.map(([k, h])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${h.n} ${esc(tradeGoodName(h.g).toLowerCase())} <small>(${h.stolen==="pirate" ? "a pirate's plunder, from" : "taken from"} ${esc(h.from||"a ship")}; ${tradeSellAt(place, h.g, h.n)} gp a load here)</small></span>
+      <button class="btn small" data-trade="fence" data-k="${esc(k)}" title="Sells like any cargo, with a ${R.sell}% chance of being caught">Sell (${R.sell}% risk)</button>${h.stolen==="pirate" && office ? `<button class="btn small" data-trade="prize" data-k="${esc(k)}" title="${esc(navy ? navy.name : "The navy")}'s prize office pays ${R.prize}% of what it would fetch here, with a ${R.suspect}% chance they suspect the party of piracy">Turn in (${R.prize}%)</button>` : ""}</div>`).join("")}
+    ${office ? `<p class="empty-note" style="font-size:11px;margin:2px 0">${esc(navy ? navy.name : "The navy")} has a prize office here: a pirate's plunder turned in for ${R.prize}%.</p>` : ""}
+    <button class="btn small" data-trade="search" title="${R.search}% they search (${R.search + 25}% while they suspect the party); anything stolen in the hold is caught">The navy searches the hold</button>
+    <details style="margin-top:4px"><summary><small>The rules for stolen cargo</small></summary>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Caught selling, %</label><input type="number" min="0" max="100" data-strule="sell" value="${R.sell}"></div><div class="field" style="flex:1"><label>Prize office pays, %</label><input type="number" min="0" max="100" data-strule="prize" value="${R.prize}"></div></div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Suspected turning in, %</label><input type="number" min="0" max="100" data-strule="suspect" value="${R.suspect}"></div><div class="field" style="flex:1"><label>Navy searches, %</label><input type="number" min="0" max="100" data-strule="search" value="${R.search}"></div></div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>The navy is</label><select id="tr-navy">${factionOptions(navy ? navy.id : "", "No faction")}</select></div>
+        <label style="flex:1;align-self:end"><input type="checkbox" id="tr-office" ${office ? "checked" : ""}> A prize office here</label></div>
+      <p class="empty-note" style="font-size:11px;margin:2px 0">Suspected: −1 with the navy and a local deed. Caught selling or holding: everything stolen confiscated, a fine of its full value from whoever pays, −3 with the navy and a notable deed. A prize office is wherever a navy ship is based or calls, unless you say otherwise here.</p></details>`;
   const order = [...M.make, ...M.want, ...Object.keys(TRADE_GOODS).filter(g=>!M.make.includes(g) && !M.want.includes(g))];
   const row = g => { const f = tradeEach(place, g) / TRADE_GOODS[g][1], h = H[g];
     return `<tr><td>${esc(tradeGoodName(g))}${M.make.includes(g) ? ` <small title="Made here">made</small>` : M.want.includes(g) ? ` <small title="Wanted here">wanted</small>` : ""}</td>
@@ -19933,6 +19950,7 @@ function tradeHere(n){
     <div class="pcrow"><div class="field" style="flex:1"><label>Who pays, or is paid</label><select id="tr-pay"><option value="">Nobody (don't count coin)</option>${pcs.map(c=>`<option value="${c.id}" ${T.payer===c.id ? "selected" : ""}>${esc(c.name||"Character")} (${Math.floor(purseGp(purseOf(c)))} gp)</option>`).join("")}</select></div>
       <div class="field" style="width:9em"><label>The party's hold</label><input id="tr-cap" type="number" min="0" value="${T.cap}" title="Loads the party's ship (or wagons) can carry"><small>${loaded} loaded</small></div></div>
     <table style="width:100%;font-size:11.5px;border-collapse:collapse"><tr><th style="text-align:left">Good</th><th>Buy</th><th>Sell</th><th title="In the party's hold (what they paid a load)">Hold</th><th></th></tr>${order.map(row).join("")}</table>
+    ${stolenHtml}
     <details style="margin-top:6px"><summary><small>Change what it makes and wants</small></summary>
       <div class="sbl"><small>Makes</small> ${[0,1,2,3].map(i=>pick("make", i)).join(" ")}</div><div class="sbl"><small>Wants</small> ${[0,1,2,3].map(i=>pick("want", i)).join(" ")}</div>
       <button class="btn small" data-trade="reroll" title="Roll what it makes and wants again">Roll again</button></details></details>`;
@@ -19941,6 +19959,15 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n); if(!tradeIsPlace(repNode(place))) return;
   const T = tradeOf(), a = b.dataset.trade;
   if(a==="reroll"){ T.places[place] = tradeRollPlace(repNode(place)); saveParty(); renderPane(true); return; }
+  if(a==="search"){ tradeNavySearch(`${(tradeNavy()||{}).name || "The navy"} at ${repPlaceName(place)}`, place); saveParty(); renderPane(true); return; }
+  if(a==="fence" || a==="prize"){ const k = b.dataset.k, h = T.hold[k], payer = partyRoster().find(c=>c.id===T.payer), R = stolenRules(); if(!h) return;
+    if(a==="fence"){ const r = rollD(100); if(r <= R.sell){ tradeCaught(place, [k], "selling", `d100 ${r} vs ${R.sell}`); saveParty(); renderPane(true); return; }
+      const each = tradeSellAt(place, h.g, h.n), cp = Math.round(each * h.n * 100); if(payer) addCoins(purseOf(payer), cp); tradeBump(place, h.g, h.n); delete T.hold[k];
+      gameLog("note", `Trade at ${repPlaceName(place)}: the party sold ${h.n} stolen ${tradeGoodName(h.g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, to ${payer.name}` : ""}); nobody asked (d100 ${r} vs ${R.sell})`); flash(`Sold for ${cp / 100} gp; nobody asked.`); }
+    else { const each = Math.round(tradeEach(place, h.g) * R.prize) / 100, cp = Math.round(each * h.n * 100), r = rollD(100); if(payer) addCoins(purseOf(payer), cp); delete T.hold[k];
+      gameLog("note", `The party turned in ${h.n} ${tradeGoodName(h.g).toLowerCase()}, a pirate's plunder from ${h.from || "a pirate ship"}, at ${repPlaceName(place)}'s prize office: ${each} gp a load (${cp / 100} gp${payer ? `, to ${payer.name}` : ""}). d100 ${r} vs ${R.suspect}: ${r <= R.suspect ? "they suspect the party of piracy" : "no questions"}`);
+      if(r <= R.suspect) tradeSuspected(place); else flash(`Paid ${cp / 100} gp; no questions.`); }
+    saveParty(); renderPane(true); return; }
   const g = b.dataset.g, qty = Math.max(1, Math.round(+((b.parentElement.querySelector("[data-tradeqty]")||{}).value) || 1)), payer = partyRoster().find(c=>c.id===T.payer), H = T.hold;
   if(a==="buy"){ const room = Math.max(0, (+T.cap||0) - tradeLoaded(H)); if(qty > room){ flash(`The hold has room for ${room} more load${room===1?"":"s"}.`); return; }
     const each = tradeBuyAt(place, g, qty), cp = Math.round(each * qty * 100);
@@ -19951,11 +19978,92 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
     if(payer) addCoins(purseOf(payer), cp); h.n -= k; if(h.n <= 0) delete H[g]; tradeBump(place, g, k);
     gameLog("note", `Trade at ${repPlaceName(place)}: the party sold ${k} ${tradeGoodName(g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, to ${payer.name}` : ""}; they'd paid ${h.paid})`); flash(`Sold ${k} ${tradeGoodName(g).toLowerCase()} for ${cp / 100} gp.`); }
   saveParty(); renderPane(true); });
-document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !(t.dataset && t.dataset.trademw)) return;
+document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !(t.dataset && (t.dataset.trademw || t.dataset.strule))) return;
   if(t.id==="tr-pay"){ tradeOf().payer = t.value || null; saveParty(); return; }
+  if(t.id==="tr-navy"){ tradeOf().navy = t.value || ""; saveParty(); renderPane(true); return; }
+  if(t.dataset && t.dataset.strule){ stolenRules()[t.dataset.strule] = Math.max(0, Math.min(100, +t.value || 0)); saveParty(); renderPane(true); return; }
+  if(t.id==="tr-office"){ const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n); if(!place) return; const T = tradeOf(); T.office = T.office || {}; T.office[place] = t.checked; saveParty(); renderPane(true); return; }
   if(t.id==="tr-cap"){ tradeOf().cap = Math.max(0, Math.round(+t.value || 0)); saveParty(); renderPane(true); return; }
   if(t.dataset && t.dataset.trademw){ const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n), M = tradePlace(place), [k, i] = t.dataset.trademw.split(":");
     const other = k==="make" ? "want" : "make"; M[k][+i] = t.value; M[other] = M[other].filter(g=>g!==t.value); saveParty(); renderPane(true); } });
+/* ── what's aboard for the taking, and stolen cargo (Joseph, 2026-11-04). Every port she calls at, a ship's hold is
+   rolled again for magic: a passenger ship 30% a rare item, 20% a very rare, 5% a legendary, 1% an artifact; a
+   merchantman and the pirate 15% a rare, 5% a very rare, 0.4% an artifact (each its own roll). They're hidden in her
+   hold (Search, DC 15) when the party goes aboard. The pirate's hold is plunder, new at every port. The party can seize
+   her cargo into their own hold: stolen goods. They sell like any cargo, with a chance of being caught; a pirate's
+   plunder can be turned in at the navy's prize office for 60%, with a 15% chance they suspect the party of piracy.
+   Caught selling or holding (a navy search): everything stolen confiscated, a fine of its value, worse standing ── */
+const FLEET_MAGIC = { packet:[["Rare",30],["Very Rare",20],["Legendary",5],["Artifact",1]],
+  merchant:[["Rare",15],["Very Rare",5],["Artifact",0.4]], pirate:[["Rare",15],["Very Rare",5],["Artifact",0.4]] };
+const STOLEN_RULES = { sell:20, prize:60, suspect:15, search:50 };
+const stolenRules = () => { const T = tradeOf(), R = T.rules = T.rules || {}; for(const k in STOLEN_RULES) if(!(R[k] >= 0)) R[k] = STOLEN_RULES[k]; return R; };
+const tradeNavy = () => { const T = tradeOf(), F = lib().factions || []; return T.navy!=null ? F.find(f=>f.id===T.navy) || null : F.find(f=>/admiralty|navy/i.test(f.name||"")) || null; };
+const tradeSuspect = () => { const T = tradeOf(); return T.suspect!=null && campaignDay() - T.suspect <= 30; };      // they remember for a month
+/* a prize office: where a navy ship is based or calls, unless the DM says otherwise */
+const tradeOffice = id => { const T = tradeOf(); if(T.office && T.office[id]!=null) return !!T.office[id];
+  return fleetOf().some(s=>s.kind==="navy" && (s.home===id || (s.route||[]).includes(id))); };
+function fleetMagicRoll(s){
+  s.magic = []; s.magicNote = []; s.magicSig = uid("mg");
+  for(const [tier, pct] of FLEET_MAGIC[s.kind] || []){ if(Math.random() * 100 >= pct) continue;
+    const pool = [...(lib().loot||[]), ...SRD_LOOT].filter(x=>x.rarity===tier);
+    if(pool.length) s.magic.push(pickOne(pool).id + "#" + uid("c")); else s.magicNote.push(`${tier==="Artifact" ? "an" : "a"} ${tier.toLowerCase()} magic item (none in your Library or the SRD: pick one)`); }
+}
+function fleetPlunder(s){
+  const G = Object.keys(TRADE_GOODS), C = s.cargo = {}; let free = Math.round(tradeCap(s) * (0.3 + Math.random() * 0.7));
+  for(let k = 0, many = 1 + rollD(3); k < many && free > 0; k++){ const g = pickOne(G.filter(x=>!C[x])), n = k===many - 1 ? free : Math.min(free, 4 + rollD(12)); C[g] = { n, paid:0, from:"plunder" }; free -= n; }
+}
+/* her magic, into the room that's her hold: the roll since her last port; what the party took is gone from her */
+function fleetMagicAboard(s, st, spots){
+  if(!st) return; st.items = st.items || [];
+  if(st.magicSig && st.magicSig===s.magicSig){ s.magic = (s.magic||[]).filter(t=>st.items.includes(t)); return; }
+  for(const t of st.shipMagic || []){ const i = st.items.indexOf(t); if(i >= 0) st.items.splice(i, 1); forgetItem(st, t); }
+  st.shipMagic = (s.magic||[]).slice(); st.magicSig = s.magicSig || ""; st.hide = st.hide || {}; st.where = st.where || {};
+  st.shipMagic.forEach((t, i)=>{ st.items.push(t); st.hide[t] = 15; if(spots.length) st.where[t] = spots[i % spots.length]; });
+}
+/* a ship's card: her cargo to seize, and the magic hidden aboard (only the DM's) */
+function cargoHere(n){
+  const V = repNode(repPlaceOf(n)), s = V && V.fleetShip && fleetOf().find(x=>x.id===V.fleetShip); if(!s) return "";
+  const C = s.cargo || {}, T = tradeOf(), room = Math.max(0, (+T.cap||0) - tradeLoaded(T.hold)), items = (s.magic||[]).map(libLootById).filter(Boolean);
+  return `<p class="eyebrow spaced">Her cargo <small>${tradeLoaded(C)} of ${tradeCap(s)} loads · only you see this</small></p>
+    ${Object.keys(C).length ? Object.entries(C).map(([g, c])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(about ${Math.round(c.n * TRADE_GOODS[g][1])} gp)</small></span>
+      <input type="number" min="1" max="${c.n}" value="${Math.max(1, Math.min(c.n, room))}" data-seizeqty="${g}" style="width:3.5em"><button class="btn small" data-seize="${g}" data-ship="${s.id}" title="Into the party's hold, as stolen goods">Seize</button></div>`).join("") : `<p class="empty-note">Her hold is empty.</p>`}
+    ${items.length || (s.magicNote||[]).length ? `<p class="empty-note" style="font-size:11px;margin:4px 0">Hidden in her hold (Search, DC 15), ${fleetSizeOf(s)==="large" ? "in the cargo hold off steerage" : "under the hatch"}: ${[...items.map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)].join(", ")}. Found and taken like anything else.</p>` : ""}
+    <p class="empty-note" style="font-size:11px;margin:0">The party's hold has room for ${room} more load${room===1?"":"s"}.${s.kind==="pirate" ? ` A pirate's plunder: the navy's prize office pays ${stolenRules().prize}% for it.` : " Taking it is piracy: risky to sell, and to be caught holding."}</p>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-seize]"); if(!b) return;
+  const s = fleetOf().find(x=>x.id===b.dataset.ship), g = b.dataset.seize, c = s && (s.cargo||{})[g]; if(!c) return;
+  const T = tradeOf(), room = Math.max(0, (+T.cap||0) - tradeLoaded(T.hold)), n = Math.min(Math.max(1, Math.round(+((b.parentElement.querySelector("[data-seizeqty]")||{}).value) || 1)), c.n, room);
+  if(n <= 0){ flash("The party's hold is full."); return; }
+  const how = s.kind==="pirate" ? "pirate" : "piracy", k = g + "|" + how + "|" + s.id, h = T.hold[k] || { g, n:0, paid:0, stolen:how, from:s.name };
+  h.n += n; T.hold[k] = h; c.n -= n; if(c.n <= 0) delete s.cargo[g];
+  gameLog("note", `Cargo seized from ${s.name}: ${n} ${tradeGoodName(g).toLowerCase()}${how==="pirate" ? " (a pirate's plunder: the navy's prize office pays for it)" : " (stolen: risky to sell, and to be caught holding)"}`);
+  saveParty(); renderPane(true); flash(`${n} ${tradeGoodName(g).toLowerCase()} into the party's hold.`); });
+/* caught: everything named confiscated, a fine of its value from whoever pays, −3 with the navy, a notable deed */
+function tradeCaught(place, keys, doing, roll){
+  const T = tradeOf(), H = T.hold, f = tradeNavy(), payer = partyRoster().find(c=>c.id===T.payer), what = []; let worth = 0;
+  for(const k of keys){ const h = H[k]; if(!h) continue; worth += h.n * TRADE_GOODS[h.g][1]; what.push(`${h.n} ${tradeGoodName(h.g).toLowerCase()}`); delete H[k]; }
+  const fine = Math.round(worth); let took = 0;
+  if(payer){ const p = purseOf(payer); took = Math.min(Math.floor(purseGp(p) * 100), fine * 100); payFrom(p, took); }
+  T.suspect = campaignDay();
+  if(f) setStanding(f, standingOf(f) - 3, `caught ${doing} stolen cargo`);
+  repRecord({ text:`Caught ${doing} stolen cargo${place ? ` at ${repPlaceName(place)}` : ""}`, who:"party", fame:"infamy", size:"notable", place:place || null, factions:f ? [f.id] : [], force:true });
+  gameLog("note", `Caught ${doing} stolen cargo${roll ? ` (${roll})` : ""}: ${what.join(", ")} confiscated; a fine of ${fine} gp (${payer ? `${took / 100} gp of it from ${payer.name}${took < fine * 100 ? ", all they had" : ""}` : "nobody's purse: settle it at the table"})${f ? `; ${f.name} −3` : ""}. What happens next is yours: arrest, a bounty, a trial.`);
+  flash(`Caught ${doing} stolen cargo! ${what.join(", ")} confiscated, a fine of ${fine} gp.`);
+}
+function tradeSuspected(place){
+  const f = tradeNavy(); tradeOf().suspect = campaignDay();
+  if(f) setStanding(f, standingOf(f) - 1, "suspected of piracy");
+  repRecord({ text:`Suspected of piracy by ${f ? f.name : "the navy"}`, who:"party", fame:"infamy", size:"local", place:place || null, factions:f ? [f.id] : [], force:true });
+  flash(`${f ? f.name : "The navy"} suspects the party of piracy.`);
+}
+/* a navy search: R.search% (25 more while they suspect the party); anything stolen aboard is caught */
+function tradeNavySearch(by, place){
+  const T = tradeOf(), R = stolenRules(), chance = Math.min(100, R.search + (tradeSuspect() ? 25 : 0)), r = rollD(100);
+  if(r > chance){ gameLog("note", `${by}: no search of the party's hold (d100 ${r} vs ${chance}).`); flash("No search."); return false; }
+  const keys = Object.keys(T.hold).filter(k=>T.hold[k] && T.hold[k].stolen);
+  if(!keys.length){ gameLog("note", `${by} searched the party's hold (d100 ${r} vs ${chance}): nothing stolen.`); flash("Searched: nothing stolen."); return true; }
+  tradeCaught(place || repPlaceNow(), keys, "holding", `searched by ${by}, d100 ${r} vs ${chance}`); return true;
+}
 /* ── a ship's size, her crew, and going aboard (Joseph, 2026-11-04). Three sizes, each its own deck map: small (a
    fishing boat), medium (the ship), large (a passenger ship). A crew by her kind, every one a person in the Library
    (crewOf her id; their where her name; genders rolled): a captain of level 3, a fighter, barbarian, paladin or ranger;
@@ -20040,6 +20148,10 @@ function fleetBoard(s){
   else { n.npcs = people;
     n.site.foes = people.map(pid=>({ id:"npc:" + pid, n:"1" }));      // if it comes to a fight: her captain and crew, on their own sheets
     n.bmap = { preset:FLEET_SIZES[fleetSizeOf(s)][1] }; }
+  /* the magic in her hold: steerage's cargo hold on a passenger ship, under the hatch on the others */
+  const big = fleetSizeOf(s)==="large", hold = big ? ((plans[n.id]||{}).nodes||[]).find(r=>r.id==="fvrl") : n;
+  fleetMagicAboard(s, hold && hold.site, big ? ["17,1","25,2","24,6","15,5"] : fleetSizeOf(s)==="small" ? ["4,5","10,5"] : ["11,6","12,7","19,7"]);
+  if(big) markDirty(K_PLAN(n.id));
   touch(); return n;
 }
 function fleetGoAboard(s){
@@ -20086,7 +20198,7 @@ function fleetBlock(){
         return ppl.length ? ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ") : FLEET_CREW[s.kind] ? "<i>no crew rolled yet</i>" : "<i>no crew rules for her kind yet</i>"; })()}</div>
       ${(s.pass||[]).length ? Object.keys(FLEET_FARES).map(f=>{ const ppl = s.pass.map(libNpcById).filter(p=>p && p.fare===f);
         return ppl.length ? `<div class="sbl"><small>Passengers, ${FLEET_FARES[f]} (${ppl.length}):</small> ${ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ")}</div>` : ""; }).join("") : ""}
-      ${TRADE_SHIPS.has(s.kind) ? `<div class="sbl"><small>Hold (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads):</small> ${Object.entries(s.cargo||{}).map(([g, c])=>`${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(${c.paid} gp, from ${esc(repPlaceName(c.from))})</small>`).join(", ") || "<i>empty</i>"}${s.gain ? ` · made ${Math.round(s.gain)} gp so far` : ""}${(s.trades||[]).length ? `<br><small>Last in port:</small> ${(t=>`day ${t.day} at ${esc(repPlaceName(t.at))}, ${esc(t.did.join(", "))}`)(s.trades[s.trades.length - 1])}` : ""}</div>` : ""}
+      ${TRADE_SHIPS.has(s.kind) || s.kind==="pirate" ? `<div class="sbl"><small>Hold (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads):</small> ${Object.entries(s.cargo||{}).map(([g, c])=>`${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(${c.from==="plunder" ? "plunder" : `${c.paid} gp, from ${esc(repPlaceName(c.from))}`})</small>`).join(", ") || "<i>empty</i>"}${(s.magic||[]).length || (s.magicNote||[]).length ? ` · <small>hidden aboard:</small> ${[...(s.magic||[]).map(libLootById).filter(Boolean).map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)].join(", ")}` : ""}${s.gain ? ` · made ${Math.round(s.gain)} gp so far` : ""}${(s.trades||[]).length ? `<br><small>Last in port:</small> ${(t=>`day ${t.day} at ${esc(repPlaceName(t.at))}, ${esc(t.did.join(", "))}`)(s.trades[s.trades.length - 1])}` : ""}</div>` : ""}
       <div class="pcrow" style="margin-top:2px"><button class="btn small" data-fleetact="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her deck for a fight">Go aboard</button>${FLEET_CREW[s.kind] ? `<button class="btn small" data-fleetact="crew" data-id="${s.id}" title="A new crew for her (the old one leaves the Library)">Roll a new crew</button>` : ""}</div></div>`).join("")}</details>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-fleetact]"); if(!b) return; const a = b.dataset.fleetact;
