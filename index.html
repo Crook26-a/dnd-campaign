@@ -19157,12 +19157,13 @@ function repBlock(){
     <div class="pcrow"><select id="rep-lanea" style="flex:1;min-width:0">${placeOpts("")}</select><select id="rep-laneb" style="flex:1;min-width:0">${placeOpts("")}</select>
       <select id="rep-lanet">${REP_TRAFFIC.map(([v, w])=>`<option value="${v}" ${v==="normal"?"selected":""}>${w}</option>`).join("")}</select><button class="btn" data-rep="lane">Add</button></div>
     <div class="xprule" style="margin-top:8px">A faction's slots shared by all its branches: <input class="mono" data-rep="share" type="number" min="0" max="100" step="5" value="${Math.round(R.share * 100)}" style="width:52px"> % (the rest are each branch's own). Each faction's die is on its Library page.<br>
-      A road or sea crossing carries a story <input class="mono" data-repset="carry" type="number" min="0" max="100" step="5" value="${repCarry()}" style="width:52px"> % of the time.<br>
+      A road or sea crossing carries a story: minor <input class="mono" data-repcarry="minor" type="number" min="0" max="100" step="5" value="${repCarry("minor")}" style="width:50px"> %, notable <input class="mono" data-repcarry="notable" type="number" min="0" max="100" step="5" value="${repCarry("notable")}" style="width:50px"> %, legendary <input class="mono" data-repcarry="legendary" type="number" min="0" max="100" step="5" value="${repCarry("legendary")}" style="width:50px"> % of the time.<br>
       A story goes on the world's table by itself once it's known in <input class="mono" data-repset="worldTowns" type="number" min="1" value="${repWorldAt().towns}" style="width:46px"> places or <input class="mono" data-repset="worldRegions" type="number" min="1" value="${repWorldAt().regions}" style="width:46px"> regions (or with To the world, your call).</div></details>`;
 }
 document.addEventListener("toggle", e=>{ const d = e.target; if(!d.dataset || d.dataset.reptab==null) return; if(d.open) repOpen.add(d.dataset.reptab); else repOpen.delete(d.dataset.reptab); }, true);
 document.addEventListener("change", e=>{ const t = e.target; if(!t.matches) return;
   if(t.matches('input[data-rep="share"]')){ repOf().share = Math.max(0, Math.min(1, (+t.value || 0) / 100)); saveParty(); renderPane(true); }
+  else if(t.matches("input[data-repcarry]")){ const R = repOf(); R.carryBy = R.carryBy || {}; R.carryBy[t.dataset.repcarry] = Math.max(0, Math.min(100, Math.round(+t.value || 0))); saveParty(); }
   else if(t.matches("input[data-repset]")){ repOf()[t.dataset.repset] = Math.max(1, Math.round(+t.value || 1)); saveParty(); }
   else if(t.matches("select[data-replane]")){ const R = repOf(), l = (R.lanes||[]).find(x=>x.id===t.dataset.replane); if(l){ l.traffic = t.value; if(R.clock){ delete R.clock["l:" + l.id]; delete R.clock["fl:" + l.id]; } saveParty(); } } });
 document.addEventListener("click", e=>{
@@ -19191,7 +19192,9 @@ const trafficOf = r => (r && r.traffic) || (r && r.density==="dense" ? "dense" :
 const trafficDays = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[2];
 const trafficWord = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[1];
 const REP_FAC_FASTER = 2, REP_FAC_LOSS = 15;
-const repCarry = () => { const c = +repOf().carry; return c >= 0 && c <= 100 && repOf().carry!=null ? c : 80; };     // % of crossings that carry a story
+/* % of crossings that carry a story, by how big the deed is (Joseph: "minor deeds carry far less well than big deeds") */
+const REP_CARRY = { minor:30, notable:80, legendary:100 };
+const repCarry = size => { const C = repOf().carryBy || {}, k = REP_CARRY[size]!=null ? size : "minor", c = C[k]; return c!=null && c >= 0 && c <= 100 ? +c : REP_CARRY[k]; };
 const repWorldAt = () => { const R = repOf(); return { towns:+R.worldTowns || 5, regions:+R.worldRegions || 2 }; };
 function repRoutes(){
   const ids = new Set((root.nodes||[]).map(n=>n.id)), out = [];
@@ -19218,7 +19221,7 @@ function repCross(rt, day, moved){
   for(const [s, t] of [[rt.a, rt.b], [rt.b, rt.a]]){
     const T = R.tables["place:" + s], told = T ? Object.keys(T.slots) : []; if(!told.length) continue;
     const roll = told[Math.floor(Math.random() * told.length)], e = T.slots[roll];          // one of the stories told there (one written in twice, twice as likely)
-    if(rollD(100) > repCarry()) continue;                 // most crossings carry it, not all (Joseph: 80%)
+    { const d = R.deeds.find(x=>x.id===e.d); if(rollD(100) > repCarry(d && d.size)) continue; }     // a big deed travels; a minor one mostly doesn't
     const die = repPlaceDie(t), slot = rollD(die), val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}) };
     if(repWriteIn("place:" + t, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, from:s, to:t, sea:rt.sea, day, how:`${repPlaceName(s)} ${roll} → ${repPlaceName(t)} d${die} ${slot}` });
   }
