@@ -19995,7 +19995,7 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !
    Caught selling or holding (a navy search): everything stolen confiscated, a fine of its value, worse standing ── */
 const FLEET_MAGIC = { packet:[["Rare",30],["Very Rare",20],["Legendary",5],["Artifact",1]],
   merchant:[["Rare",15],["Very Rare",5],["Artifact",0.4]], pirate:[["Rare",15],["Very Rare",5],["Artifact",0.4]] };
-const STOLEN_RULES = { sell:20, prize:60, suspect:15, search:50 };
+const STOLEN_RULES = { sell:5, prize:60, suspect:15, search:50 };
 const stolenRules = () => { const T = tradeOf(), R = T.rules = T.rules || {}; for(const k in STOLEN_RULES) if(!(R[k] >= 0)) R[k] = STOLEN_RULES[k]; return R; };
 const tradeNavy = () => { const T = tradeOf(), F = lib().factions || []; return T.navy!=null ? F.find(f=>f.id===T.navy) || null : F.find(f=>/admiralty|navy/i.test(f.name||"")) || null; };
 const tradeSuspect = () => { const T = tradeOf(); return T.suspect!=null && campaignDay() - T.suspect <= 30; };      // they remember for a month
@@ -20028,7 +20028,8 @@ function cargoHere(n){
     ${Object.keys(C).length ? Object.entries(C).map(([g, c])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(about ${Math.round(c.n * TRADE_GOODS[g][1])} gp)</small></span>
       <input type="number" min="1" max="${c.n}" value="${Math.max(1, Math.min(c.n, room))}" data-seizeqty="${g}" style="width:3.5em"><button class="btn small" data-seize="${g}" data-ship="${s.id}" title="Into the party's hold, as stolen goods">Seize</button></div>`).join("") : `<p class="empty-note">Her hold is empty.</p>`}
     ${items.length || (s.magicNote||[]).length ? `<p class="empty-note" style="font-size:11px;margin:4px 0">Hidden in her hold (Search, DC 15), ${fleetSizeOf(s)==="large" ? "in the cargo hold off steerage" : "under the hatch"}: ${[...items.map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)].join(", ")}. Found and taken like anything else.</p>` : ""}
-    <p class="empty-note" style="font-size:11px;margin:0">The party's hold has room for ${room} more load${room===1?"":"s"}.${s.kind==="pirate" ? ` A pirate's plunder: the navy's prize office pays ${stolenRules().prize}% for it.` : " Taking it is piracy: risky to sell, and to be caught holding."}</p>`;
+    <p class="empty-note" style="font-size:11px;margin:0">The party's hold has room for ${room} more load${room===1?"":"s"}.${s.kind==="pirate" ? ` A pirate's plunder: the navy's prize office pays ${stolenRules().prize}% for it.` : " Taking it is piracy: risky to sell, and to be caught holding."}
+      ${PIRACY_VICTIM(s) ? (s.piracyAt===(s.met || campaignDay()) ? " Piracy recorded for this encounter." : (S=>` Left to tell of it if they take it: ${S.seen.length ? `${S.seen.length} (${S.fought ? "after the fight" : "nobody's fought, so everyone aboard"})` : "nobody"}: ${S.seen.length ? "a notable deed of piracy" : "no deed"}.`)(piracySurvivors(s, repPlaceOf(n)))) : ""}</p>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-seize]"); if(!b) return;
   const s = fleetOf().find(x=>x.id===b.dataset.ship), g = b.dataset.seize, c = s && (s.cargo||{})[g]; if(!c) return;
@@ -20037,7 +20038,26 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   const how = s.kind==="pirate" ? "pirate" : "piracy", k = g + "|" + how + "|" + s.id, h = T.hold[k] || { g, n:0, paid:0, stolen:how, from:s.name };
   h.n += n; T.hold[k] = h; c.n -= n; if(c.n <= 0) delete s.cargo[g];
   gameLog("note", `Cargo seized from ${s.name}: ${n} ${tradeGoodName(g).toLowerCase()}${how==="pirate" ? " (a pirate's plunder: the navy's prize office pays for it)" : " (stolen: risky to sell, and to be caught holding)"}`);
+  if(PIRACY_VICTIM(s)) piracyDeed(s, repPlaceOf(sel && sel.kind==="node" ? nodeById(sel.id) : null) || "fv_" + s.id);
   saveParty(); renderPane(true); flash(`${n} ${tradeGoodName(g).toLowerCase()} into the party's hold.`); });
+/* piracy (Joseph, 2026-11-04): seizing an honest ship's cargo is a deed if they leave survivors. Who's left to tell:
+   after a fight aboard her, its survivors and witnesses and anyone on her other decks who wasn't in it; with no fight,
+   everyone aboard. Once an encounter, a notable infamy, seen by them, heard where she's bound */
+const PIRACY_VICTIM = s => !!s && !["pirate","smuggler"].includes(s.kind);
+function piracySurvivors(s, key){
+  const name = id => (libNpcById(id)||{}).name || "", W = repOf().lastWitness;
+  if(W && W.place===key && W.day >= campaignDay() - 1 && W.day >= (s.met || 0)){
+    const P = plans[key], others = P ? (P.nodes||[]).filter(r=>r.id!==W.room).flatMap(r=>r.npcs||[]).filter(id=>libNpcById(id) && !W.seen.some(x=>x.id===id)) : [];
+    return { fought:true, seen:[...W.seen, ...others.map(id=>({ id, name:name(id) })), ...(W.names||[]).map(nm=>({ name:nm }))] }; }
+  return { fought:false, seen:[s.captain, ...(s.crew||[]), ...(s.pass||[])].filter(id=>id && libNpcById(id)).map(id=>({ id, name:name(id) })) };
+}
+function piracyDeed(s, key){
+  const enc = s.met || campaignDay(); if(s.piracyAt===enc) return; s.piracyAt = enc;
+  const S = piracySurvivors(s, key), f = tradeNavy(), port = s.leg ? s.leg.to : s.at || s.home;
+  if(!S.seen.length){ gameLog("rep", `Piracy: the party took ${s.name}'s cargo and left no survivors. Nobody will tell of it unless the party does.`); return; }
+  repRecord({ text:`Piracy: seized the cargo of ${s.name}`, who:"party", fame:"infamy", size:"notable", place:port || null, factions:f ? [f.id] : [], seenBy:S.seen, force:true });
+  flash(`Piracy recorded: ${S.seen.length} left alive to tell of it.`);
+}
 /* caught: everything named confiscated, a fine of its value from whoever pays, −3 with the navy, a notable deed */
 function tradeCaught(place, keys, doing, roll){
   const T = tradeOf(), H = T.hold, f = tradeNavy(), payer = partyRoster().find(c=>c.id===T.payer), what = []; let worth = 0;
@@ -20340,7 +20360,7 @@ function fightWitnesses(st, n, c){
   const inIt = new Set(c.list.map(y=>y.npc).filter(Boolean));
   for(const id of n.npcs || []){ const p = libNpcById(id); if(!p || inIt.has(id) || (p.conds||[]).includes("Unconscious")) continue;
     memAdd(p, { text:`Saw the party fight at ${placeLabel(n)}`, tone:0, size:"small", src:"seen" }, true); seen.push({ id:p.id, name:p.name }); }
-  const W = { day:campaignDay(), place, at:placeLabel(n), seen, names };
+  const W = { day:campaignDay(), place, room:n.id, at:placeLabel(n), seen, names };
   repOf().lastWitness = W;
   gameLog("fight", seen.length || names.length ? `Witnesses who'll talk: ${[...seen.map(s=>s.name), ...names].join(", ")}` : `No survivors and no witnesses at ${placeLabel(n)}: nobody will hear of it unless the party tells it`);
 }

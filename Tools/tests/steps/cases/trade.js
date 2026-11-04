@@ -51,6 +51,17 @@ step("stolen cargo: sold unseen, sold and caught, a pirate's plunder turned in a
   Object.assign(R, STOLEN_RULES); T.hold = {};
   return out.join(" | ") + ` | deeds +${repOf().deeds.length - deeds0}: ${repOf().deeds.slice(deeds0).map(d => `${d.text} (${d.size})`).join("; ")} | page errors ${__KIT.errors.length}`;
 });
+step("piracy: an honest ship robbed with everyone alive is a deed (once); robbed after a fight that left nobody, none", async () => {
+  const s = root.fleet.find(x => x.kind === "merchant" && (x.crew || []).length), key = "fv_" + s.id, d0 = repOf().deeds.length; tradeOf().hold = {};
+  s.cargo = { wine: { n: 10, paid: 12, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; fleetGoAboard(s); await wait(60);
+  const said = (document.querySelector(`[data-seize="wine"]`).closest("p, div").parentElement.innerText.match(/Left to tell[^.]*\./) || [""])[0];
+  for (let i = 0; i < 2; i++) { document.querySelector(`[data-seizeqty="wine"]`).value = "4"; document.querySelector(`[data-seize="wine"]`).click(); await wait(30); }
+  const D = repOf().deeds.slice(d0), first = D.map(d => `${d.text} (${d.size} ${d.fame}, at ${repPlaceName(d.place)}, seen by ${d.seenBy.length})`).join("; ");
+  s.cargo = { rum: { n: 5, paid: 10, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; repOf().lastWitness = { day: campaignDay(), place: key, room: key, at: s.name, seen: [], names: [] };
+  renderPane(true); await wait(30); document.querySelector(`[data-seize="rum"]`).click(); await wait(30);
+  tradeOf().hold = {};
+  return `the card said: "${said}" | deeds after two seizures: ${D.length}: ${first} | after a fight with no survivors: ${repOf().deeds.length - d0 - D.length} more | page errors ${__KIT.errors.length}`;
+});
 step("the party: the market on a town's card, buy 5 with a character's coin, sell 5", async () => {
   const town = repPlaces().find(n => n.kind === "town" && tradeIsPlace(n)), pc = partyRoster()[0], g = tradePlace(town.id).make[0];
   select("node", town.id); pane = "inspect"; renderPane(true); await wait(30);
