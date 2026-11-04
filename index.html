@@ -1412,6 +1412,9 @@ const SURVEY_KINDS = {
   /* ── at sea: a ship under way, what's left of one, and the light that warns them off ── */
   ship:    { label:"Ship",       key:"",  services:{},
              draw:c=>`<path d="M-10 2 L10 2 L7 8 L-7 8 Z" fill="${c}" stroke="${INK}" stroke-width="1.4"/><path d="M0 2 L0 -10" stroke="${INK}" stroke-width="1.3"/><path d="M1.2 -9 L8 0 L1.2 0 Z" fill="${c}" stroke="${INK}" stroke-width="1.1"/>` },
+  /* a ship of the fleet met at sea (2026-11-04): a place for her crew and her deck, never the party's own ship */
+  vessel:  { label:"Ship at sea", key:"",  services:{},
+             draw:c=>`<path d="M-10 2 L10 2 L7 8 L-7 8 Z" fill="${c}" stroke="${INK}" stroke-width="1.4"/><path d="M0 2 L0 -10" stroke="${INK}" stroke-width="1.3"/><path d="M1.2 -9 L8 0 L1.2 0 Z" fill="${c}" stroke="${INK}" stroke-width="1.1" stroke-dasharray="2 1"/>` },
   wreck:   { label:"Wreck",      key:"",  services:{},
              draw:c=>`<path d="M-10 0 L4 6 L-1 9 L-9 6 Z" fill="${c}" stroke="${INK}" stroke-width="1.3"/><path d="M-3 3 L3 -9" stroke="${INK}" stroke-width="1.3"/><path d="M5 1 L10 3 L8 7" fill="none" stroke="${INK}" stroke-width="1.2"/>` },
   light:   { label:"Lighthouse", key:"",  services:{},
@@ -11896,6 +11899,40 @@ const BMAPS = {
     labels:[[6,10.6,"captain's cabin"],[3,1.3,"stern"],[25,1.3,"bow"],[11.5,10.6,"hatch to the hold"],[14,1.3,"mainmast"],[19,1.3,"foremast"]],
     start:{ party:[[12,4],[13,4],[16,6],[17,6],[13,7],[16,4]], enemy:[[22,5],[22,6],[23,5],[20,4],[21,7],[20,3],[20,8],[24,6]] },
     notes:"A sailing ship, about 100 feet from stern to bowsprit. The captain's cabin is at the stern; the hatch leads down to the hold. Boarders come over the rail or along the bowsprit." },
+  /* the three sizes of ship (Joseph, 2026-11-04): a small boat for the fishing boats, the ship above for most, and a
+     big passenger ship of its own */
+  boat:{ name:"A fishing boat", w:14, h:8,
+    rows:[
+      "~~~~~~~~~~~~~~",
+      "~~~~~~~~~~~~~~",
+      "~~~rrrrrrrr~~~",
+      "~~r=c==N=M=rr~",
+      "~~r=W===H===rb",
+      "~~r=x==u==c=r~",
+      "~~~rrrrrrrrr~~",
+      "~~~~~~~~~~~~~~"],
+    labels:[[2.5,7.3,"stern"],[12.5,7.3,"bow"],[8.5,7.3,"hatch to the fish hold"],[9.5,1.3,"mast"],[7.5,1.3,"the nets"]],
+    start:{ party:[[3,4],[5,4],[3,5],[5,5],[6,4],[6,3]], enemy:[[9,4],[10,4],[9,5],[11,5],[10,3],[8,3]] },
+    notes:"A fishing boat, about 40 feet: one mast, the nets, and a fish hold under the hatch. No cabin: the crew sleep on deck, or ashore." },
+  liner:{ name:"A passenger ship", w:36, h:14,
+    rows:[
+      "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+      "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+      "~~~rrrrrrrrrrrrrrrrrrrrrrrrrrrrr~~~~",
+      "~~~r#########=====c=====M===c===rr~~",
+      "~~~r#B=B#B=B#===================i=r~",
+      "~~~r#=D=#=D=#========H==========c=rb",
+      "~~~r#=======D==W=====M=====T=n====rb",
+      "~~~r#=D=#=D=#=====================rb",
+      "~~~r#B=B#B=B#========H========c===r~",
+      "~~~r#########=====c=====M===c===rr~~",
+      "~~~rrrrrrrrrrrrrrrrrrrrrrrrrrrrr~~~~",
+      "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+      "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+      "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"],
+    labels:[[8.5,11.3,"passenger cabins"],[3,1.3,"stern"],[34,1.3,"bow"],[21.5,11.3,"hatches to the hold"],[24.5,1.3,"masts"],[27.5,11.3,"deck tables"]],
+    start:{ party:[[15,5],[16,5],[15,7],[16,7],[17,6],[18,6]], enemy:[[26,4],[27,5],[26,7],[28,8],[25,6],[30,6],[29,4],[24,8]] },
+    notes:"A passenger ship, about 140 feet: a deckhouse of four passenger cabins aft (a corridor between, a door to the deck), three masts, two hatches to the hold, and tables on deck for fair-weather dining." },
   cabin:{ name:"The captain's quarters", w:11, h:8,
     rows:[
       "###########",
@@ -12007,7 +12044,7 @@ const BMAPS = {
     start:{ party:[[4,7],[3,7],[5,7],[4,6],[3,6],[5,5]], enemy:[[2,3],[6,3],[2,4],[6,4],[3,2],[5,2]] },
     notes:"The default for towers: a round stone room with the stairs spiralling up the middle." }
 };
-const BMAP_ORDER = ["blank","docks","ship","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
+const BMAP_ORDER = ["blank","docks","boat","ship","liner","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
 /* the paint tool's palette, in sets */
 const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiVy@BkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
 /* inside a town, a building with no layout of its own gets its kind's default */
@@ -17863,7 +17900,8 @@ function genPerson(over){
   if(o.type && o.type!=="Humanoid") return genCreature(o);          // a beast, a dragon, a fiend… met as someone
   const lv = clampLv(o.level || partyAvgLevel()), K = o.kind && PEOPLE_KINDS[o.kind];
   const disp = o.disp || (K ? pickWeighted(K.disp) : pickOne(["enemy","neutral","ally"]));
-  const cls = K ? K.cls : pickClass(o.role, disp), names = K ? K.blocks : CLASS_BLOCKS[cls] || CLASS_BLOCKS.Commoner;
+  /* o.cls: a class asked for (a ship's crew, 2026-11-04: "level 2 fighters"), over the kind's own; the kind keeps the looks */
+  const cls = o.cls || (K ? K.cls : pickClass(o.role, disp)), names = o.cls ? (CLASS_BLOCKS[o.cls] || (K ? K.blocks : CLASS_BLOCKS.Commoner)) : K ? K.blocks : CLASS_BLOCKS[cls] || CLASS_BLOCKS.Commoner;
   const all = SRD_FOES.filter(f=>names.includes(f.name));
   const pool = all.filter(f=>f.cr <= lv && (!o.maxXp || f.xp <= o.maxXp));
   const near = pool.filter(f=>f.cr >= lv/4);                      // something that can matter at this level
@@ -19584,7 +19622,10 @@ function fleetRoll(){
   /* the pirate's hideout: a port in the reefs if there is one (Kalatecha: Lantern Rock), else the one furthest from the rest */
   const lonely = P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
   out.push(mk("pirate", "pirate", lonely));
-  root.fleet = out; root.fday = D; saveParty();
+  for(const s of fleetOf()) fleetForget(s);                               // the old fleet's crews out of the Library
+  root.fleet = out; root.fday = D;
+  for(const s of out) fleetCrewRoll(s);                                   // and a crew for every ship that has rules for one
+  saveParty();
   gameLog("note", `A fleet of ${out.length} ships put to sea: ${out.map(s=>`${s.name} (${FLEET_KINDS[s.kind][0].toLowerCase()}, ${repPlaceName(s.home)})`).join(", ")}`);
   return out.length;
 }
@@ -19695,8 +19736,69 @@ function fleetSight(){
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fleet]"); if(!b) return; const pop = $("#fleetPop"), s = fleetOf().find(x=>x.id===pop.dataset.ship); if(!s) return;
   s.asked = campaignDay(); delete pop.dataset.ship; pop.hidden = true;
-  if(b.dataset.fleet==="meet"){ s.met = campaignDay(); gameLog("sight", `An encounter at sea: ${s.name}, a ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}`); flash(`An encounter: ${s.name}. Her crew's word is on the card (Party tab → Ships at sea).`); }
+  if(b.dataset.fleet==="meet"){ s.met = campaignDay(); gameLog("sight", `An encounter at sea: ${s.name}, a ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}`); saveParty(); fleetGoAboard(s); return; }     // her place: her crew to meet, her deck for a fight
   saveParty(); fleetSight(); });
+/* ── a ship's size, her crew, and going aboard (Joseph, 2026-11-04). Three sizes, each its own deck map: small (a
+   fishing boat), medium (the ship), large (a passenger ship). A crew by her kind, every one a person in the Library
+   (crewOf her id; their where her name; genders rolled): a captain of level 3, a fighter, barbarian, paladin or ranger;
+   then navy 7 fighters of level 2; merchant 4 ordinary hands and 1 fighter of level 2; fishing 3 ordinary hands, one
+   family; smuggler 4 rogues of level 2; pirate 3 rogues and 2 fighters of level 2 and a caster of level 3, anything but
+   a cleric. Explorers and passenger ships have no crew rules yet. Going aboard (or an encounter) makes her a place at
+   her spot on the chart, hidden from the players: her crew to meet, and her deck for a fight ── */
+const FLEET_SIZES = { small:["Small (a fishing boat)","boat"], medium:["Medium (a ship)","ship"], large:["Large (a passenger ship)","liner"] };
+const fleetSizeOf = s => FLEET_SIZES[s.size] ? s.size : s.kind==="fishing" ? "small" : s.kind==="packet" ? "large" : "medium";
+const FLEET_CREW = {
+  navy:    [["officer","Fighter",2],["officer","Fighter",2],["marine","Fighter",2],["marine","Fighter",2],["marine","Fighter",2],["bosun","Fighter",2],["lookout","Fighter",2]],
+  merchant:[["bosun","Fighter",2],["*","Commoner",1],["*","Commoner",1],["*","Commoner",1],["*","Commoner",1]],
+  fishing: [["fisher","Commoner",1],["fisher","Commoner",1],["fisher","Commoner",1]],
+  smuggler:[["smuggler","Rogue",2],["smuggler","Rogue",2],["smuggler","Rogue",2],["smuggler","Rogue",2]],
+  pirate:  [["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Fighter",2],["pirate","Fighter",2],["pirate","caster",3]] };
+const FLEET_HANDS = ["sailor","shipcook","lookout","shipwright","sailmaker","cabinhand","navigator","quartermaster"];
+const FLEET_CAPTAIN = ["Fighter","Barbarian","Paladin","Ranger"], FLEET_CASTER = ["Wizard","Sorcerer","Warlock","Bard","Druid"];
+const FLEET_DISP = { pirate:"enemy", smuggler:"neutral", navy:"neutral" };
+/* her crew out of the Library and her place off the chart (a new crew, a ship gone) */
+function fleetForget(s){
+  const L = lib(); L.npcs = (L.npcs||[]).filter(p=>p.crewOf!==s.id);
+  root.nodes = (root.nodes||[]).filter(n=>n.fleetShip!==s.id); delete s.captain; s.crew = [];
+}
+/* a crew rolled: her kind's crew (n of them: the pattern again if more, cut short if fewer), and a captain */
+function fleetCrewRoll(s, n){
+  const roles = FLEET_CREW[s.kind] || []; if(!roles.length) return 0;
+  const want = n!=null && n >= 0 ? Math.round(n) : roles.length, list = Array.from({ length:want }, (_, i)=>roles[i % roles.length]);
+  fleetForget(s); const L = lib(), disp = FLEET_DISP[s.kind], ids = [], fam = s.kind==="fishing" ? pickOne(themeTables(rollTheme({})).family) : "";
+  const one = (kind, cls, level) => { const g = genPerson({ kind:kind==="*" ? pickOne(FLEET_HANDS) : kind, cls:cls==="caster" ? pickOne(FLEET_CASTER) : cls, level, ...(disp ? { disp } : {}) }), p = g.person;
+    if(fam) p.name = p.name.replace(/ [^ ]+$/, " " + fam);               // a fishing boat's crew: one family
+    p.crewOf = s.id; p.where = s.name; L.npcs = [...(L.npcs||[]), p]; return p.id; };
+  s.captain = one("shipcaptain", pickOne(FLEET_CAPTAIN), 3);
+  for(const [k, c, lv] of list) ids.push(one(k, c, lv));
+  s.crew = ids; saveParty(); return ids.length + 1;
+}
+/* going aboard: her place, where she is now (hidden from the players), her crew, her deck */
+function fleetBoard(s){
+  const p = fleetPos(s, fleetT()) || repNode(s.home) || { x:0, y:0 }, id = "fv_" + s.id, people = [s.captain, ...(s.crew||[])].filter(x=>x && libNpcById(x));
+  let n = (root.nodes||[]).find(x=>x.id===id);
+  if(!n){ n = { id, name:s.name, kind:"vessel", x:p.x, y:p.y, hidden:true, fleetShip:s.id, level:5, services:{} }; root.nodes.push(n); }
+  n.x = p.x; n.y = p.y; n.name = s.name; n.npcs = people;
+  n.notes = `${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0]} out of ${repPlaceName(s.home)}. ${FLEET_SIZES[fleetSizeOf(s)][0]}.`;
+  n.site = n.site || { kind:"", level:5, once:false, waves:1, loot:{ coin:0 }, items:[], foes:[] };
+  n.site.foes = people.map(pid=>({ id:"npc:" + pid, n:"1" }));        // if it comes to a fight: her captain and crew, on their own sheets
+  n.bmap = { preset:FLEET_SIZES[fleetSizeOf(s)][1] };
+  touch(); return n;
+}
+function fleetGoAboard(s){ const n = fleetBoard(s); if(planOf) leavePlan(); select("node", n.id); pane = "inspect"; syncTabs(); renderPane(true); render(); flash(`${s.name}: her crew and her deck are on her card.`); }
+/* a ship added by hand (the builder): her kind or random, size, crew, home, how she sails */
+function fleetAdd(o){
+  const P = repPorts(); if(!P.length){ flash("No ports on the water yet."); return null; }
+  const kinds = Object.keys(FLEET_KINDS), kind = kinds.includes(o.kind) ? o.kind : pickOne(kinds.filter(k=>k!=="pirate"));
+  const home = repNode(o.home) && repIsCoastal(repNode(o.home)) ? repNode(o.home) : pickOne(kind==="pirate" ? (P.filter(p=>fleetReef(p.id)).length ? P.filter(p=>fleetReef(p.id)) : P) : P.filter(p=>!(FLEET_HONEST.has(kind) && fleetReef(p.id))));
+  const mode = kind==="pirate" ? "pirate" : o.mode==="route" || o.mode==="wander" ? o.mode : (["navy","packet"].includes(kind) || Math.random() < .4 ? "route" : "wander");
+  const used = new Set(fleetOf().map(s=>s.name)), s = { id:uid("sh"), name:(o.name||"").trim() || fleetName(used), kind, mode, home:home.id, at:home.id, stay:campaignDay() + 1, carry:[], ...(FLEET_SIZES[o.size] ? { size:o.size } : {}) };
+  if(mode==="route"){ const r = [home.id]; let at = home.id; for(let i = 0; i < 3; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !(FLEET_HONEST.has(kind) && fleetReef(id))); if(!nb.length) break; at = pickOne(nb); r.push(at); } s.route = r; }
+  fleetOf().push(s); if(root.fday==null) root.fday = campaignDay();
+  const crew = fleetCrewRoll(s, o.crew===""||o.crew==null ? null : +o.crew);
+  gameLog("note", `A ship put to sea: ${s.name}, a ${(FLEET_KINDS[kind])[0].toLowerCase()} out of ${home.name}${crew ? `, ${crew} aboard` : ""}`);
+  saveParty(); return s;
+}
 /* the Party tab's section: the lanes from the map, the fleet rolled, every ship and where she is */
 function fleetBlock(){
   const F = fleetOf(), P = repPorts(), t = fleetT(), where = s => s.leg ? (s.leg.lurk ? `heading out to lie in wait on the lanes (day ${s.leg.arrive})` : `at sea, ${s.leg.from ? `from ${repPlaceName(s.leg.from)} ` : ""}for ${repPlaceName(s.leg.to)}, arriving day ${s.leg.arrive}`)
@@ -19705,16 +19807,34 @@ function fleetBlock(){
   return `<details class="partysec" data-invfor="party:fleet" ${openInv.has("party:fleet")?"open":""}><summary class="eyebrow">Ships at sea <small>${F.length} · ${P.length} ports on the water · ${(repOf().lanes||[]).length} sea lanes</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Ships that aren't the party's, sailing between ports as the days pass, carrying word as they go. On your chart with the sea lanes; on the players' chart when one is within ${FLEET_SIGHT} miles of them, and then you're offered an encounter.</p>
     <div class="pcrow"><button class="btn" style="flex:1" data-fleetact="lanes" title="Each port on the water to its three nearest, then joined up so every port can reach every other. Your own lanes are kept">Work out the sea lanes from the map</button><button class="btn" style="flex:1" data-fleetact="roll" title="18 ships: six merchants, two navy patrols, three fishing boats, two explorers, two smugglers, two packets and one pirate">${F.length ? "Roll a new fleet" : "Roll a fleet"}</button></div>
+    ${F.some(s=>FLEET_CREW[s.kind] && !(s.crew||[]).length) ? `<button class="btn wide" data-fleetact="crews" style="margin-top:4px" title="Every ship with crew rules and no crew yet: a captain and her crew, each a person in the Library">Roll crews for every ship</button>` : ""}
+    <details class="pcset" style="margin-top:6px" ${openInv.has("party:fleetadd") ? "open" : ""} data-invfor="party:fleetadd"><summary>Add a ship <small>a type or random; her size, her crew</small></summary>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Type</label><select id="fa-kind"><option value="">Random</option>${Object.entries(FLEET_KINDS).map(([k, [l]])=>`<option value="${k}">${l}</option>`).join("")}</select></div>
+        <div class="field" style="flex:1"><label>Size</label><select id="fa-size"><option value="">By her type</option>${Object.entries(FLEET_SIZES).map(([k, [l]])=>`<option value="${k}">${l}</option>`).join("")}</select></div></div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Crew <small>besides her captain</small></label><input id="fa-crew" type="number" min="0" placeholder="by her type"></div>
+        <div class="field" style="flex:1"><label>Sails</label><select id="fa-mode"><option value="">By her type</option><option value="route">A set route</option><option value="wander">Where she likes</option></select></div></div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Home port</label><select id="fa-home"><option value="">Random</option>${portOpts("")}</select></div>
+        <div class="field" style="flex:1"><label>Name</label><input id="fa-name" type="text" placeholder="rolled"></div></div>
+      <button class="btn wide calmgo" data-fleetact="add">Put her to sea, crew and all</button>
+      <p class="empty-note" style="font-size:11px;margin:4px 0 0">Crews by type: navy 7 fighters of level 2; merchant 4 hands and a fighter of level 2; fishing 3 hands, one family; smuggler 4 rogues of level 2; pirate 3 rogues, 2 fighters and a caster of level 3. Every ship has a captain of level 3. Explorers and passenger ships: no crew rules yet.</p></details>
     ${F.map(s=>`<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
         <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
       <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
       ${s.mode==="route" ? `<div class="sbl"><small>Route:</small> ${(s.route||[]).map(id=>esc(repPlaceName(id))).join(" → ")} → (round again)</div>` : ""}
-      ${(s.carry||[]).length ? `<div class="sbl"><small>Her crew has heard:</small> ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</div>` : ""}</div>`).join("")}</details>`;
+      ${(s.carry||[]).length ? `<div class="sbl"><small>Her crew has heard:</small> ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</div>` : ""}
+      <div class="sbl"><small>${esc(FLEET_SIZES[fleetSizeOf(s)][0])}. Aboard:</small> ${(()=>{ const ppl = [s.captain, ...(s.crew||[])].map(libNpcById).filter(Boolean);
+        return ppl.length ? ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ") : FLEET_CREW[s.kind] ? "<i>no crew rolled yet</i>" : "<i>no crew rules for her kind yet</i>"; })()}</div>
+      <div class="pcrow" style="margin-top:2px"><button class="btn small" data-fleetact="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her deck for a fight">Go aboard</button>${FLEET_CREW[s.kind] ? `<button class="btn small" data-fleetact="crew" data-id="${s.id}" title="A new crew for her (the old one leaves the Library)">Roll a new crew</button>` : ""}</div></div>`).join("")}</details>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-fleetact]"); if(!b) return; const a = b.dataset.fleetact;
   if(a==="lanes"){ const r = seaLanesFromMap(); flash(`${r.lanes} sea lanes between ${r.ports} ports on the water: every port can reach every other.`); }
   else if(a==="roll"){ if(fleetOf().length && !confirm("Roll a new fleet? The ships at sea now are replaced.")) return; const n = fleetRoll(); if(n) flash(`${n} ships put to sea.`); }
-  else if(a==="del"){ root.fleet = fleetOf().filter(s=>s.id!==b.dataset.id); saveParty(); }
+  else if(a==="del"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s) fleetForget(s); root.fleet = fleetOf().filter(s=>s.id!==b.dataset.id); saveParty(); }
+  else if(a==="crews"){ let n = 0; for(const s of fleetOf()) if(FLEET_CREW[s.kind] && !(s.crew||[]).length) n += fleetCrewRoll(s); flash(`${n} people aboard, captains and crews: each in the Library.`); }
+  else if(a==="crew"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s){ const n = fleetCrewRoll(s); flash(`${s.name}: a new crew of ${n}.`); } }
+  else if(a==="aboard"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s){ fleetGoAboard(s); return; } }
+  else if(a==="add"){ const v = id => ($(id)||{}).value || ""; const s = fleetAdd({ kind:v("#fa-kind"), size:v("#fa-size"), crew:v("#fa-crew"), mode:v("#fa-mode"), home:v("#fa-home"), name:v("#fa-name") });
+    if(s) flash(`${s.name} put to sea: ${(FLEET_KINDS[s.kind])[0].toLowerCase()} out of ${repPlaceName(s.home)}${(s.crew||[]).length ? `, a captain and ${s.crew.length} crew` : ""}.`); }
   renderPane(true); render(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset) return;
   if(t.dataset.fleetname){ const s = fleetOf().find(x=>x.id===t.dataset.fleetname); if(s){ s.name = t.value.trim() || s.name; saveParty(); render(); } }
