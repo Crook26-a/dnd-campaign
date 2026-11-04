@@ -19117,21 +19117,21 @@ function repUndo(){
   saveParty(); return d;
 }
 /* what they've heard: their faction (this branch, or the shared slots), the place, the world; a blank is "nothing" */
-function repRoll(key, die){ const s = rollD(die), T = repOf().tables[key], e = T && T.slots[s], d = e ? repOf().deeds.find(x=>x.id===e.d) : null; return { key, die, s, d }; }
+function repRoll(key, die){ const s = rollD(die), T = repOf().tables[key], e = T && T.slots[s], d = e ? repOf().deeds.find(x=>x.id===e.d) : null; return { key, die, s, d, e }; }
 function repHear(place, fid){
   const out = [], f = fid && factionById(fid);
   if(f){ const die = repFacDie(f), s = rollD(die), key = repFacKey(f, s, place), T = repOf().tables[key], e = T && T.slots[s];
-    out.push({ key, die, s, d:e ? repOf().deeds.find(x=>x.id===e.d) : null, label:f.name || "Their faction" }); }
+    out.push({ key, die, s, e, d:e ? repOf().deeds.find(x=>x.id===e.d) : null, label:f.name || "Their faction" }); }
   if(place) out.push({ ...repRoll("place:" + place, repPlaceDie(place)), label:repPlaceName(place) });
   out.push({ ...repRoll("world", 100), label:"The world" });
   return out;
 }
 var repHeard = null;                                    // { at:"p:<id>" | "n:<place>", lines } — the last roll, shown where it was asked
-const repHeardBox = at => repHeard && repHeard.at===at ? `<div class="facfx" style="margin:4px 0 6px"><b>What they've heard</b>${repHeard.lines.map(l=>`<div class="sbl"><small class="mono">${esc(l.label)} d${l.die} ${l.s}</small> ${l.d ? esc(repDeedWords(l.d)) : "<i>nothing</i>"}</div>`).join("")}</div>` : "";
+const repHeardBox = at => repHeard && repHeard.at===at ? `<div class="facfx" style="margin:4px 0 6px"><b>What they've heard</b>${repHeard.lines.map(l=>`<div class="sbl"><small class="mono">${esc(l.label)} d${l.die} ${l.s}</small> ${l.d ? esc(repEntryWords(l.e, l.d)) : "<i>nothing</i>"}</div>`).join("")}</div>` : "";
 function repAsk(at, place, fid, who){
   try{ gossipCatchUp(); }catch(err){}                   // what's travelled since, first
   const lines = repHear(place, fid); repHeard = { at, lines };
-  gameLog("rep", `What ${who} heard: ${lines.map(l=>`${l.label} d${l.die} ${l.s}: ${l.d ? repDeedWords(l.d) : "nothing"}`).join("; ")}`);
+  gameLog("rep", `What ${who} heard: ${lines.map(l=>`${l.label} d${l.die} ${l.s}: ${l.d ? repEntryWords(l.e, l.d) : "nothing"}`).join("; ")}`);
   if(dmMode) renderPlay(); else renderInspect(); if(battleOf) renderBattlePanel(); renderPane(true);
 }
 /* a place's card: its table, and asking what they've heard here */
@@ -19170,6 +19170,12 @@ function repBlock(){
     <div class="pcrow"><button class="btn calmgo" style="flex:2" data-rep="record">Write it in</button>${last ? `<button class="btn" style="flex:1" data-rep="undo" title="${esc(repDeedWords(last))}">Take back the last one</button>` : ""}</div>
     ${R.deeds.filter(d=>d.quiet).length ? `<p class="grouplab" style="margin:10px 0 3px">Nobody knows yet <small>${R.deeds.filter(d=>d.quiet).length}</small></p>${R.deeds.filter(d=>d.quiet).map(d=>`<div class="sbl">${esc(repDeedWords(d))}
         <button class="btn small" data-rep="tell" data-d="${d.id}" title="They told the tale: into the tables now">They told it</button><button class="btn small" data-rep="force" data-d="${d.id}" title="Your call">Spread it anyway</button></div>`).join("")}` : ""}
+    ${(V=>V.length ? `<p class="grouplab" style="margin:10px 0 3px">Garbled on the way <small>${V.length} to look at: keep the new words, write your own, or put it back</small></p>
+      ${V.map(v=>{ const d = deedOf(v.d), key = encodeURIComponent(v.d + "|" + v.t); return `<div class="facfx" style="margin:0 0 6px">
+        <div class="sbl"><small>Was:</small> ${esc(d ? d.text : "")}</div>
+        <div class="sbl"><small>Now told${v.sea ? " (it came by sea)" : ""}:</small> <input type="text" data-revtext="${key}" value="${esc(v.t)}" style="width:100%"></div>
+        <div class="sbl"><small>In ${esc(v.where.join(", "))}</small></div>
+        <div class="pcrow"><button class="btn small" data-rep="revok" data-k="${key}">Keep it</button><button class="btn small" data-rep="revmine" data-k="${key}" title="The words in the box above">Use my words</button><button class="btn small" data-rep="revback" data-k="${key}">Put it back as it was</button></div></div>`; }).join("")}` : "")(repToReview())}
     <p class="grouplab" style="margin:10px 0 3px">What have they heard?</p>
     <div class="pcrow"><select id="rep-hplace" style="flex:1;min-width:0">${placeOpts(now)}</select>${F.length ? `<select id="rep-hfac" style="flex:1;min-width:0"><option value="">No faction</option>${F.map(f=>`<option value="${f.id}">${esc(f.name||"Faction")}</option>`).join("")}</select>` : ""}<button class="btn" data-rep="hear">Roll</button></div>
     ${repHeardBox("tab")}
@@ -19177,7 +19183,7 @@ function repBlock(){
     ${keys.length ? keys.map(k=>{ const T = R.tables[k], slots = Object.keys(T.slots).map(Number).sort((a, b)=>a - b);
         return `<details class="pcset" data-reptab="${esc(k)}" ${repOpen.has(k) ? "open" : ""}><summary>${esc(repTableLabel(k))} <small>d${T.die} · ${slots.length} filled</small></summary>
           ${slots.map(s=>{ const e = T.slots[s], d = deedOf(e.d), K = d ? repKnownIn(d.id) : null;
-            return `<div class="sbl"><small class="mono">${s}</small> ${esc(repDeedWords(d) || "(lost)")}${e.from ? ` <small>· heard from ${esc(repPlaceName(e.from))}${e.sea ? ", by sea" : ""}, day ${e.day}</small>` : ""}${K ? ` <small>· known in ${K.places.length} place${K.places.length===1?"":"s"}</small>` : ""}${d && k!=="world" ? ` <button class="btn small" data-rep="world" data-d="${d.id}" title="Your call: known the world over now">To the world</button>` : ""}</div>`; }).join("")}
+            return `<div class="sbl"><small class="mono">${s}</small> ${esc(repEntryWords(e, d) || "(lost)")}${e.from ? ` <small>· heard from ${esc(repPlaceName(e.from))}${e.sea ? ", by sea" : ""}, day ${e.day}</small>` : ""}${K ? ` <small>· known in ${K.places.length} place${K.places.length===1?"":"s"}</small>` : ""}${d && k!=="world" ? ` <button class="btn small" data-rep="world" data-d="${d.id}" title="Your call: known the world over now">To the world</button>` : ""}</div>`; }).join("")}
           ${(()=>{ const H = R.history.filter(h=>h.key===k); return H.length ? `<div class="sbl"><small>Written over: ${H.map(h=>`${h.slot}, ${esc((deedOf(h.old.d)||{}).text || "a story")}`).join(" · ")}</small></div>` : ""; })()}</details>`; }).join("")
       : `<p class="empty-note" style="margin:0 0 6px">Nothing written in yet.</p>`}
     <p class="grouplab" style="margin:10px 0 3px">Gossip <small>${R.gday!=null ? `caught up to day ${R.gday}` : "starts counting when the day next moves on"} · along ${repRoutes().length} roads and sea lanes</small></p>
@@ -19189,11 +19195,13 @@ function repBlock(){
       <select id="rep-lanet">${REP_TRAFFIC.map(([v, w])=>`<option value="${v}" ${v==="normal"?"selected":""}>${w}</option>`).join("")}</select><button class="btn" data-rep="lane">Add</button></div>
     <div class="xprule" style="margin-top:8px">A faction's slots shared by all its branches: <input class="mono" data-rep="share" type="number" min="0" max="100" step="5" value="${Math.round(R.share * 100)}" style="width:52px"> % (the rest are each branch's own). Each faction's die is on its Library page.<br>
       A road or sea crossing carries a story: local <input class="mono" data-repcarry="local" type="number" min="0" max="100" step="5" value="${repCarry("local")}" style="width:50px"> % (its own region only, never by sea), minor <input class="mono" data-repcarry="minor" type="number" min="0" max="100" step="5" value="${repCarry("minor")}" style="width:50px"> %, notable <input class="mono" data-repcarry="notable" type="number" min="0" max="100" step="5" value="${repCarry("notable")}" style="width:50px"> %, legendary <input class="mono" data-repcarry="legendary" type="number" min="0" max="100" step="5" value="${repCarry("legendary")}" style="width:50px"> % of the time.<br>
-      A story goes on the world's table by itself once it's known in <input class="mono" data-repset="worldTowns" type="number" min="1" value="${repWorldAt().towns}" style="width:46px"> places or <input class="mono" data-repset="worldRegions" type="number" min="1" value="${repWorldAt().regions}" style="width:46px"> regions (or with To the world, your call).</div></details>`;
+      A story gets garbled on the way: by road <input class="mono" data-repg="garbleRoad" type="number" min="0" max="100" step="5" value="${repGarbleAt(false)}" style="width:50px"> %, by sea <input class="mono" data-repg="garbleSea" type="number" min="0" max="100" step="5" value="${repGarbleAt(true)}" style="width:50px"> % of the times it travels (a faction's branches, half that).<br>
+      A story goes on the world's table by itself once it's known in<input class="mono" data-repset="worldTowns" type="number" min="1" value="${repWorldAt().towns}" style="width:46px"> places or <input class="mono" data-repset="worldRegions" type="number" min="1" value="${repWorldAt().regions}" style="width:46px"> regions (or with To the world, your call).</div></details>`;
 }
 document.addEventListener("toggle", e=>{ const d = e.target; if(!d.dataset || d.dataset.reptab==null) return; if(d.open) repOpen.add(d.dataset.reptab); else repOpen.delete(d.dataset.reptab); }, true);
 document.addEventListener("change", e=>{ const t = e.target; if(!t.matches) return;
   if(t.matches('input[data-rep="share"]')){ repOf().share = Math.max(0, Math.min(1, (+t.value || 0) / 100)); saveParty(); renderPane(true); }
+  else if(t.matches("input[data-repg]")){ repOf()[t.dataset.repg] = Math.max(0, Math.min(100, Math.round(+t.value || 0))); saveParty(); }
   else if(t.matches("input[data-repcarry]")){ const R = repOf(); R.carryBy = R.carryBy || {}; R.carryBy[t.dataset.repcarry] = Math.max(0, Math.min(100, Math.round(+t.value || 0))); saveParty(); }
   else if(t.matches("input[data-repset]")){ repOf()[t.dataset.repset] = Math.max(1, Math.round(+t.value || 1)); saveParty(); }
   else if(t.matches("select[data-replane]")){ const R = repOf(), l = (R.lanes||[]).find(x=>x.id===t.dataset.replane); if(l){ l.traffic = t.value; if(R.clock){ delete R.clock["l:" + l.id]; delete R.clock["fl:" + l.id]; } saveParty(); } } });
@@ -19209,6 +19217,9 @@ document.addEventListener("click", e=>{
   else if(a==="undo"){ const d = repUndo(); if(d){ gameLog("rep", `Reputation taken back: ${repDeedWords(d)}`); flash(`Taken back: ${d.text}`); } }
   else if(a==="hear"){ const place = v("#rep-hplace") || null, fid = v("#rep-hfac") || null; repAsk("tab", place, fid, place ? `people at ${repPlaceName(place)}` : "people"); return; }
   else if(a==="world"){ if(!repToWorld(b.dataset.d, "your call")) flash("It's on the world's table already."); else saveParty(); }
+  else if(a==="revok" || a==="revmine" || a==="revback"){ const key = b.dataset.k, [did, ...rest] = decodeURIComponent(key).split("|"), t = rest.join("|");
+    const box = document.querySelector(`[data-revtext="${CSS.escape(key)}"]`), mine = box ? box.value.trim() : "";
+    repReviewed(did, t, a==="revback" ? "back" : a==="revmine" ? "mine" : "keep", mine); flash(a==="revback" ? "Put back as it was." : "Kept."); }
   else if(a==="lane"){ const A = v("#rep-lanea"), B = v("#rep-laneb"); if(!A || !B || A===B){ flash("Pick two different places."); return; }
     const R = repOf(); (R.lanes = R.lanes || []).push({ id:uid("ln"), from:A, to:B, traffic:v("#rep-lanet") || "normal" }); saveParty(); }
   else if(a==="lanedel"){ const R = repOf(); R.lanes = (R.lanes||[]).filter(l=>l.id!==b.dataset.id); saveParty(); }
@@ -19260,9 +19271,59 @@ function repCross(rt, day, moved){
     const roll = told[Math.floor(Math.random() * told.length)], e = T.slots[roll];          // one of the stories told there (one written in twice, twice as likely)
     if(repLocalBlocked(R.deeds.find(x=>x.id===e.d), rt, s, t)) continue;
     { const d = R.deeds.find(x=>x.id===e.d); if(rollD(100) > repCarry(d && d.size)) continue; }     // a big deed travels; a minor one mostly doesn't
-    const die = repPlaceDie(t), slot = rollD(die), val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}) };
-    if(repWriteIn("place:" + t, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, from:s, to:t, sea:rt.sea, day, how:`${repPlaceName(s)} ${roll} → ${repPlaceName(t)} d${die} ${slot}` });
+    const D = R.deeds.find(x=>x.id===e.d); if(D && D.place===t) continue;          // where it happened, they saw it: no word comes back there
+    const die = repPlaceDie(t), slot = rollD(die), val = repRetell(e, rt, s, day, repGarbleAt(rt.sea));
+    if(val.g && R.tables["place:" + t] && Object.values(R.tables["place:" + t].slots).some(x=>x.d===e.d)) continue;     // they've heard it already: a twisted telling doesn't take
+    if(repWriteIn("place:" + t, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, from:s, to:t, sea:rt.sea, day, how:`${repPlaceName(s)} ${roll} → ${repPlaceName(t)} d${die} ${slot}${val.g && !val.rev ? " (garbled)" : ""}` });
   }
+}
+/* ── REPUTATION, STAGE 3: GARBLING (Joseph, 2026-11-04). Word changes as it travels: on a crossing that carries a
+   story, a chance (root.rep.garbleRoad 15%, garbleSea 35%; a faction's branches half their route's) that the telling
+   changes. Its numbers grow (by land they sometimes shrink), and a monster named in it becomes a similar or bigger one
+   from the SRD, of its type if there is one (by sea bigger still). The new words go in at once (e.t, e.g), not yet
+   reviewed (e.rev false), and wait in the DM's review list: keep them, rewrite them, or put the story back as it was.
+   A copy passes on its own words, and may garble again ── */
+const repGarbleAt = sea => { const v = repOf()[sea ? "garbleSea" : "garbleRoad"]; return v!=null && v >= 0 && v <= 100 ? +v : (sea ? 35 : 15); };
+const REP_NUMW = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve"];
+function garbleText(text, sea){
+  let s = String(text || ""), changed = false;
+  const rxq = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /* numbers ("one" is left alone: "no one", "the one who…") */
+  s = s.replace(/\b(\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/gi, w=>{
+    const n = /^\d+$/.test(w) ? +w : REP_NUMW.indexOf(w.toLowerCase()); if(n < 2) return w;
+    const step = Math.max(1, Math.ceil(n / 2)), d = sea ? rollD(Math.max(2, n)) : rollD(4)===1 ? -Math.min(n - 1, rollD(step)) : rollD(step), m = Math.max(1, n + d);
+    if(m===n) return w; changed = true;
+    if(/^\d+$/.test(w)) return String(m);
+    const word = m <= 12 ? REP_NUMW[m] : String(m); return w[0]===w[0].toUpperCase() ? word[0].toUpperCase() + word.slice(1) : word; });
+  /* a monster: the longest SRD name in it, plural or not */
+  const low = s.toLowerCase(), hit = SRD_FOES.filter(f=>f.name && f.name.length >= 3).map(f=>({ f, m:new RegExp(`\\b${rxq(f.name.toLowerCase())}(e?s)?\\b`).exec(low) })).filter(x=>x.m).sort((a, b)=>b.f.name.length - a.f.name.length)[0];
+  if(hit){ const cr = +hit.f.cr || 0, lo = cr + (sea ? 1 : 0), hi = cr + (sea ? 4 : 2);
+    let pool = SRD_FOES.filter(f=>f!==hit.f && +f.cr >= lo && +f.cr <= hi && f.type===hit.f.type); if(!pool.length) pool = SRD_FOES.filter(f=>f!==hit.f && +f.cr >= lo && +f.cr <= hi);
+    if(pool.length){ const to = pool[Math.floor(Math.random() * pool.length)], at = hit.m.index, was = s.slice(at, at + hit.m[0].length);
+      const nm = was[0]===was[0].toLowerCase() ? to.name.toLowerCase() : to.name;
+      s = s.slice(0, at) + nm + (hit.m[1] ? "s" : "") + s.slice(at + hit.m[0].length); changed = true; } }
+  return changed ? s : null;
+}
+/* a story passed on: its own words (garbled ones too), maybe garbled again on the way */
+function repRetell(e, rt, s, day, rate){
+  const d = repOf().deeds.find(x=>x.id===e.d), words = e.t || (d && d.text) || "";
+  const val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}), ...(e.t ? { t:e.t, g:true, rev:!!e.rev } : {}) };
+  if(rollD(100) <= rate){ const g = garbleText(words, rt.sea); if(g){ val.t = g; val.g = true; val.rev = false; } }
+  return val;
+}
+const repEntryWords = (e, d) => !d ? "" : repDeedWords(e && e.t ? { ...d, text:e.t } : d) + (e && e.g ? (e.rev ? " · retold" : " · garbled, not reviewed") : "");
+/* the review list: every garbled telling not yet looked at, the same words in many places once */
+function repToReview(){
+  const out = new Map(), R = repOf();
+  for(const [k, T] of Object.entries(R.tables)) for(const [s, e] of Object.entries(T.slots)) if(e.g && !e.rev){
+    const id = e.d + "|" + e.t, x = out.get(id) || { d:e.d, t:e.t, where:[], sea:false }; x.where.push(repTableLabel(k)); if(e.sea) x.sea = true; out.set(id, x); }
+  return [...out.values()];
+}
+/* keep, rewrite, or put back: every copy with those words */
+function repReviewed(did, t, how, words){
+  for(const T of Object.values(repOf().tables)) for(const e of Object.values(T.slots)) if(e.d===did && e.g && e.t===t){
+    if(how==="back"){ delete e.t; delete e.g; delete e.rev; } else { if(how==="mine" && words) e.t = words; e.rev = true; } }
+  saveParty();
 }
 function repFacCross(rt, day, moved){
   for(const f of lib().factions || []){
@@ -19272,8 +19333,8 @@ function repFacCross(rt, day, moved){
       const roll = told[Math.floor(Math.random() * told.length)], e = src.slots[roll];
       if(repLocalBlocked(repOf().deeds.find(x=>x.id===e.d), rt, s, t)) continue;
       const lost = rollD(100); if(lost <= REP_FAC_LOSS){ moved.push({ d:e.d, lost:true, fac:f.id, from:s, to:t, day, how:`${f.name}: lost on the way (d100 ${lost})` }); continue; }
-      const slot = sh + rollD(die - sh), val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}) };
-      if(repWriteIn(`fac:${f.id}@${t}`, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, fac:f.id, from:s, to:t, day, how:`${f.name} in ${repPlaceName(s)} ${roll} → in ${repPlaceName(t)} ${slot}` });
+      const slot = sh + rollD(die - sh), val = repRetell(e, rt, s, day, Math.round(repGarbleAt(rt.sea) / 2));     // an organisation passes word more carefully
+      if(repWriteIn(`fac:${f.id}@${t}`, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, fac:f.id, from:s, to:t, day, how:`${f.name} in ${repPlaceName(s)} ${roll} → in ${repPlaceName(t)} ${slot}${val.g && !val.rev ? " (garbled)" : ""}` });
     }
   }
 }
