@@ -3091,7 +3091,7 @@ function playerMapScene(){
   /* on the sea chart, with the chart on: only places in sight, charted ones, and the fog over the rest */
   const charting = !planOf && chartOn();
   const hid = new Set((doc.nodes||[]).filter(n=>n.hidden || (charting && !n.charted && !n.route && !inSight(n.x, n.y)) || (isRival(n) && !rivalInView(n))).map(n=>n.id));
-  const cg = copy.querySelector("#gChart"); if(cg) cg.innerHTML = (charting ? chartFog(true) : "") + (!planOf ? seaMonsters(true) + wakeLines(true) + routeLines(true) + trailLines(true) : "");
+  const cg = copy.querySelector("#gChart"); if(cg) cg.innerHTML = (charting ? chartFog(true) : "") + (!planOf ? seaMonsters(true) + wakeLines(true) + routeLines(true) + trailLines(true) + fleetLayer(true) : "");
   copy.querySelectorAll("[data-pn]").forEach(e=>{ if(hid.has(e.getAttribute("data-pn"))) e.remove(); else e.removeAttribute("opacity"); });
   if(planOf){ const un = new Set((doc.nodes||[]).filter(n=>n.nameHidden && !placeVisited(planOf, n)).map(n=>n.id));
     copy.querySelectorAll("[data-pn]").forEach(e=>{ if(un.has(e.getAttribute("data-pn"))) e.querySelectorAll("text.nodename, title").forEach(t=>t.remove()); });
@@ -3275,6 +3275,7 @@ function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecha
   if(typeof threadCheck==="function") try{ threadCheck(); }catch(err){}                 /* a new day: loose threads that come due */
   const s = document.getElementById("timeBar"); if(s){ s.value = timeOfDay(); s.title = `The time of day, everywhere: about ${hourWord(clockHour())}`; } const d = document.getElementById("dayNum"); if(d && document.activeElement!==d) d.value = campaignDay();
   if(typeof syncWeather==="function") try{ syncWeather(); }catch(err){}
+  if(typeof fleetCatchUp==="function") try{ fleetCatchUp(); }catch(err){}
   if(typeof gossipCatchUp==="function") try{ gossipCatchUp(); }catch(err){} }                /* the date, the day's weather where the party is, and the gossip since */
 function wireTimeBar(){
   document.getElementById("pscreenBtn").insertAdjacentHTML("beforebegin", `<button id="upBtn" hidden></button><button id="sailBtn" hidden title="Out to the sea chart with the ship, ready to sail">⛵ Set sail</button><span class="worldclock" title="The world's clock: the campaign day and the time of day. Every place follows it (unless a place is set to always bright, dim or dark).">
@@ -5915,7 +5916,8 @@ function render(){
   ov += docMarks(inv);                            // a place a document pointed to, and the session's places
   /* the players' chart, faintly on the DM's sea chart: what they haven't seen is shaded */
   const gChart = svg.querySelector("#gChart");
-  if(gChart) gChart.innerHTML = (!planOf && chartOn() && chartEdgeOn() ? chartFog(false) : "") + (!planOf ? seaMonsters(false) + wakeLines(false) + routeLines(false) + trailLines(false) : "");
+  if(gChart) gChart.innerHTML = (!planOf && chartOn() && chartEdgeOn() ? chartFog(false) : "") + (!planOf ? seaMonsters(false) + wakeLines(false) + routeLines(false) + trailLines(false) + fleetLayer(false) : "");
+  if(!planOf) try{ fleetSight(); }catch(err){}      // a ship within 10 miles of the party: an encounter?
   if(!planOf) ov += courseOverlay(inv);           // ships' planned courses (the players don't see them)
   const gParty = svg.querySelector("#gParty"); if(gParty) gParty.innerHTML = partyMarker(inv);   // the party's token (the players see it)
   renderFloorBar();
@@ -8715,6 +8717,7 @@ function renderParty(){
     ${addCompanionBlock(pcs)}
 
     ${repBlock()}
+    ${fleetBlock()}
     ${leaderBlock()}
     ${awardsBlock()}
     ${xpRulesBlock()}
@@ -19338,6 +19341,205 @@ function repFacCross(rt, day, moved){
     }
   }
 }
+/* ══ SHIPS AT SEA (Joseph, 2026-11-04: "the ships going between ports"). Real ports are the ports on the water or
+   within 3 miles of a coast (the map's islands and mainland); the sea lanes join them so that every port can reach
+   every other in the end (each to its three nearest, then the closest pair between any parts still apart). A fleet
+   (root.fleet: 18 rolled, "a good mix with one pirate that works independent of the others") sails on its own as the
+   days pass: a ship on a set route goes round its ports along the lanes; a mercurial one picks its next port as it
+   goes (busy lanes likelier; a fishing boat stays near home); the pirate keeps to no lane: out from its hideout to lurk
+   on a busy lane a few days, then home or off to a port to sell. A ship rests in port a few days; arriving, it leaves
+   the stories it carries (garbled at the sea rate) and takes one on (both run beside the lane clocks). On the DM's
+   chart: the lanes and every ship; on the players': a ship within 10 miles of the party; and one that close offers
+   the DM an encounter. Positions follow the day and hour. ══ */
+const FLEET_KINDS = { merchant:["Merchantman",90], navy:["Navy patrol",110], fishing:["Fishing boat",50], explorer:["Explorer",100], smuggler:["Smuggler",110], packet:["Passenger packet",100], pirate:["Pirate",120] };
+const FLEET_SIGHT = 10;                                   // miles: in sight, and an encounter offered
+const repMilesBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) / (root.ppm || 10);
+function repIsCoastal(n){
+  if(!isPort(n)) return false; if(n.kind==="light" || n.port===true) return true;
+  const isles = (root.shapes||[]).filter(s=>s.kind==="island" && s.closed!==false && (s.pts||[]).length > 2), on = isles.find(s=>landIn(s, n.x, n.y));
+  return !on || coastDist(on, n.x, n.y) <= 3 * (root.ppm || 10);
+}
+const repPorts = () => (root.nodes||[]).filter(n=>n.name && repIsCoastal(n));
+/* the lanes worked out from the map (auto ones replaced, your own kept) */
+function seaLanesFromMap(){
+  const P = repPorts(), R = repOf(), keep = (R.lanes||[]).filter(l=>!l.auto), have = new Set(keep.map(l=>[l.from, l.to].sort().join("|"))), out = [];
+  const add = (a, b) => { const k = [a.id, b.id].sort().join("|"); if(a===b || have.has(k)) return; have.add(k);
+    const big = n => n.kind==="city", small = n => n.kind==="village" || n.kind==="light", reef = n => /reef/i.test(((root.regions||[]).find(r=>r.id===n.region)||{}).name || "");
+    const traffic = reef(a) || reef(b) ? "quiet" : big(a) && big(b) ? "busy" : small(a) || small(b) ? "light" : "normal";
+    out.push({ id:uid("ln"), from:a.id, to:b.id, traffic, auto:true }); };
+  for(const a of P) P.filter(b=>b!==a).sort((x, y)=>repMilesBetween(a, x) - repMilesBetween(a, y)).slice(0, 3).forEach(b=>add(a, b));
+  /* joined up: any two parts still apart get their closest pair */
+  const all = [...keep, ...out], par = new Map(P.map(p=>[p.id, p.id])), find = x => par.get(x)===x ? x : (par.set(x, find(par.get(x))), par.get(x));
+  for(const l of all) if(par.has(l.from) && par.has(l.to)) par.set(find(l.from), find(l.to));
+  for(;;){ const groups = [...new Set(P.map(p=>find(p.id)))]; if(groups.length < 2) break;
+    let best = null; for(const a of P) for(const b of P) if(find(a.id)!==find(b.id)){ const d = repMilesBetween(a, b); if(!best || d < best.d) best = { a, b, d }; }
+    add(best.a, best.b); par.set(find(best.a.id), find(best.b.id)); }
+  R.lanes = [...keep, ...out]; saveParty(); return { ports:P.length, lanes:out.length };
+}
+/* the lanes as a graph: the shortest way by miles from one port to another */
+function seaPath(fromId, toId){
+  const L = repOf().lanes || [], N = id => (root.nodes||[]).find(n=>n.id===id), dist = { [fromId]:0 }, prev = {}, todo = new Set([fromId]), done = new Set();
+  while(todo.size){ let u = null; for(const x of todo) if(u===null || dist[x] < dist[u]) u = x; todo.delete(u); done.add(u); if(u===toId) break;
+    for(const l of L){ const v = l.from===u ? l.to : l.to===u ? l.from : null; if(!v || done.has(v) || !N(v) || !N(u)) continue;
+      const d = dist[u] + repMilesBetween(N(u), N(v)); if(dist[v]==null || d < dist[v]){ dist[v] = d; prev[v] = u; todo.add(v); } } }
+  if(dist[toId]==null) return null; const path = [toId]; while(path[0]!==fromId) path.unshift(prev[path[0]]); return path;
+}
+const fleetOf = () => (root.fleet = Array.isArray(root.fleet) ? root.fleet : []);
+/* a port in the reefs (pirate waters): honest ships don't call there; smugglers, explorers and the pirate do */
+const fleetReef = id => /reef/i.test(((root.regions||[]).find(r=>r.id===((repNode(id)||{}).region))||{}).name || "");
+const FLEET_HONEST = new Set(["merchant","navy","packet","fishing"]);
+const FLEET_A = ["Gilded","Salt","Silver","Weeping","Bold","Crimson","Patient","Laughing","Lucky","Grey","Wandering","Faithful","Restless","Black","Morning","Golden","Iron","Merry"];
+const FLEET_N = ["Heron","Gull","Mermaid","Lantern","Anchor","Widow","Gannet","Compass","Tide","Petrel","Swan","Fortune","Kestrel","Pearl","Star","Otter","Albatross","Rose"];
+const FLEET_S = ["Saint Agathe","Saint Brennan","Saint Lucia","Saint Martin","Saint Isolde"];
+function fleetName(used){ for(let i = 0; i < 50; i++){ const r = rollD(6), nm = r===1 ? FLEET_S[rollD(FLEET_S.length) - 1] : `The ${FLEET_A[rollD(FLEET_A.length) - 1]} ${FLEET_N[rollD(FLEET_N.length) - 1]}`; if(!used.has(nm)){ used.add(nm); return nm; } } return `The Ship ${used.size + 1}`; }
+/* 18 ships: six merchants (some on routes), two navy patrols, three fishing boats, two explorers, two smugglers, two packets, one pirate */
+function fleetRoll(){
+  const P = repPorts(); if(P.length < 2){ flash("Fewer than two ports on the water: nothing to sail between."); return 0; }
+  if(!(repOf().lanes||[]).length) seaLanesFromMap();
+  const used = new Set(), out = [], pick = A => A[rollD(A.length) - 1], cities = P.filter(p=>p.kind==="city"), D = campaignDay();
+  const walk = (home, n, only) => { const r = [home.id]; let at = home.id;
+    for(let i = 0; i < n; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !fleetReef(id) && (!only || only(id))); if(!nb.length) break; at = pick(nb); r.push(at); }
+    return r; };
+  const mk = (kind, mode, home, route) => ({ id:uid("sh"), name:fleetName(used), kind, mode, home:home.id, ...(route ? { route } : {}), at:home.id, stay:D + rollD(6), carry:[] });
+  const spread = (k, cs) => pick(cs || P);
+  for(let i = 0; i < 6; i++){ const h = spread(i, cities.length ? cities : P); out.push(i < 3 ? mk("merchant", "route", h, walk(h, 2 + rollD(2))) : mk("merchant", "wander", h)); }
+  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : P); out.push(mk("navy", "route", h, walk(h, 3, id=>{ const n = repNode(id); return n && n.region===h.region; }))); }
+  for(let i = 0; i < 3; i++){ const h = spread(i); out.push(mk("fishing", "wander", h)); }
+  for(let i = 0; i < 2; i++) out.push(mk("explorer", "wander", spread(i)));
+  for(let i = 0; i < 2; i++) out.push(mk("smuggler", "wander", spread(i)));
+  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : P); out.push(mk("packet", "route", h, walk(h, 2))); }
+  /* the pirate's hideout: a port in the reefs if there is one (Kalatecha: Lantern Rock), else the one furthest from the rest */
+  const lonely = P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
+  out.push(mk("pirate", "pirate", lonely));
+  root.fleet = out; root.fday = D; saveParty();
+  gameLog("note", `A fleet of ${out.length} ships put to sea: ${out.map(s=>`${s.name} (${FLEET_KINDS[s.kind][0].toLowerCase()}, ${repPlaceName(s.home)})`).join(", ")}`);
+  return out.length;
+}
+/* where a ship goes next */
+function fleetNext(s){
+  const at = s.at, lanesOf = id => (repOf().lanes||[]).filter(l=>l.from===id || l.to===id);
+  if(s.mode==="route" && (s.route||[]).length > 1){ const i = s.route.indexOf(at); return { to:s.route[(i + 1) % s.route.length] }; }
+  if(s.mode==="pirate"){
+    if(at===s.home || !at){ const busy = (repOf().lanes||[]).filter(l=>["dense","busy"].includes(trafficOf(l))), L = (busy.length ? busy : repOf().lanes||[]);
+      if(!L.length) return null; const l = L[rollD(L.length) - 1], a = repNode(l.from), b = repNode(l.to); if(!a || !b) return null;
+      return { lurk:{ x:(a.x + b.x) / 2, y:(a.y + b.y) / 2, on:l.id }, wait:1 + rollD(4) }; }
+    if(rollD(10) <= 3){ const P = repPorts().filter(p=>p.id!==s.home); return { to:P[rollD(P.length) - 1].id, direct:true }; }      // off to a port to sell
+    return { to:s.home, direct:true };
+  }
+  let nb = lanesOf(at).map(l=>({ id:l.from===at ? l.to : l.from, w:{ dense:5, busy:4, normal:3, light:2, quiet:1 }[trafficOf(l)] || 3 })).filter(x=>!(FLEET_HONEST.has(s.kind) && fleetReef(x.id)));
+  if(s.kind==="fishing"){ const h = repNode(s.home); nb = nb.filter(x=>{ const n = repNode(x.id); return n && h && repMilesBetween(n, h) <= 80; }); if(!nb.length && at!==s.home) return { to:s.home }; }
+  if(!nb.length) return null;
+  let r = Math.random() * nb.reduce((a, x)=>a + x.w, 0); for(const x of nb){ r -= x.w; if(r <= 0) return { to:x.id }; } return { to:nb[0].id };
+}
+/* a ship's way as points (ports along the lanes, or straight for the pirate), its miles */
+function fleetLeg(s, go, day){
+  const from = repNode(s.at) || (s.pos ? { x:s.pos.x, y:s.pos.y } : null); if(!from) return null;
+  let pts;
+  if(go.lurk) pts = [{ x:from.x, y:from.y }, { x:go.lurk.x, y:go.lurk.y }];
+  else { const path = go.direct || !s.at ? null : seaPath(s.at, go.to); const to = repNode(go.to); if(!to) return null;
+    pts = (path || [s.at, go.to].filter(Boolean)).map(id=>repNode(id)).filter(Boolean).map(n=>({ x:n.x, y:n.y })); if(!s.at) pts.unshift({ x:from.x, y:from.y }); }
+  let px = 0; for(let i = 1; i < pts.length; i++) px += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+  const miles = px / (root.ppm || 10), days = Math.max(1, Math.ceil(miles / (FLEET_KINDS[s.kind] || FLEET_KINDS.merchant)[1]));
+  return { pts, from:s.at || null, to:go.to || null, lurk:go.lurk || null, wait:go.wait || 0, left:day, arrive:day + days, miles:Math.round(miles) };
+}
+/* where a ship is at a moment (day + the hour's share) */
+function fleetPos(s, t){
+  const L = s.leg; if(!L){ const n = repNode(s.at); return n ? { x:n.x, y:n.y } : s.pos || null; }
+  const f = Math.max(0, Math.min(1, (t - L.left) / Math.max(1, L.arrive - L.left)));
+  let tot = 0; const seg = []; for(let i = 1; i < L.pts.length; i++){ const d = Math.hypot(L.pts[i].x - L.pts[i-1].x, L.pts[i].y - L.pts[i-1].y); seg.push(d); tot += d; }
+  let want = f * tot; for(let i = 1; i < L.pts.length; i++){ if(want <= seg[i-1] || i===L.pts.length - 1){ const k = seg[i-1] ? Math.min(1, want / seg[i-1]) : 1, a = L.pts[i-1], b = L.pts[i]; return { x:a.x + (b.x - a.x) * k, y:a.y + (b.y - a.y) * k }; } want -= seg[i-1]; }
+  return L.pts[L.pts.length - 1];
+}
+/* a ship in port: it leaves what it carries (by sea, garbled at that rate) and takes one story on */
+function fleetPortCall(s, port, day, moved){
+  const R = repOf(), key = "place:" + port.id, die = repPlaceDie(port.id), rt = { sea:true };
+  for(const e of s.carry || []){ const D = R.deeds.find(x=>x.id===e.d); if(!D || D.place===port.id) continue;
+    if(repLocalBlocked(D, rt, e.from, port.id)) continue;
+    const val = repRetell(e, rt, e.from, day, repGarbleAt(true)); if(val.g && R.tables[key] && Object.values(R.tables[key].slots).some(x=>x.d===e.d)) continue;
+    const slot = rollD(die); if(repWriteIn(key, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, sea:true, day, from:e.from, to:port.id, how:`aboard ${s.name}, ${repPlaceName(e.from)} → ${repPlaceName(port.id)} d${die} ${slot}${val.g && !val.rev ? " (garbled)" : ""}` }); }
+  s.carry = [];
+  const T = R.tables[key], told = T ? Object.keys(T.slots) : []; if(told.length){ const e = T.slots[told[Math.floor(Math.random() * told.length)]]; s.carry.push({ ...e, from:port.id }); }
+}
+/* the days since: every ship's departures and arrivals in turn */
+function fleetCatchUp(){
+  if(typeof root==="undefined" || !root || !Array.isArray(root.fleet) || !root.fleet.length || location.hash==="#player") return null;
+  const now = campaignDay(); if(root.fday==null || now < root.fday){ root.fday = now; return null; } if(now===root.fday) return null;
+  const moved = [], said = [];
+  for(const s of root.fleet){
+    for(let guard = 0; guard < 400; guard++){
+      if(s.leg){ if(s.leg.arrive > now) break;
+        const L = s.leg; delete s.leg;
+        if(L.lurk){ s.at = null; s.pos = { x:L.lurk.x, y:L.lurk.y }; s.stay = L.arrive + L.wait; said.push(`${s.name} lies in wait on the lanes`); continue; }
+        s.at = L.to; delete s.pos; s.stay = L.arrive + 1 + rollD(3);
+        const port = repNode(s.at); if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); continue; }
+      if((s.stay || 0) > now) break;
+      const go = fleetNext(s); if(!go){ s.stay = now + rollD(6); break; }
+      const leg = fleetLeg(s, go, s.stay || now); if(!leg){ s.stay = now + rollD(6); break; }
+      s.leg = leg; said.push(`${s.name} sails${s.at ? ` from ${repPlaceName(s.at)}` : ""}${leg.to ? ` for ${repPlaceName(leg.to)}` : ""} (${leg.miles} mi, day ${leg.arrive})`);
+    } }
+  const from = root.fday; root.fday = now;
+  if(said.length || moved.length) gameLog("sail", `Ships at sea, days ${from + 1}–${now}: ${said.slice(0, 30).join("; ")}${said.length > 30 ? `; and ${said.length - 30} more` : ""}${moved.length ? `. Word they carried: ${moved.map(m=>`"${(repOf().deeds.find(x=>x.id===m.d)||{}).text || "a story"}" ${m.how}`).join("; ")}` : ""}`);
+  saveParty(); return { moved, said };
+}
+const fleetT = () => campaignDay() + (+root.hour || 0) / 24;
+/* the party at sea: their ship, while they're aboard */
+const fleetParty = () => { const s = wxShip(); return s ? { x:s.x, y:s.y, ship:s } : null; };
+/* the chart: the lanes (the DM's alone) and the ships (the players: within sight of the party) */
+function fleetLayer(forPlayers){
+  if(doc!==root || !Array.isArray(root.fleet)) return "";
+  const ppm = root.ppm || 10, inv = 1 / Math.max(.05, view.k || 1), t = fleetT(), me = fleetParty();
+  let s = "";
+  if(!forPlayers) for(const l of repOf().lanes || []){ const a = repNode(l.from), b = repNode(l.to); if(!a || !b) continue;
+    s += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#2c5a72" stroke-opacity=".45" stroke-width="${({ dense:2.4, busy:2, normal:1.5, light:1.1, quiet:.8 }[trafficOf(l)] || 1.2) * inv}" stroke-dasharray="${6*inv} ${5*inv}" pointer-events="none"/>`; }
+  for(const sh of root.fleet){ const p = fleetPos(sh, t); if(!p) continue;
+    if(forPlayers && !(me && Math.hypot(p.x - me.x, p.y - me.y) <= FLEET_SIGHT * ppm)) continue;
+    const pir = sh.kind==="pirate" && !forPlayers;
+    s += `<g pointer-events="none" transform="translate(${Math.round(p.x)} ${Math.round(p.y)}) scale(${inv})"><path d="M-7 2 L7 2 L4 6 L-4 6 Z M0 2 L0 -8 L6 0 Z" fill="${pir ? "#3a1a1a" : "#f3ead2"}" stroke="#2b2b2b" stroke-width="1"/>
+      ${forPlayers ? "" : `<text y="16" text-anchor="middle" font-size="9" font-family="var(--serif)" fill="#1f3442" stroke="#fff8e6" stroke-width="2.5" paint-order="stroke">${esc(sh.name)}</text>`}</g>`; }
+  return s;
+}
+/* a ship within 10 miles of the party: an encounter, if the DM wants one (once a ship a day) */
+function fleetSight(){
+  if(planOf || !Array.isArray(root.fleet) || !root.fleet.length || location.hash==="#player") return;
+  const me = fleetParty(), pop = $("#fleetPop"); if(!pop) return; if(!me){ pop.hidden = true; return; }
+  const ppm = root.ppm || 10, t = fleetT(), d = campaignDay();
+  const near = root.fleet.map(s=>({ s, p:fleetPos(s, t) })).filter(x=>x.p && x.s.asked!==d && Math.hypot(x.p.x - me.x, x.p.y - me.y) <= FLEET_SIGHT * ppm);
+  if(!near.length){ if(!pop.dataset.ship) pop.hidden = true; return; }
+  const { s, p } = near[0], mi = Math.round(Math.hypot(p.x - me.x, p.y - me.y) / ppm), K = FLEET_KINDS[s.kind] || FLEET_KINDS.merchant;
+  const bound = s.leg ? (s.leg.to ? `bound for ${repPlaceName(s.leg.to)}` : "hove to on the lanes") : s.at ? `at ${repPlaceName(s.at)}` : "lying in wait";
+  pop.dataset.ship = s.id;
+  pop.innerHTML = `<p style="margin:0 0 6px"><b>${esc(s.name)}</b>, a ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))}, ${esc(bound)}: in sight, ${mi} mile${mi===1?"":"s"} off.</p>
+    ${(s.carry||[]).length ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Her crew has heard: ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</p>` : ""}
+    <div class="pcrow"><button class="btn" data-fleet="meet">Make it an encounter</button><button class="btn" data-fleet="pass">Let her pass</button></div>`;
+  pop.hidden = false;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fleet]"); if(!b) return; const pop = $("#fleetPop"), s = fleetOf().find(x=>x.id===pop.dataset.ship); if(!s) return;
+  s.asked = campaignDay(); delete pop.dataset.ship; pop.hidden = true;
+  if(b.dataset.fleet==="meet"){ s.met = campaignDay(); gameLog("sight", `An encounter at sea: ${s.name}, a ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}`); flash(`An encounter: ${s.name}. Her crew's word is on the card (Party tab → Ships at sea).`); }
+  saveParty(); fleetSight(); });
+/* the Party tab's section: the lanes from the map, the fleet rolled, every ship and where she is */
+function fleetBlock(){
+  const F = fleetOf(), P = repPorts(), t = fleetT(), where = s => s.leg ? (s.leg.lurk ? `heading out to lie in wait on the lanes (day ${s.leg.arrive})` : `at sea, ${s.leg.from ? `from ${repPlaceName(s.leg.from)} ` : ""}for ${repPlaceName(s.leg.to)}, arriving day ${s.leg.arrive}`)
+    : s.at ? `in port at ${repPlaceName(s.at)} till day ${s.stay}` : `lying in wait on the lanes till day ${s.stay}`;
+  const portOpts = sel => P.map(p=>`<option value="${p.id}" ${p.id===sel?"selected":""}>${esc(p.name)}</option>`).join("");
+  return `<details class="partysec" data-invfor="party:fleet" ${openInv.has("party:fleet")?"open":""}><summary class="eyebrow">Ships at sea <small>${F.length} · ${P.length} ports on the water · ${(repOf().lanes||[]).length} sea lanes</small></summary>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Ships that aren't the party's, sailing between ports as the days pass, carrying word as they go. On your chart with the sea lanes; on the players' chart when one is within ${FLEET_SIGHT} miles of them, and then you're offered an encounter.</p>
+    <div class="pcrow"><button class="btn" style="flex:1" data-fleetact="lanes" title="Each port on the water to its three nearest, then joined up so every port can reach every other. Your own lanes are kept">Work out the sea lanes from the map</button><button class="btn" style="flex:1" data-fleetact="roll" title="18 ships: six merchants, two navy patrols, three fishing boats, two explorers, two smugglers, two packets and one pirate">${F.length ? "Roll a new fleet" : "Roll a fleet"}</button></div>
+    ${F.map(s=>`<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
+        <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
+      <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
+      ${s.mode==="route" ? `<div class="sbl"><small>Route:</small> ${(s.route||[]).map(id=>esc(repPlaceName(id))).join(" → ")} → (round again)</div>` : ""}
+      ${(s.carry||[]).length ? `<div class="sbl"><small>Her crew has heard:</small> ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</div>` : ""}</div>`).join("")}</details>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-fleetact]"); if(!b) return; const a = b.dataset.fleetact;
+  if(a==="lanes"){ const r = seaLanesFromMap(); flash(`${r.lanes} sea lanes between ${r.ports} ports on the water: every port can reach every other.`); }
+  else if(a==="roll"){ if(fleetOf().length && !confirm("Roll a new fleet? The ships at sea now are replaced.")) return; const n = fleetRoll(); if(n) flash(`${n} ships put to sea.`); }
+  else if(a==="del"){ root.fleet = fleetOf().filter(s=>s.id!==b.dataset.id); saveParty(); }
+  renderPane(true); render(); });
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset) return;
+  if(t.dataset.fleetname){ const s = fleetOf().find(x=>x.id===t.dataset.fleetname); if(s){ s.name = t.value.trim() || s.name; saveParty(); render(); } }
+  else if(t.dataset.fleethome){ const s = fleetOf().find(x=>x.id===t.dataset.fleethome); if(s){ s.home = t.value; saveParty(); } } });
+document.body.insertAdjacentHTML("beforeend", `<div id="fleetPop" hidden style="position:fixed;right:16px;bottom:16px;z-index:65;max-width:min(420px, 92vw);background:var(--paper-lit);border:1.5px solid var(--lead);border-radius:4px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.25)"></div>`);
 /* where a story is known: the places whose tables have it, and their regions */
 function repKnownIn(did){
   const places = Object.entries(repOf().tables).filter(([k, T])=>k.startsWith("place:") && Object.values(T.slots).some(e=>e.d===did)).map(([k])=>k.slice(6));
