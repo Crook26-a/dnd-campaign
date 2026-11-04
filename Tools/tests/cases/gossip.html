@@ -16,11 +16,13 @@
   R.worldTowns = 4;
   repRecord({ text:'Raised the drowned bell', who:'party', fame:'fame', size:'notable', place:city.id, factions:['fh'] });
   repRecord({ text:'Sank the customs cutter', who:'party', fame:'infamy', size:'minor', place:city.id, factions:['fh'] });
+  repRecord({ text:'Cheated the blacksmith', who:'party', fame:'infamy', size:'local', place:city.id, factions:['fh'] });
   /* a sea lane to a far city */
   (R.lanes = R.lanes || []).push({ id:'ln1', from:city.id, to:far.id, traffic:'dense' });
   root.day = 130; const r = gossipCatchUp();
   out.push('after 120 days: ' + r.moved.filter(m=>!m.lost && !m.fac).length + ' crossings by road or sea, ' + r.moved.filter(m=>m.fac && !m.lost).length + ' between the guild\'s branches, ' + r.moved.filter(m=>m.lost).length + ' lost, ' + r.up.length + ' to the world');
   for(const d of R.deeds){ const K = repKnownIn(d.id); out.push(`"${d.text}": known in ${K.places.map(repPlaceName).join(', ')} · regions ${K.regions.length}`); }
+  { const L = { size:'local' }, other = root.nodes.find(n=>n.region && n.region!==city.region); out.push('a local story: by sea ' + (repLocalBlocked(L, { sea:true }, city.id, far.id) ? 'never' : 'yes') + ', by road to ' + other.name + ' (another region) ' + (repLocalBlocked(L, { sea:false }, city.id, other.id) ? 'never' : 'yes') + ', to ' + near[0].name + ' (same region) ' + (repLocalBlocked(L, { sea:false }, city.id, near[0].id) ? 'never' : 'yes') + ' · a minor one by sea ' + (repLocalBlocked({ size:'minor' }, { sea:true }, city.id, far.id) ? 'never' : 'yes')); }
   out.push('Lucenza heard by sea: ' + Object.values((R.tables['place:' + far.id] || { slots:{} }).slots).filter(e=>e.sea).length + ' · the world: ' + Object.keys((R.tables.world||{slots:{}}).slots).length);
   out.push('the guild in ' + near[0].name + ': ' + Object.keys((R.tables[`fac:fh@${near[0].id}`]||{slots:{}}).slots).length + ' slots · in ' + near[1].name + ' (no branch): ' + !!R.tables[`fac:fh@${near[1].id}`]);
   out.push('log: ' + root.gameLog.filter(l=>/^Gossip/.test(l.text)).map(l=>l.text.slice(0, 140)).join(' | '));

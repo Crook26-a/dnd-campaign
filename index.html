@@ -19042,7 +19042,7 @@ function shopFactionLine(n){
    3 writes in each table; legendary ones go on the world table too), where, the factions it touched. The bigger it is,
    the likelier the other side comes along: a character's deed pinned on the party too, a party deed with a name on it.
    On the DM's screen only. Stage 1: no gossip yet (stage 2: it spreads along roads and sea lanes; stage 3: garbling) ══ */
-const REP_SIZES = [["minor","Minor",1],["notable","Notable",2],["legendary","Legendary",3]];
+const REP_SIZES = [["local","Local (stays in its region)",1],["minor","Minor",1],["notable","Notable",2],["legendary","Legendary",3]];
 const REP_PULL = { 1:25, 2:60, 3:100 };     // % chance the other side comes along
 function repOf(){ const R = root.rep = root.rep || {}; R.tables = R.tables || {}; R.deeds = R.deeds || []; R.history = R.history || []; if(!(R.share >= 0 && R.share <= 1)) R.share = 0.75; return R; }
 const repNode = id => (root.nodes||[]).find(n=>n.id===id) || null;
@@ -19135,7 +19135,7 @@ function repBlock(){
     <div class="pcrow"><div class="field" style="flex:1"><label>Who</label><select id="rep-who"><option value="party">The party</option>${pcs.map(c=>`<option value="${c.id}">${esc(c.name||"Character")}</option>`).join("")}</select></div>
       <div class="field" style="flex:1" title="For a party deed: the one people might remember (the bigger the deed, the likelier their name goes with it)"><label>Who stood out</label><select id="rep-out"><option value="">Nobody</option>${pcs.map(c=>`<option value="${c.id}">${esc(c.name||"Character")}</option>`).join("")}</select></div></div>
     <div class="pcrow"><div class="field" style="flex:1"><label>Fame or infamy</label><select id="rep-fame"><option value="fame">Fame</option><option value="infamy">Infamy</option></select></div>
-      <div class="field" style="flex:1"><label>How big</label><select id="rep-size">${REP_SIZES.map(([k, l, w])=>`<option value="${k}">${l} (${w}×${w===3 ? ", the world too" : ""}; the other side ${REP_PULL[w]}%)</option>`).join("")}</select></div></div>
+      <div class="field" style="flex:1"><label>How big</label><select id="rep-size">${REP_SIZES.map(([k, l, w])=>`<option value="${k}" ${k==="minor"?"selected":""}>${l} (${w}×${w===3 ? ", the world too" : ""}; the other side ${REP_PULL[w]}%)</option>`).join("")}</select></div></div>
     <div class="field"><label>Where</label><select id="rep-place">${placeOpts(now)}</select></div>
     ${F.length ? `<div class="field"><label>Factions it touched</label><div class="acttargets">${F.map(f=>`<label class="check" style="margin:0 8px 0 0"><input type="checkbox" class="rep-fac" value="${f.id}"> ${esc(f.name||"Faction")} <small>d${repFacDie(f)}</small></label>`).join("")}</div></div>` : ""}
     <div class="pcrow"><button class="btn calmgo" style="flex:2" data-rep="record">Write it in</button>${last ? `<button class="btn" style="flex:1" data-rep="undo" title="${esc(repDeedWords(last))}">Take back the last one</button>` : ""}</div>
@@ -19157,7 +19157,7 @@ function repBlock(){
     <div class="pcrow"><select id="rep-lanea" style="flex:1;min-width:0">${placeOpts("")}</select><select id="rep-laneb" style="flex:1;min-width:0">${placeOpts("")}</select>
       <select id="rep-lanet">${REP_TRAFFIC.map(([v, w])=>`<option value="${v}" ${v==="normal"?"selected":""}>${w}</option>`).join("")}</select><button class="btn" data-rep="lane">Add</button></div>
     <div class="xprule" style="margin-top:8px">A faction's slots shared by all its branches: <input class="mono" data-rep="share" type="number" min="0" max="100" step="5" value="${Math.round(R.share * 100)}" style="width:52px"> % (the rest are each branch's own). Each faction's die is on its Library page.<br>
-      A road or sea crossing carries a story: minor <input class="mono" data-repcarry="minor" type="number" min="0" max="100" step="5" value="${repCarry("minor")}" style="width:50px"> %, notable <input class="mono" data-repcarry="notable" type="number" min="0" max="100" step="5" value="${repCarry("notable")}" style="width:50px"> %, legendary <input class="mono" data-repcarry="legendary" type="number" min="0" max="100" step="5" value="${repCarry("legendary")}" style="width:50px"> % of the time.<br>
+      A road or sea crossing carries a story: local <input class="mono" data-repcarry="local" type="number" min="0" max="100" step="5" value="${repCarry("local")}" style="width:50px"> % (its own region only, never by sea), minor <input class="mono" data-repcarry="minor" type="number" min="0" max="100" step="5" value="${repCarry("minor")}" style="width:50px"> %, notable <input class="mono" data-repcarry="notable" type="number" min="0" max="100" step="5" value="${repCarry("notable")}" style="width:50px"> %, legendary <input class="mono" data-repcarry="legendary" type="number" min="0" max="100" step="5" value="${repCarry("legendary")}" style="width:50px"> % of the time.<br>
       A story goes on the world's table by itself once it's known in <input class="mono" data-repset="worldTowns" type="number" min="1" value="${repWorldAt().towns}" style="width:46px"> places or <input class="mono" data-repset="worldRegions" type="number" min="1" value="${repWorldAt().regions}" style="width:46px"> regions (or with To the world, your call).</div></details>`;
 }
 document.addEventListener("toggle", e=>{ const d = e.target; if(!d.dataset || d.dataset.reptab==null) return; if(d.open) repOpen.add(d.dataset.reptab); else repOpen.delete(d.dataset.reptab); }, true);
@@ -19193,7 +19193,7 @@ const trafficDays = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[2];
 const trafficWord = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[1];
 const REP_FAC_FASTER = 2, REP_FAC_LOSS = 15;
 /* % of crossings that carry a story, by how big the deed is (Joseph: "minor deeds carry far less well than big deeds") */
-const REP_CARRY = { minor:30, notable:80, legendary:100 };
+const REP_CARRY = { local:30, minor:30, notable:70, legendary:100 };     // Joseph: 30 / 70 / 100, all changeable; local only within its region, never by sea
 const repCarry = size => { const C = repOf().carryBy || {}, k = REP_CARRY[size]!=null ? size : "minor", c = C[k]; return c!=null && c >= 0 && c <= 100 ? +c : REP_CARRY[k]; };
 const repWorldAt = () => { const R = repOf(); return { towns:+R.worldTowns || 5, regions:+R.worldRegions || 2 }; };
 function repRoutes(){
@@ -19203,6 +19203,8 @@ function repRoutes(){
   return out;
 }
 const repGap = days => Math.max(1, Math.round(days * (0.75 + Math.random() * 0.5)));
+/* a local deed (the blacksmith they cheated) stays in its region: never by sea, never to another region's places */
+const repLocalBlocked = (d, rt, s, t) => !!d && d.size==="local" && (rt.sea || ((repNode(s)||{}).region || "") !== ((repNode(t)||{}).region || ""));
 /* a faction is in a place: the place is its own, or someone there (on the survey or inside its plan) belongs to it */
 function repFacHere(f, place){
   const n = repNode(place); if(!n) return false;
@@ -19221,6 +19223,7 @@ function repCross(rt, day, moved){
   for(const [s, t] of [[rt.a, rt.b], [rt.b, rt.a]]){
     const T = R.tables["place:" + s], told = T ? Object.keys(T.slots) : []; if(!told.length) continue;
     const roll = told[Math.floor(Math.random() * told.length)], e = T.slots[roll];          // one of the stories told there (one written in twice, twice as likely)
+    if(repLocalBlocked(R.deeds.find(x=>x.id===e.d), rt, s, t)) continue;
     { const d = R.deeds.find(x=>x.id===e.d); if(rollD(100) > repCarry(d && d.size)) continue; }     // a big deed travels; a minor one mostly doesn't
     const die = repPlaceDie(t), slot = rollD(die), val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}) };
     if(repWriteIn("place:" + t, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, from:s, to:t, sea:rt.sea, day, how:`${repPlaceName(s)} ${roll} → ${repPlaceName(t)} d${die} ${slot}` });
@@ -19232,6 +19235,7 @@ function repFacCross(rt, day, moved){
       const src = repOf().tables[`fac:${f.id}@${s}`]; if(!src || !repFacHere(f, t)) continue;
       const die = repFacDie(f), sh = repShared(f), told = Object.keys(src.slots).filter(k=>+k > sh); if(!told.length) continue;     // the branch's own stories (its shared ones every branch knows already)
       const roll = told[Math.floor(Math.random() * told.length)], e = src.slots[roll];
+      if(repLocalBlocked(repOf().deeds.find(x=>x.id===e.d), rt, s, t)) continue;
       const lost = rollD(100); if(lost <= REP_FAC_LOSS){ moved.push({ d:e.d, lost:true, fac:f.id, from:s, to:t, day, how:`${f.name}: lost on the way (d100 ${lost})` }); continue; }
       const slot = sh + rollD(die - sh), val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}) };
       if(repWriteIn(`fac:${f.id}@${t}`, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, fac:f.id, from:s, to:t, day, how:`${f.name} in ${repPlaceName(s)} ${roll} → in ${repPlaceName(t)} ${slot}` });
@@ -19262,7 +19266,7 @@ function gossipCatchUp(){
       R.clock[key] = next; } }
   const from = R.gday; R.gday = now;
   const W = repWorldAt(), up = [];
-  for(const did of new Set(moved.filter(m=>!m.lost).map(m=>m.d))){ const K = repKnownIn(did);
+  for(const did of new Set(moved.filter(m=>!m.lost && (R.deeds.find(x=>x.id===m.d)||{}).size!=="local").map(m=>m.d))){ const K = repKnownIn(did);     // a local story never goes to the world
     if((K.places.length >= W.towns || K.regions.length >= W.regions) && repToWorld(did, `known in ${K.places.length} places, ${K.regions.length} regions`)) up.push(did); }
   if(moved.length){
     const deedOf = id => (R.deeds.find(x=>x.id===id) || {}).text || "a story";
