@@ -15160,9 +15160,9 @@ function startReaction(c, reactorId, targetId){
     const row = melee ? -1 : meleeRow(t.p);
     act.what = melee ? `wsa:${melee[0]}` : row >= 0 ? `pca:${row}` : "atk:Opportunity attack";
     if(row >= 0){ const a = pcState(t.p).attacks[row], dt = String(a.dtype||"").toLowerCase(); if(DAMAGE_TYPES.includes(dt)) act.dtype = dt;
-      /* what they carry rides on it as on any swing (the Flame Tongue's fire, once lit) */
-      const info = actInfo(c, t), lit = (c.lit || {})[reactorId] || {};
-      act.addons = attackAddons(t).filter(x=>x.key.startsWith("inv:") && extraFits(x, act.what, info && info.name) && (!x.cond || lit[x.key]) && !new RegExp(`\\b${x.dtype}\\b`, "i").test(dt)).map(x=>x.key); }
+      /* what rides on it as on any swing (the Flame Tongue's fire, once lit; Divine Favor while it lasts) */
+      const info = actInfo(c, t);
+      act.addons = autoAddonKeys(c, t, info, dt); }
   }
   if(targetId) act.targets = [targetId];
   battleSel = reactorId;
@@ -15323,6 +15323,26 @@ function itemExtras(o){
     return [{ key:`inv:${x.id}`, id:x.id, name:x.name, dice:m[1], dtype:m[2].toLowerCase(), note:m[0].trim(), weapon, words, cond:/\b(while|against|if|when)\b/i.test(m[0]) }]; });
 }
 function extraFits(a, what, rowName){ return !a.weapon || what===`itm:${a.id}` || (!!a.words && String(rowName||"").toLowerCase().includes(a.words)); }
+/* what goes on an attack by itself (Joseph, 2026-11-04: "spells that have to be cast once and then are persistent
+   modifiers, but right now it requires checking it every time"): what they carry on its own weapon (a "while lit" one
+   once ticked this fight), and a spell of theirs that adds to their weapon attacks while it lasts (Divine Favor: "your
+   attacks with weapons deal an extra 1d4 Radiant"), from when it's cast (or ticked) for its duration, or while they
+   concentrate on it; not on a spell's own attack, and not one aimed at a target (Hunter's Mark), which stays a tick.
+   Not when the attack's line already counts that type. c.lit[id][key]: true (an item lit) or the round a spell began. */
+const spellAddonAuto = s => /until the spell ends[^.]*\byour (?:attacks with weapons|weapon attacks)\b|\byour (?:attacks with weapons|weapon attacks)[^.]*\bextra \d+d\d+/i.test(String((s && s.desc) || ""));
+function spellAddonUp(c, t, key, v){
+  if(typeof v!=="number") return !!v;
+  const s = spellOf(key.slice(6)), h = hOfT(t); if(!s) return false;
+  if(s.conc) return !!(h && h.conc && h.conc.id===s.id);
+  const R = concRounds(s.dur); return R==null || c.round < v + R;
+}
+function autoAddonKeys(c, t, info, rowDt){
+  if(!t || !info) return [];
+  const lit = (c.lit || {})[t.id] || {}, dt = String(rowDt || ""), weaponHit = !info.spell;
+  return attackAddons(t).filter(a => !new RegExp(`\\b${a.dtype}\\b`, "i").test(dt) && (
+    (a.key.startsWith("inv:") && extraFits(a, act.what, info.name) && (!a.cond || lit[a.key])) ||
+    (a.key.startsWith("spell:") && weaponHit && lit[a.key] && spellAddonUp(c, t, a.key, lit[a.key])))).map(a => a.key);
+}
 /* how a target takes a type of damage (2026-10-30): immune none, resists half (rounded down), vulnerable double; from a
    creature's Immune / Resists / Vulnerable (its stage's too) or a character's Defenses. A line with a condition ("from
    nonmagical attacks") is left to the DM; the types a bracket leaves out ("(everything but radiant and force)") aren't in it */
@@ -15420,7 +15440,8 @@ function gwmHtml(c, t){
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-gwm]"); if(!b || !battleOf) return; const n = bnode(), c = n && n.site && n.site.combat, G = c && c.gwm; if(!G) return;
   act = freshAct(G.id); act.what = G.what; act.bonus = true; c.gwm = null;
-  const t = combatants(c).find(x=>x.id===G.id), info = t && actInfo(c, t); if(info){ act.outcome = "hit"; act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : ""; }
+  const t = combatants(c).find(x=>x.id===G.id), info = t && actInfo(c, t); if(info){ act.outcome = "hit"; act.dtype = info.hint && DAMAGE_TYPES.includes(info.hint.dtype) ? info.hint.dtype : "";
+    act.addons = autoAddonKeys(c, t, info, String((info.hint && info.hint.dtype) || "")); }     // the lit Flame Tongue, Divine Favor: on this one too (2026-11-04)
   renderBattlePanel(); flash("One more attack, as the Bonus Action: pick the target."); });/* Riposte (Joseph, 2026-11-02: "if a melee attack is missed he's supposed to be able to take a reactive opportunity"):
    a Battle Master maneuver on Gawain's sheet. The SRD doesn't have the Battle Master, so this follows the Player's
    Handbook as his sheet names it: when a creature misses them with a melee attack, they can use their Reaction and a
@@ -15852,6 +15873,8 @@ function logAction(n, c){
   if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
   c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore }); gripSweep(c);
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
+  /* a spell that adds to their weapon attacks while it lasts (Divine Favor): on from now, by itself (autoAddonKeys) */
+  if(info.kind==="spell" && !part && info.spell && spellAddonAuto(info.spell) && attackAddons(actor).some(a => a.key==="spell:" + info.spell.id)){ const L = (c.lit = c.lit || {})[actor.id] = c.lit[actor.id] || {}; L["spell:" + info.spell.id] = c.round; }
   /* what the spell does to them while it lasts (Bless, Pass without Trace, Shield of Faith…): on its targets (and the
      caster, for an aura or Shield); Bane, Slow, Faerie Fire only on those who failed the save */
   if(info.kind==="spell" && !info.free && !part && info.spell && SPELL_FX[info.spell.id]){ const B = SPELL_FX[info.spell.id];
@@ -16516,10 +16539,9 @@ function renderBattlePanelNow(){
       /* an aura (Pass without Trace): them and their side within reach of it, to take out or add to */
       { const FX = info.spell && SPELL_FX[info.spell.id], me = FX && FX.aura && c.pos ? c.pos[act.actor] : null;
         if(me) act.targets = [act.actor, ...all.filter(x=>x.id!==act.actor && x.side===t.side && c.pos[x.id] && Math.max(Math.abs(c.pos[x.id].x - me.x), Math.abs(c.pos[x.id].y - me.y)) * 5 <= FX.aura).map(x=>x.id)]; }
-      /* what they carry that adds to it: on by itself on its own weapon (a "while lit" one once ticked this fight), not
-         when the line already counts that type ("2d6+5 + 2d6", "slashing + fire") */
-      const lit = (c.lit || {})[act.actor] || {}, rowDt = String((info.hint && info.hint.dtype) || "");
-      act.addons = attackAddons(t).filter(a=>a.key.startsWith("inv:") && extraFits(a, act.what, info.name) && (!a.cond || lit[a.key]) && !new RegExp(`\\b${a.dtype}\\b`, "i").test(rowDt)).map(a=>a.key); }
+      /* what adds to it by itself (autoAddonKeys): what they carry on its own weapon (a "while lit" one once ticked this
+         fight), a spell like Divine Favor while it lasts; not when the line already counts that type ("slashing + fire") */
+      act.addons = autoAddonKeys(c, t, info, String((info.hint && info.hint.dtype) || "")); }
     renderBattlePanel();
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
@@ -16576,6 +16598,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];
     act.addons = A.includes(k) ? A.filter(x=>x!==k) : [...A, k];
     if(k.startsWith("inv:")){ const L = (c.lit = c.lit || {})[act.actor] = c.lit[act.actor] || {}; if(act.addons.includes(k)) L[k] = true; else delete L[k]; }     // lit stays lit
+    else if(k.startsWith("spell:") && spellAddonAuto(spellOf(k.slice(6)))){ const L = (c.lit = c.lit || {})[act.actor] = c.lit[act.actor] || {}; if(act.addons.includes(k)){ if(typeof L[k]!=="number") L[k] = c.round; } else delete L[k]; }     // ticked: on from here while it lasts; unticked: off
     renderBattlePanel(); });
   /* damage by type (Joseph, 2026-10-30: "Can I roll them separate from each other?"): each part rolled on its own or all
      at once, or its number typed in from the table; the box is their sum, what each target takes of each worked out

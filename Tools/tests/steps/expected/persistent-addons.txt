@@ -1,0 +1,3 @@
+1. Thomas casts Divine Favor; his Longsword then has it on by itself, and his second attack too: attack pca:0: on it spell:spell:divine-favor | the next one (Extra Attack: spell:spell:divine-favor)
+2. a round later it's still on; the bonus-action attack (Great Weapon Master) has it too; unticked, it's off: round 2: spell:spell:divine-favor | bonus true: spell:spell:divine-favor | unticked: nothing; the next attack: nothing | page errors 0
+3. after its minute (ten rounds) it's off: round 12: nothing
