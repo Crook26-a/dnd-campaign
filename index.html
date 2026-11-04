@@ -10566,7 +10566,7 @@ function whoYoullMeet(n){
   return many ? `<details class="pcset" data-invfor="meet:${n.id}" ${openInv.has("meet:"+n.id) ? "open" : ""}><summary>Who you'll meet <small>${people.length} people</small></summary>${inner}</details>`
     : `<p class="eyebrow spaced">Who you'll meet</p>` + inner;
 }
-const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + repHere(n) + whoYoullMeet(n);
+const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + repHere(n) + tradeHere(n) + whoYoullMeet(n);
 const placeTail = n => adderBlock(n) + `<div class="field" style="margin-top:12px"><label>Session notes</label>
     <textarea id="pl-notes" rows="3" placeholder="What happened here, what the players promised, what they took…">${esc(n.dmNotes||"")}</textarea></div>` + boardAdd(n);
 function wirePlaceTail(el, n){
@@ -19706,7 +19706,7 @@ function fleetRoll(){
   if(!(repOf().lanes||[]).length) seaLanesFromMap();
   const used = new Set(), out = [], pick = A => A[rollD(A.length) - 1], cities = P.filter(p=>p.kind==="city"), D = campaignDay();
   const walk = (home, n, only) => { const r = [home.id]; let at = home.id;
-    for(let i = 0; i < n; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !fleetReef(id) && (!only || only(id))); if(!nb.length) break; at = pick(nb); r.push(at); }
+    for(let i = 0; i < n; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !fleetReef(id) && (!only || only(id))); if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); }
     return r; };
   const mk = (kind, mode, home, route) => ({ id:uid("sh"), name:fleetName(used), kind, mode, home:home.id, ...(route ? { route } : {}), at:home.id, stay:D + rollD(6), carry:[] });
   const spread = (k, cs) => pick(cs || P);
@@ -19722,6 +19722,7 @@ function fleetRoll(){
   for(const s of fleetOf()) fleetForget(s);                               // the old fleet's crews out of the Library
   root.fleet = out; root.fday = D;
   for(const s of out) fleetCrewRoll(s);                                   // and a crew for every ship that has rules for one
+  for(const s of out) tradeCall(s, repNode(s.home), D);                   // and her first cargo, from her home port
   saveParty();
   gameLog("note", `A fleet of ${out.length} ships put to sea: ${out.map(s=>`${s.name} (${FLEET_KINDS[s.kind][0].toLowerCase()}, ${repPlaceName(s.home)})`).join(", ")}`);
   return out.length;
@@ -19741,6 +19742,10 @@ function fleetNext(s){
   let nb = lanesOf(at).map(l=>({ id:l.from===at ? l.to : l.from, w:{ dense:5, busy:4, normal:3, light:2, quiet:1 }[trafficOf(l)] || 3 })).filter(x=>!(FLEET_HONEST.has(s.kind) && fleetReef(x.id)));
   if(s.kind==="fishing"){ const h = repNode(s.home); nb = nb.filter(x=>{ const n = repNode(x.id); return n && h && repMilesBetween(n, h) <= 80; }); if(!nb.length && at!==s.home) return { to:s.home }; }
   if(!nb.length) return null;
+  if(TRADE_SHIPS.has(s.kind) && tradeLoaded(s.cargo)){                  // a trader goes where her cargo sells: the best market, mostly
+    for(const x of nb) x.g = tradeGain(s, x.id, campaignDay()); const top = nb.slice().sort((a, b)=>b.g - a.g)[0];
+    if(top.g > 0.05 && Math.random() < 0.8) return { to:top.id };
+    for(const x of nb) x.w *= Math.max(0.1, 1 + 8 * x.g); }
   let r = Math.random() * nb.reduce((a, x)=>a + x.w, 0); for(const x of nb){ r -= x.w; if(r <= 0) return { to:x.id }; } return { to:nb[0].id };
 }
 /* a ship's way as points (ports along the lanes, or straight for the pirate), its miles */
@@ -19789,7 +19794,7 @@ function fleetCatchUp(){
         const L = s.leg; delete s.leg;
         if(L.lurk){ s.at = null; s.pos = { x:L.lurk.x, y:L.lurk.y }; s.stay = L.arrive + L.wait; said.push(`${s.name} lies in wait on the lanes`); continue; }
         s.at = L.to; delete s.pos; s.stay = L.arrive + 1 + rollD(3);
-        const port = repNode(s.at); if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); continue; }
+        const port = repNode(s.at); if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); if(port) tradeCall(s, port, L.arrive); continue; }
       if((s.stay || 0) > now) break;
       const go = fleetNext(s); if(!go){ s.stay = now + rollD(6); break; }
       const leg = fleetLeg(s, go, s.stay || now); if(!leg){ s.stay = now + rollD(6); break; }
@@ -19835,6 +19840,122 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   s.asked = campaignDay(); delete pop.dataset.ship; pop.hidden = true;
   if(b.dataset.fleet==="meet"){ s.met = campaignDay(); gameLog("sight", `An encounter at sea: ${s.name}, a ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}`); saveParty(); fleetGoAboard(s); return; }     // her place: her crew to meet, her deck for a fight
   saveParty(); fleetSight(); });
+/* ── cargo and trade (Joseph, 2026-11-04): every place makes 4 trade goods and wants 4 others. A good's price there is
+   its base × 0.8 if it's made there, × 1.25 if it's wanted, × 2^-glut, held between half and double. The glut goes up
+   by loads ÷ the market's depth (a city 60, a town 30, a village 12) as cargo is unloaded, down as it's bought, and back
+   toward nothing by a tenth a day. Selling pays 90% of the price. Merchants, smugglers and passenger ships carry cargo:
+   in port they sell what pays and buy what sells best where they go next; the ones that go where they like go where
+   their cargo sells; set routes are drawn between ports that make what the next one wants. The party's ship trades
+   from a place's card, and only the DM sees the prices ── */
+const TRADE_GOODS = {        // [name, gp a load (a crate, barrel or bale), raw / made / luxury, from the sea]
+  grain:["Grain",2,"raw"], saltfish:["Salt fish",4,"raw",1], salt:["Salt",5,"raw",1], timber:["Timber",3,"raw"], wool:["Wool",8,"raw"],
+  cotton:["Raw cotton",6,"raw"], iron:["Iron",10,"raw"], copper:["Copper",15,"raw"], furs:["Furs",40,"raw"], herbs:["Medicinal herbs",25,"raw"],
+  sugar:["Sugar",10,"raw"], tobacco:["Tobacco",18,"raw"], cloth:["Cloth",15,"made"], ironware:["Ironware and tools",20,"made"],
+  rum:["Rum",12,"made"], wine:["Wine",15,"made"], tea:["Tea",30,"lux"], coffee:["Coffee",25,"lux"], spices:["Spices",60,"lux"],
+  dyes:["Dyes",35,"lux"], silk:["Silk",80,"lux"], pearls:["Pearls",100,"lux",1] };
+const TRADE_DEPTH = { city:60, town:30, village:12 }, TRADE_CAP = { small:10, medium:40, large:20 };
+const TRADE_SHIPS = new Set(["merchant","smuggler","packet"]), TRADE_DRIFT = 0.9, TRADE_SELL = 0.9;
+const tradeOf = () => { const T = root.trade = root.trade && typeof root.trade==="object" ? root.trade : {};
+  T.places = T.places || {}; T.glut = T.glut || {}; T.hold = T.hold || {}; if(T.cap==null) T.cap = 40; return T; };
+const tradeIsPlace = n => !!n && !!n.name && Object.prototype.hasOwnProperty.call(TRADE_DEPTH, n.kind) && !sailsAbout(n);
+const tradeGoodName = g => (TRADE_GOODS[g] || [g])[0];
+/* what a place makes and wants, rolled: a city leans to made goods and wants raw ones, a village the other way; only
+   a place on the water makes what comes from the sea */
+function tradeRollPlace(n){
+  const G = Object.keys(TRADE_GOODS), coast = repIsCoastal(n), sort = g => TRADE_GOODS[g][2];
+  const draw = (list, wt, k) => { const out = [], pool = list.slice(); while(out.length < k && pool.length){ const tot = pool.reduce((a, g)=>a + wt(g), 0); let r = Math.random() * tot, i = 0;
+    for(; i < pool.length - 1; i++){ r -= wt(pool[i]); if(r < 0) break; } out.push(pool.splice(i, 1)[0]); } return out; };
+  const make = draw(G, g => (TRADE_GOODS[g][3] ? (coast ? 3 : 0) : 1) * (n.kind==="city" ? (sort(g)==="raw" ? 1 : 3) : n.kind==="village" ? (sort(g)==="raw" ? 3 : sort(g)==="lux" ? 0.5 : 1) : 1) + 0.001, 4);
+  const want = draw(G.filter(g=>!make.includes(g)), g => n.kind==="city" ? (sort(g)==="made" ? 1 : 2) : n.kind==="village" ? (sort(g)==="raw" ? 1 : 2) : 1, 4);
+  return { make, want };
+}
+const tradePlace = id => { const T = tradeOf(), n = repNode(id); if(!tradeIsPlace(n)) return { make:[], want:[] }; if(!T.places[id]) T.places[id] = tradeRollPlace(n); return T.places[id]; };
+const tradeDepth = id => TRADE_DEPTH[(repNode(id)||{}).kind] || 20;
+/* the glut of a good in a place on a day: what's been unloaded less what's been bought, fading a tenth a day */
+function tradeGlut(id, g, day){ const e = (tradeOf().glut[id]||{})[g]; if(!e) return 0; return e.s * Math.pow(TRADE_DRIFT, Math.max(0, (day==null ? campaignDay() : day) - e.d)); }
+function tradeBump(id, g, loads, day){ day = day==null ? campaignDay() : day; const T = tradeOf(), m = T.glut[id] = T.glut[id] || {}, e = m[g];
+  m[g] = { s:Math.max(-3, Math.min(3, tradeGlut(id, g, day) + loads / tradeDepth(id))), d:Math.max(day, e ? e.d : day) }; }
+const tradeRole = (id, g) => { const P = tradePlace(id); return P.make.includes(g) ? 0.8 : P.want.includes(g) ? 1.25 : 1; };
+const tradeEach = (id, g, extra, day) => TRADE_GOODS[g][1] * Math.max(0.5, Math.min(2, tradeRole(id, g) * Math.pow(2, -(tradeGlut(id, g, day) + (extra||0)))));
+/* a load's price buying n, or selling n: the average over the lot, as the price moves with it */
+const tradeBuyAt = (id, g, n, day) => Math.round(tradeEach(id, g, -(n||1) / (2 * tradeDepth(id)), day) * 100) / 100;
+const tradeSellAt = (id, g, n, day) => Math.round(TRADE_SELL * tradeEach(id, g, (n||1) / (2 * tradeDepth(id)), day) * 100) / 100;
+const tradeLoaded = cargo => Object.values(cargo||{}).reduce((a, c)=>a + ((c && c.n) || 0), 0);
+const tradeCap = s => TRADE_CAP[fleetSizeOf(s)] || 20;
+/* how well two places trade: what one makes that the other wants, both ways (set routes are drawn by it) */
+const tradeFit = (a, b) => { const A = repNode(a), B = repNode(b); if(!tradeIsPlace(A) || !tradeIsPlace(B)) return 1; const P = tradePlace(a), Q = tradePlace(b);
+  return 1 + 2 * P.make.filter(g=>Q.want.includes(g)).length + Q.make.filter(g=>P.want.includes(g)).length; };
+const tradePickBy = (list, w) => { let r = Math.random() * list.reduce((a, x)=>a + w(x), 0); for(const x of list){ r -= w(x); if(r <= 0) return x; } return list[list.length - 1]; };
+/* where a ship might sell next: her route's next port, or the ports a lane away */
+function tradeNextPorts(s, at){
+  const out = s.mode==="route" && (s.route||[]).length > 1 ? [s.route[(s.route.indexOf(at) + 1) % s.route.length]]
+    : (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!(FLEET_HONEST.has(s.kind) && fleetReef(id)));
+  return out.filter(id=>tradeIsPlace(repNode(id)));
+}
+/* what her cargo would fetch at a port, over what she paid: 0.4 is 40% up */
+function tradeGain(s, id, day){ const C = s.cargo || {}, paid = Object.values(C).reduce((a, c)=>a + c.n * c.paid, 0); if(!paid || !tradeIsPlace(repNode(id))) return 0;
+  return Object.entries(C).reduce((a, [g, c])=>a + c.n * (tradeSellAt(id, g, c.n, day) - c.paid), 0) / paid; }
+/* a trading ship in port: sells what pays (or has waited three ports for a buyer), then buys what sells best next */
+function tradeCall(s, port, day){
+  if(!TRADE_SHIPS.has(s.kind) || !tradeIsPlace(port)) return;
+  const id = port.id, C = s.cargo = s.cargo || {}, did = [], soldHere = new Set();
+  for(const g of Object.keys(C)){ const c = C[g]; if(!c || !(c.n > 0) || !TRADE_GOODS[g]){ delete C[g]; continue; }
+    const at = tradeSellAt(id, g, c.n, day);
+    if(at >= c.paid * 1.05 || (c.calls||0) >= 3){
+      tradeBump(id, g, c.n, day); s.gain = Math.round(((s.gain||0) + (at - c.paid) * c.n) * 100) / 100; did.push(`sold ${c.n} ${tradeGoodName(g).toLowerCase()} at ${at} gp`); soldHere.add(g); delete C[g]; }
+    else c.calls = (c.calls||0) + 1; }
+  /* buying: up to three goods, the most profit first, each only as many loads as still sell 8% up at the best port
+     next, her own cargo moving both prices as it goes; never what she's just sold here */
+  let free = tradeCap(s) - tradeLoaded(C); const next = tradeNextPorts(s, id), lot = Math.max(3, Math.ceil(tradeCap(s) / 8));     // nothing smaller than a lot: an eighth of her hold
+  for(let k = 0; k < 3 && free >= lot && next.length; k++){
+    let best = null;
+    for(const g of Object.keys(TRADE_GOODS)){ if(C[g] || soldHere.has(g)) continue;
+      for(let n = free; n >= lot; n = n > 8 ? Math.floor(n * 0.75) : n - 1){ const buy = tradeBuyAt(id, g, n, day), sell = Math.max(...next.map(t=>tradeSellAt(t, g, n, day)));
+        if(sell >= buy * 1.08){ const profit = n * (sell - buy); if(!best || profit > best.profit) best = { g, n, profit }; break; } } }
+    if(!best) break;
+    const at = tradeBuyAt(id, best.g, best.n, day); tradeBump(id, best.g, -best.n, day); C[best.g] = { n:best.n, paid:at, from:id }; free -= best.n;
+    did.push(`bought ${best.n} ${tradeGoodName(best.g).toLowerCase()} at ${at} gp`); }
+  if(did.length) s.trades = [...(s.trades||[]), { day, at:id, did }].slice(-4);
+}
+/* a place's card (only the DM's): its prices, what it makes and wants, and the party's trading */
+function tradeHere(n){
+  const place = repPlaceOf(n), P = repNode(place); if(!tradeIsPlace(P)) return "";
+  const T = tradeOf(), M = tradePlace(place), H = T.hold, pcs = partyRoster(), loaded = tradeLoaded(H), key = "trade:" + place;
+  const order = [...M.make, ...M.want, ...Object.keys(TRADE_GOODS).filter(g=>!M.make.includes(g) && !M.want.includes(g))];
+  const row = g => { const f = tradeEach(place, g) / TRADE_GOODS[g][1], h = H[g];
+    return `<tr><td>${esc(tradeGoodName(g))}${M.make.includes(g) ? ` <small title="Made here">made</small>` : M.want.includes(g) ? ` <small title="Wanted here">wanted</small>` : ""}</td>
+      <td style="text-align:right" title="A load, buying one">${tradeBuyAt(place, g, 1)}${f < 0.9 ? " ▼" : f > 1.1 ? " ▲" : ""}</td><td style="text-align:right" title="A load, selling one">${tradeSellAt(place, g, 1)}</td>
+      <td style="text-align:right">${h ? `${h.n} <small>(${h.paid})</small>` : ""}</td>
+      <td style="white-space:nowrap"><input type="number" min="1" value="1" data-tradeqty="${g}" style="width:3.2em"><button class="btn small" data-trade="buy" data-g="${g}">Buy</button>${h ? `<button class="btn small" data-trade="sell" data-g="${g}">Sell</button>` : ""}</td></tr>`; };
+  const pick = (k, i) => `<select data-trademw="${k}:${i}">${Object.keys(TRADE_GOODS).map(g=>`<option value="${g}" ${M[k][i]===g ? "selected" : ""}>${esc(tradeGoodName(g))}</option>`).join("")}</select>`;
+  return `<details class="pcset" data-invfor="${key}" ${openInv.has(key) ? "open" : ""} style="margin-top:8px"><summary class="eyebrow">Market <small>${esc(P.name)} · makes ${M.make.map(tradeGoodName).join(", ").toLowerCase()} · wants ${M.want.map(tradeGoodName).join(", ").toLowerCase()} · only you see this</small></summary>
+    <p class="empty-note" style="font-size:11px;margin:0 0 4px">Gold a load (a crate, barrel or bale). ▼ cheap here now, ▲ dear. Ships unloading push a price down, buying pushes it up; it drifts back by about a tenth a day. Buying or selling many moves the price as you go.</p>
+    <div class="pcrow"><div class="field" style="flex:1"><label>Who pays, or is paid</label><select id="tr-pay"><option value="">Nobody (don't count coin)</option>${pcs.map(c=>`<option value="${c.id}" ${T.payer===c.id ? "selected" : ""}>${esc(c.name||"Character")} (${Math.floor(purseGp(purseOf(c)))} gp)</option>`).join("")}</select></div>
+      <div class="field" style="width:9em"><label>The party's hold</label><input id="tr-cap" type="number" min="0" value="${T.cap}" title="Loads the party's ship (or wagons) can carry"><small>${loaded} loaded</small></div></div>
+    <table style="width:100%;font-size:11.5px;border-collapse:collapse"><tr><th style="text-align:left">Good</th><th>Buy</th><th>Sell</th><th title="In the party's hold (what they paid a load)">Hold</th><th></th></tr>${order.map(row).join("")}</table>
+    <details style="margin-top:6px"><summary><small>Change what it makes and wants</small></summary>
+      <div class="sbl"><small>Makes</small> ${[0,1,2,3].map(i=>pick("make", i)).join(" ")}</div><div class="sbl"><small>Wants</small> ${[0,1,2,3].map(i=>pick("want", i)).join(" ")}</div>
+      <button class="btn small" data-trade="reroll" title="Roll what it makes and wants again">Roll again</button></details></details>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-trade]"); if(!b) return;
+  const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n); if(!tradeIsPlace(repNode(place))) return;
+  const T = tradeOf(), a = b.dataset.trade;
+  if(a==="reroll"){ T.places[place] = tradeRollPlace(repNode(place)); saveParty(); renderPane(true); return; }
+  const g = b.dataset.g, qty = Math.max(1, Math.round(+((b.parentElement.querySelector("[data-tradeqty]")||{}).value) || 1)), payer = partyRoster().find(c=>c.id===T.payer), H = T.hold;
+  if(a==="buy"){ const room = Math.max(0, (+T.cap||0) - tradeLoaded(H)); if(qty > room){ flash(`The hold has room for ${room} more load${room===1?"":"s"}.`); return; }
+    const each = tradeBuyAt(place, g, qty), cp = Math.round(each * qty * 100);
+    if(payer && !payFrom(purseOf(payer), cp)){ flash(`${payer.name} can't pay ${cp / 100} gp.`); return; }
+    const h = H[g] || { n:0, paid:0 }; H[g] = { n:h.n + qty, paid:Math.round((h.n * h.paid + qty * each) / (h.n + qty) * 100) / 100 }; tradeBump(place, g, -qty);
+    gameLog("note", `Trade at ${repPlaceName(place)}: the party bought ${qty} ${tradeGoodName(g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, paid by ${payer.name}` : ""})`); flash(`Bought ${qty} ${tradeGoodName(g).toLowerCase()} for ${cp / 100} gp.`); }
+  else if(a==="sell"){ const h = H[g]; if(!h) return; const k = Math.min(qty, h.n), each = tradeSellAt(place, g, k), cp = Math.round(each * k * 100);
+    if(payer) addCoins(purseOf(payer), cp); h.n -= k; if(h.n <= 0) delete H[g]; tradeBump(place, g, k);
+    gameLog("note", `Trade at ${repPlaceName(place)}: the party sold ${k} ${tradeGoodName(g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, to ${payer.name}` : ""}; they'd paid ${h.paid})`); flash(`Sold ${k} ${tradeGoodName(g).toLowerCase()} for ${cp / 100} gp.`); }
+  saveParty(); renderPane(true); });
+document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !(t.dataset && t.dataset.trademw)) return;
+  if(t.id==="tr-pay"){ tradeOf().payer = t.value || null; saveParty(); return; }
+  if(t.id==="tr-cap"){ tradeOf().cap = Math.max(0, Math.round(+t.value || 0)); saveParty(); renderPane(true); return; }
+  if(t.dataset && t.dataset.trademw){ const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n), M = tradePlace(place), [k, i] = t.dataset.trademw.split(":");
+    const other = k==="make" ? "want" : "make"; M[k][+i] = t.value; M[other] = M[other].filter(g=>g!==t.value); saveParty(); renderPane(true); } });
 /* ── a ship's size, her crew, and going aboard (Joseph, 2026-11-04). Three sizes, each its own deck map: small (a
    fishing boat), medium (the ship), large (a passenger ship). A crew by her kind, every one a person in the Library
    (crewOf her id; their where her name; genders rolled): a captain of level 3, a fighter, barbarian, paladin or ranger;
@@ -19932,9 +20053,9 @@ function fleetAdd(o){
   const home = repNode(o.home) && repIsCoastal(repNode(o.home)) ? repNode(o.home) : pickOne(kind==="pirate" ? (P.filter(p=>fleetReef(p.id)).length ? P.filter(p=>fleetReef(p.id)) : P) : P.filter(p=>!(FLEET_HONEST.has(kind) && fleetReef(p.id))));
   const mode = kind==="pirate" ? "pirate" : o.mode==="route" || o.mode==="wander" ? o.mode : (["navy","packet"].includes(kind) || Math.random() < .4 ? "route" : "wander");
   const used = new Set(fleetOf().map(s=>s.name)), s = { id:uid("sh"), name:(o.name||"").trim() || fleetName(used), kind, mode, home:home.id, at:home.id, stay:campaignDay() + 1, carry:[], ...(FLEET_SIZES[o.size] ? { size:o.size } : {}) };
-  if(mode==="route"){ const r = [home.id]; let at = home.id; for(let i = 0; i < 3; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !(FLEET_HONEST.has(kind) && fleetReef(id))); if(!nb.length) break; at = pickOne(nb); r.push(at); } s.route = r; }
+  if(mode==="route"){ const r = [home.id]; let at = home.id; for(let i = 0; i < 3; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !(FLEET_HONEST.has(kind) && fleetReef(id))); if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); } s.route = r; }
   fleetOf().push(s); if(root.fday==null) root.fday = campaignDay();
-  const crew = fleetCrewRoll(s, o.crew===""||o.crew==null ? null : +o.crew);
+  const crew = fleetCrewRoll(s, o.crew===""||o.crew==null ? null : +o.crew); tradeCall(s, home, campaignDay());
   gameLog("note", `A ship put to sea: ${s.name}, a ${(FLEET_KINDS[kind])[0].toLowerCase()} out of ${home.name}${crew ? `, ${crew} aboard` : ""}`);
   saveParty(); return s;
 }
@@ -19965,6 +20086,7 @@ function fleetBlock(){
         return ppl.length ? ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ") : FLEET_CREW[s.kind] ? "<i>no crew rolled yet</i>" : "<i>no crew rules for her kind yet</i>"; })()}</div>
       ${(s.pass||[]).length ? Object.keys(FLEET_FARES).map(f=>{ const ppl = s.pass.map(libNpcById).filter(p=>p && p.fare===f);
         return ppl.length ? `<div class="sbl"><small>Passengers, ${FLEET_FARES[f]} (${ppl.length}):</small> ${ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ")}</div>` : ""; }).join("") : ""}
+      ${TRADE_SHIPS.has(s.kind) ? `<div class="sbl"><small>Hold (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads):</small> ${Object.entries(s.cargo||{}).map(([g, c])=>`${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(${c.paid} gp, from ${esc(repPlaceName(c.from))})</small>`).join(", ") || "<i>empty</i>"}${s.gain ? ` · made ${Math.round(s.gain)} gp so far` : ""}${(s.trades||[]).length ? `<br><small>Last in port:</small> ${(t=>`day ${t.day} at ${esc(repPlaceName(t.at))}, ${esc(t.did.join(", "))}`)(s.trades[s.trades.length - 1])}` : ""}</div>` : ""}
       <div class="pcrow" style="margin-top:2px"><button class="btn small" data-fleetact="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her deck for a fight">Go aboard</button>${FLEET_CREW[s.kind] ? `<button class="btn small" data-fleetact="crew" data-id="${s.id}" title="A new crew for her (the old one leaves the Library)">Roll a new crew</button>` : ""}</div></div>`).join("")}</details>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-fleetact]"); if(!b) return; const a = b.dataset.fleetact;
