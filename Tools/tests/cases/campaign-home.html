@@ -34,7 +34,7 @@
   homeState = 'ask'; campHere(); out.push('needs a click: bar "' + $('#campSwitch').textContent + '" · list has Connect ' + /data-camp="connect"/.test(campRows(await campList())));
   homeState = 'connected'; campHere(); clearTimeout(homeTimer);
   pane = 'data'; syncTabs(); renderPane(true); await wait(60); { const t = (document.querySelector('#pane-data')||{}).innerText || '', i = t.search(/campaign's folder/i);
-    out.push('data tab: can use folders ' + canFolder() + ' · ' + (i < 0 ? '(no folder section)' : t.slice(i, i + 400).split('\n').filter(Boolean).slice(0, 4).join(' / ').replace(/\(last written or read: [^)]+\)/, '(last written or read: …)'))); }
+    out.push('data tab: can use folders ' + canFolder() + ' · ' + (i < 0 ? '(no folder section)' : t.slice(i, t.indexOf('Autosave', i) > i ? t.indexOf('Autosave', i) : i + 400).split('\n').filter(Boolean).slice(0, 4).join(' / ').replace(/\(last written or read: [^)]+\)/, '(last written or read: …)'))); }
   campDir = null; homeState = '';
  }catch(e){ out.push('THREW ' + e.message + ' ' + (e.stack||'').split('\n')[1]); }
  document.title = 'RES ' + (__ERR.length?'ERR '+__ERR.join(' | ')+' · ':'') + out.join(' || ');

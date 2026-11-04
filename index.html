@@ -1267,6 +1267,7 @@
   <div id="bar">
     <span class="mark">Ordinate Survey</span>
     <button id="campSwitch" class="btn small" style="white-space:nowrap" title="Switch campaigns">Campaigns ▾</button>
+    <button id="practiceBtn" class="btn small" style="white-space:nowrap" title="Stop saving for a while: try things out, then keep them or throw them away">Practice</button>
     <div id="campPop" hidden style="position:fixed;z-index:70;min-width:340px;max-width:min(560px, 94vw);max-height:70vh;overflow:auto;background:var(--paper-lit);border:1.5px solid var(--lead);border-radius:4px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.25)"></div>
     <span id="crumb" hidden></span>
     <span class="barfield">Scale <input id="ppm" type="number" min="1" max="80" step="1" value="10"> px&nbsp;/&nbsp;<span id="unitLab">mile</span></span>
@@ -6971,6 +6972,7 @@ async function shelveCurrent(name, forceNew){
 
 /* Called before anything destructive. Silent, and always safe to call. */
 async function shelveBeforeReplacing(){
+  if(practice) return false;                         // practising: the shelf isn't touched either
   const outer = root;
   if(!USE_IDB || !outer || !(outer.nodes||[]).length) return false;
   const stamp = new Date().toISOString().slice(0,16).replace("T"," ");
@@ -23234,6 +23236,7 @@ async function pickCampFolder(){
 }
 const stamp = () => { const t = new Date(), p = n => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())} ${p(t.getHours())}${p(t.getMinutes())}`; };
 async function saveToCamp(name, quiet){
+  if(practice){ if(!quiet) flash("Practising: nothing is saved till you stop and keep it."); return false; }
   const dir = await campFolder(!quiet); if(!dir){ if(!quiet) flash("Pick the campaign folder first (Data tab)."); return false; }
   try{
     const saves = await dir.getDirectoryHandle("Saves", { create:true }), fh = await saves.getFileHandle(name, { create:true });
@@ -23273,6 +23276,7 @@ const HOME_FILE = "Current save.json", HOME_META = "campaign.json";
 var homeDirty = false, homeTimer = null, homeState = "", homeAt = "", homeReady = false;      // homeState: "" (no folder), "connected", "ask" (needs a click); homeReady: started (what loading does isn't a change)
 const fmtAt = iso => { try{ return new Date(iso).toLocaleString([], { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); }catch(err){ return iso; } };
 function homeMark(){
+  if(practice){ homeDirty = true; return; }               // practising: nothing written, not even that something changed
   if(!homeDirty){ homeDirty = true; idbPutRaw("home:dirty", true).catch(()=>{}); }
   if(homeState==="connected"){ clearTimeout(homeTimer); homeTimer = setTimeout(()=>homeWrite(true), 60*1000); }
 }
@@ -23282,7 +23286,7 @@ async function homeMeta(dir){
   const w = await (await dir.getFileHandle(HOME_META, { create:true })).createWritable(); await w.write(JSON.stringify(m, null, 2)); await w.close();
 }
 async function homeWrite(quiet){
-  clearTimeout(homeTimer);
+  clearTimeout(homeTimer); if(practice){ if(!quiet) flash("Practising: nothing goes into the folder till you keep it."); return false; }
   const dir = await campFolder(false); if(!dir) return false;
   try{
     await pump().catch(()=>{});
@@ -23377,14 +23381,45 @@ function flash(msg){
 }
 function setSaved(){
   const el = $("#saveState");
+  if(practice){ el.textContent = "practice: not saving"; el.className = "warn"; return; }
   el.textContent = storageOK ? "saved" : "export to keep";
   el.className = storageOK ? "" : "warn";
 }
+/* ── PRACTICE (Joseph, 2026-11-04: "turn off saving for a bit so that I can do things and not worry about messing up
+   the campaign"). While it's on nothing is written: not the browser's save, not the campaign's folder, not the
+   autosave or the shelf; what changes stays waiting (_dirty). Stopping asks: throw it all away (the page opens the
+   campaign again as it was saved) or keep it (everything is saved now). Leaving while practising warns ── */
+var practice = false, practiceGone = false;
+function practiceStart(){
+  if(practice) return; pump().catch(()=>{});                              // what was done before goes in first (it's taken in hand at once)
+  practice = true; practiceUi(); flash("Practice: nothing is saved till you stop. Then keep it, or throw it all away.");
+  gameLog("note", "Practice started: nothing is saved till it stops");
+}
+function practiceStop(keep){
+  if(!practice) return;
+  if(!keep){ practiceGone = true; location.reload(); return; }
+  practice = false; practiceUi(); markDirty(K_SURVEY); for(const k in plans) markDirty(K_PLAN(k));
+  gameLog("note", "Practice stopped: kept"); pump().then(()=>{ if(homeState==="connected") homeWrite(true); }).catch(()=>{});
+  flash("Kept: everything from the practice is saved now.");
+}
+function practiceUi(){
+  const b = $("#practiceBtn"); if(b){ b.textContent = practice ? "Practising: not saving ■" : "Practice"; b.style.background = practice ? "#9c2b1f" : ""; b.style.color = practice ? "#fff" : "";
+    b.title = practice ? "Stop practising: keep what you did, or throw it all away" : "Stop saving for a while: try things out, then keep them or throw them away"; }
+  setSaved();
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("#practiceBtn, [data-practice]"); if(!b) return;
+  if(b.id==="practiceBtn"){ if(!practice){ practiceStart(); return; }
+    const p = $("#campPop"), r = b.getBoundingClientRect(); p.style.left = Math.max(8, r.left) + "px"; p.style.top = (r.bottom + 4) + "px";
+    p.innerHTML = `<p style="margin:0 0 8px"><b>Stop practising.</b> What you did since it started:</p><div class="pcrow"><button class="btn" data-practice="drop" style="flex:1">Throw it all away</button><button class="btn calmgo" data-practice="keep" style="flex:1">Keep it</button></div>
+      <p class="empty-note" style="font-size:11px;margin:6px 0 0">Throwing it away opens the campaign again as it was when practice began.</p>`; p.hidden = false; return; }
+  $("#campPop").hidden = true; practiceStop(b.dataset.practice==="keep");
+});
 function touch(){
   pushUndo();
   render();
   markDirty(currentKey());
-  if(!flashTimer){ const el=$("#saveState"); el.textContent="saving…"; el.className=""; }
+  if(!flashTimer && !practice){ const el=$("#saveState"); el.textContent="saving…"; el.className=""; }
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ save().catch(()=>{}); }, 700);
 }
@@ -23447,6 +23482,7 @@ async function campList(){
 }
 /* open one: saved first, then the page opens on it */
 async function campOpen(k){
+  if(practice){ if(!confirm("You're practising: switching campaigns throws away what you did. Switch anyway?")) return; practiceGone = true; }
   try{ localStorage.setItem("ordinate-active", k); }catch(err){}
   try{ await save(); }catch(err){}
   if(homeState==="connected" && homeDirty) try{ await homeWrite(true); }catch(err){}      // the campaign's folder up to date before leaving it
@@ -23567,6 +23603,7 @@ async function migrateToIdb(){
 const _dirty = new Set();
 let _saving = false;
 async function pump(){
+  if(practice){ setSaved(); return; }               // practising: it all waits
   if(_saving || !_dirty.size) return;
   _saving = true;
   const keys = [..._dirty]; _dirty.clear();
@@ -24213,6 +24250,7 @@ if("serviceWorker" in navigator && location.protocol === "https:"){
 /* A survey is hours of work held in this browser. Warn before a reload
    or a closed tab loses anything that hasn't reached storage yet. */
 addEventListener("beforeunload", e=>{
+  if(practiceGone) return;                           // throwing the practice away: on purpose
   if(_dirty.size || _saving){ e.preventDefault(); e.returnValue = ""; }
 });
 addEventListener("pagehide", ()=>{ try{ pump(); }catch(err){} });

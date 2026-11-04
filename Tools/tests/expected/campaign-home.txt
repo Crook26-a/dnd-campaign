@@ -8,4 +8,4 @@ both changed, keep ours: out · asked "Kalatecha has a save from (a time), and t
 both changed, use the folder's: in · title Folder wins
 another store: The Other One
 needs a click: bar "Folder wins ⚠ ▾" · list has Connect true
-data tab: can use folders true · CAMPAIGN'S FOLDER ITS HOME / Kalatecha is this campaign's home. Current save.json there is kept up to date as you play (last written or read: …). Another computer opening the same folder gets the same campaign. / Pick a different folder Write Current save.json now Save a dated copy in its Saves folder Update from Kalatecha Map.json / Autosave to Saves\autosave.json every 10 minutes, and
+data tab: can use folders true · CAMPAIGN'S FOLDER ITS HOME / Kalatecha is this campaign's home. Current save.json there is kept up to date as you play (last written or read: …). Another computer opening the same folder gets the same campaign. / Pick a different folder Write Current save.json now Save a dated copy in its Saves folder Update from Kalatecha Map.json
