@@ -1,0 +1,5 @@
+1. memories, impressions and fading (good things forgotten fast, slights never): day 10: Gawain +1 no strong feeling, Nevik −1 no strong feeling | day 50: Gawain 0 no strong feeling, Nevik −1 no strong feeling | rolled: {"good":"normal","bad":"fast"} {"good":"normal","bad":"long"} {"good":"long","bad":"fast"}
+2. a big memory becomes a story; talking and the log make memories: story: Gawain: Gawain pulled me out of the burning harbour (fame, notable, day 12) | talked: Talked with the party: promised to find the bell | from the log: 2
+3. a fight: Rook gets away, a bandit dies, one flees, Mara watches: Rook: Beaten by the party at The Gull Tavern (got away) (notable, -1) | Mara: Saw the party fight at The Gull Tavern | log: Witnesses who'll talk: Rook Varra, Mara Quill, Bandit 2 (fled)
+4. the deed form: the fight's witnesses filled in; a deed nobody saw waits until it's told: seen: Captain Callomay, Mara Quill ✓, Rook Varra ✓ | others: box there | Knives deed into: Brindle, The Knives (every branch) | unseen waited: true, then told: true
+5. on their card and their Library page: library page: true | place card: true | page errors 0

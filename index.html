@@ -9135,6 +9135,7 @@ function libForm(cat, x){
       ${ta("tactics","Tactics: how they fight <small>DM only</small>","Wades in front, picks the biggest threat and holds the line…")}
       ${draft || libNpcById(x.id) ? `${tacRewriteBtn(x, (draft ? "d:" : "p:") + x.id)}<details class="pcset pcsec"><summary>Tactics dials <small>${esc(tacWords(tacCur(x, "p:")))}</small></summary>${tacEditor(x, (draft ? "d:" : "p:") + x.id)}</details>` : ""}
       ${x.partyRead ? ta("partyRead","What they know about the party <small>DM only, newest read on top</small>","", 4) : ""}
+      ${draft ? "" : memBlock(x, openInv.has("mem:" + x.id))}
       ${draft ? "" : stagesBlock(x)}
       ${draft ? "" : effectsBlock(x)}
       ${draft ? "" : `<details class="pcset" ${x.befriendSay || x.befriendNo ? "open" : ""}><summary>Befriended <small>if a creature becomes them when the party befriends it</small></summary>
@@ -10543,6 +10544,7 @@ function whoYoullMeet(n){
   const inner = (people.length ? people.map(p=>`<div class="playperson">
       <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}${factionChip(p)}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button><button class="pcbig" data-heard="${p.id}" data-hplace="${repPlaceOf(n)||""}" title="What they've heard about the party: their faction's table, this place's and the world's (only you see it)">Heard?</button></div>
       ${repHeardBox("p:" + p.id)}
+      ${memBlock(p, openInv.has("mem:" + p.id))}
       ${condChips(p.conds||[], "by:"+p.id)}
       ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
       ${p.fightsAs && p.fightsAs!=="self" && foeById(p.fightsAs)?`<div class="sbl"><b>Fights as</b> <span class="libref" data-libopen="foes:${p.fightsAs}">${esc(foeById(p.fightsAs).name)}</span></div>`:""}
@@ -10831,6 +10833,7 @@ function endTheFight(st, n, c, auto){
   root.fightLogs = [...(root.fightLogs || []).slice(-19), { at:new Date().toISOString(), node:n.id, place:placeLabel(n), text:fightLogText(n, c, true) }];
   if((c.log||[]).length){ const j = journal(); j.log.push({ id:uid("lg"), at:today(), n:j.log.length+1, text:fightSummary(n, c) }); saveParty(); }
   gameLog("fight", fightSummary(n, c).split("\n")[0]);
+  fightWitnesses(st, n, c);
   /* the fight's XP: the foes brought down, and what each party member did in it (shared out on the card that follows) */
   { const down = E.filter(y=>y.max!=null && y.hp<=0 && !y.fled), pool = down.reduce((s, y)=>s + (+((foeById(y.foe)||{}).xp)||0), 0);
     const turnedIds = combatants(c).filter(t=>t.kind==="pc" && t.turned).map(t=>t.p.id);     // one who turned on the party: by how they fought (2026-10-31)
@@ -18201,6 +18204,7 @@ function completeSheet(x, who){
   if(blank("persona")){ x.persona = rollPersona(x.align); n++; }
   const grp = groupOfClass(x.cls) || (b && /^(Beast|Monstrosity)/.test(b.type||"") ? "" : "Warriors");
   if(!x.tac){ x.tac = rollTac(b, grp, (x.spells||[]).length > 0, x.align); n++; }      // the dials (2026-10-30)
+  if(!x.memHold){ x.memHold = memRollHold(); n++; }                    // how long they hold on to good things and to slights (2026-11-04)
   if(!x.tactics && !/Tactics:/.test(x.notes||"")){                 // their own field now (2026-10-29); one already in their notes stays there
     x.tactics = tacWords(x.tac); n++;                                // written from the dials, so the two agree
   }
@@ -19051,6 +19055,8 @@ const repFacDie = f => [8,12,20].includes(+(f && f.repDie)) ? +f.repDie : 20;
 const repShared = f => Math.max(1, Math.min(repFacDie(f), Math.round(repFacDie(f) * repOf().share)));
 const repPlaceName = id => (repNode(id)||{}).name || "somewhere";
 const repPlaces = () => (root.nodes||[]).filter(n=>n.name && !sailsAbout(n));
+/* the people at a place: its own, and everyone in the rooms of its plan */
+const repPeopleAt = place => !place ? [] : [...new Set([...((repNode(place)||{}).npcs || []), ...(((plans[place]||{}).nodes) || []).flatMap(n=>n.npcs || [])])];
 /* the place a spot belongs to: a place on the survey itself, or the place whose plan it's in */
 function repPlaceOf(n){ if(!n) return null; if((root.nodes||[]).includes(n)) return n.id; for(const k in plans) if((plans[k].nodes||[]).includes(n)) return k; return null; }
 function repPlaceNow(){ const at = partyWhere(); return at ? (at.map && at.map!=="survey" ? at.map : at.node || null) : null; }
@@ -19075,23 +19081,40 @@ function repRecord(o){
   const need = REP_PULL[n], r = rollD(100);
   if(deed.who!=="party"){ deed.also = r <= need ? "party" : null; deed.pull = `d100 ${r} vs ${need}: ${deed.also ? "the party too" : "just them"}`; }
   else if(o.standout){ deed.also = r <= need ? o.standout : null; deed.pull = `d100 ${r} vs ${need}: ${deed.also ? `${repWho(o.standout)} named` : "no name on it"}`; }
-  const writes = [], said = [];
+  /* who knows (Joseph: "someone seeing the deed or the players telling the tale needs to be how stuff is added"):
+     from the form (o.gate), seen by someone, told by the party, or spread anyway on the DM's say; nobody: it waits */
+  const seen = (o.seenBy || []).filter(s=>s && (s.id || s.name));
+  deed.seenBy = seen; if(o.told) deed.told = true; if(o.force) deed.forced = true;
+  for(const s of seen){ const p = s.id && libNpcById(s.id); if(p && p.faction && !deed.factions.includes(p.faction)) deed.factions.push(p.faction); }     // a witness's own people hear it from them
+  R.deeds.push(deed);
+  for(const s of seen){ const p = !o.fromMem && s.id && libNpcById(s.id); if(p) memAdd(p, { text:deed.text, who:[deed.who==="party" ? "party" : deed.who], tone:deed.fame==="infamy" ? -1 : 1,
+    size:o.size==="legendary" ? "big" : o.size==="notable" ? "notable" : "small", src:"deed", ref:deed.id }, true); }
+  if(o.gate && !seen.length && !o.told && !o.force){ deed.quiet = true;
+    gameLog("rep", `Reputation: ${repDeedWords(deed)}. Nobody saw it and the party hasn't told it: it goes nowhere until they do (or you spread it)`); saveParty(); return { deed, said:[] }; }
+  return repSpread(deed, R);
+}
+/* a deed into the tables: its place's, the factions it touched (and its witnesses'), the world's if legendary */
+function repSpread(deed, R){
+  R = R || repOf(); const n = (REP_SIZES.find(s=>s[0]===deed.size)||REP_SIZES[0])[2], writes = [], said = []; delete deed.quiet;
   const put = (keyOf, die, label) => { for(let i = 0; i < n; i++){ const s = rollD(die), key = keyOf(s), T = R.tables[key] = R.tables[key] || { die, slots:{} }, prev = T.slots[s] || null;
     T.die = die; T.slots[s] = { d:deed.id }; writes.push({ key, slot:s, prev });
     if(prev && prev.d!==deed.id) R.history.push({ key, slot:s, old:prev, by:deed.id, day:deed.day });
     said.push(`${label(key)} d${die} ${s}${prev && prev.d!==deed.id ? " (over an older story)" : ""}`); } };
   if(deed.place) put(()=>"place:" + deed.place, repPlaceDie(deed.place), repTableLabel);
-  for(const fid of deed.factions){ const f = factionById(fid); put(s=>repFacKey(f, s, deed.place), repFacDie(f), repTableLabel); }
+  for(const fid of deed.factions){ const f = factionById(fid); if(f) put(s=>repFacKey(f, s, deed.place), repFacDie(f), repTableLabel); }
   if(n===3) put(()=>"world", 100, repTableLabel);
-  deed.writes = writes; R.deeds.push(deed);
-  gameLog("rep", `Reputation: ${repDeedWords(deed)}${deed.pull ? ` [${deed.pull}]` : ""}. Written in: ${said.join("; ") || "nowhere (no place or faction picked)"}`);
+  deed.writes = [...(deed.writes||[]), ...writes];
+  const how = deed.forced ? "spread on your say" : deed.told ? "the party told it" : (deed.seenBy||[]).length ? `seen by ${deed.seenBy.map(s=>s.name).join(", ")}` : "";
+  gameLog("rep", `Reputation: ${repDeedWords(deed)}${deed.pull ? ` [${deed.pull}]` : ""}${how ? ` (${how})` : ""}. Written in: ${said.join("; ") || "nowhere (no place or faction picked)"}`);
   saveParty(); return { deed, said };
 }
 /* the last deed taken back: every slot it wrote back as it was */
 function repUndo(){
   const R = repOf(), d = R.deeds.pop(); if(!d) return null;
   for(const w of [...(d.writes||[])].reverse()){ const T = R.tables[w.key]; if(!T) continue; if(w.prev) T.slots[w.slot] = w.prev; else delete T.slots[w.slot]; if(!Object.keys(T.slots).length) delete R.tables[w.key]; }
-  R.history = R.history.filter(h=>h.by!==d.id); saveParty(); return d;
+  R.history = R.history.filter(h=>h.by!==d.id);
+  for(const p of lib().npcs || []) if((p.mem||[]).some(m=>m.ref===d.id)) p.mem = p.mem.filter(m=>m.ref!==d.id);     // and its witnesses forget it
+  saveParty(); return d;
 }
 /* what they've heard: their faction (this branch, or the shared slots), the place, the world; a blank is "nothing" */
 function repRoll(key, die){ const s = rollD(die), T = repOf().tables[key], e = T && T.slots[s], d = e ? repOf().deeds.find(x=>x.id===e.d) : null; return { key, die, s, d }; }
@@ -19138,7 +19161,15 @@ function repBlock(){
       <div class="field" style="flex:1"><label>How big</label><select id="rep-size">${REP_SIZES.map(([k, l, w])=>`<option value="${k}" ${k==="minor"?"selected":""}>${l} (${w}×${w===3 ? ", the world too" : ""}; the other side ${REP_PULL[w]}%)</option>`).join("")}</select></div></div>
     <div class="field"><label>Where</label><select id="rep-place">${placeOpts(now)}</select></div>
     ${F.length ? `<div class="field"><label>Factions it touched</label><div class="acttargets">${F.map(f=>`<label class="check" style="margin:0 8px 0 0"><input type="checkbox" class="rep-fac" value="${f.id}"> ${esc(f.name||"Faction")} <small>d${repFacDie(f)}</small></label>`).join("")}</div></div>` : ""}
+    ${(()=>{ const W = R.lastWitness && R.lastWitness.day===campaignDay() ? R.lastWitness : null, ppl = [...new Set([...repPeopleAt(now), ...((W && W.seen) || []).map(s=>s.id)])].map(libNpcById).filter(Boolean), pre = new Set(((W && W.seen) || []).map(s=>s.id));
+      return `<div class="field"><label>Who knows <small>nobody saw it and nobody's told it: it goes nowhere yet</small></label>
+        ${ppl.length ? `<div class="acttargets">${ppl.map(p=>`<label class="check" style="margin:0 8px 0 0"><input type="checkbox" class="rep-seen" value="${p.id}" ${pre.has(p.id)?"checked":""}> ${esc(p.name||"Someone")} saw it</label>`).join("")}</div>` : ""}
+        <input id="rep-others" type="text" placeholder="Others who saw it: two bandits who fled" value="${esc(W ? W.names.join(", ") : "")}" style="margin-top:4px">
+        <div class="acttargets" style="margin-top:4px"><label class="check" style="margin:0 8px 0 0"><input type="checkbox" id="rep-told"> The party told it</label><label class="check" style="margin:0"><input type="checkbox" id="rep-force"> Spread it anyway (your call)</label></div>
+        ${W ? `<p class="empty-note" style="font-size:11px;margin:2px 0 0">From the fight at ${esc(W.at)} today.</p>` : ""}</div>`; })()}
     <div class="pcrow"><button class="btn calmgo" style="flex:2" data-rep="record">Write it in</button>${last ? `<button class="btn" style="flex:1" data-rep="undo" title="${esc(repDeedWords(last))}">Take back the last one</button>` : ""}</div>
+    ${R.deeds.filter(d=>d.quiet).length ? `<p class="grouplab" style="margin:10px 0 3px">Nobody knows yet <small>${R.deeds.filter(d=>d.quiet).length}</small></p>${R.deeds.filter(d=>d.quiet).map(d=>`<div class="sbl">${esc(repDeedWords(d))}
+        <button class="btn small" data-rep="tell" data-d="${d.id}" title="They told the tale: into the tables now">They told it</button><button class="btn small" data-rep="force" data-d="${d.id}" title="Your call">Spread it anyway</button></div>`).join("")}` : ""}
     <p class="grouplab" style="margin:10px 0 3px">What have they heard?</p>
     <div class="pcrow"><select id="rep-hplace" style="flex:1;min-width:0">${placeOpts(now)}</select>${F.length ? `<select id="rep-hfac" style="flex:1;min-width:0"><option value="">No faction</option>${F.map(f=>`<option value="${f.id}">${esc(f.name||"Faction")}</option>`).join("")}</select>` : ""}<button class="btn" data-rep="hear">Roll</button></div>
     ${repHeardBox("tab")}
@@ -19169,8 +19200,12 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t.matches) retu
 document.addEventListener("click", e=>{
   const b = e.target.closest && e.target.closest("button[data-rep]"); if(!b) return; const a = b.dataset.rep, v = id => { const x = $(id); return x ? x.value : ""; };
   if(a==="record"){ const text = v("#rep-text").trim(); if(!text){ flash("Say what they did first."); return; }
-    const r = repRecord({ text, who:v("#rep-who"), standout:v("#rep-out"), fame:v("#rep-fame"), size:v("#rep-size"), place:v("#rep-place"), factions:[...document.querySelectorAll(".rep-fac:checked")].map(x=>x.value) });
-    flash(`Written in: ${r.said.join("; ") || "nowhere: pick a place or a faction"}${r.deed.pull ? ` (${r.deed.pull})` : ""}.`); }
+    const seenBy = [...[...document.querySelectorAll(".rep-seen:checked")].map(x=>libNpcById(x.value)).filter(Boolean).map(p=>({ id:p.id, name:p.name })),
+      ...v("#rep-others").split(/,\s*/).map(s=>s.trim()).filter(Boolean).map(name=>({ name }))];
+    const r = repRecord({ text, who:v("#rep-who"), standout:v("#rep-out"), fame:v("#rep-fame"), size:v("#rep-size"), place:v("#rep-place"), factions:[...document.querySelectorAll(".rep-fac:checked")].map(x=>x.value),
+      seenBy, told:!!($("#rep-told")||{}).checked, force:!!($("#rep-force")||{}).checked, gate:true });
+    flash(r.deed.quiet ? "Nobody knows yet: it's under Nobody knows yet until they tell it, or you spread it." : `Written in: ${r.said.join("; ") || "nowhere: pick a place or a faction"}${r.deed.pull ? ` (${r.deed.pull})` : ""}.`); }
+  else if(a==="tell" || a==="force"){ const d = repOf().deeds.find(x=>x.id===b.dataset.d); if(d && d.quiet){ if(a==="tell") d.told = true; else d.forced = true; const r = repSpread(d); flash(`Written in: ${r.said.join("; ") || "nowhere"}.`); } }
   else if(a==="undo"){ const d = repUndo(); if(d){ gameLog("rep", `Reputation taken back: ${repDeedWords(d)}`); flash(`Taken back: ${d.text}`); } }
   else if(a==="hear"){ const place = v("#rep-hplace") || null, fid = v("#rep-hfac") || null; repAsk("tab", place, fid, place ? `people at ${repPlaceName(place)}` : "people"); return; }
   else if(a==="world"){ if(!repToWorld(b.dataset.d, "your call")) flash("It's on the world's table already."); else saveParty(); }
@@ -19274,6 +19309,119 @@ function gossipCatchUp(){
     saveParty(); }
   return { moved, up };
 }
+/* ══ WHAT A PERSON REMEMBERS (Joseph, 2026-11-04): each person in the Library keeps their own memory of the party and
+   its members, apart from what they've heard (the reputation tables). p.mem = [{ id, day, text, who:["party"] or
+   [character ids], tone 1 / 0 / −1, size small / notable / big, src (talk, fight, seen, hand, log), ref }].
+   A memory fades: small about two months, notable a year, big never, each stretched or shortened by how this person
+   holds on to good things and to slights (p.memHold { good, bad }: forgets fast ×½, normal, remembers long ×3, never
+   forgets; rollable, and rolled for everyone the people roller makes). What's still remembered adds up to an
+   impression of each party member, −10 to +10 (small 1, notable 3, big 6), worded and nudging Charisma checks like
+   faction standing. Memories come from talking with them, a fight they survived or saw (no survivors and no
+   witnesses: nobody remembers), a deed they saw, the log (their name in it), and by hand. A big one becomes a story
+   in their town's reputation table, seen by them. ══ */
+const MEM_SIZES = [["small","Small",1,60],["notable","Notable",3,365],["big","Big (never fades)",6,Infinity]];
+const MEM_HOLD = [["fast","Forgets fast",0.5],["normal","Normal",1],["long","Remembers long",3],["never","Never forgets",Infinity]];
+const memHoldOf = (p, k) => { const v = ((p && p.memHold) || {})[k]; return MEM_HOLD.some(h=>h[0]===v) ? v : "normal"; };
+/* rolled: most people normal, some quick to forget, some long memories, a few never let go (good and slights apart) */
+const memRollHold = () => { const r = () => { const d = rollD(20); return d <= 5 ? "fast" : d <= 13 ? "normal" : d <= 18 ? "long" : "never"; }; return { good:r(), bad:r() }; };
+function memLife(p, m){ const S = MEM_SIZES.find(s=>s[0]===m.size) || MEM_SIZES[0], h = MEM_HOLD.find(x=>x[0]===memHoldOf(p, m.tone < 0 ? "bad" : "good")); return S[3] * (m.tone ? h[2] : 1); }
+const memLive = (p, m) => campaignDay() - (+m.day || 1) <= memLife(p, m);
+const memWho = m => (m.who || ["party"]).map(w=>w==="party" ? "the party" : repWho(w)).join(", ");
+/* how they see one party member: their live memories of them or of the whole party */
+function memImpression(p, pcId){
+  const L = (p.mem || []).filter(m=>memLive(p, m) && m.tone && (m.who || ["party"]).some(w=>w==="party" || w===pcId));
+  const s = Math.max(-10, Math.min(10, L.reduce((a, m)=>a + m.tone * ((MEM_SIZES.find(x=>x[0]===m.size) || MEM_SIZES[0])[2]), 0)));
+  return { s, n:L.length, tier:standingTier(s) };
+}
+const MEM_WORDS = { allies:"devoted to them", trusted:"trusts them", friendly:"likes them", neutral:"no strong feeling", unfriendly:"dislikes them", hostile:"hates them", sworn:"would see them ruined" };
+/* the place a person is: on the survey, or inside a place's plan */
+function personPlace(p){ for(const n of root.nodes || []) if((n.npcs||[]).includes(p.id)) return n.id; for(const k in plans) if(((plans[k]||{}).nodes||[]).some(n=>(n.npcs||[]).includes(p.id))) return k; return null; }
+/* a memory added; a big one becomes a story in their town, seen by them */
+function memAdd(p, m, quiet){
+  const x = { id:uid("mm"), day:campaignDay(), who:["party"], tone:0, size:"small", ...m };
+  (p.mem = p.mem || []).push(x);
+  if(x.size==="big" && x.src!=="deed" && x.text){ const place = personPlace(p);
+    repRecord({ text:x.text, who:(x.who||[])[0] && x.who[0]!=="party" ? x.who[0] : "party", fame:x.tone < 0 ? "infamy" : "fame", size:"notable", place, factions:p.faction ? [p.faction] : [], seenBy:[{ id:p.id, name:p.name }], fromMem:true }); }
+  if(!quiet) gameLog("note", `${p.name||"Someone"} will remember: ${x.text} (${memWho(x)}, ${x.tone > 0 ? "good" : x.tone < 0 ? "bad" : "neither"}, ${x.size})`);
+  saveParty(); return x;
+}
+/* the log read for them: every line with their name (their full name, a first name of four letters or more that's
+   only theirs, or their nickname in quotes), the party members named in it; neither good nor bad till you say */
+function memFromLog(p){
+  const people = lib().npcs || [], first = s => String(s||"").replace(/"[^"]*"/g, "").trim().split(/\s+/)[0] || "";
+  const keys = [p.name].filter(Boolean), fn = first(p.name), nick = (/"([^"]+)"/.exec(p.name||"")||[])[1];
+  if(fn.length >= 4 && people.filter(q=>first(q.name)===fn).length===1) keys.push(fn); if(nick) keys.push(nick);
+  const esc2 = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), rx = keys.length ? new RegExp(`\\b(${keys.map(esc2).join("|")})\\b`) : null; if(!rx) return 0;
+  const pcs = partyRoster(), have = new Set((p.mem||[]).map(m=>m.ref).filter(Boolean)); let n = 0;
+  const lines = [...(root.gameLog||[]).map(e=>({ ref:e.id, day:e.day, text:e.text })), ...((journal().log)||[]).flatMap(j=>String(j.text||"").split("\n").map((t, i)=>({ ref:`${j.id}:${i}`, day:null, text:t })))];
+  for(const L of lines){ if(have.has(L.ref) || !rx.test(L.text || "") || /^Reputation|^Gossip|^What .* heard|will remember/.test(L.text)) continue;
+    const who = pcs.filter(c=>new RegExp(`\\b${esc2(first(c.name) || "~")}\\b`).test(L.text)).map(c=>c.id);
+    (p.mem = p.mem || []).push({ id:uid("mm"), day:L.day || campaignDay(), text:String(L.text).slice(0, 220), who:who.length ? who : ["party"], tone:0, size:"small", src:"log", ref:L.ref }); n++; }
+  if(n) saveParty(); return n;
+}
+/* the section: their card in a place and their Library page */
+function memBlock(p, open){
+  const pcs = partyRoster(), M = (p.mem || []).slice().sort((a, b)=>(b.day||0) - (a.day||0)), live = M.filter(m=>memLive(p, m)), gone = M.filter(m=>!memLive(p, m));
+  const imp = pcs.map(c=>({ c, I:memImpression(p, c.id) })), felt = imp.filter(x=>x.I.n);
+  const row = m => `<div class="sbl"${memLive(p, m) ? "" : ' style="opacity:.5"'}><small class="mono">day ${m.day}</small> ${esc(m.text)} <small>· ${esc(memWho(m))}</small>
+      <span style="white-space:nowrap">${[[1,"good"],[0,"neither"],[-1,"bad"]].map(([v, w])=>`<button class="btn small${m.tone===v?" on":""}" data-mem="tone" data-p="${p.id}" data-m="${m.id}" data-v="${v}" title="${w}">${v > 0 ? "+" : v < 0 ? "−" : "·"}</button>`).join("")}
+      <select data-memsize="${m.id}" data-p="${p.id}">${MEM_SIZES.map(([k, l])=>`<option value="${k}" ${m.size===k?"selected":""}>${l.split(" (")[0]}</option>`).join("")}</select><button class="fdel" data-mem="del" data-p="${p.id}" data-m="${m.id}" title="Forget it">×</button></span></div>`;
+  const heard = (()=>{ const place = personPlace(p), keys = [place && "place:" + place, p.faction && `fac:${p.faction}`, p.faction && place && `fac:${p.faction}@${place}`].filter(Boolean), R = repOf();
+    const ds = [...new Set(keys.flatMap(k=>Object.values((R.tables[k]||{ slots:{} }).slots).map(e=>e.d)))].map(id=>R.deeds.find(d=>d.id===id)).filter(Boolean);
+    return ds.length ? `<p class="grouplab" style="margin:8px 0 2px">What they may have heard <small>their town's and faction's tables</small></p>${ds.slice(-6).map(d=>`<div class="sbl"><small>${esc(repDeedWords(d))}</small></div>`).join("")}` : ""; })();
+  return `<details class="pcset" ${open ? "open" : ""} data-memfor="${p.id}"><summary>Remembers <small>${live.length} memor${live.length===1?"y":"ies"}${felt.length ? " · " + felt.map(x=>`${esc((x.c.name||"").split(" ")[0])} ${sgn(x.I.s)}`).join(", ") : ""} · only you see this</small></summary>
+    ${felt.length ? felt.map(x=>{ const T = STANDING_TERMS[x.I.tier.key] || {}; return `<div class="sbl"><b>${esc(x.c.name||"Someone")}</b> ${sgn(x.I.s)}: ${esc(MEM_WORDS[x.I.tier.key])}${T.check ? ` <small>· Charisma checks with them: ${esc(T.check)}</small>` : ""}${T.refuse ? " <small>· won't deal with them</small>" : ""}</div>`; }).join("") : `<p class="empty-note" style="margin:0 0 4px">No feelings about anyone in the party yet.</p>`}
+    <div class="pcrow" style="align-items:center;margin:6px 0"><small style="flex:1">Holds on to good things</small><select data-memhold="good" data-p="${p.id}">${MEM_HOLD.map(([k, l])=>`<option value="${k}" ${memHoldOf(p, "good")===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="pcrow" style="align-items:center;margin:0 0 6px"><small style="flex:1">Holds on to slights</small><select data-memhold="bad" data-p="${p.id}">${MEM_HOLD.map(([k, l])=>`<option value="${k}" ${memHoldOf(p, "bad")===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn small" data-mem="roll" data-p="${p.id}" title="Roll both">🎲</button></div>
+    ${live.map(row).join("") || `<p class="empty-note" style="margin:0 0 4px">Nothing remembered yet.</p>`}
+    ${gone.length ? `<details class="pcset"><summary>Faded <small>${gone.length}</small></summary>${gone.map(row).join("")}</details>` : ""}
+    <div class="pcrow" style="margin-top:6px"><input type="text" data-memtext="${p.id}" placeholder="Something they'll remember: Nevik pocketed my ring" style="flex:2;min-width:0"></div>
+    <div class="pcrow"><select data-memwho="${p.id}" style="flex:1;min-width:0"><option value="party">The party</option>${pcs.map(c=>`<option value="${c.id}">${esc(c.name||"Character")}</option>`).join("")}</select>
+      <select data-memtone="${p.id}"><option value="1">Good</option><option value="0" selected>Neither</option><option value="-1">Bad</option></select>
+      <select data-memnew="${p.id}">${MEM_SIZES.map(([k, l])=>`<option value="${k}">${l}</option>`).join("")}</select><button class="btn" data-mem="add" data-p="${p.id}">Add</button></div>
+    <button class="btn wide" data-mem="log" data-p="${p.id}" style="margin-top:4px" title="Every line in the game log and the fight logs with their name in it, as a memory you can mark good or bad">Read the log for them</button>
+    ${heard}</details>`;
+}
+/* a fight ends: who lived to tell of it (Joseph: no survivors and no witnesses, nobody knows; "leaving a survivor to
+   warn the enemies to back off"). A person from the Library who survived remembers it (a beaten enemy: bad, notable,
+   the ones who hurt them; an ally: fighting beside them), and so does anyone there from the Library who wasn't in it.
+   Anyone else who got away (fled, or still standing) is a witness too. Kept (root.rep.lastWitness) for the deed
+   form's "Seen by" */
+function fightWitnesses(st, n, c){
+  const place = repPlaceOf(n), all = combatants(c), live = y => y.fled || !(y.max!=null && y.hp<=0);
+  const E = c.list.filter(y=>!y.ally && !y.neutral && !y.dormant), lost = E.length && E.every(y=>y.fled || (y.max!=null && y.hp<=0));
+  const pcsHurt = id => Object.keys((c.hurt || {})[id] || {}).filter(k=>partyRoster().some(p=>p.id===k));
+  const seen = [], names = [];
+  for(const y of c.list){ if(y.dormant || !live(y)) continue;
+    const p = y.npc && libNpcById(y.npc), enemy = !y.ally && !y.neutral;
+    if(p){ const who = pcsHurt(y.id);
+      memAdd(p, enemy ? { text:`${lost ? "Beaten by" : "Fought"} the party at ${placeLabel(n)}${y.fled ? " (got away)" : ""}`, tone:-1, size:"notable", who:who.length ? who : ["party"], src:"fight" }
+                      : { text:`Fought beside the party at ${placeLabel(n)}`, tone:1, size:"small", src:"fight" }, true);
+      seen.push({ id:p.id, name:p.name }); }
+    else if(enemy) names.push(y.label + (y.fled ? " (fled)" : "")); }
+  const inIt = new Set(c.list.map(y=>y.npc).filter(Boolean));
+  for(const id of n.npcs || []){ const p = libNpcById(id); if(!p || inIt.has(id) || (p.conds||[]).includes("Unconscious")) continue;
+    memAdd(p, { text:`Saw the party fight at ${placeLabel(n)}`, tone:0, size:"small", src:"seen" }, true); seen.push({ id:p.id, name:p.name }); }
+  const W = { day:campaignDay(), place, at:placeLabel(n), seen, names };
+  repOf().lastWitness = W;
+  gameLog("fight", seen.length || names.length ? `Witnesses who'll talk: ${[...seen.map(s=>s.name), ...names].join(", ")}` : `No survivors and no witnesses at ${placeLabel(n)}: nobody will hear of it unless the party tells it`);
+}
+function memRedo(){ saveParty(); if(dmMode) renderPlay(); else renderInspect(); if(battleOf) renderBattlePanel(); if(pane==="library") renderLibList(); renderPane(true); }
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("button[data-mem]"); if(!b) return; e.preventDefault(); e.stopPropagation();
+  const p = libNpcById(b.dataset.p); if(!p) return; const a = b.dataset.mem, m = (p.mem||[]).find(x=>x.id===b.dataset.m);
+  if(a==="tone" && m) m.tone = +b.dataset.v;
+  else if(a==="del" && m) p.mem = p.mem.filter(x=>x!==m);
+  else if(a==="roll"){ p.memHold = memRollHold(); flash(`${p.name||"They"}: good things ${MEM_HOLD.find(h=>h[0]===p.memHold.good)[1].toLowerCase()}, slights ${MEM_HOLD.find(h=>h[0]===p.memHold.bad)[1].toLowerCase()}.`); }
+  else if(a==="log"){ const n = memFromLog(p); flash(n ? `${n} line${n===1?"":"s"} from the log, neither good nor bad till you mark them.` : "Nothing new in the log with their name."); }
+  else if(a==="add"){ const box = b.closest("details"), v = s => (box.querySelector(s)||{}).value || ""; const text = v(`[data-memtext="${p.id}"]`).trim(); if(!text){ flash("Say what they'll remember."); return; }
+    memAdd(p, { text, who:[v(`[data-memwho="${p.id}"]`) || "party"], tone:+v(`[data-memtone="${p.id}"]`) || 0, size:v(`[data-memnew="${p.id}"]`) || "small", src:"hand" }); }
+  memRedo();
+}, true);
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.p) return; const p = libNpcById(t.dataset.p); if(!p) return;
+  if(t.dataset.memhold){ p.memHold = { ...(p.memHold || { good:"normal", bad:"normal" }), [t.dataset.memhold]:t.value }; memRedo(); }
+  else if(t.dataset.memsize){ const m = (p.mem||[]).find(x=>x.id===t.dataset.memsize); if(m){ m.size = t.value; memRedo(); } } });
+document.addEventListener("toggle", e=>{ const d = e.target; if(d.dataset && d.dataset.memfor){ if(d.open) openInv.add("mem:" + d.dataset.memfor); else openInv.delete("mem:" + d.dataset.memfor); } }, true);
 /* the place's own faction, for its Build panel */
 const placeFactionPick = n => (lib().factions||[]).length ? `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><select data-fac="place" data-node="${n.id}">${factionOptions(n.faction, "No faction")}</select></div>`
   : `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><p class="empty-note" style="font-size:11px;margin:0">No factions yet: make one in the Library (Factions), then pick it here.</p></div>`;
@@ -20329,7 +20477,8 @@ document.addEventListener("click", e=>{ const b = e.target.closest("[data-talk]"
   const p = libNpcById(b.dataset.talk); if(!p) return;
   const what = prompt(`Talked with ${p.name||"them"}. Anything worth remembering? (optional)`, ""); if(what===null) return;
   gameLog("talk", `Talked with ${p.name||"someone"} (${partyWord()})${what.trim() ? `: ${what.trim()}` : ""}`);
-  flash(`In the game log: talked with ${p.name||"them"}.`); }, true);
+  memAdd(p, { text:what.trim() ? `Talked with the party: ${what.trim()}` : "Talked with the party", src:"talk" }, true);     // they'll remember it (mark it good or bad on their card)
+  flash(`In the game log: talked with ${p.name||"them"}. They'll remember it: mark it good or bad on their card.`); if(dmMode) renderPlay(); }, true);
 function journal(){
   if(!root) return { general:"", log:[] };
   const j = (root.journal = root.journal || {});

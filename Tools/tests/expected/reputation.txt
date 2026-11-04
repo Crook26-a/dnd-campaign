@@ -6,8 +6,8 @@ Cairnby: 7 of 8 filled after 12 deeds, 5 written over
 take back "One more": true, deeds 14
 heard (guild, Kalatecha): Harbour Guild d12 4: Saved the harbourmaster's son | Kalatecha d100 57: nothing | The world d100 51: nothing
 party tab: true, factions 2, tables listed 7
-by hand: The party: Won the harbour race (fame, minor, day 1) · log: Reputation: The party: Won the harbour race (fame, minor, day 1). Written in: Kalatecha d100 20; Harbour Guild in Kalatecha d12 11
-asked: What they've heard Knives d20 2 nothing Kalatecha d100 37 nothing The world d100 35 nothing
+by hand: The party: Won the harbour race (fame, minor, day 1) · log: Reputation: The party: Won the harbour race (fame, minor, day 1). Nobody saw it and the party hasn't told it: it goes nowhere until they do (or you spread it)
+asked: What they've heard Knives d20 4 nothing Kalatecha d100 91 nothing The world d100 6 nothing
 place card: true, person button true
-asked Captain Callomay: Harbour Guild d12 8, Kalatecha d100 93, The world d100 52 · in the log true
+asked Captain Callomay: Harbour Guild d12 5, Kalatecha d100 35, The world d100 67 · in the log true
 faction page die: true
