@@ -11920,19 +11920,50 @@ const BMAPS = {
       "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
       "~~~rrrrrrrrrrrrrrrrrrrrrrrrrrrrr~~~~",
       "~~~r#########=====c=====M===c===rr~~",
-      "~~~r#B=B#B=B#===================i=r~",
-      "~~~r#=D=#=D=#========H==========c=rb",
-      "~~~r#=======D==W=====M=====T=n====rb",
-      "~~~r#=D=#=D=#=====================rb",
-      "~~~r#B=B#B=B#========H========c===r~",
+      "~~~r#B=X#TnT#===================i=r~",
+      "~~~r#===#===#========U==========c=rb",
+      "~~~r#===D===D==W=====M=====T=n====rb",
+      "~~~r#===#===#=====================rb",
+      "~~~r#c==#TnT#========H========c===r~",
       "~~~r#########=====c=====M===c===rr~~",
       "~~~rrrrrrrrrrrrrrrrrrrrrrrrrrrrr~~~~",
       "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
       "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
       "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"],
-    labels:[[8.5,11.3,"passenger cabins"],[3,1.3,"stern"],[34,1.3,"bow"],[21.5,11.3,"hatches to the hold"],[24.5,1.3,"masts"],[27.5,11.3,"deck tables"]],
+    labels:[[6,11.3,"captain's cabin"],[10,11.3,"saloon"],[3,1.3,"stern"],[34,1.3,"bow"],[21,1.3,"stairs below"],[21,11.3,"cargo hatch"],[24.5,1.3,"masts"],[27.5,11.3,"deck tables"]],
     start:{ party:[[15,5],[16,5],[15,7],[16,7],[17,6],[18,6]], enemy:[[26,4],[27,5],[26,7],[28,8],[25,6],[30,6],[29,4],[24,8]] },
-    notes:"A passenger ship, about 140 feet: a deckhouse of four passenger cabins aft (a corridor between, a door to the deck), three masts, two hatches to the hold, and tables on deck for fair-weather dining." },
+    notes:"A passenger ship, about 140 feet: the captain's cabin and the saloon in the deckhouse aft, three masts, stairs down to the passenger decks, a cargo hatch, and tables on deck for fair-weather dining." },
+  /* her two passenger decks below (Joseph, 2026-11-04): the upper for middle and first class, in cabins; the lower for
+     low class, ten bunks */
+  linerupper:{ name:"A passenger ship: the cabins", w:32, h:11,
+    rows:[
+      "################################",
+      "#BB=TX#BB=TX#B=X#B=X#B=X#T=n=T=#",
+      "#===n=#===n=#===#===#===#n=====#",
+      "#c===i#c===i#c==#c==#c==#==T=n=#",
+      "###D#####D####D###D###D####==###",
+      "#======i=======i=======i=======#",
+      "###D#####D####D###D##======#D###",
+      "#c===i#c===i#c==#c==#======#x=u#",
+      "#===n=#===n=#===#===#=U==U=#x==#",
+      "#BB=TX#BB=TX#B=X#B=X#======#xxc#",
+      "################################"],
+    labels:[[3,0.25,"first class"],[9,0.25,"first class"],[18,0.25,"middle-class cabins"],[27.5,0.25,"the lounge"],[3,10.75,"first class"],[9,10.75,"first class"],[16,10.75,"middle class"],[23.5,10.75,"stairs up and down"],[29,10.75,"luggage"]],
+    start:{ party:[[22,7],[23,7],[24,7],[22,9],[23,9],[24,9]], enemy:[[5,5],[8,5],[11,5],[14,5],[2,5],[17,5],[26,2],[28,3]] },
+    notes:"The upper deck below: a corridor down her length with cabins either side. Four first-class cabins aft, roomy, with a table and a chest; five middle-class cabins, a bunk and a trunk; a lounge forward; the stairs up to the deck and down to steerage, and the luggage room." },
+  linerlower:{ name:"A passenger ship: steerage", w:28, h:8,
+    rows:[
+      "############################",
+      "#B=B=B=B=B#======xx==uu==x=#",
+      "#=========#=====c========x=#",
+      "#===T=n===D=====M====M=====#",
+      "#=U=T=n===#=========c======#",
+      "#=========#====x=====x=====#",
+      "#B=B=B=B=B#==uu===xx=====cc#",
+      "############################"],
+    labels:[[5,0.25,"steerage: ten bunks"],[2,7.75,"stairs up"],[18.5,0.25,"the cargo hold"],[5.5,7.75,"bunks"]],
+    start:{ party:[[2,3],[3,3],[2,5],[3,5],[4,2],[4,5]], enemy:[[13,3],[14,4],[15,2],[18,4],[19,2],[24,3],[13,5],[17,5]] },
+    notes:"The lowest deck: steerage aft, ten bunks along the hull and a table in the middle, a door through to the cargo hold. Dark, close and smelling of bilge; a lantern or two." },
   cabin:{ name:"The captain's quarters", w:11, h:8,
     rows:[
       "###########",
@@ -12044,7 +12075,7 @@ const BMAPS = {
     start:{ party:[[4,7],[3,7],[5,7],[4,6],[3,6],[5,5]], enemy:[[2,3],[6,3],[2,4],[6,4],[3,2],[5,2]] },
     notes:"The default for towers: a round stone room with the stairs spiralling up the middle." }
 };
-const BMAP_ORDER = ["blank","docks","boat","ship","liner","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
+const BMAP_ORDER = ["blank","docks","boat","ship","liner","linerupper","linerlower","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
 /* the paint tool's palette, in sets */
 const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiVy@BkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
 /* inside a town, a building with no layout of its own gets its kind's default */
@@ -17428,6 +17459,72 @@ const PEOPLE_KINDS = {
     secret:["the ship is mortgaged to a moneylender","once abandoned a crew to save the ship","sails under a false name"],
     knows:["every port and its harbormaster","the trade winds and the dangers","which cargoes pay and which get you hanged"],
     carries:["Longsword","Spyglass"], quirk:["never sleeps more than four hours","takes every meal on deck","keeps a lucky coin from their first command"] },
+  /* a passenger ship's people (Joseph, 2026-11-04): her hospitality staff, her guards and chaplain, and passengers in
+     three fares */
+  steward:{ label:"Steward", group:"Sea and docks", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:1,
+    titles:["Steward","Stewardess","Cabin steward","Chief steward","Saloon steward"],
+    look:["a white jacket, pressed even at sea","a towel over one arm, always","a professional smile that never slips","sea legs so steady they never spill a drop"],
+    voice:["'very good, sir' to everything","murmurs, never raises their voice","remembers your name from the manifest"],
+    wants:["a generous tip at the end of the voyage","a cabin of their own one day","the first-class passengers to stop ringing","to be chief steward"],
+    secret:["reads the passengers' letters","sells gossip about the first-class cabins","is hiding from someone ashore"],
+    knows:["who's in which cabin and why","which passengers drink","who isn't who they say they are"],
+    carries:["Clothes, fine"], quirk:["folds anything left lying about","hums while making beds","can't stop straightening things"] },
+  purser:{ label:"Purser", group:"Sea and docks", cls:"Rogue", blocks:["Commoner","Spy"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:2,
+    titles:["Purser","Purser's mate"],
+    look:["a strongbox key on a chain","spectacles and a pencil behind the ear","a ledger under one arm","a waistcoat with too many pockets"],
+    voice:["talks fares and fees","polite to first class, brisk to steerage","quotes the passenger regulations"],
+    wants:["the manifest to tally","a passenger who pays extra for a better cabin","the ship's strongbox safe","a share in the company"],
+    secret:["sells berths twice","keeps a passenger's valuables 'safe' for good","knows which passenger is travelling under a false name"],
+    knows:["every passenger's name, fare and cabin","what's in the ship's strongbox","which cabins are empty"],
+    carries:["Book","Ink Pen","Dagger"], quirk:["counts the silverware after every meal","writes everything down twice","jingles their keys when thinking"] },
+  waiter:{ label:"Ship's waiter", group:"Sea and docks", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:0,
+    titles:["Waiter","Waitress","Saloon boy","Galley hand","Cook's mate"],
+    look:["an apron with a soup stain","quick hands and a tray balanced high","young and green about the gills","a cloth over one shoulder"],
+    voice:["recites the menu in a single breath","whispers the kitchen gossip","apologises for the weather as if it's their fault"],
+    wants:["their tips to add up","a job ashore in a good inn","to see the islands","not to drop anything in front of the captain"],
+    secret:["eats the first-class leftovers","is sweet on a passenger","overheard something at the captain's table"],
+    knows:["who sits with whom at dinner","what the first-class passengers argue about","the cook's best and worst dishes"],
+    carries:["Mess Kit"], quirk:["never spills, even in a storm","taste-tests everything","knows every passenger's order by heart"] },
+  shipguard:{ label:"Ship's guard", group:"Sea and docks", cls:"Fighter", blocks:["Guard","Warrior Infantry","Warrior Veteran"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:1,
+    titles:["Ship's guard","Ship's guard","Master-at-arms","Guard of the strongroom"],
+    look:["a cutlass and a cudgel, both used","broad and quiet at the stairhead","a company badge on a leather coat","scarred knuckles, gentle manners"],
+    voice:["few words, all of them polite","calls passengers 'ma'am' and 'sir', pirates other things","tells the same story about the last pirate who tried"],
+    wants:["a dull voyage","the passengers safe and the strongbox safer","a bonus at the end of the run","to settle ashore when the pay runs out"],
+    secret:["once let pirates aboard for a share","is sweet on a passenger","was a pirate before this"],
+    knows:["the ship's defences and its weak spots","who's carrying a weapon aboard","the signal for trouble"],
+    carries:["Scimitar","Club"], quirk:["checks every door at night","always stands with their back to the rail","polishes their blade during dinner"] },
+  chaplain:{ label:"Ship's chaplain", group:"Sea and docks", cls:"Cleric", blocks:["Priest Acolyte","Priest"], disp:{ ally:5, neutral:4, enemy:1 }, wealth:1,
+    titles:["Ship's chaplain","Ship's healer","Sea-priest"],
+    look:["salt-stained vestments","a holy symbol of the sea god on a cord","calm when everyone else is seasick","a bag of bandages and prayer beads"],
+    voice:["blesses every meal and every wind","quietly reassuring","talks to the sea as if it can hear"],
+    wants:["no one buried at sea this voyage","the passengers to come to prayers","the crew to stop gambling","a chapel in a port town"],
+    secret:["lost their faith once in a storm and found it again","heals the guards first in a fight, whatever the vows say","took a passenger's last confession and knows a crime"],
+    knows:["every passenger's troubles","the sea's omens","the guards' rota, and their wounds"],
+    carries:["Mace","Holy Symbol","Healer's Kit"], quirk:["blesses the ship every morning","keeps a candle lit below decks","sings hymns in a storm"] },
+  passlow:{ label:"Passenger (low class)", group:"Sea and docks", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:0,
+    titles:["Emigrant","Pilgrim","Labourer seeking work","Farmhand going home","Deckhand working their passage","Widow and her bundle","Indentured servant"],
+    look:["everything they own in one bundle","patched clothes and good boots","a family keepsake held tight","seasick and determined"],
+    voice:["talks about where they're going, not where they've been","wary of the first-class passengers","sings in the bunks at night"],
+    wants:["a new start where they're going","their bundle safe","a bunk away from the hatch","to see land again"],
+    secret:["is running from a debt","has stowed a sibling away","is carrying something for someone else"],
+    knows:["what the steerage passengers whisper","who stole the bread","the gossip from the port they left"],
+    carries:["Clothes, travelers"], quirk:["counts the days on a knotted string","shares their food with anyone","never sleeps without a hand on their bundle"] },
+  passmid:{ label:"Passenger (middle class)", group:"Sea and docks", cls:"Commoner", blocks:["Commoner","Noble"], disp:{ ally:3, neutral:6, enemy:1 }, wealth:2,
+    titles:["Merchant","Clerk on company business","Craftsman","Scholar","Physician","Minor official","Merchant's widow","Travelling player"],
+    look:["a good coat a little worn","a trunk with their name painted on it","a case of samples","respectable and anxious to look it"],
+    voice:["talks business at dinner","polite and a little proud","complains about the cabin, gently"],
+    wants:["their business done in the next port","to be invited to the captain's table","a first-class acquaintance","their trunk unopened"],
+    secret:["the samples aren't what they say","travels on borrowed money","is meeting a lover in the next port"],
+    knows:["the prices in the port they left","a little of everything","who in first class owes money"],
+    carries:["Clothes, travelers","Purse"], quirk:["writes letters every evening","keeps their trunk under the bunk and checks it","always dresses for dinner"] },
+  passfirst:{ label:"Passenger (first class)", group:"Sea and docks", cls:"Noble", blocks:["Noble"], disp:{ ally:2, neutral:5, enemy:3 }, wealth:5,
+    titles:["Noble","Wealthy merchant","Lady of means","Company director","Ambassador","Heir to a fortune","Retired admiral"],
+    look:["silk that wasn't made for the sea","a servant's worth of luggage","rings and a pocket-watch","perfume that reaches the next cabin"],
+    voice:["expects to be listened to","talks over the stewards","charming to equals, cool to everyone else"],
+    wants:["the voyage over quickly","a cabin on the windward side","the captain's table, every night","nothing below decks to come near them"],
+    secret:["the fortune is mostly debts","is travelling to a duel, or a wedding, or a trial","carries a sealed letter that could start a war"],
+    knows:["the politics of the ports","who owns the ship","which families are rising and falling"],
+    carries:["Clothes, fine","Signet Ring","Purse"], quirk:["dresses for dinner, three times","tips in gold or not at all","keeps a lapdog in the cabin"] },
   councillor:{ label:"Councillor", group:"Power and law", cls:"Noble", blocks:["Noble"], disp:{ ally:3, neutral:4, enemy:3 }, wealth:4,
     look:["a chain of office and a fur-trimmed robe","a politician's smile that never reaches the eyes","rings of the guilds they owe","silver hair, carefully arranged"],
     voice:["never answers a question directly","speaks as if to a crowd","drops names constantly"],
@@ -19743,8 +19840,10 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
    (crewOf her id; their where her name; genders rolled): a captain of level 3, a fighter, barbarian, paladin or ranger;
    then navy 7 fighters of level 2; merchant 4 ordinary hands and 1 fighter of level 2; fishing 3 ordinary hands, one
    family; smuggler 4 rogues of level 2; pirate 3 rogues and 2 fighters of level 2 and a caster of level 3, anything but
-   a cleric. Explorers and passenger ships have no crew rules yet. Going aboard (or an encounter) makes her a place at
-   her spot on the chart, hidden from the players: her crew to meet, and her deck for a fight ── */
+   a cleric; a passenger ship (packet) a fighter for captain, 5 hospitality (stewards, a purser, waiters), 4 guards of
+   level 4 and a chaplain, a cleric of level 5, and 19 passengers by fare. Explorers have no crew rules yet. Going
+   aboard (or an encounter) makes her a place at her spot on the chart, hidden from the players: her crew to meet, and
+   her deck for a fight; a large ship is three decks, a plan of her own (fleetDecks) ── */
 const FLEET_SIZES = { small:["Small (a fishing boat)","boat"], medium:["Medium (a ship)","ship"], large:["Large (a passenger ship)","liner"] };
 const fleetSizeOf = s => FLEET_SIZES[s.size] ? s.size : s.kind==="fishing" ? "small" : s.kind==="packet" ? "large" : "medium";
 const FLEET_CREW = {
@@ -19752,40 +19851,80 @@ const FLEET_CREW = {
   merchant:[["bosun","Fighter",2],["*","Commoner",1],["*","Commoner",1],["*","Commoner",1],["*","Commoner",1]],
   fishing: [["fisher","Commoner",1],["fisher","Commoner",1],["fisher","Commoner",1]],
   smuggler:[["smuggler","Rogue",2],["smuggler","Rogue",2],["smuggler","Rogue",2],["smuggler","Rogue",2]],
-  pirate:  [["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Fighter",2],["pirate","Fighter",2],["pirate","caster",3]] };
+  pirate:  [["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Fighter",2],["pirate","Fighter",2],["pirate","caster",3]],
+  packet:  [["steward",null,1],["steward",null,1],["purser",null,1],["waiter",null,1],["waiter",null,1],
+            ["shipguard","warrior",4],["shipguard","warrior",4],["shipguard","warrior",4],["shipguard","warrior",4],["chaplain","Cleric",5]] };
 const FLEET_HANDS = ["sailor","shipcook","lookout","shipwright","sailmaker","cabinhand","navigator","quartermaster"];
 const FLEET_CAPTAIN = ["Fighter","Barbarian","Paladin","Ranger"], FLEET_CASTER = ["Wizard","Sorcerer","Warlock","Bard","Druid"];
+const FLEET_CAPTAIN_BY = { packet:"Fighter" };
+/* a passenger ship's passengers, by fare (Joseph, 2026-11-04): 10 low class in steerage, 5 middle and 4 first class in
+   the cabins */
+const FLEET_PASS = { packet:[["low","passlow",10],["middle","passmid",5],["first","passfirst",4]] };
+const FLEET_FARES = { low:"low class", middle:"middle class", first:"first class" };
+const FLEET_HOST = new Set(["steward","purser","waiter"]);
 const FLEET_DISP = { pirate:"enemy", smuggler:"neutral", navy:"neutral" };
 /* her crew out of the Library and her place off the chart (a new crew, a ship gone) */
 function fleetForget(s){
   const L = lib(); L.npcs = (L.npcs||[]).filter(p=>p.crewOf!==s.id);
-  root.nodes = (root.nodes||[]).filter(n=>n.fleetShip!==s.id); delete s.captain; s.crew = [];
+  root.nodes = (root.nodes||[]).filter(n=>n.fleetShip!==s.id); delete s.captain; s.crew = []; s.pass = [];
+  if(plans["fv_" + s.id]){ if(planOf==="fv_" + s.id) leavePlan(); delete plans["fv_" + s.id]; markDirty(K_PLAN("fv_" + s.id)); }   // her decks go with her
 }
 /* a crew rolled: her kind's crew (n of them: the pattern again if more, cut short if fewer), and a captain */
 function fleetCrewRoll(s, n){
   const roles = FLEET_CREW[s.kind] || []; if(!roles.length) return 0;
   const want = n!=null && n >= 0 ? Math.round(n) : roles.length, list = Array.from({ length:want }, (_, i)=>roles[i % roles.length]);
   fleetForget(s); const L = lib(), disp = FLEET_DISP[s.kind], ids = [], fam = s.kind==="fishing" ? pickOne(themeTables(rollTheme({})).family) : "";
-  const one = (kind, cls, level) => { const g = genPerson({ kind:kind==="*" ? pickOne(FLEET_HANDS) : kind, cls:cls==="caster" ? pickOne(FLEET_CASTER) : cls, level, ...(disp ? { disp } : {}) }), p = g.person;
+  const one = (kind, cls, level) => { const g = genPerson({ kind:kind==="*" ? pickOne(FLEET_HANDS) : kind, cls:cls==="caster" ? pickOne(FLEET_CASTER) : cls==="warrior" ? pickOne(FLEET_CAPTAIN) : cls, level, ...(disp ? { disp } : {}) }), p = g.person;
     if(fam) p.name = p.name.replace(/ [^ ]+$/, " " + fam);               // a fishing boat's crew: one family
-    p.crewOf = s.id; p.where = s.name; L.npcs = [...(L.npcs||[]), p]; return p.id; };
-  s.captain = one("shipcaptain", pickOne(FLEET_CAPTAIN), 3);
+    p.crewOf = s.id; p.where = s.name; if(FLEET_HOST.has(kind)) p.aboard = "host"; L.npcs = [...(L.npcs||[]), p]; return p.id; };
+  s.captain = one("shipcaptain", FLEET_CAPTAIN_BY[s.kind] || pickOne(FLEET_CAPTAIN), 3);
   for(const [k, c, lv] of list) ids.push(one(k, c, lv));
-  s.crew = ids; saveParty(); return ids.length + 1;
+  s.crew = ids;
+  s.pass = []; for(const [fare, k, many] of FLEET_PASS[s.kind] || []) for(let i = 0; i < many; i++){ const pid = one(k, null, 1), p = libNpcById(pid); p.fare = fare; s.pass.push(pid); }
+  saveParty(); return ids.length + 1 + s.pass.length;
+}
+/* a large ship's three decks (the passenger ship's): the deck, the cabins, steerage, each its own room in her plan */
+const FLEET_DECKS = [["d","Main deck",0,"ship","liner"],["u","The cabins",-1,"warehouse","linerupper"],["l","Steerage",-2,"warehouse","linerlower"]];
+function fleetDecks(s, n){
+  const id = n.id, hull = [{x:-85,y:-25},{x:45,y:-25},{x:75,y:-10},{x:85,y:0},{x:75,y:10},{x:45,y:25},{x:-85,y:25}];
+  let P = plans[id];
+  if(!P){ P = plans[id] = { format:"ordinate-plan-v1", of:id, title:s.name, ppm:5, unit:"yd", compass:8,
+      regions:[{ id:"fvr", name:s.name, threat:1, hex:"#3f6f78", notes:"" }], roads:[], sited:{},
+      floors:FLEET_DECKS.map(([f, nm, z])=>({ id:f, name:nm, z })),
+      shapes:[{ id:"fvsea", kind:"water", closed:true, straight:true, name:"The sea", side:1, impassable:false, notes:"", pts:[{x:-200,y:-110},{x:200,y:-110},{x:200,y:110},{x:-200,y:110}] },
+        ...FLEET_DECKS.map(([f, nm])=>({ id:"fvhull" + f, kind:"dock", closed:true, straight:true, name:`${s.name}: ${nm.toLowerCase()}`, side:1, impassable:false, notes:"", pts:hull.map(p=>({...p})), floor:f }))],
+      nodes:FLEET_DECKS.map(([f, nm, z, kind, preset])=>({ id:"fvr" + f, name:nm, kind, region:"fvr", level:5, origin:false, seat:false, services:{}, notes:"", x:0, y:0, w:14, d:6, rot:0, floor:f,
+        bmap:{ preset }, site:{ kind:"", level:5, once:false, waves:1, loot:{ coin:0 }, items:[], foes:[] } })) }; }
+  /* who's where: the captain and her guards on deck, the stewards and the middle and first class in the cabins, low
+     class in steerage. Only when her people change, so you can move them about between boardings */
+  const sig = [s.captain, ...(s.crew||[]), ...(s.pass||[])].join(",");
+  if(P.people !== sig){ P.people = sig;
+    const ppl = [s.captain, ...(s.crew||[]), ...(s.pass||[])].map(libNpcById).filter(Boolean), room = f => P.nodes.find(r=>r.floor===f) || {};
+    const at = p => p.fare==="low" ? "l" : p.fare || p.aboard==="host" ? "u" : "d";
+    for(const [f] of FLEET_DECKS){ const r = room(f), here = ppl.filter(p=>at(p)===f); r.npcs = here.map(p=>p.id);
+      if(r.site) r.site.foes = f==="d" ? here.map(p=>({ id:"npc:" + p.id, n:"1" })) : []; }   // a fight on deck: her captain and her guards
+    markDirty(K_PLAN(id)); }
+  return P;
 }
 /* going aboard: her place, where she is now (hidden from the players), her crew, her deck */
 function fleetBoard(s){
   const p = fleetPos(s, fleetT()) || repNode(s.home) || { x:0, y:0 }, id = "fv_" + s.id, people = [s.captain, ...(s.crew||[])].filter(x=>x && libNpcById(x));
   let n = (root.nodes||[]).find(x=>x.id===id);
   if(!n){ n = { id, name:s.name, kind:"vessel", x:p.x, y:p.y, hidden:true, fleetShip:s.id, level:5, services:{} }; root.nodes.push(n); }
-  n.x = p.x; n.y = p.y; n.name = s.name; n.npcs = people;
+  n.x = p.x; n.y = p.y; n.name = s.name;
   n.notes = `${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0]} out of ${repPlaceName(s.home)}. ${FLEET_SIZES[fleetSizeOf(s)][0]}.`;
   n.site = n.site || { kind:"", level:5, once:false, waves:1, loot:{ coin:0 }, items:[], foes:[] };
-  n.site.foes = people.map(pid=>({ id:"npc:" + pid, n:"1" }));        // if it comes to a fight: her captain and crew, on their own sheets
-  n.bmap = { preset:FLEET_SIZES[fleetSizeOf(s)][1] };
+  if(fleetSizeOf(s)==="large"){                                         // three decks: enter her for them, her people on each
+    fleetDecks(s, n); n.npcs = []; n.site.foes = []; delete n.bmap; n.notes += " Enter her for the deck, the cabins and steerage."; }
+  else { n.npcs = people;
+    n.site.foes = people.map(pid=>({ id:"npc:" + pid, n:"1" }));      // if it comes to a fight: her captain and crew, on their own sheets
+    n.bmap = { preset:FLEET_SIZES[fleetSizeOf(s)][1] }; }
   touch(); return n;
 }
-function fleetGoAboard(s){ const n = fleetBoard(s); if(planOf) leavePlan(); select("node", n.id); pane = "inspect"; syncTabs(); renderPane(true); render(); flash(`${s.name}: her crew and her deck are on her card.`); }
+function fleetGoAboard(s){
+  if(planOf) leavePlan(); const n = fleetBoard(s);
+  if(fleetSizeOf(s)==="large" && plans[n.id]){ enterPlan(n.id); select("node", "fvrd"); pane = "inspect"; syncTabs(); renderPane(true); render(); flash(`${s.name}: aboard, on her deck. The floors bar takes you below to the cabins and steerage.`); return; }
+  select("node", n.id); pane = "inspect"; syncTabs(); renderPane(true); render(); flash(`${s.name}: her crew and her deck are on her card.`); }
 /* a ship added by hand (the builder): her kind or random, size, crew, home, how she sails */
 function fleetAdd(o){
   const P = repPorts(); if(!P.length){ flash("No ports on the water yet."); return null; }
@@ -19816,7 +19955,7 @@ function fleetBlock(){
       <div class="pcrow"><div class="field" style="flex:1"><label>Home port</label><select id="fa-home"><option value="">Random</option>${portOpts("")}</select></div>
         <div class="field" style="flex:1"><label>Name</label><input id="fa-name" type="text" placeholder="rolled"></div></div>
       <button class="btn wide calmgo" data-fleetact="add">Put her to sea, crew and all</button>
-      <p class="empty-note" style="font-size:11px;margin:4px 0 0">Crews by type: navy 7 fighters of level 2; merchant 4 hands and a fighter of level 2; fishing 3 hands, one family; smuggler 4 rogues of level 2; pirate 3 rogues, 2 fighters and a caster of level 3. Every ship has a captain of level 3. Explorers and passenger ships: no crew rules yet.</p></details>
+      <p class="empty-note" style="font-size:11px;margin:4px 0 0">Crews by type: navy 7 fighters of level 2; merchant 4 hands and a fighter of level 2; fishing 3 hands, one family; smuggler 4 rogues of level 2; pirate 3 rogues, 2 fighters and a caster of level 3; passenger ship 5 stewards, waiters and a purser, 4 guards of level 4 and a chaplain (a cleric of level 5), and 19 passengers (10 low class in steerage, 5 middle and 4 first class in cabins). Every ship has a captain of level 3 (a passenger ship's, a fighter). Explorers: no crew rules yet.</p></details>
     ${F.map(s=>`<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
         <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
       <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
@@ -19824,6 +19963,8 @@ function fleetBlock(){
       ${(s.carry||[]).length ? `<div class="sbl"><small>Her crew has heard:</small> ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</div>` : ""}
       <div class="sbl"><small>${esc(FLEET_SIZES[fleetSizeOf(s)][0])}. Aboard:</small> ${(()=>{ const ppl = [s.captain, ...(s.crew||[])].map(libNpcById).filter(Boolean);
         return ppl.length ? ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ") : FLEET_CREW[s.kind] ? "<i>no crew rolled yet</i>" : "<i>no crew rules for her kind yet</i>"; })()}</div>
+      ${(s.pass||[]).length ? Object.keys(FLEET_FARES).map(f=>{ const ppl = s.pass.map(libNpcById).filter(p=>p && p.fare===f);
+        return ppl.length ? `<div class="sbl"><small>Passengers, ${FLEET_FARES[f]} (${ppl.length}):</small> ${ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ")}</div>` : ""; }).join("") : ""}
       <div class="pcrow" style="margin-top:2px"><button class="btn small" data-fleetact="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her deck for a fight">Go aboard</button>${FLEET_CREW[s.kind] ? `<button class="btn small" data-fleetact="crew" data-id="${s.id}" title="A new crew for her (the old one leaves the Library)">Roll a new crew</button>` : ""}</div></div>`).join("")}</details>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-fleetact]"); if(!b) return; const a = b.dataset.fleetact;
