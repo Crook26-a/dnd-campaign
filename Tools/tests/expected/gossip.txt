@@ -1,14 +1,14 @@
 roads out of Kalatecha: Southgate Toll (Normal), Northgate Toll (Normal), Gullhaven Road Toll (Normal) · routes 32
 the guild is in Kalatecha true, Southgate Toll true, Northgate Toll false
 starts counting: day 10
-after 120 days: 121 crossings by road or sea, 3 between the guild's branches, 2 lost, 2 to the world
+after 120 days: 96 crossings by road or sea, 3 between the guild's branches, 3 lost, 2 to the world
 "Raised the drowned bell": known in Kalatecha, Southgate Toll, Briarford, Tallow Cross, Hollin's Rest, Saltmere Toll, Saltmere, Dunmarrow, Halfway House, Northgate Toll, Thornwick, Gullhaven, Gullhaven Road Toll, Greywater, Lucenza · regions 2
 "Sank the customs cutter": known in Kalatecha, Northgate Toll, Lucenza · regions 2
-Lucenza heard by sea: 17 · the world: 2
+Lucenza heard by sea: 13 · the world: 2
 the guild in Southgate Toll: 2 slots · in Northgate Toll (no branch): false
-log: Gossip, days 11–130: "Raised the drowned bell" Kalatecha 32 → Southgate Toll d8 2; "Raised the drowned bell" Southgate Toll 2 → Kalatecha d1
+log: Gossip, days 11–130: "Raised the drowned bell" Kalatecha 32 → Southgate Toll d8 6; "Raised the drowned bell" Southgate Toll 6 → Kalatecha d1
 again, same day: null · back a day: 120
 road card: Dense: about every 1 week / Busy: about every 2 weeks / Normal: about every 1 month / Light: about every 2 months / Quiet: about every 3 months
 set busy: busy, clock reset true
-party tab: lanes 1, to-the-world buttons 129, heard-from notes 122
+party tab: lanes 1, to-the-world buttons 105, heard-from notes 98
 your call to the world: 2 -> 3
