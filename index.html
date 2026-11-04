@@ -3274,12 +3274,17 @@ function syncUpBtn(){
   if(t){ b.textContent = `▲ ${t.label}`; b.title = `Up to ${t.label}: the map this one is in`; }
   const sb = document.getElementById("sailBtn"); if(sb) sb.hidden = !sailShipHere();
 }
+var fleetDrawnAt = null;               // the world time the ships were last drawn at
 function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecharge==="function") try{ dawnRecharge(); }catch(err){}      /* a new day: charges come back */
   if(typeof rivalTick==="function" && rivalTick() && !planOf && !battleOf) setTimeout(render, 0);
   if(typeof threadCheck==="function") try{ threadCheck(); }catch(err){}                 /* a new day: loose threads that come due */
   const s = document.getElementById("timeBar"); if(s){ s.value = timeOfDay(); s.title = `The time of day, everywhere: about ${hourWord(clockHour())}`; } const d = document.getElementById("dayNum"); if(d && document.activeElement!==d) d.value = campaignDay();
   if(typeof syncWeather==="function") try{ syncWeather(); }catch(err){}
-  if(typeof fleetCatchUp==="function") try{ fleetCatchUp(); }catch(err){}
+  /* the ships catch up, and the chart and the panel show where they are now (Joseph: "I don't see that happening") */
+  if(typeof fleetCatchUp==="function") try{ const r = fleetCatchUp(), t = Array.isArray(root.fleet) && root.fleet.length ? fleetT() : null;
+    if(t!=null && t!==fleetDrawnAt){ fleetDrawnAt = t;
+      setTimeout(()=>{ if(!battleOf) render(); renderPane(true);
+        if(r && r.said.length) flash(`Day ${campaignDay()}: ${r.said.length} sailing${r.said.length===1?"":"s"} at sea since (the log has where they went).`); }, 0); } }catch(err){}
   if(typeof gossipCatchUp==="function") try{ gossipCatchUp(); }catch(err){} }                /* the date, the day's weather where the party is, and the gossip since */
 function wireTimeBar(){
   document.getElementById("pscreenBtn").insertAdjacentHTML("beforebegin", `<button id="upBtn" hidden></button><button id="sailBtn" hidden title="Out to the sea chart with the ship, ready to sail">⛵ Set sail</button><span class="worldclock" title="The world's clock: the campaign day and the time of day. Every place follows it (unless a place is set to always bright, dim or dark).">
