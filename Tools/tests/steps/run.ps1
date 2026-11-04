@@ -135,6 +135,8 @@ foreach ($name in ($cases | ForEach-Object BaseName)) {
   $x = $results[$name]; $case = $x.case; $res = $x.res; $od = & $outOf $case; New-Item -ItemType Directory -Force $od | Out-Null
   if (-not $res) { $counts.failed++; Write-Host ("FAILED   {0}: {1}" -f $name, $(if ($x.late) { "timed out after $Timeout s before its first step (the page never got going)" } else { "no result (the page never ran its steps)" })) -ForegroundColor Red; continue }
   $lines = @($res.lines)
+  # no steps at all: the test file itself didn't load (a syntax error), never "0 steps, read out" (Joseph, 2026-11-04)
+  if (-not $lines.Count) { $counts.failed++; Write-Host ("FAILED   {0}: no steps ran, so the test file didn't load{1}" -f $name, $(if (@($res.errors).Count) { ": " + ($res.errors -join ' ; ') } else { " (a script error in it, or no step(...) in it)" })) -ForegroundColor Red; continue }
   [IO.File]::WriteAllText("$od.txt", ($lines -join "`n") + "`n", $utf8)
   foreach ($p in $res.states.PSObject.Properties) { [IO.File]::WriteAllText((Join-Path $od "state-$($p.Name).json"), ($p.Value | ConvertTo-Json -Depth 60 -Compress), $utf8) }
   if (@($res.files).Count) { $dd = Join-Path $od "downloads"; New-Item -ItemType Directory -Force $dd | Out-Null; $k = 0

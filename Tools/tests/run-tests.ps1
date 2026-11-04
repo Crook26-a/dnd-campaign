@@ -12,7 +12,10 @@
 #
 # A test's first line says what it loads, from the campaign folder:  // uses: save Saves\….json  |  map …  |  nothing
 # Writing a new test: copy a recent one, change the steps, run it with -Only, read out\<test>.txt, then -Accept it.
-param([string[]]$Only, [switch]$Accept, [int]$Jobs = 6, [int]$Timeout = 150)
+#
+# This harness is closed to new tests (Joseph, 2026-11-04): it runs only the ones in old-cases.txt. A new test is a step
+# test in Tools\tests\steps\cases (see CLAUDE.md here). A test whose script doesn't parse reports at once, not after the timeout.
+param([string[]]$Only, [switch]$Accept, [int]$Jobs = 6, [int]$Timeout = 30)
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
 $Campaign = Split-Path (Split-Path $Here -Parent) -Parent
@@ -30,7 +33,7 @@ $runKey = Get-Date -Format "MMddHHmmss"; $pageNo = 0
 # come out the same every run. All the tests share one browser, so each page also gets storage of its own, starting
 # empty (localStorage in memory, IndexedDB names tagged with the page's key), and pop-up questions answer "no".
 # A test that ends by writing <h1 id="RES"> instead of the title has it copied into the title.
-$stub = '<script>window.__ERR=[];window.addEventListener("error",e=>{__ERR.push(e.message+" @"+e.lineno);});' +
+$stub = '<script>window.__ERR=[];window.addEventListener("error",e=>{__ERR.push(e.message+" @"+e.lineno);if(/SyntaxError/.test(e.message)&&!document.getElementById("RES")){const h=document.createElement("h1");h.id="RES";h.hidden=true;h.textContent="THREW the page has a script that does not parse: "+e.message+" @"+e.lineno;(document.body||document.documentElement).appendChild(h);}});' +
   'const __MEM={};window.storage={get:async k=>{if(!(k in __MEM))throw new Error("none");return {key:k,value:__MEM[k]}},' +
   'set:async(k,v)=>{__MEM[k]=v;return {key:k,value:v}},delete:async k=>{delete __MEM[k];return {key:k,deleted:true}},' +
   'list:async()=>({keys:Object.keys(__MEM)})};' +
@@ -54,6 +57,9 @@ if ($app.Contains($srdTag)) {
 }
 
 $cases = Get-ChildItem (Join-Path $Here "cases") -Filter *.html | Sort-Object { [int]($_.BaseName -replace '\D.*$','' -replace '^$','0') }, BaseName
+$known = @([IO.File]::ReadAllLines((Join-Path $Here "old-cases.txt")) | Where-Object { $_ })
+$newOnes = @($cases | Where-Object { $known -notcontains $_.BaseName })
+if ($newOnes.Count) { throw "New tests don't go here: $(($newOnes | ForEach-Object Name) -join ', '). Write a step test in Tools\tests\steps\cases (see Tools\tests\CLAUDE.md) and run it with steps\run.ps1." }
 if ($Only) { $want = $Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() }; $cases = $cases | Where-Object { $want -contains $_.BaseName } }
 if (-not $cases) { throw "no tests matched" }
 
