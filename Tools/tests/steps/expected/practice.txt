@@ -1,2 +1,3 @@
 1. practising: changes stay in the app, nothing is written: writes while practising: 0 (the app's day 9) | "practice: not saving" | button "Practising: not saving ■" | the folder written: false, the shelf: false | waiting to save: 1
 2. stop and keep it: what waited goes to be saved: something was waiting: true | saving again: true | button "Practice"
+3. by the buttons, as Joseph does: Practice, then the red button opens the choice and stays open; Keep it: practising true | the choice open: true (Throw it all away / Keep it) | after Keep it: practising false, menu hidden true

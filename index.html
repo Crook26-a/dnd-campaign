@@ -23535,7 +23535,7 @@ document.addEventListener("click", e=>{
   campFill();
 });
 document.addEventListener("change", e=>{ const s = e.target; if(!s.matches || !s.matches('select[data-camp="kind"]')) return; const R = campReg(), k = s.dataset.k; R[k] = { ...(R[k] || {}), kind:s.value }; campRegSave(R); if(k===campKeyOf(STORE_NS)) campHere(); });
-document.addEventListener("click", e=>{ const p = $("#campPop"); if(p && !p.hidden && !e.target.closest("#campPop, #campSwitch")) p.hidden = true; });
+document.addEventListener("click", e=>{ const p = $("#campPop"); if(p && !p.hidden && !e.target.closest("#campPop, #campSwitch, #practiceBtn")) p.hidden = true; });     // the Practice button opens its own choice in it (2026-11-04: it shut again at once)
 let USE_IDB = false, _idbConn = null;
 
 function idbOpen(){

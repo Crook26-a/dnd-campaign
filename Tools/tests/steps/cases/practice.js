@@ -19,3 +19,10 @@ step("stop and keep it: what waited goes to be saved", async () => {
   expect(__KIT.errors.length === 0, "no page errors", __KIT.errors);
   return `something was waiting: ${waiting} | saving again: ${!practice} | button "${($("#practiceBtn") || {}).textContent}"`;
 });
+step("by the buttons, as Joseph does: Practice, then the red button opens the choice and stays open; Keep it", async () => {
+  const b = $("#practiceBtn"); b.click(); await wait(50); const on = practice;
+  b.click(); await wait(50); const p = $("#campPop"), open = !p.hidden, choices = [...p.querySelectorAll("[data-practice]")].map(x => x.textContent);
+  const keep = p.querySelector('[data-practice="keep"]'); if (keep) { keep.click(); await wait(50); }
+  expect(on && open, "the choice shows (it used to shut at once)", { on, open });
+  return `practising ${on} | the choice open: ${open} (${choices.join(" / ")}) | after Keep it: practising ${practice}, menu hidden ${p.hidden}`;
+});
