@@ -8711,6 +8711,7 @@ function renderParty(){
       : `<p class="empty-note" style="margin:0 0 8px">Nobody yet. Bring someone in below, from a person's entry in the Library, or by moving someone who fought on the party's side.</p>`}
     ${addCompanionBlock(pcs)}
 
+    ${repBlock()}
     ${leaderBlock()}
     ${awardsBlock()}
     ${xpRulesBlock()}
@@ -10537,7 +10538,8 @@ function placeSearchBox(st){
 function whoYoullMeet(n){
   const people = (n.npcs||[]).map(libNpcById).filter(Boolean), many = people.length > 6;      // a crowd (a ballroom) folds shut
   const inner = (people.length ? people.map(p=>`<div class="playperson">
-      <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}${factionChip(p)}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button></div>
+      <div class="pp-h"><span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Unnamed")}</span>${p.role?` <small>· ${esc(p.role)}</small>`:""}${p.align?` <small>· ${esc(p.align)}</small>`:""}${factionChip(p)}<button class="pcbig" data-talk="${p.id}" title="Put it in the game log that the party talked with them (with a line to remember, if you like)">Talked</button><button class="pcbig" data-npcgone="${p.id}" title="They aren't at this place any more">Not here</button><button class="pcbig" data-heard="${p.id}" data-hplace="${repPlaceOf(n)||""}" title="What they've heard about the party: their faction's table, this place's and the world's (only you see it)">Heard?</button></div>
+      ${repHeardBox("p:" + p.id)}
       ${condChips(p.conds||[], "by:"+p.id)}
       ${stagePick(p)}${(q=>[["Look",q.look],["Voice",q.voice],["Wants",q.wants],["Knows",q.knows],["Backstory",q.backstory],["Notes",stageOf(p)?q.notes:""]])(personNow(p)).filter(x=>x[1]).map(([k,v])=>`<div class="sbl"><b>${k}</b> ${esc(v)}</div>`).join("")}
       ${p.fightsAs && p.fightsAs!=="self" && foeById(p.fightsAs)?`<div class="sbl"><b>Fights as</b> <span class="libref" data-libopen="foes:${p.fightsAs}">${esc(foeById(p.fightsAs).name)}</span></div>`:""}
@@ -10550,7 +10552,7 @@ function whoYoullMeet(n){
   return many ? `<details class="pcset" data-invfor="meet:${n.id}" ${openInv.has("meet:"+n.id) ? "open" : ""}><summary>Who you'll meet <small>${people.length} people</small></summary>${inner}</details>`
     : `<p class="eyebrow spaced">Who you'll meet</p>` + inner;
 }
-const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + whoYoullMeet(n);
+const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + repHere(n) + whoYoullMeet(n);
 const placeTail = n => adderBlock(n) + `<div class="field" style="margin-top:12px"><label>Session notes</label>
     <textarea id="pl-notes" rows="3" placeholder="What happened here, what the players promised, what they took…">${esc(n.dmNotes||"")}</textarea></div>` + boardAdd(n);
 function wirePlaceTail(el, n){
@@ -19000,6 +19002,7 @@ function factionForm(x, a, t, ta, draft){
       <b class="mono" style="min-width:28px;text-align:center">${sgn(E.s)}</b></div>
     <div class="field" style="margin:4px 0"><label>Why it changed <small>goes in the log with the next −1/+1</small></label><input type="text" data-fwhy="${x.id}" placeholder="Saved the harbourmaster's son"></div>
     <div class="facfx"><b>${E.tier.label}.</b> ${esc(E.text)}${standingLines(E).map(l=>`<div class="sbl">${l}</div>`).join("")}</div>
+    <div class="field" style="margin-top:8px"><label>Reputation table <small>what its people have heard: bigger for a big faction</small></label><select ${a} data-f="repDie">${[8,12,20].map(d=>`<option value="${d}" ${repFacDie(x)===d?"selected":""}>d${d}</option>`).join("")}</select></div>
     ${draft ? "" : `<p class="grouplab" style="margin:8px 0 3px">Members <small>set on a person's Library page</small></p>${mem.length ? mem.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Someone")}</span>${p.align && moralOf(p.align)!==moralOf(x.align) ? ` <small>(${esc(ALIGN_ABBR[p.align]||p.align)}: treats you as ${moralOf(p.align)} would)</small>` : ""}`).join(", ") : `<span class="empty-note">Nobody yet.</span>`}
     ${log.length ? `<details class="pcset"><summary>Changes <small>${(x.slog||[]).length}</small></summary>${log.map(l=>`<div class="sbl"><small class="mono">day ${l.day}</small> ${sgn(l.from)} → ${sgn(l.to)}${l.why ? `: ${esc(l.why)}` : ""}</div>`).join("")}</details>` : ""}`}`;
 }
@@ -19025,6 +19028,135 @@ function shopFactionLine(n){
   const F = shopFaction(n); if(!F || (!F.E.price && !F.E.refuse)) return "";
   return `<p class="empty-note" style="font-size:11px;margin:2px 0 6px;${F.E.refuse ? "color:var(--lead)" : ""}">${esc(F.f.name)} ${sgn(F.E.s)} (${esc(F.E.tier.label.toLowerCase())}): ${F.E.refuse ? "they won't serve the party." : `prices ${F.E.price > 0 ? "+" : "−"}${Math.round(Math.abs(F.E.price)*100)}% (in the prices below).`}</p>`;
 }
+/* ══ REPUTATION TABLES (Joseph, 2026-11-04, after Luke Gearing's "Reputation Tables", July 2024): what people have
+   heard, beside how much they like you (standing, which stays separate). Whenever the party does something people
+   would talk about, it's written into tables at rolled slots, a new one overwriting what was there (kept in a history);
+   a bigger deed goes in more times. When it matters, roll the tables: whatever comes up is what they've heard.
+   Tables (root.rep.tables, by key): "world" d100; "place:<id>" for every place on the survey (a city d100, a town d20,
+   a village or anything else d8); a faction's, d8 / d12 / d20 (f.repDie), its slots up to repShared (three-quarters,
+   root.rep.share) shared by every branch ("fac:<id>") and the rest each branch's own ("fac:<id>@<place>").
+   A deed (root.rep.deeds): what, who (the party or a character), fame or infamy, minor / notable / legendary (1, 2 or
+   3 writes in each table; legendary ones go on the world table too), where, the factions it touched. The bigger it is,
+   the likelier the other side comes along: a character's deed pinned on the party too, a party deed with a name on it.
+   On the DM's screen only. Stage 1: no gossip yet (stage 2: it spreads along roads and sea lanes; stage 3: garbling) ══ */
+const REP_SIZES = [["minor","Minor",1],["notable","Notable",2],["legendary","Legendary",3]];
+const REP_PULL = { 1:25, 2:60, 3:100 };     // % chance the other side comes along
+function repOf(){ const R = root.rep = root.rep || {}; R.tables = R.tables || {}; R.deeds = R.deeds || []; R.history = R.history || []; if(!(R.share >= 0 && R.share <= 1)) R.share = 0.75; return R; }
+const repNode = id => (root.nodes||[]).find(n=>n.id===id) || null;
+const repPlaceDie = id => { const k = (repNode(id)||{}).kind; return k==="city" ? 100 : k==="town" ? 20 : 8; };
+const repFacDie = f => [8,12,20].includes(+(f && f.repDie)) ? +f.repDie : 20;
+const repShared = f => Math.max(1, Math.min(repFacDie(f), Math.round(repFacDie(f) * repOf().share)));
+const repPlaceName = id => (repNode(id)||{}).name || "somewhere";
+const repPlaces = () => (root.nodes||[]).filter(n=>n.name && !sailsAbout(n));
+/* the place a spot belongs to: a place on the survey itself, or the place whose plan it's in */
+function repPlaceOf(n){ if(!n) return null; if((root.nodes||[]).includes(n)) return n.id; for(const k in plans) if((plans[k].nodes||[]).includes(n)) return k; return null; }
+function repPlaceNow(){ const at = partyWhere(); return at ? (at.map && at.map!=="survey" ? at.map : at.node || null) : null; }
+const rollD = die => 1 + Math.floor(Math.random() * die);
+/* a faction's slot: shared by every branch, or this branch's own */
+const repFacKey = (f, s, place) => s <= repShared(f) ? `fac:${f.id}` : `fac:${f.id}@${place || "anywhere"}`;
+function repTableLabel(key){
+  if(key==="world") return "The world";
+  if(key.startsWith("place:")) return repPlaceName(key.slice(6));
+  const [fid, at] = key.slice(4).split("@"), f = factionById(fid);
+  return `${f ? f.name : "A faction"}${at ? ` in ${at==="anywhere" ? "no place in particular" : repPlaceName(at)}` : " (every branch)"}`;
+}
+const repWho = id => { const c = [...partyRoster(), ...companions()].find(p=>p.id===id); return c ? c.name || "Someone" : "Someone"; };
+function repDeedWords(d){
+  if(!d) return "";
+  const who = d.who==="party" ? `The party${d.also ? `, above all ${repWho(d.also)}` : ""}` : `${repWho(d.who)}${d.also==="party" ? " and the party" : ""}`;
+  return `${who}: ${d.text} (${d.fame==="infamy" ? "infamy" : "fame"}, ${(REP_SIZES.find(s=>s[0]===d.size)||REP_SIZES[0])[1].toLowerCase()}, day ${d.day})`;
+}
+function repRecord(o){
+  const R = repOf(), n = (REP_SIZES.find(s=>s[0]===o.size)||REP_SIZES[0])[2];
+  const deed = { id:uid("dd"), text:String(o.text||"").trim(), who:o.who || "party", fame:o.fame==="infamy" ? "infamy" : "fame", size:o.size, place:o.place || null, factions:(o.factions||[]).filter(factionById), day:campaignDay(), at:today() };
+  const need = REP_PULL[n], r = rollD(100);
+  if(deed.who!=="party"){ deed.also = r <= need ? "party" : null; deed.pull = `d100 ${r} vs ${need}: ${deed.also ? "the party too" : "just them"}`; }
+  else if(o.standout){ deed.also = r <= need ? o.standout : null; deed.pull = `d100 ${r} vs ${need}: ${deed.also ? `${repWho(o.standout)} named` : "no name on it"}`; }
+  const writes = [], said = [];
+  const put = (keyOf, die, label) => { for(let i = 0; i < n; i++){ const s = rollD(die), key = keyOf(s), T = R.tables[key] = R.tables[key] || { die, slots:{} }, prev = T.slots[s] || null;
+    T.die = die; T.slots[s] = { d:deed.id }; writes.push({ key, slot:s, prev });
+    if(prev && prev.d!==deed.id) R.history.push({ key, slot:s, old:prev, by:deed.id, day:deed.day });
+    said.push(`${label(key)} d${die} ${s}${prev && prev.d!==deed.id ? " (over an older story)" : ""}`); } };
+  if(deed.place) put(()=>"place:" + deed.place, repPlaceDie(deed.place), repTableLabel);
+  for(const fid of deed.factions){ const f = factionById(fid); put(s=>repFacKey(f, s, deed.place), repFacDie(f), repTableLabel); }
+  if(n===3) put(()=>"world", 100, repTableLabel);
+  deed.writes = writes; R.deeds.push(deed);
+  gameLog("rep", `Reputation: ${repDeedWords(deed)}${deed.pull ? ` [${deed.pull}]` : ""}. Written in: ${said.join("; ") || "nowhere (no place or faction picked)"}`);
+  saveParty(); return { deed, said };
+}
+/* the last deed taken back: every slot it wrote back as it was */
+function repUndo(){
+  const R = repOf(), d = R.deeds.pop(); if(!d) return null;
+  for(const w of [...(d.writes||[])].reverse()){ const T = R.tables[w.key]; if(!T) continue; if(w.prev) T.slots[w.slot] = w.prev; else delete T.slots[w.slot]; if(!Object.keys(T.slots).length) delete R.tables[w.key]; }
+  R.history = R.history.filter(h=>h.by!==d.id); saveParty(); return d;
+}
+/* what they've heard: their faction (this branch, or the shared slots), the place, the world; a blank is "nothing" */
+function repRoll(key, die){ const s = rollD(die), T = repOf().tables[key], e = T && T.slots[s], d = e ? repOf().deeds.find(x=>x.id===e.d) : null; return { key, die, s, d }; }
+function repHear(place, fid){
+  const out = [], f = fid && factionById(fid);
+  if(f){ const die = repFacDie(f), s = rollD(die), key = repFacKey(f, s, place), T = repOf().tables[key], e = T && T.slots[s];
+    out.push({ key, die, s, d:e ? repOf().deeds.find(x=>x.id===e.d) : null, label:f.name || "Their faction" }); }
+  if(place) out.push({ ...repRoll("place:" + place, repPlaceDie(place)), label:repPlaceName(place) });
+  out.push({ ...repRoll("world", 100), label:"The world" });
+  return out;
+}
+var repHeard = null;                                    // { at:"p:<id>" | "n:<place>", lines } — the last roll, shown where it was asked
+const repHeardBox = at => repHeard && repHeard.at===at ? `<div class="facfx" style="margin:4px 0 6px"><b>What they've heard</b>${repHeard.lines.map(l=>`<div class="sbl"><small class="mono">${esc(l.label)} d${l.die} ${l.s}</small> ${l.d ? esc(repDeedWords(l.d)) : "<i>nothing</i>"}</div>`).join("")}</div>` : "";
+function repAsk(at, place, fid, who){
+  const lines = repHear(place, fid); repHeard = { at, lines };
+  gameLog("rep", `What ${who} heard: ${lines.map(l=>`${l.label} d${l.die} ${l.s}: ${l.d ? repDeedWords(l.d) : "nothing"}`).join("; ")}`);
+  if(dmMode) renderPlay(); else renderInspect(); if(battleOf) renderBattlePanel(); renderPane(true);
+}
+/* a place's card: its table, and asking what they've heard here */
+function repHere(n){
+  const place = repPlaceOf(n); if(!place) return "";
+  const T = repOf().tables["place:" + place], filled = T ? Object.keys(T.slots).length : 0;
+  return `<p class="eyebrow spaced">Reputation here <small>${esc(repPlaceName(place))} · d${repPlaceDie(place)} · ${filled} slot${filled===1?"":"s"} filled · only you see this</small></p>
+    <button class="btn wide" data-heard="" data-hplace="${place}" title="Rolls this place's table and the world's">What have they heard here?</button>${repHeardBox("n:" + place)}`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-heard]"); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const pid = b.dataset.heard, place = b.dataset.hplace || null, p = pid ? libNpcById(pid) : null;
+  repAsk(pid ? "p:" + pid : "n:" + place, place, p ? p.faction : null, p ? p.name || "they" : `people at ${repPlaceName(place)}`); }, true);
+/* the Party tab's section: record a deed, the tables, ask anywhere */
+var repOpen = new Set();
+function repBlock(){
+  const R = repOf(), pcs = partyRoster(), F = lib().factions || [], now = repPlaceNow(), P = repPlaces();
+  const keys = Object.keys(R.tables).sort((a, b)=>(a==="world" ? -1 : b==="world" ? 1 : repTableLabel(a).localeCompare(repTableLabel(b))));
+  const deedOf = id => R.deeds.find(d=>d.id===id), last = R.deeds[R.deeds.length - 1];
+  const placeOpts = sel => `<option value="">No place in particular</option>${P.map(n=>`<option value="${n.id}" ${n.id===sel?"selected":""}>${esc(n.name)} (d${repPlaceDie(n.id)})</option>`).join("")}`;
+  return `<details class="partysec" data-invfor="party:rep" ${openInv.has("party:rep")?"open":""}><summary class="eyebrow">Reputation <small>what people have heard · only you see this</small></summary>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Something people would talk about: write it down. It's rolled into the tables of the place and the factions it touched, over whatever was there; a notable deed goes in twice, a legendary one three times and onto the world's table too.</p>
+    <div class="field"><label>What they did</label><input id="rep-text" type="text" placeholder="Shattered the Ashgrave chandelier and freed the dancers"></div>
+    <div class="pcrow"><div class="field" style="flex:1"><label>Who</label><select id="rep-who"><option value="party">The party</option>${pcs.map(c=>`<option value="${c.id}">${esc(c.name||"Character")}</option>`).join("")}</select></div>
+      <div class="field" style="flex:1" title="For a party deed: the one people might remember (the bigger the deed, the likelier their name goes with it)"><label>Who stood out</label><select id="rep-out"><option value="">Nobody</option>${pcs.map(c=>`<option value="${c.id}">${esc(c.name||"Character")}</option>`).join("")}</select></div></div>
+    <div class="pcrow"><div class="field" style="flex:1"><label>Fame or infamy</label><select id="rep-fame"><option value="fame">Fame</option><option value="infamy">Infamy</option></select></div>
+      <div class="field" style="flex:1"><label>How big</label><select id="rep-size">${REP_SIZES.map(([k, l, w])=>`<option value="${k}">${l} (${w}×${w===3 ? ", the world too" : ""}; the other side ${REP_PULL[w]}%)</option>`).join("")}</select></div></div>
+    <div class="field"><label>Where</label><select id="rep-place">${placeOpts(now)}</select></div>
+    ${F.length ? `<div class="field"><label>Factions it touched</label><div class="acttargets">${F.map(f=>`<label class="check" style="margin:0 8px 0 0"><input type="checkbox" class="rep-fac" value="${f.id}"> ${esc(f.name||"Faction")} <small>d${repFacDie(f)}</small></label>`).join("")}</div></div>` : ""}
+    <div class="pcrow"><button class="btn calmgo" style="flex:2" data-rep="record">Write it in</button>${last ? `<button class="btn" style="flex:1" data-rep="undo" title="${esc(repDeedWords(last))}">Take back the last one</button>` : ""}</div>
+    <p class="grouplab" style="margin:10px 0 3px">What have they heard?</p>
+    <div class="pcrow"><select id="rep-hplace" style="flex:1;min-width:0">${placeOpts(now)}</select>${F.length ? `<select id="rep-hfac" style="flex:1;min-width:0"><option value="">No faction</option>${F.map(f=>`<option value="${f.id}">${esc(f.name||"Faction")}</option>`).join("")}</select>` : ""}<button class="btn" data-rep="hear">Roll</button></div>
+    ${repHeardBox("tab")}
+    <p class="grouplab" style="margin:10px 0 3px">The tables <small>${keys.length}</small></p>
+    ${keys.length ? keys.map(k=>{ const T = R.tables[k], slots = Object.keys(T.slots).map(Number).sort((a, b)=>a - b);
+        return `<details class="pcset" data-reptab="${esc(k)}" ${repOpen.has(k) ? "open" : ""}><summary>${esc(repTableLabel(k))} <small>d${T.die} · ${slots.length} filled</small></summary>
+          ${slots.map(s=>`<div class="sbl"><small class="mono">${s}</small> ${esc(repDeedWords(deedOf(T.slots[s].d)) || "(lost)")}</div>`).join("")}
+          ${(()=>{ const H = R.history.filter(h=>h.key===k); return H.length ? `<div class="sbl"><small>Written over: ${H.map(h=>`${h.slot}, ${esc((deedOf(h.old.d)||{}).text || "a story")}`).join(" · ")}</small></div>` : ""; })()}</details>`; }).join("")
+      : `<p class="empty-note" style="margin:0 0 6px">Nothing written in yet.</p>`}
+    <div class="xprule" style="margin-top:8px">A faction's slots shared by all its branches: <input class="mono" data-rep="share" type="number" min="0" max="100" step="5" value="${Math.round(R.share * 100)}" style="width:52px"> % (the rest are each branch's own). Each faction's die is on its Library page.</div></details>`;
+}
+document.addEventListener("toggle", e=>{ const d = e.target; if(!d.dataset || d.dataset.reptab==null) return; if(d.open) repOpen.add(d.dataset.reptab); else repOpen.delete(d.dataset.reptab); }, true);
+document.addEventListener("change", e=>{ const t = e.target; if(!t.matches || !t.matches('input[data-rep="share"]')) return; repOf().share = Math.max(0, Math.min(1, (+t.value || 0) / 100)); saveParty(); renderPane(true); });
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("button[data-rep]"); if(!b) return; const a = b.dataset.rep, v = id => { const x = $(id); return x ? x.value : ""; };
+  if(a==="record"){ const text = v("#rep-text").trim(); if(!text){ flash("Say what they did first."); return; }
+    const r = repRecord({ text, who:v("#rep-who"), standout:v("#rep-out"), fame:v("#rep-fame"), size:v("#rep-size"), place:v("#rep-place"), factions:[...document.querySelectorAll(".rep-fac:checked")].map(x=>x.value) });
+    flash(`Written in: ${r.said.join("; ") || "nowhere: pick a place or a faction"}${r.deed.pull ? ` (${r.deed.pull})` : ""}.`); }
+  else if(a==="undo"){ const d = repUndo(); if(d){ gameLog("rep", `Reputation taken back: ${repDeedWords(d)}`); flash(`Taken back: ${d.text}`); } }
+  else if(a==="hear"){ const place = v("#rep-hplace") || null, fid = v("#rep-hfac") || null; repAsk("tab", place, fid, place ? `people at ${repPlaceName(place)}` : "people"); return; }
+  renderPane(true);
+});
 /* the place's own faction, for its Build panel */
 const placeFactionPick = n => (lib().factions||[]).length ? `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><select data-fac="place" data-node="${n.id}">${factionOptions(n.faction, "No faction")}</select></div>`
   : `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><p class="empty-note" style="font-size:11px;margin:0">No factions yet: make one in the Library (Factions), then pick it here.</p></div>`;

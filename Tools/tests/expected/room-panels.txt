@@ -1,4 +1,4 @@
-on the card: Mission board | Its name | Looks like | Loose threads | Who you'll meet | Battle map | Loot here | Add to this place | Hide it | Session notes
+on the card: Mission board | Its name | Looks like | Loose threads | Reputation here | Who you'll meet | Battle map | Loot here | Add to this place | Hide it | Session notes
 missing beside the map: none
 notes beside the map: And a window.
 who you'll meet: true, thread: true, board: true, loot: true

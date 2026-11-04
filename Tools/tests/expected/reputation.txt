@@ -1,0 +1,13 @@
+dice: Kalatecha d100, Cairnby d8, a town d20, the guild d12 (shared 1-9), the knives d20 (shared 1-15)
+minor: Kalatecha d100 93; Harbour Guild (every branch) d12 4 · d100 1 vs 25: Xuna Kor'larym named · The party, above all Xuna Kor'larym: Saved the harbourmaster's son (fame, minor, day 1)
+legendary: 12 writes, world 3 · d100 22 vs 100: the party too · Rin Amakiir and the party: Burned the Knives' warehouse (infamy, legendary, day 1)
+tables: Kalatecha 4, Harbour Guild (every branch) 3, Knives in Kalatecha 1, Knives (every branch) 1, Harbour Guild in Kalatecha 1, The world 3
+Cairnby: 7 of 8 filled after 12 deeds, 5 written over
+take back "One more": true, deeds 14
+heard (guild, Kalatecha): Harbour Guild d12 4: Saved the harbourmaster's son | Kalatecha d100 57: nothing | The world d100 51: nothing
+party tab: true, factions 2, tables listed 7
+by hand: The party: Won the harbour race (fame, minor, day 1) · log: Reputation: The party: Won the harbour race (fame, minor, day 1). Written in: Kalatecha d100 20; Harbour Guild in Kalatecha d12 11
+asked: What they've heard Knives d20 2 nothing Kalatecha d100 37 nothing The world d100 35 nothing
+place card: true, person button true
+asked Captain Callomay: Harbour Guild d12 8, Kalatecha d100 93, The world d100 52 · in the log true
+faction page die: true
