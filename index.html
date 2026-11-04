@@ -3274,7 +3274,8 @@ function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecha
   if(typeof rivalTick==="function" && rivalTick() && !planOf && !battleOf) setTimeout(render, 0);
   if(typeof threadCheck==="function") try{ threadCheck(); }catch(err){}                 /* a new day: loose threads that come due */
   const s = document.getElementById("timeBar"); if(s){ s.value = timeOfDay(); s.title = `The time of day, everywhere: about ${hourWord(clockHour())}`; } const d = document.getElementById("dayNum"); if(d && document.activeElement!==d) d.value = campaignDay();
-  if(typeof syncWeather==="function") try{ syncWeather(); }catch(err){} }                /* the date, and the day's weather where the party is */
+  if(typeof syncWeather==="function") try{ syncWeather(); }catch(err){}
+  if(typeof gossipCatchUp==="function") try{ gossipCatchUp(); }catch(err){} }                /* the date, the day's weather where the party is, and the gossip since */
 function wireTimeBar(){
   document.getElementById("pscreenBtn").insertAdjacentHTML("beforebegin", `<button id="upBtn" hidden></button><button id="sailBtn" hidden title="Out to the sea chart with the ship, ready to sail">⛵ Set sail</button><span class="worldclock" title="The world's clock: the campaign day and the time of day. Every place follows it (unless a place is set to always bright, dim or dark).">
     <span class="wc-lab">World</span><span class="daybar">Day <input id="dayNum" type="number" min="1" value="1" title="Days since the campaign began"></span><button id="wxChip" class="wxchip" type="button" title="The date and the weather where the party is"></button><select id="timeBar" title="The time of day, everywhere">${TIMES.map(([k,l])=>`<option value="${k}">${({ day:"☀", dim:"◐", night:"☾" })[k]} ${l}</option>`).join("")}</select><button id="timeNext" title="On to the next part of the day (night goes on to the next morning)">Next ▸</button></span>`);
@@ -19105,6 +19106,7 @@ function repHear(place, fid){
 var repHeard = null;                                    // { at:"p:<id>" | "n:<place>", lines } — the last roll, shown where it was asked
 const repHeardBox = at => repHeard && repHeard.at===at ? `<div class="facfx" style="margin:4px 0 6px"><b>What they've heard</b>${repHeard.lines.map(l=>`<div class="sbl"><small class="mono">${esc(l.label)} d${l.die} ${l.s}</small> ${l.d ? esc(repDeedWords(l.d)) : "<i>nothing</i>"}</div>`).join("")}</div>` : "";
 function repAsk(at, place, fid, who){
+  try{ gossipCatchUp(); }catch(err){}                   // what's travelled since, first
   const lines = repHear(place, fid); repHeard = { at, lines };
   gameLog("rep", `What ${who} heard: ${lines.map(l=>`${l.label} d${l.die} ${l.s}: ${l.d ? repDeedWords(l.d) : "nothing"}`).join("; ")}`);
   if(dmMode) renderPlay(); else renderInspect(); if(battleOf) renderBattlePanel(); renderPane(true);
@@ -19143,13 +19145,25 @@ function repBlock(){
     <p class="grouplab" style="margin:10px 0 3px">The tables <small>${keys.length}</small></p>
     ${keys.length ? keys.map(k=>{ const T = R.tables[k], slots = Object.keys(T.slots).map(Number).sort((a, b)=>a - b);
         return `<details class="pcset" data-reptab="${esc(k)}" ${repOpen.has(k) ? "open" : ""}><summary>${esc(repTableLabel(k))} <small>d${T.die} · ${slots.length} filled</small></summary>
-          ${slots.map(s=>`<div class="sbl"><small class="mono">${s}</small> ${esc(repDeedWords(deedOf(T.slots[s].d)) || "(lost)")}</div>`).join("")}
+          ${slots.map(s=>{ const e = T.slots[s], d = deedOf(e.d), K = d ? repKnownIn(d.id) : null;
+            return `<div class="sbl"><small class="mono">${s}</small> ${esc(repDeedWords(d) || "(lost)")}${e.from ? ` <small>· heard from ${esc(repPlaceName(e.from))}${e.sea ? ", by sea" : ""}, day ${e.day}</small>` : ""}${K ? ` <small>· known in ${K.places.length} place${K.places.length===1?"":"s"}</small>` : ""}${d && k!=="world" ? ` <button class="btn small" data-rep="world" data-d="${d.id}" title="Your call: known the world over now">To the world</button>` : ""}</div>`; }).join("")}
           ${(()=>{ const H = R.history.filter(h=>h.key===k); return H.length ? `<div class="sbl"><small>Written over: ${H.map(h=>`${h.slot}, ${esc((deedOf(h.old.d)||{}).text || "a story")}`).join(" · ")}</small></div>` : ""; })()}</details>`; }).join("")
       : `<p class="empty-note" style="margin:0 0 6px">Nothing written in yet.</p>`}
-    <div class="xprule" style="margin-top:8px">A faction's slots shared by all its branches: <input class="mono" data-rep="share" type="number" min="0" max="100" step="5" value="${Math.round(R.share * 100)}" style="width:52px"> % (the rest are each branch's own). Each faction's die is on its Library page.</div></details>`;
+    <p class="grouplab" style="margin:10px 0 3px">Gossip <small>${R.gday!=null ? `caught up to day ${R.gday}` : "starts counting when the day next moves on"} · along ${repRoutes().length} roads and sea lanes</small></p>
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">Each road carries word as often as its traffic (on the road's card): dense about weekly, busy every two weeks, normal monthly, light every two months, quiet every three. A faction's branches pass theirs twice as often, losing some on the way. It all catches up when the day moves on.</p>
+    <p class="grouplab" style="margin:6px 0 3px">Sea lanes <small>ships carry word too (and, later, garble it more)</small></p>
+    ${(R.lanes||[]).map(l=>`<div class="pcrow" style="align-items:center;margin:0 0 3px"><span style="flex:1;min-width:0">${esc(repPlaceName(l.from))} ⇄ ${esc(repPlaceName(l.to))}</span>
+        <select data-replane="${l.id}">${REP_TRAFFIC.map(([v, w])=>`<option value="${v}" ${trafficOf(l)===v?"selected":""}>${w}</option>`).join("")}</select><button class="fdel" data-rep="lanedel" data-id="${l.id}" title="Remove">×</button></div>`).join("") || `<p class="empty-note" style="margin:0 0 4px">None yet.</p>`}
+    <div class="pcrow"><select id="rep-lanea" style="flex:1;min-width:0">${placeOpts("")}</select><select id="rep-laneb" style="flex:1;min-width:0">${placeOpts("")}</select>
+      <select id="rep-lanet">${REP_TRAFFIC.map(([v, w])=>`<option value="${v}" ${v==="normal"?"selected":""}>${w}</option>`).join("")}</select><button class="btn" data-rep="lane">Add</button></div>
+    <div class="xprule" style="margin-top:8px">A faction's slots shared by all its branches: <input class="mono" data-rep="share" type="number" min="0" max="100" step="5" value="${Math.round(R.share * 100)}" style="width:52px"> % (the rest are each branch's own). Each faction's die is on its Library page.<br>
+      A story goes on the world's table by itself once it's known in <input class="mono" data-repset="worldTowns" type="number" min="1" value="${repWorldAt().towns}" style="width:46px"> places or <input class="mono" data-repset="worldRegions" type="number" min="1" value="${repWorldAt().regions}" style="width:46px"> regions (or with To the world, your call).</div></details>`;
 }
 document.addEventListener("toggle", e=>{ const d = e.target; if(!d.dataset || d.dataset.reptab==null) return; if(d.open) repOpen.add(d.dataset.reptab); else repOpen.delete(d.dataset.reptab); }, true);
-document.addEventListener("change", e=>{ const t = e.target; if(!t.matches || !t.matches('input[data-rep="share"]')) return; repOf().share = Math.max(0, Math.min(1, (+t.value || 0) / 100)); saveParty(); renderPane(true); });
+document.addEventListener("change", e=>{ const t = e.target; if(!t.matches) return;
+  if(t.matches('input[data-rep="share"]')){ repOf().share = Math.max(0, Math.min(1, (+t.value || 0) / 100)); saveParty(); renderPane(true); }
+  else if(t.matches("input[data-repset]")){ repOf()[t.dataset.repset] = Math.max(1, Math.round(+t.value || 1)); saveParty(); }
+  else if(t.matches("select[data-replane]")){ const R = repOf(), l = (R.lanes||[]).find(x=>x.id===t.dataset.replane); if(l){ l.traffic = t.value; if(R.clock){ delete R.clock["l:" + l.id]; delete R.clock["fl:" + l.id]; } saveParty(); } } });
 document.addEventListener("click", e=>{
   const b = e.target.closest && e.target.closest("button[data-rep]"); if(!b) return; const a = b.dataset.rep, v = id => { const x = $(id); return x ? x.value : ""; };
   if(a==="record"){ const text = v("#rep-text").trim(); if(!text){ flash("Say what they did first."); return; }
@@ -19157,8 +19171,99 @@ document.addEventListener("click", e=>{
     flash(`Written in: ${r.said.join("; ") || "nowhere: pick a place or a faction"}${r.deed.pull ? ` (${r.deed.pull})` : ""}.`); }
   else if(a==="undo"){ const d = repUndo(); if(d){ gameLog("rep", `Reputation taken back: ${repDeedWords(d)}`); flash(`Taken back: ${d.text}`); } }
   else if(a==="hear"){ const place = v("#rep-hplace") || null, fid = v("#rep-hfac") || null; repAsk("tab", place, fid, place ? `people at ${repPlaceName(place)}` : "people"); return; }
+  else if(a==="world"){ if(!repToWorld(b.dataset.d, "your call")) flash("It's on the world's table already."); else saveParty(); }
+  else if(a==="lane"){ const A = v("#rep-lanea"), B = v("#rep-laneb"); if(!A || !B || A===B){ flash("Pick two different places."); return; }
+    const R = repOf(); (R.lanes = R.lanes || []).push({ id:uid("ln"), from:A, to:B, traffic:v("#rep-lanet") || "normal" }); saveParty(); }
+  else if(a==="lanedel"){ const R = repOf(); R.lanes = (R.lanes||[]).filter(l=>l.id!==b.dataset.id); saveParty(); }
   renderPane(true);
 });
+/* ── REPUTATION, STAGE 2: GOSSIP (Joseph, 2026-11-04). Stories travel along the survey's roads and sea lanes
+   (root.rep.lanes: { id, from, to, traffic }, between any two places). Each route has its own clock by its traffic
+   (r.traffic, else from its density): dense about every week, busy two weeks, normal a month, light two months, quiet
+   three months (each gap ±25%). When it comes round, from each end one of the stories told there (picked among the filled slots,
+   as Gearing has "individual entries permeate outwards") crosses to the other end, rolled into a slot there over what was (history kept). By sea it's marked (stage 3 garbles those more).
+   A faction's branches in the two places pass their own slots twice as often, losing some on the way. A story known in
+   enough places (5) or regions (2) goes onto the world's table by itself, or when the DM says so. It all catches up
+   when the day moves on (root.rep.gday: the day last caught up; root.rep.clock: each route's next day) ── */
+const REP_TRAFFIC = [["dense","Dense",7],["busy","Busy",14],["normal","Normal",30],["light","Light",60],["quiet","Quiet",90]];
+const trafficOf = r => (r && r.traffic) || (r && r.density==="dense" ? "dense" : r && r.density==="quiet" ? "quiet" : "normal");
+const trafficDays = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[2];
+const trafficWord = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[1];
+const REP_FAC_FASTER = 2, REP_FAC_LOSS = 15;
+const repWorldAt = () => { const R = repOf(); return { towns:+R.worldTowns || 5, regions:+R.worldRegions || 2 }; };
+function repRoutes(){
+  const ids = new Set((root.nodes||[]).map(n=>n.id)), out = [];
+  for(const r of root.roads||[]) if(ids.has(r.from) && ids.has(r.to)) out.push({ id:"r:" + r.id, a:r.from, b:r.to, days:trafficDays(trafficOf(r)), sea:false });
+  for(const l of repOf().lanes || []) if(ids.has(l.from) && ids.has(l.to)) out.push({ id:"l:" + l.id, a:l.from, b:l.to, days:trafficDays(l.traffic), sea:true });
+  return out;
+}
+const repGap = days => Math.max(1, Math.round(days * (0.75 + Math.random() * 0.5)));
+/* a faction is in a place: the place is its own, or someone there (on the survey or inside its plan) belongs to it */
+function repFacHere(f, place){
+  const n = repNode(place); if(!n) return false;
+  const inIt = m => m.faction===f.id || (m.npcs||[]).some(id=>(libNpcById(id)||{}).faction===f.id);
+  return inIt(n) || ((plans[place] || {}).nodes || []).some(inIt);
+}
+function repWriteIn(key, die, slot, val, by, why){
+  const R = repOf(), T = R.tables[key] = R.tables[key] || { die, slots:{} }, prev = T.slots[slot] || null;
+  if(prev && prev.d===val.d) return false;                                  // they've heard it already
+  T.die = die; T.slots[slot] = val; if(prev) R.history.push({ key, slot, old:prev, by:val.d, day:campaignDay(), why });
+  return true;
+}
+/* one crossing of a route, both ways */
+function repCross(rt, day, moved){
+  const R = repOf();
+  for(const [s, t] of [[rt.a, rt.b], [rt.b, rt.a]]){
+    const T = R.tables["place:" + s], told = T ? Object.keys(T.slots) : []; if(!told.length) continue;
+    const roll = told[Math.floor(Math.random() * told.length)], e = T.slots[roll];          // one of the stories told there (one written in twice, twice as likely)
+    const die = repPlaceDie(t), slot = rollD(die), val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}) };
+    if(repWriteIn("place:" + t, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, from:s, to:t, sea:rt.sea, day, how:`${repPlaceName(s)} ${roll} → ${repPlaceName(t)} d${die} ${slot}` });
+  }
+}
+function repFacCross(rt, day, moved){
+  for(const f of lib().factions || []){
+    for(const [s, t] of [[rt.a, rt.b], [rt.b, rt.a]]){
+      const src = repOf().tables[`fac:${f.id}@${s}`]; if(!src || !repFacHere(f, t)) continue;
+      const die = repFacDie(f), sh = repShared(f), told = Object.keys(src.slots).filter(k=>+k > sh); if(!told.length) continue;     // the branch's own stories (its shared ones every branch knows already)
+      const roll = told[Math.floor(Math.random() * told.length)], e = src.slots[roll];
+      const lost = rollD(100); if(lost <= REP_FAC_LOSS){ moved.push({ d:e.d, lost:true, fac:f.id, from:s, to:t, day, how:`${f.name}: lost on the way (d100 ${lost})` }); continue; }
+      const slot = sh + rollD(die - sh), val = { d:e.d, hop:(e.hop||0) + 1, from:s, day, ...(e.sea || rt.sea ? { sea:true } : {}) };
+      if(repWriteIn(`fac:${f.id}@${t}`, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, fac:f.id, from:s, to:t, day, how:`${f.name} in ${repPlaceName(s)} ${roll} → in ${repPlaceName(t)} ${slot}` });
+    }
+  }
+}
+/* where a story is known: the places whose tables have it, and their regions */
+function repKnownIn(did){
+  const places = Object.entries(repOf().tables).filter(([k, T])=>k.startsWith("place:") && Object.values(T.slots).some(e=>e.d===did)).map(([k])=>k.slice(6));
+  return { places, regions:[...new Set(places.map(p=>(repNode(p)||{}).region).filter(Boolean))] };
+}
+function repToWorld(did, why){
+  const R = repOf(); if(R.tables.world && Object.values(R.tables.world.slots).some(e=>e.d===did)) return false;
+  const s = rollD(100); repWriteIn("world", 100, s, { d:did, day:campaignDay() }, did, why); const d = R.deeds.find(x=>x.id===did);
+  gameLog("rep", `Known the world over now (${why}): ${d ? d.text : "a story"} (the world d100 ${s})`); return true;
+}
+/* the day moved on: every route's crossings since, in turn */
+function gossipCatchUp(){
+  if(typeof root==="undefined" || !root || !root.rep || location.hash==="#player") return;
+  const R = repOf(), now = campaignDay();
+  if(R.gday==null || now < R.gday){ R.gday = now; return; }                  // it starts counting from here (and never runs backwards)
+  if(now===R.gday) return;
+  const moved = []; R.clock = R.clock || {};
+  for(const rt of repRoutes()){
+    for(const [key, days, fn] of [[rt.id, rt.days, repCross], ["f" + rt.id, Math.max(1, Math.round(rt.days / REP_FAC_FASTER)), repFacCross]]){
+      let next = R.clock[key]; if(next==null) next = R.gday + repGap(days);
+      while(next <= now){ fn(rt, next, moved); next += repGap(days); }
+      R.clock[key] = next; } }
+  const from = R.gday; R.gday = now;
+  const W = repWorldAt(), up = [];
+  for(const did of new Set(moved.filter(m=>!m.lost).map(m=>m.d))){ const K = repKnownIn(did);
+    if((K.places.length >= W.towns || K.regions.length >= W.regions) && repToWorld(did, `known in ${K.places.length} places, ${K.regions.length} regions`)) up.push(did); }
+  if(moved.length){
+    const deedOf = id => (R.deeds.find(x=>x.id===id) || {}).text || "a story";
+    gameLog("rep", `Gossip, days ${from + 1}–${now}: ${moved.map(m=>`${m.lost ? "" : m.sea ? "by sea, " : ""}"${deedOf(m.d)}" ${m.how}`).join("; ")}`);
+    saveParty(); }
+  return { moved, up };
+}
 /* the place's own faction, for its Build panel */
 const placeFactionPick = n => (lib().factions||[]).length ? `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><select data-fac="place" data-node="${n.id}">${factionOptions(n.faction, "No faction")}</select></div>`
   : `<div class="field" style="margin:6px 0"><label>Belongs to <small>a faction</small></label><p class="empty-note" style="font-size:11px;margin:0">No factions yet: make one in the Library (Factions), then pick it here.</p></div>`;
@@ -21472,7 +21577,8 @@ function renderInspectInner(){
         <div class="field"><label>Road quality <small>${q}: ${roadGrade(q)}</small></label><input id="r-quality" type="range" min="1" max="10" value="${q}" title="A table rule: 8–10 a good road (one step faster than the land allows, 2024), 4–7 the land's own limit, 1–3 a poor path (one step slower). Every 2 points take 1 off the Navigation DC, never under 5"></div>
         <p class="empty-note" style="font-size:11.5px;margin:-4px 0 8px">${q >= 8 ? "A good road: one step faster than the land allows" : q >= 4 ? "An ordinary road: the land's own pace" : "A poor path: one step slower than the land allows"}; the Navigation DC drops by ${Math.floor(q/2)} (never under 5); encounters ${q >= 8 ? "half as likely" : q >= 4 ? "as usual" : "half again as likely"}.</p>
         <div class="field"><label>Danger <small>chance of an encounter on the road</small></label><select id="r-danger">${ROAD_DANGER.map(([k, l])=>`<option value="${k}" ${(r.danger||"")===k?"selected":""}>${l}</option>`).join("")}</select></div>
-        <label class="check"><input id="r-coach" type="checkbox" ${r.coach?"checked":""}> Coaches run this road</label>`, true)}
+        <label class="check"><input id="r-coach" type="checkbox" ${r.coach?"checked":""}> Coaches run this road</label>
+        <div class="field" style="margin-top:6px"><label>Traffic <small>how often word passes along it (reputation)</small></label><select id="r-traffic">${REP_TRAFFIC.map(([k, l, d])=>`<option value="${k}" ${trafficOf(r)===k?"selected":""}>${l}: about every ${d < 30 ? `${d / 7} week${d > 7 ? "s" : ""}` : `${d / 30} month${d > 30 ? "s" : ""}`}</option>`).join("")}</select></div>`, true)}
       ${planOf ? "" : csec("road:enc", "Encounters on this road", encs.length ? encs.map(e=>(lib().encounters.find(x=>x.id===e.enc)||{}).name || "an encounter").join(", ") : "none", roadEncBlock(r, a), true)}
       ${planOf ? "" : csec("road:screen", "On the players' screen", shown, a && b && (a.hidden || b.hidden) ? (()=>{ const rv = r.reveal || {}, sh = a.hidden ? b : a, nm = x => esc(x.name||KINDS[x.kind].label);
         return `<div class="row2" ${a.hidden && b.hidden ? "hidden" : ""}><input id="r-rvmi" class="mono" type="number" step="0.5" min="0" value="${rv.miles||""}" placeholder="0">
@@ -21492,6 +21598,7 @@ function renderInspectInner(){
       touch(); renderInspect();
     };
     if($("#r-coach")) $("#r-coach").onchange = e=>{ r.coach=e.target.checked; touch(); };
+    if($("#r-traffic")) $("#r-traffic").onchange = e=>{ r.traffic = e.target.value; const C = (root.rep||{}).clock; if(C){ delete C["r:" + r.id]; delete C["fr:" + r.id]; } touch(); };     // its gossip clock starts again at the new pace
     if($("#r-quality")){ $("#r-quality").oninput = e=>{ const v = Math.round(+e.target.value); if(v>=1 && v<=10){ r.quality = v; touch(); } }; $("#r-quality").onchange = ()=>renderInspect(); }
     if($("#r-danger")) $("#r-danger").onchange = e=>{ if(e.target.value) r.danger = e.target.value; else delete r.danger; touch(); renderInspect(); };
     wireRoadEncs(r);

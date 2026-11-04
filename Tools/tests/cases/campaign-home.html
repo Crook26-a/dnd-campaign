@@ -23,7 +23,7 @@
   /* both changed: keep this browser's */
   const o2 = cur(); o2.title = 'Folder side'; o2.savedAt = new Date(Date.now() + 120000).toISOString(); D.tree['Current save.json'].file = JSON.stringify(o2);
   root.title = 'Browser side'; markDirty(K_SURVEY); clearTimeout(homeTimer);
-  window.__answer = false; out.push('both changed, keep ours: ' + await homeSync(D) + ' · asked "' + asked.pop() + '" · folder now ' + cur().title + ' · the folder\'s other copy in Saves ' + Object.keys((D.tree.Saves||{}).tree||{}).some(k=>/Current save \(replaced\)/.test(k)));
+  window.__answer = false; out.push('both changed, keep ours: ' + await homeSync(D) + ' · asked "' + asked.pop().replace(/save from .*? and this/, 'save from (a time), and this') + '" · folder now ' + cur().title + ' · the folder\'s other copy in Saves ' + Object.keys((D.tree.Saves||{}).tree||{}).some(k=>/Current save \(replaced\)/.test(k)));
   /* both changed: use the folder's */
   const o3 = cur(); o3.title = 'Folder wins'; o3.savedAt = new Date(Date.now() + 180000).toISOString(); D.tree['Current save.json'].file = JSON.stringify(o3);
   root.title = 'Browser again'; markDirty(K_SURVEY); clearTimeout(homeTimer);
