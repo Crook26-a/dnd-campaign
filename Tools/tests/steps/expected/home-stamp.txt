@@ -1,0 +1,1 @@
+1. a save carrying a stamp loads without it; writing puts the stamp last: in the campaign: false | the file ends with its stamp: true | read back: true | page errors 0

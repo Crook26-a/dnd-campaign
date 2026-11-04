@@ -23072,7 +23072,7 @@ function loadJSONNow(text){
   if(!d||!Array.isArray(d.nodes)||!Array.isArray(d.roads)){ flash("No nodes and roads in that file."); return; }
   leavePlan();                     // never load in on top of a plan
   /* anything else the file carries (the square-names setting, which build it came from…) comes along too */
-  const { plans:_p, files:_f, builder:_b, ...extra } = d;
+  const { plans:_p, files:_f, builder:_b, savedAt:_sa, ...extra } = d;      // savedAt is the folder copy's own stamp, not the campaign's
   /* a map straight from the builder: remember it whole, so a later build can be merged in without losing play */
   if(d.builder){ extra.build = d.builder; rememberBase(text); }
   setRoot({ ...extra, format:"ordinate-survey-v1", title:d.title||"Untitled survey", ppm:d.ppm||10, compass:d.compass||8,
@@ -23290,8 +23290,8 @@ async function homeWrite(quiet){
   const dir = await campFolder(false); if(!dir) return false;
   try{
     await pump().catch(()=>{});
-    const at = new Date().toISOString(), bundle = exportBundle(), files = await filesForExport(); if(Object.keys(files).length) bundle.files = files;
-    bundle.savedAt = at;                                   // last, so it can be read off the end of the file
+    const at = new Date().toISOString(), bundle = exportBundle(), files = await filesForExport(); delete bundle.savedAt; if(Object.keys(files).length) bundle.files = files;
+    bundle.savedAt = at;                                   // last, so it can be read off the end of the file (deleted first: one carried in would stay in the middle)
     const w = await (await dir.getFileHandle(HOME_FILE, { create:true })).createWritable(); await w.write(JSON.stringify(bundle)); await w.close();
     await homeMeta(dir);
     await idbPutRaw("home:at", { at }); await idbPutRaw("home:dirty", false); homeDirty = false; homeAt = at; homeState = "connected";
@@ -23302,7 +23302,8 @@ async function homeWrite(quiet){
 }
 async function homeRead(dir){
   try{ const f = await (await dir.getFileHandle(HOME_FILE)).getFile(), text = await f.text(), m = /"savedAt":"([^"]+)"\s*\}\s*$/.exec(text.slice(-200));
-    return { text, at:m ? m[1] : new Date(f.lastModified).toISOString() }; }catch(err){ return null; }
+    let at = m ? m[1] : ""; if(!at){ try{ at = JSON.parse(text).savedAt || ""; }catch(err){} }      // not at the end (an older file): read it all
+    return { text, at:at || new Date(f.lastModified).toISOString() }; }catch(err){ return null; }
 }
 async function homeLoad(file){
   loadJSONNow(file.text); clearTimeout(homeTimer); await pump().catch(()=>{});
