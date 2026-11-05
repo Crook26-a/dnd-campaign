@@ -7,7 +7,7 @@ const fdPane = () => (document.querySelector('[data-invfor="party:fleet"]') || {
 const fdMap = () => { if (!battleOf) return "no map open"; const n = (battleOf.doc.nodes || []).find(x => x.id === battleOf.nodeId), m = bmapOf(n); return `${n.name} (${battleOf.doc.title || "the survey"}):${m.name} ${m.w}x${m.h}, ${((n.site || {}).combat || {}).list ? n.site.combat.list.length : 0} in the fight list`; };
 step("ten days on from the day box: where the ships are, on the chart and in the Party tab", async () => {
   loadJSONNow(JSON.stringify(FIX.kal)); await wait(300); setDmMode(true); await wait(60); delete root.fleet; seaLanesFromMap(); fleetRoll(); render(); await wait(30);
-  pane = "party"; syncTabs(); renderPane(true); const sec = document.querySelector('details[data-invfor="party:fleet"]'); if (sec) sec.open = true; await wait(30);
+  pane = "background"; syncTabs(); renderPane(true); const sec = document.querySelector('details[data-invfor="party:fleet"]'); if (sec) sec.open = true; await wait(30);
   const chart0 = fdShips(), pane0 = fdPane(), legs0 = root.fleet.filter(s => s.leg).length;
   const dn = document.getElementById("dayNum"); dn.value = String(campaignDay() + 10); dn.dispatchEvent(new Event("change")); await wait(60);
   const chart1 = fdShips(), pane1 = fdPane(), legs1 = root.fleet.filter(s => s.leg).length;

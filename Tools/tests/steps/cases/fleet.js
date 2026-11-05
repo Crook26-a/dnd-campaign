@@ -27,9 +27,9 @@ step("a fleet of 18: the mix, the routes, the pirate's hideout", async () => {
 step("sixty days pass: they sail, call at ports, carry word", async () => {
   repRecord({ text: "Raised the drowned bell", who: "party", fame: "fame", size: "notable", place: (root.nodes.find(q => q.name === "Kalatecha") || {}).id });
   const d0 = campaignDay(); root.fday = d0; repOf().gday = d0; root.day = d0 + 60; syncTimeBar(); await wait(20);
-  const F = root.fleet, moved = root.gameLog.filter(l => /^Ships at sea/.test(l.text)), carried = (moved[0] || { text: "" }).text.match(/aboard [^,]+/g) || [];
+  const F = root.fleet, B = bgLogList(), moved = B.filter(l => l.kind === "ship"), carried = B.filter(l => /^By ship/.test(l.text)), inGame = root.gameLog.filter(l => /^Ships at sea/.test(l.text)).length;
   expect(__KIT.errors.length === 0, "no page errors", __KIT.errors);
-  return `in port ${F.filter(s => s.at && !s.leg).length}, at sea ${F.filter(s => s.leg).length}, lying in wait ${F.filter(s => !s.at && !s.leg).length} | log lines ${moved.length} | word carried by ship ${carried.length} | the pirate: ${(F.find(s => s.kind === "pirate").leg ? "at sea" : F.find(s => s.kind === "pirate").at ? "in port" : "lying in wait")}`;
+  return `in port ${F.filter(s => s.at && !s.leg).length}, at sea ${F.filter(s => s.leg).length}, lying in wait ${F.filter(s => !s.at && !s.leg).length} | the Background log: ${moved.length} sailings and arrivals, ${B.filter(l => l.kind === "trade").length} trades (the game log: ${inGame}) | word carried by ship ${carried.length} | the pirate: ${(F.find(s => s.kind === "pirate").leg ? "at sea" : F.find(s => s.kind === "pirate").at ? "in port" : "lying in wait")}`;
 });
 step("the charts: lanes and ships on yours; on the players' only what's within 10 miles; an encounter offered", async () => {
   render(); await wait(30); const dm = (document.querySelector("#gChart") || {}).innerHTML || "";

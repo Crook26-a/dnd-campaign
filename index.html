@@ -1334,6 +1334,7 @@
         <button data-pane="ledger">Ledger</button>
         <button data-pane="regions">Regions</button>
         <button data-pane="party">Party</button>
+        <button data-pane="background">Background</button>
         <button data-pane="where">Where</button>
         <button data-pane="notes">Notes</button>
         <button data-pane="session">Session</button>
@@ -1352,6 +1353,7 @@
       <div class="pane" id="pane-docs" hidden></div>
       <div class="pane" id="pane-library" hidden></div>
       <div class="pane" id="pane-roll" hidden></div>
+      <div class="pane" id="pane-background" hidden></div>
       <div class="pane" id="pane-data" hidden></div>
       <div class="tsplit" id="tr-split" data-tsplit="right" title="Drag to size the card and the Action box"></div>
       <div class="pane" id="actionbox"></div>
@@ -3304,7 +3306,7 @@ function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecha
   if(typeof fleetCatchUp==="function") try{ const r = fleetCatchUp(), t = Array.isArray(root.fleet) && root.fleet.length ? fleetT() : null;
     if(t!=null && t!==fleetDrawnAt){ fleetDrawnAt = t;
       setTimeout(()=>{ if(!battleOf) render(); renderPane(true);
-        if(r && r.said.length) flash(`Day ${campaignDay()}: ${r.said.length} sailing${r.said.length===1?"":"s"} at sea since (the log has where they went).`); }, 0); } }catch(err){}
+        if(r && r.said.length && !dayPlaying) flash(`Day ${campaignDay()}: ${r.said.length} sailing${r.said.length===1?"":"s"} at sea since (the Background tab has where they went).`); }, 0); } }catch(err){}
   if(typeof gossipCatchUp==="function") try{ gossipCatchUp(); }catch(err){} }                /* the date, the day's weather where the party is, and the gossip since */
 function wireTimeBar(){
   document.getElementById("pscreenBtn").insertAdjacentHTML("beforebegin", `<button id="upBtn" hidden></button><button id="sailBtn" hidden title="Out to the sea chart with the ship, ready to sail">⛵ Set sail</button><span class="worldclock" title="The world's clock: the campaign day and the time of day. Every place follows it (unless a place is set to always bright, dim or dark).">
@@ -7366,7 +7368,7 @@ function syncTabs(){
     for(const p of PANES) $("#pane-"+p).hidden = !(p==="inspect" || p==="session" || p===drawerPane);
     return;
   }
-  for(const p of ["inspect","ledger","regions","party","where","notes","session","docs","library","roll","data"]) $("#pane-"+p).hidden = (p!==pane);
+  for(const p of ["inspect","ledger","regions","party","background","where","notes","session","docs","library","roll","data"]) $("#pane-"+p).hidden = (p!==pane);
 }
 /* ── the side panel stays put: only a pane scrolls, never the page or the frames around it ── */
 /* bring something into view by scrolling its pane alone (the browser's scrollIntoView also shifts the fixed frames) */
@@ -7398,6 +7400,7 @@ function renderPane(force){
   else if(pane==="ledger") renderLedger();
   else if(pane==="regions") renderRegions();
   else if(pane==="party") renderParty();
+  else if(pane==="background") renderBackground();
   else if(pane==="where") renderWhere();
   else if(pane==="library") renderLibrary();
   else if(pane==="roll") renderRoll();
@@ -8753,7 +8756,6 @@ function renderParty(){
     ${addCompanionBlock(pcs)}
 
     ${repBlock()}
-    ${fleetBlock()}
     ${leaderBlock()}
     ${awardsBlock()}
     ${xpRulesBlock()}
@@ -19756,7 +19758,7 @@ function fleetRoll(){
   for(const s of out) fleetCrewRoll(s);                                   // and a crew for every ship that has rules for one
   for(const s of out) tradeCall(s, repNode(s.home), D);                   // and her first cargo, from her home port
   saveParty();
-  gameLog("note", `A fleet of ${out.length} ships put to sea: ${out.map(s=>`${s.name} (${FLEET_KINDS[s.kind][0].toLowerCase()}, ${repPlaceName(s.home)})`).join(", ")}`);
+  bgLog("fleet", `A fleet of ${out.length} ships put to sea: ${out.map(s=>`${s.name} (${FLEET_KINDS[s.kind][0].toLowerCase()}, ${repPlaceName(s.home)})`).join(", ")}`);
   return out.length;
 }
 /* where a ship goes next */
@@ -19833,16 +19835,18 @@ function fleetCatchUp(){
     for(let guard = 0; guard < 400; guard++){
       if(s.leg){ if(s.leg.arrive > now) break;
         const L = s.leg; delete s.leg;
-        if(L.lurk){ s.at = null; s.pos = { x:L.lurk.x, y:L.lurk.y }; s.stay = L.arrive + L.wait; said.push(`${s.name} lies in wait on the lanes`); continue; }
+        if(L.lurk){ s.at = null; s.pos = { x:L.lurk.x, y:L.lurk.y }; s.stay = L.arrive + L.wait; said.push(`${s.name} lies in wait on the lanes`); bgLog("ship", `${s.name} lies in wait on the lanes till day ${s.stay}`, L.arrive); continue; }
         s.at = L.to; delete s.pos; s.stay = L.arrive + 1 + rollD(3);
-        const port = repNode(s.at); if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); if(port) tradeCall(s, port, L.arrive); continue; }
+        const port = repNode(s.at); bgLog("ship", `${s.name} comes into ${repPlaceName(s.at)}, staying till day ${s.stay}`, L.arrive);
+        if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); if(port) tradeCall(s, port, L.arrive); continue; }
       if((s.stay || 0) > now) break;
       const go = fleetNext(s); if(!go){ s.stay = now + rollD(6); break; }
       const leg = fleetLeg(s, go, s.stay || now); if(!leg){ s.stay = now + rollD(6); break; }
-      s.leg = leg; said.push(`${s.name} sails${s.at ? ` from ${repPlaceName(s.at)}` : ""}${leg.to ? ` for ${repPlaceName(leg.to)}` : ""} (${leg.miles} mi, day ${leg.arrive})`);
+      s.leg = leg; const line = `${s.name} sails${s.at ? ` from ${repPlaceName(s.at)}` : ""}${leg.to ? ` for ${repPlaceName(leg.to)}` : " to lie in wait on the lanes"} (${leg.miles} mi, arriving day ${leg.arrive})`;
+      said.push(line); bgLog("ship", line, leg.left);
     } }
-  const from = root.fday; root.fday = now;
-  if(said.length || moved.length) gameLog("sail", `Ships at sea, days ${from + 1}–${now}: ${said.slice(0, 30).join("; ")}${said.length > 30 ? `; and ${said.length - 30} more` : ""}${moved.length ? `. Word they carried: ${moved.map(m=>`"${(repOf().deeds.find(x=>x.id===m.d)||{}).text || "a story"}" ${m.how}`).join("; ")}` : ""}`);
+  root.fday = now;                                                       // all of it in the Background tab's log, each on its day
+  for(const m of moved) bgLog("gossip", `By ship: "${(repOf().deeds.find(x=>x.id===m.d)||{}).text || "a story"}" ${m.how}`, m.day);
   saveParty(); return { moved, said };
 }
 const fleetT = () => campaignDay() + (+root.hour || 0) / 24;
@@ -19898,13 +19902,13 @@ function fleetCard(id){
   pop.innerHTML = `<p style="margin:0 0 4px"><b>${esc(s.name)}</b>, ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))} <small>(${esc(FLEET_SIZES[fleetSizeOf(s)][0].toLowerCase())})</small></p>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${esc(where)}. ${s.mode==="route" ? `Her route: ${(s.route||[]).map(x=>esc(repPlaceName(x))).join(" → ")}.` : s.mode==="pirate" ? "She goes her own way." : "She goes where she likes."}</p>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${cap ? `Captain ${esc(cap.name)}; ` : ""}${ppl.length ? `${ppl.length} aboard` : "no crew rolled"}${(s.pass||[]).length ? `, and ${s.pass.length} passengers` : ""}.${TRADE_SHIPS.has(s.kind) || s.kind==="pirate" ? ` Hold: ${hold || "empty"} (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads).` : ""}${magic.length ? ` Hidden aboard: ${magic.join(", ")}.` : ""}</p>
-    <div class="pcrow"><button class="btn" data-fleetcard="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her decks for a fight">Go aboard</button><button class="btn" data-fleetcard="party" data-id="${s.id}" title="Her entry with the rest of the fleet: rename her, her home, a new crew">In the Party tab</button><button class="btn" data-fleetcard="close">Close</button></div>`;
+    <div class="pcrow"><button class="btn" data-fleetcard="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her decks for a fight">Go aboard</button><button class="btn" data-fleetcard="party" data-id="${s.id}" title="Her entry with the rest of the fleet: rename her, her home, a new crew">In the Background tab</button><button class="btn" data-fleetcard="close">Close</button></div>`;
   pop.hidden = false;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fleetcard]"); if(!b) return;
   const pop = $("#fleetPop"), a = b.dataset.fleetcard, s = fleetOf().find(x=>x.id===b.dataset.id); delete pop.dataset.card; pop.hidden = true;
   if(a==="aboard" && s) fleetGoAboard(s);
-  else if(a==="party"){ openInv.add("party:fleet"); pane = "party"; syncTabs(); renderPane(true); } });
+  else if(a==="party"){ openInv.add("party:fleet"); if(tableOn() || buildOn()) openDrawer("background"); else { pane = "background"; syncTabs(); renderPane(true); } } });
 /* ── cargo and trade (Joseph, 2026-11-04): every place makes 4 trade goods and wants 4 others. A good's price there is
    its base × 0.8 if it's made there, × 1.25 if it's wanted, × 2^-glut, held between half and double. The glut goes up
    by loads ÷ the market's depth (a city 60, a town 30, a village 12) as cargo is unloaded, down as it's bought, and back
@@ -19983,7 +19987,7 @@ function tradeCall(s, port, day){
     if(!best) break;
     const at = tradeBuyAt(id, best.g, best.n, day); tradeBump(id, best.g, -best.n, day); C[best.g] = { n:best.n, paid:at, from:id }; free -= best.n;
     did.push(`bought ${best.n} ${tradeGoodName(best.g).toLowerCase()} at ${at} gp`); }
-  if(did.length) s.trades = [...(s.trades||[]), { day, at:id, did }].slice(-4);
+  if(did.length){ s.trades = [...(s.trades||[]), { day, at:id, did }].slice(-4); bgLog("trade", `${s.name} at ${port.name}: ${did.join(", ")}`, day); }
 }
 /* a place's card (only the DM's): its prices, what it makes and wants, and the party's trading */
 function tradeHere(n){
@@ -20282,7 +20286,7 @@ function fleetAdd(o){
   if(mode==="route"){ const r = [home.id]; let at = home.id; for(let i = 0; i < 3; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !(FLEET_HONEST.has(kind) && fleetReef(id))); if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); } s.route = r; }
   fleetOf().push(s); if(root.fday==null) root.fday = campaignDay();
   const crew = fleetCrewRoll(s, o.crew===""||o.crew==null ? null : +o.crew); tradeCall(s, home, campaignDay());
-  gameLog("note", `A ship put to sea: ${s.name}, a ${(FLEET_KINDS[kind])[0].toLowerCase()} out of ${home.name}${crew ? `, ${crew} aboard` : ""}`);
+  bgLog("fleet", `A ship put to sea: ${s.name}, a ${(FLEET_KINDS[kind])[0].toLowerCase()} out of ${home.name}${crew ? `, ${crew} aboard` : ""}`);
   saveParty(); return s;
 }
 /* the Party tab's section: the lanes from the map, the fleet rolled, every ship and where she is */
@@ -20315,6 +20319,76 @@ function fleetBlock(){
       ${TRADE_SHIPS.has(s.kind) || s.kind==="pirate" ? `<div class="sbl"><small>Hold (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads):</small> ${Object.entries(s.cargo||{}).map(([g, c])=>`${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(${c.from==="plunder" ? "plunder" : `${c.paid} gp, from ${esc(repPlaceName(c.from))}`})</small>`).join(", ") || "<i>empty</i>"}${(s.magic||[]).length || (s.magicNote||[]).length ? ` · <small>hidden aboard:</small> ${[...(s.magic||[]).map(libLootById).filter(Boolean).map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)].join(", ")}` : ""}${s.gain ? ` · made ${Math.round(s.gain)} gp so far` : ""}${(s.trades||[]).length ? `<br><small>Last in port:</small> ${(t=>`day ${t.day} at ${esc(repPlaceName(t.at))}, ${esc(t.did.join(", "))}`)(s.trades[s.trades.length - 1])}` : ""}</div>` : ""}
       <div class="pcrow" style="margin-top:2px"><button class="btn small" data-fleetact="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her deck for a fight">Go aboard</button>${FLEET_CREW[s.kind] ? `<button class="btn small" data-fleetact="crew" data-id="${s.id}" title="A new crew for her (the old one leaves the Library)">Roll a new crew</button>` : ""}</div></div>`).join("")}</details>`;
 }
+/* ══════════════════════════════════════════════════════════════
+   THE BACKGROUND (Joseph, 2026-11-05): what goes on in the world whether or not the party is there. Its own log (ships
+   sailing, coming in and trading, gossip crossing roads and seas, a story reaching the whole world; root.bgLog, each
+   line on its own day), the ships at sea (moved here from the Party tab), and the economics: the best runs to be had,
+   the gluts and the shortages, and every market's prices at a glance
+   ══════════════════════════════════════════════════════════════ */
+const BGLOG_MAX = 3000;
+const BGLOG_KIND = { ship:"Ships", trade:"Trade", gossip:"Gossip", world:"The world", fleet:"The fleet" };
+const bgLogList = () => root ? (Array.isArray(root.bgLog) ? root.bgLog : (root.bgLog = [])) : [];
+function bgLog(kind, text, day){
+  if(!root || !text) return; const L = bgLogList();
+  L.push({ id:uid("bg"), day:day==null ? campaignDay() : day, kind, text:String(text).trim().replace(/\.$/, "") });
+  if(L.length > BGLOG_MAX) L.splice(0, L.length - BGLOG_MAX);
+}
+var bgFilter = "", bgShow = 150, bgFirst = true;
+function bgLogBlock(){
+  const L = bgLogList().map((e, i)=>({ ...e, i })).filter(e=>!bgFilter || e.kind===bgFilter).sort((a, b)=>b.day - a.day || b.i - a.i), shown = L.slice(0, bgShow);
+  let day = null, rows = "";
+  for(const e of shown){ if(e.day!==day){ day = e.day; rows += `<div class="glsess">Day ${e.day}</div>`; }
+    rows += `<div class="glrow"><span class="glk">${esc(BGLOG_KIND[e.kind] || e.kind)}</span><span class="gltx">${esc(e.text)}</span></div>`; }
+  return `<details class="partysec" data-invfor="bg:log" ${openInv.has("bg:log") ? "open" : ""}><summary class="eyebrow">The log <small>${bgLogList().length} entr${bgLogList().length===1?"y":"ies"} · only you see this</small></summary>
+    <div class="pcrow" style="align-items:center"><select id="bg-filter" style="flex:1"><option value="">Everything</option>${Object.entries(BGLOG_KIND).map(([k, l])=>`<option value="${k}" ${bgFilter===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    ${rows || `<p class="empty-note" style="font-size:11px;margin:4px 0">Nothing yet. It fills in as the days go by: ships sailing and trading, gossip on the roads and the seas.</p>`}
+    ${L.length > bgShow ? `<button class="btn wide" data-bgmore="1" style="margin-top:4px">Show more (${L.length - bgShow} older)</button>` : ""}</details>`;
+}
+/* the economics: a price's pull from usual (log2: −1 half, +1 double), as a colour from blue (cheap) through grey to
+   red (dear), the dataviz reference's diverging pair */
+const ECON_CHEAP = "#2a78d6", ECON_DEAR = "#e34948", ECON_MID = "#f0efec";
+const econColour = f => { const t = Math.max(-1, Math.min(1, Math.log2(f || 1))); if(Math.abs(t) < 0.03) return ECON_MID;
+  return `color-mix(in oklab, ${t < 0 ? ECON_CHEAP : ECON_DEAR} ${Math.round(Math.abs(t) * 100)}%, ${ECON_MID})`; };
+function econBlock(){
+  const P = repPlaces().filter(tradeIsPlace).sort((a, b)=>["city","town","village"].indexOf(a.kind) - ["city","town","village"].indexOf(b.kind) || (a.name||"").localeCompare(b.name||""));
+  if(!P.length) return `<details class="partysec" data-invfor="bg:econ" ${openInv.has("bg:econ") ? "open" : ""}><summary class="eyebrow">Economics</summary><p class="empty-note">No cities, towns or villages on the map yet: nowhere to trade.</p></details>`;
+  const G = Object.keys(TRADE_GOODS), gName = g => tradeGoodName(g), base = g => TRADE_GOODS[g][1];
+  const price = {}; for(const p of P){ price[p.id] = {}; for(const g of G) price[p.id][g] = tradeEach(p.id, g); }
+  /* the best runs: for each good, the cheapest place to buy one load and the dearest to sell it */
+  const runs = G.map(g=>{ let lo = null, hi = null; for(const p of P){ const v = price[p.id][g]; if(!lo || v < lo.v) lo = { p, v }; if(!hi || v > hi.v) hi = { p, v }; }
+    const sell = hi.v * TRADE_SELL; return { g, lo, hi, gain:(sell - lo.v) / lo.v, per:sell - lo.v }; }).filter(r=>r.lo.p!==r.hi.p && r.gain > 0).sort((a, b)=>b.per - a.per).slice(0, 5);
+  const gl = []; for(const p of P){ const m = tradeOf().glut[p.id] || {}; for(const g of Object.keys(m)){ const s = tradeGlut(p.id, g); if(Math.abs(s) >= 0.15) gl.push({ p, g, s }); } }
+  const gluts = gl.filter(x=>x.s > 0).sort((a, b)=>b.s - a.s).slice(0, 5), short = gl.filter(x=>x.s < 0).sort((a, b)=>a.s - b.s).slice(0, 5);
+  const gp = v => `${Math.round(v * 10) / 10} gp`, line = (x, why) => `<div class="sbl"><span class="libref" data-bgplace="${x.p.id}">${esc(x.p.name)}</span>: ${esc(gName(x.g).toLowerCase())} at ${gp(price[x.p.id][x.g])} <small>(${(price[x.p.id][x.g] / base(x.g)).toFixed(2)}× usual, ${why})</small></div>`;
+  const ab = g => gName(g).replace(/^(Medicinal|Raw|Salt) /, "").slice(0, 7);
+  const head = `<tr><th></th>${G.map(g=>`<th title="${esc(gName(g))}: ${base(g)} gp a load, usually" style="writing-mode:vertical-rl;transform:rotate(180deg);font-weight:400;font-size:9px;padding:2px 0;height:52px;white-space:nowrap;color:var(--ink-soft)">${esc(ab(g))}</th>`).join("")}</tr>`;
+  const kindLab = { city:"Cities", town:"Towns", village:"Villages" }; let lastKind = null, body = "";
+  for(const p of P){ const M = tradePlace(p.id);
+    if(p.kind!==lastKind){ lastKind = p.kind; body += `<tr><td colspan="${G.length + 1}" style="font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);padding:6px 0 1px">${kindLab[p.kind]}</td></tr>`; }
+    body += `<tr><td style="max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px 0 0;font-size:10.5px;line-height:13px"><span class="libref" data-bgplace="${p.id}" title="${esc(p.name)}: makes ${esc(M.make.map(gName).join(", ").toLowerCase())}; wants ${esc(M.want.map(gName).join(", ").toLowerCase())}">${esc(p.name)}</span></td>${G.map(g=>{ const v = price[p.id][g], f = v / base(g), mk = M.make.includes(g) ? "m" : M.want.includes(g) ? "w" : "";
+      return `<td title="${esc(p.name)} · ${esc(gName(g))}: ${gp(v)} a load (${f.toFixed(2)}× usual)${mk==="m" ? ", made here" : mk==="w" ? ", wanted here" : ""}" style="width:12px;height:13px;padding:0;background:${econColour(f)};border:1px solid var(--paper-lit);font-size:8px;line-height:11px;text-align:center;color:#1f2a33">${mk}</td>`; }).join("")}</tr>`; }
+  return `<details class="partysec" data-invfor="bg:econ" ${openInv.has("bg:econ") ? "open" : ""}><summary class="eyebrow">Economics <small>${P.length} markets · only you see this</small></summary>
+    <p class="grouplab" style="margin:2px 0">The best runs right now <small>a load bought at the cheapest, sold at the dearest</small></p>
+    ${runs.map(r=>`<div class="sbl">${esc(gName(r.g))}: buy at <span class="libref" data-bgplace="${r.lo.p.id}">${esc(r.lo.p.name)}</span> ${gp(r.lo.v)}, sell at <span class="libref" data-bgplace="${r.hi.p.id}">${esc(r.hi.p.name)}</span> ${gp(r.hi.v * TRADE_SELL)} <small>(+${gp(r.per)} a load, ${Math.round(r.gain * 100)}%)</small></div>`).join("") || `<p class="empty-note" style="font-size:11px">Nothing worth the voyage.</p>`}
+    <p class="grouplab" style="margin:6px 0 2px">Gluts <small>ships unloaded more than the market wants</small></p>
+    ${gluts.map(x=>line(x, "glutted")).join("") || `<p class="empty-note" style="font-size:11px;margin:0">None to speak of.</p>`}
+    <p class="grouplab" style="margin:6px 0 2px">Shortages <small>bought up faster than it comes in</small></p>
+    ${short.map(x=>line(x, "short")).join("") || `<p class="empty-note" style="font-size:11px;margin:0">None to speak of.</p>`}
+    <p class="grouplab" style="margin:8px 0 2px">Every market's prices</p>
+    <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ink-soft);margin:2px 0 4px"><span>half</span><span style="flex:1;max-width:160px;height:8px;border-radius:2px;background:linear-gradient(90deg, ${ECON_CHEAP}, ${ECON_MID}, ${ECON_DEAR})"></span><span>double</span><span style="margin-left:6px">the usual price · <b>m</b> made there · <b>w</b> wanted there</span></div>
+    <div style="overflow-x:auto"><table style="border-collapse:collapse">${head}${body}</table></div>
+    <p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Hover a square for its price; click a place for its market on its card.</p></details>`;
+}
+function renderBackground(){
+  const el = $("#pane-background"); if(!el) return;
+  if(bgFirst){ bgFirst = false; openInv.add("bg:log"); openInv.add("party:fleet"); }     // open to start with: the log and the ships
+  keepPaneScroll("pane-background", ()=>{ el.innerHTML = `<p class="eyebrow">The background <small>day ${campaignDay()} · what goes on whether or not the party is there</small></p>${bgLogBlock()}${fleetBlock()}${econBlock()}`; });
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-bgmore],[data-bgplace]"); if(!b) return;
+  if(b.dataset.bgmore){ bgShow += 300; renderNamedPane("background"); return; }
+  const n = nodeById(b.dataset.bgplace) || (root.nodes||[]).find(x=>x.id===b.dataset.bgplace); if(!n) return; if(planOf) leavePlan();
+  openInv.add("trade:" + n.id); select("node", n.id); if(!(tableOn() || buildOn())){ pane = "inspect"; syncTabs(); } renderPane(true); render(); });
+document.addEventListener("change", e=>{ const t = e.target; if(t && t.id==="bg-filter"){ bgFilter = t.value; bgShow = 150; renderNamedPane("background"); } });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-fleetact]"); if(!b) return; const a = b.dataset.fleetact;
   if(a==="lanes"){ const r = seaLanesFromMap(); flash(`${r.lanes} sea lanes between ${r.ports} ports on the water: every port can reach every other.`); }
   else if(a==="roll"){ if(fleetOf().length && !confirm("Roll a new fleet? The ships at sea now are replaced.")) return; const n = fleetRoll(); if(n) flash(`${n} ships put to sea.`); }
@@ -20334,10 +20408,11 @@ function repKnownIn(did){
   const places = Object.entries(repOf().tables).filter(([k, T])=>k.startsWith("place:") && Object.values(T.slots).some(e=>e.d===did)).map(([k])=>k.slice(6));
   return { places, regions:[...new Set(places.map(p=>(repNode(p)||{}).region).filter(Boolean))] };
 }
-function repToWorld(did, why){
+function repToWorld(did, why, quiet){
   const R = repOf(); if(R.tables.world && Object.values(R.tables.world.slots).some(e=>e.d===did)) return false;
   const s = rollD(100); repWriteIn("world", 100, s, { d:did, day:campaignDay() }, did, why); const d = R.deeds.find(x=>x.id===did);
-  gameLog("rep", `Known the world over now (${why}): ${d ? d.text : "a story"} (the world d100 ${s})`); return true;
+  const line = `Known the world over now (${why}): ${d ? d.text : "a story"} (the world d100 ${s})`;
+  bgLog("world", line); if(!quiet) gameLog("rep", line); return true;        // on its own (the gossip): the Background tab's log only
 }
 /* the day moved on: every route's crossings since, in turn */
 function gossipCatchUp(){
@@ -20354,10 +20429,10 @@ function gossipCatchUp(){
   const from = R.gday; R.gday = now;
   const W = repWorldAt(), up = [];
   for(const did of new Set(moved.filter(m=>!m.lost && (R.deeds.find(x=>x.id===m.d)||{}).size!=="local").map(m=>m.d))){ const K = repKnownIn(did);     // a local story never goes to the world
-    if((K.places.length >= W.towns || K.regions.length >= W.regions) && repToWorld(did, `known in ${K.places.length} places, ${K.regions.length} regions`)) up.push(did); }
-  if(moved.length){
+    if((K.places.length >= W.towns || K.regions.length >= W.regions) && repToWorld(did, `known in ${K.places.length} places, ${K.regions.length} regions`, true)) up.push(did); }
+  if(moved.length){                                                    // the Background tab's log, one line a crossing, on its day
     const deedOf = id => (R.deeds.find(x=>x.id===id) || {}).text || "a story";
-    gameLog("rep", `Gossip, days ${from + 1}–${now}: ${moved.map(m=>`${m.lost ? "" : m.sea ? "by sea, " : ""}"${deedOf(m.d)}" ${m.how}`).join("; ")}`);
+    for(const m of moved) bgLog("gossip", `${m.lost ? "" : m.sea ? "By sea: " : "By road: "}"${deedOf(m.d)}" ${m.how}`, m.day);
     saveParty(); }
   return { moved, up };
 }
@@ -24375,12 +24450,12 @@ function tableOn(){ return !!tableReady && !!dmMode && window.innerWidth > 860 &
 /* Build view: Build mode on a laptop: the named palette on the left, the map, the card on the right, the rare tabs in the ☰ drawer */
 function buildOn(){ return !!tableReady && !dmMode && window.innerWidth > 860 && location.hash!=="#player"; }
 var drawerPane = null, tcard = null, tlTab = "log", tlKind = "", tlDraft = "", tlToLog = true;
-const PANES = ["inspect","ledger","regions","party","where","notes","session","docs","library","roll","data"];
-const DRAWER_TABS = [["library","Library"],["docs","Docs"],["roll","Roll"],["where","Where"],["party","Party & XP"],["notes","Notes"],["ledger","Ledger"],["data","Data"]];
+const PANES = ["inspect","ledger","regions","party","background","where","notes","session","docs","library","roll","data"];
+const DRAWER_TABS = [["library","Library"],["docs","Docs"],["roll","Roll"],["where","Where"],["party","Party & XP"],["background","Background"],["notes","Notes"],["ledger","Ledger"],["data","Data"]];
 const BUILD_DRAWER_TABS = [["library","Library"],["docs","Docs"],["regions","Regions"],["ledger","The survey's numbers"],["data","Data"]];
 const drawerTabs = () => buildOn() ? BUILD_DRAWER_TABS : DRAWER_TABS;
 function renderNamedPane(p){
-  ({ inspect:renderInspect, ledger:renderLedger, regions:renderRegions, party:renderParty, where:renderWhere, library:renderLibrary,
+  ({ inspect:renderInspect, ledger:renderLedger, regions:renderRegions, party:renderParty, background:renderBackground, where:renderWhere, library:renderLibrary,
      roll:renderRoll, notes:renderNotes, session:renderSession, docs:renderDocs, data:renderData })[p]?.();
 }
 function applyTable(){
