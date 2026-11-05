@@ -28,11 +28,11 @@ step("magic in the hold: the odds over 4000 ports each, a passenger ship, a merc
 step("aboard: the magic hidden in her hold; seize her cargo; take an item, and it's gone from her", async () => {
   const s = root.fleet.find(x => x.kind === "packet"); s.magic = ["srd:dragon-orb#ctest"]; s.magicSig = "mgtest"; s.magicNote = [];
   s.cargo = { silk: { n: 12, paid: 70, from: s.home } }; tradeOf().hold = {}; tradeOf().cap = 40;
-  fleetGoAboard(s); await wait(60); const st = plans["fv_" + s.id].nodes.find(r => r.id === "fvrl").site;
+  const tGroups = JSON.stringify(root.groups || null); fleetGoAboard(s); await wait(60); const st = plans["fv_" + s.id].nodes.find(r => r.id === "fvrl").site;
   const inHold = `${st.items.join(",")} hidden DC ${st.hide["srd:dragon-orb#ctest"]} at ${st.where["srd:dragon-orb#ctest"]}`;
   select("node", "fvrl"); renderPane(true); await wait(30); const card = !!document.querySelector(`[data-seize="silk"]`);
   document.querySelector(`[data-seizeqty="silk"]`).value = "8"; document.querySelector(`[data-seize="silk"]`).click(); await wait(30);
-  st.items = []; fleetBoard(s); if (battleOf) closeBattle(); leavePlan();
+  st.items = []; fleetBoard(s); if (battleOf) closeBattle(); leavePlan(); root.groups = JSON.parse(tGroups) || root.groups;     // the party back where it was
   return `in steerage's hold: ${inHold} | seize on her card: ${card} | after seizing 8: hers ${s.cargo.silk.n}, the party's ${JSON.stringify(Object.values(tradeOf().hold))} | the orb taken: hers now ${s.magic.length} | page errors ${__KIT.errors.length}`;
 });
 step("stolen cargo: sold unseen, sold and caught, a pirate's plunder turned in and suspected, a navy search", async () => {
@@ -53,13 +53,13 @@ step("stolen cargo: sold unseen, sold and caught, a pirate's plunder turned in a
 });
 step("piracy: an honest ship robbed with everyone alive is a deed (once); robbed after a fight that left nobody, none", async () => {
   const s = root.fleet.find(x => x.kind === "merchant" && (x.crew || []).length), key = "fv_" + s.id, d0 = repOf().deeds.length; tradeOf().hold = {};
-  s.cargo = { wine: { n: 10, paid: 12, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; fleetGoAboard(s); await wait(60);
+  s.cargo = { wine: { n: 10, paid: 12, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; const tGroups = JSON.stringify(root.groups || null); fleetGoAboard(s); await wait(60);
   const said = (document.querySelector(`[data-seize="wine"]`).closest("p, div").parentElement.innerText.match(/Left to tell[^.]*\./) || [""])[0];
   for (let i = 0; i < 2; i++) { document.querySelector(`[data-seizeqty="wine"]`).value = "4"; document.querySelector(`[data-seize="wine"]`).click(); await wait(30); }
   const D = repOf().deeds.slice(d0), first = D.map(d => `${d.text} (${d.size} ${d.fame}, at ${repPlaceName(d.place)}, seen by ${d.seenBy.length})`).join("; ");
   s.cargo = { rum: { n: 5, paid: 10, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; repOf().lastWitness = { day: campaignDay(), place: key, room: plans[key] ? "fvrd" : key, at: s.name, seen: [], names: [] };
   renderPane(true); await wait(30); document.querySelector(`[data-seize="rum"]`).click(); await wait(30);
-  tradeOf().hold = {}; if (battleOf) closeBattle(); if (planOf) leavePlan();
+  tradeOf().hold = {}; if (battleOf) closeBattle(); if (planOf) leavePlan(); root.groups = JSON.parse(tGroups) || root.groups;
   return `the card said: "${said}" | deeds after two seizures: ${D.length}: ${first} | after a fight with no survivors: ${repOf().deeds.length - d0 - D.length} more | page errors ${__KIT.errors.length}`;
 });
 step("the party: the market on a town's card, buy 5 with a character's coin, sell 5", async () => {
