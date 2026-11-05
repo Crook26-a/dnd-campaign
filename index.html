@@ -5395,7 +5395,7 @@ function placeLabels(reqs, obstacles, inv){
   let s = "";
   for(const q of reqs.sort((a, b)=>b.rank - a.rank)){
     if(q.rank < need - 1) continue;
-    const faint = q.rank < need, size = faint ? 10 : q.size, w = (q.text.length*size*.56 + 4)*inv, h = (size + 3)*inv;
+    const li = q.inv || inv, faint = q.rank < need, size = faint ? 10 : q.size, w = (q.text.length*size*.56 + 4)*li, h = (size + 3)*li;     // q.inv: a place that shrinks with the map, its name with it
     let pick = null, least = null, crowded = false;
     const boxOf = c => ({ x:c.anchor==="start" ? c.x : c.anchor==="end" ? c.x - w : c.x - w/2, y:c.y - h*.8, w, h });
     const over = b => placed.reduce((t, o)=>t + Math.max(0, Math.min(b.x+b.w, o.x+o.w) - Math.max(b.x, o.x)) * Math.max(0, Math.min(b.y+b.h, o.y+o.h) - Math.max(b.y, o.y)), 0);
@@ -5403,7 +5403,7 @@ function placeLabels(reqs, obstacles, inv){
     for(const c of cands){ const b = boxOf(c); if(!hit(b)){ pick = { c, b }; break; } const o = over(b); if(!least || o < least.o) least = { c, b, o }; }
     if(!pick){ if(q.rank < 10 && q.rank < 6 && !planOf) continue; pick = least; crowded = q.rank < 10; }     // in a town every name is wanted: the least crowded spot, small and faint
     placed.push(pick.b);
-    s += `<g data-pn="${q.id}"${q.hidden ? ` opacity=".45"` : (faint || crowded) ? ` opacity=".55"` : ""}><text class="nodename" x="${Math.round(pick.c.x*10)/10}" y="${Math.round(pick.c.y*10)/10}" font-size="${(crowded ? size*.85 : size)*inv}" text-anchor="${pick.c.anchor||"middle"}">${esc(q.text)}</text></g>`;
+    s += `<g data-pn="${q.id}"${q.hidden ? ` opacity=".45"` : (faint || crowded) ? ` opacity=".55"` : ""}><text class="nodename" x="${Math.round(pick.c.x*10)/10}" y="${Math.round(pick.c.y*10)/10}" font-size="${(crowded ? size*.85 : size)*li}" text-anchor="${pick.c.anchor||"middle"}">${esc(q.text)}</text></g>`;
   }
   return s;
 }
@@ -5940,15 +5940,18 @@ function render(){
       continue;
     }
 
-    s += `<g data-pn="${n.id}" transform="translate(${n.x} ${n.y}) scale(${inv})"${n.hidden?` opacity=".45"`:""}>`;
+    /* a place that shrinks with the map (Joseph, 2026-11-05: the island towns "stay way too big" zoomed out): never
+       bigger on the map than its own size, n.mapSize; zoomed in past that, the usual size on screen */
+    const ni = !planOf && +n.mapSize > 0 ? Math.min(inv, Math.max(inv * .25, +n.mapSize)) : inv;     // and never under a quarter of its size on screen: a dot you can still click
+    s += `<g data-pn="${n.id}" transform="translate(${n.x} ${n.y}) scale(${ni})"${n.hidden?` opacity=".45"`:""}>`;
     if(on) s += `<circle class="selring" r="17"/>`;
     if(connectFrom===n.id||(rule&&rule.fromId===n.id)) s += `<circle class="selring" r="20" stroke-dasharray="4 3"/>`;
     if(n.origin) s += `<circle r="13.5" fill="none" stroke="var(--ink-soft)" stroke-width="1" opacity=".7"/><circle r="16.5" fill="none" stroke="var(--ink-soft)" stroke-width="1" opacity=".45" stroke-dasharray="3 3"/>`;
     if(n.seat) s += `<circle r="14.5" fill="none" stroke="var(--lead)" stroke-width="1.4" opacity=".8"/><path d="M0 -20 L0 -15.5 M0 15.5 L0 20 M-20 0 L-15.5 0 M15.5 0 L20 0" stroke="var(--lead)" stroke-width="1.4" opacity=".8"/>`;
     s += `<g class="nodeglyph" data-node="${n.id}" style="cursor:pointer">${n.name ? `<title>${esc(n.name)}</title>` : ""}${kd.draw(hex)}</g>`;
-    glyphBoxes.push({ x:n.x - 11*inv, y:n.y - 11*inv, w:22*inv, h:22*inv });
-    if(n.name) labels.push({ id:n.id, text:n.name, rank:rankOf(n), size:11.5, hidden:n.hidden,
-      at:[{ x:n.x, y:n.y + 25*inv }, { x:n.x, y:n.y - 17*inv }, { x:n.x + 16*inv, y:n.y + 4*inv, anchor:"start" }, { x:n.x - 16*inv, y:n.y + 4*inv, anchor:"end" }] });
+    glyphBoxes.push({ x:n.x - 11*ni, y:n.y - 11*ni, w:22*ni, h:22*ni });
+    if(n.name && ni / inv >= .4) labels.push({ id:n.id, text:n.name, rank:rankOf(n), size:11.5, hidden:n.hidden, inv:ni < inv ? ni : null,      // shrunk to under 5px or so, its name goes till you zoom in
+      at:[{ x:n.x, y:n.y + 25*ni }, { x:n.x, y:n.y - 17*ni }, { x:n.x + 16*ni, y:n.y + 4*ni, anchor:"start" }, { x:n.x - 16*ni, y:n.y + 4*ni, anchor:"end" }] });
     s += `</g>`;
   }
   /* on a plan, each district's name across the middle of its buildings, in spaced capitals in its colour */
@@ -19753,6 +19756,8 @@ function repIsCoastal(n){
   return !on || coastDist(on, n.x, n.y) <= 3 * (root.ppm || 10);
 }
 const repPorts = () => (root.nodes||[]).filter(n=>n.name && repIsCoastal(n));
+/* a place that shrinks with the map starts about a mile and a half across (its 22-unit marker) */
+const MAP_SIZE_DEFAULT = () => Math.round(1.5 * (root.ppm || 10) / 22 * 1000) / 1000;
 /* the places on an island, or on its shore (within 3 miles of it, as a port is): for putting a chain of islands in one region */
 const islePlaces = sh => (doc.nodes||[]).filter(n=>!sailsAbout(n) && (sh.pts||[]).length > 2 && (landIn(sh, n.x, n.y) || coastDist(sh, n.x, n.y) <= 3 * (doc.ppm || 10)));
 /* ── the water, as a grid of 2-mile squares (Joseph, 2026-11-04: "so many sea routes are going over land"): land is
@@ -23352,7 +23357,8 @@ function renderInspectInner(){
       ${sh.kind==="island" ? `<div class="field" style="margin-top:8px"><label>Open land here is</label><select id="s-terrain" title="Travel Terrain (2024) for any land on this island not drawn as Forest, Hill, Swamp and so on; 2 miles of shore all round is Coastal">${Object.entries(TERRAINS).filter(([k])=>k!=="coastal").map(([k, T])=>`<option value="${k}" ${(sh.terrain||"grassland")===k?"selected":""}>${T.label}</option>`).join("")}</select></div>
         ${planOf ? "" : (()=>{ const on = islePlaces(sh), regs = [...new Set(on.map(n=>n.region))], mine = sh.region && doc.regions.find(r=>r.id===sh.region);
           return `<p class="eyebrow spaced">Its region</p><p class="empty-note" style="font-size:11px;margin:0 0 4px">${mine ? `In <b>${esc(mine.name)}</b>: anything you place on it joins it. ` : ""}${on.length ? `${on.length} place${on.length===1?"":"s"} on it or on its shore, in ${regs.map(id=>esc((doc.regions.find(r=>r.id===id)||{}).name || "none")).join(", ")}.` : "No places on it yet."} Give each island of a chain the same region.</p>
-          <div class="pcrow"><select id="s-isleregion" style="flex:1;min-width:0">${regionOptions(sh.region || (regs.length===1 ? regs[0] : ""))}<option value="__new">A new region…</option></select><button class="btn" id="s-isleregiongo">Put it in this region</button></div>`; })()}` : ""}
+          <div class="pcrow"><select id="s-isleregion" style="flex:1;min-width:0">${regionOptions(sh.region || (regs.length===1 ? regs[0] : ""))}<option value="__new">A new region…</option></select><button class="btn" id="s-isleregiongo">Put it in this region</button></div>
+          ${on.length ? `<button class="btn wide" id="s-islesmall" style="margin-top:4px" title="Its places' markers and names get smaller with the map when you zoom out (each place's own box: Shrinks when zoomed out)">${on.every(n=>+n.mapSize > 0) ? "Its places stay their usual size zoomed out" : "Its places shrink when zoomed out"}</button>` : ""}`; })()}` : ""}
       ${kd.road?`
         <div class="field" style="margin-top:12px"><label>Width</label>
           <input id="s-w" class="mono" type="number" step="0.5" min="0.5" max="60" value="${sh.w==null?kd.w:sh.w}"></div>`:""}
@@ -23387,6 +23393,9 @@ function renderInspectInner(){
       touch(); renderInspect();
     };
     $("#s-straight").onchange = e=>{ sh.straight = e.target.checked; drawStraight = sh.straight; touch(); };
+    const isz = $("#s-islesmall"); if(isz) isz.onclick = ()=>{ const on = islePlaces(sh), off = on.every(n=>+n.mapSize > 0);
+      for(const n of on){ if(off) delete n.mapSize; else if(!(+n.mapSize > 0)) n.mapSize = MAP_SIZE_DEFAULT(); }
+      touch(); render(); renderInspect(); flash(off ? `${sh.name || "The island"}'s places stay their usual size again.` : `${sh.name || "The island"}'s ${on.length} place${on.length===1?"":"s"} shrink with the map when you zoom out.`); };
     const ig = $("#s-isleregiongo"); if(ig) ig.onclick = ()=>{ let id = ($("#s-isleregion")||{}).value;
       if(id==="__new"){ const nm = (prompt("The new region's name:", sh.name || "") || "").trim(); if(!nm) return;
         const r = { id:uid("r"), name:nm, threat:1, hex:REGION_HEX[doc.regions.length % REGION_HEX.length], notes:"" }; doc.regions.push(r); id = r.id; }
@@ -23443,7 +23452,9 @@ function renderInspectInner(){
         ${placeFactionPick(n)}
         ${planOf?"":`
         <label class="check"><input id="f-origin" type="checkbox" ${n.origin?"checked":""}> Home port: the crew's chart starts here, and road miles are counted from here</label>
-        <label class="check" style="margin-top:6px"><input id="f-seat" type="checkbox" ${n.seat?"checked":""}> Capital: the seat of government</label>`}
+        <label class="check" style="margin-top:6px"><input id="f-seat" type="checkbox" ${n.seat?"checked":""}> Capital: the seat of government</label>
+        <label class="check" style="margin-top:6px" title="Zoomed out, its marker and name get smaller with the map instead of staying the same size on screen"><input id="f-mapsize" type="checkbox" ${+n.mapSize > 0 ? "checked" : ""}> Shrinks when zoomed out${+n.mapSize > 0 ? ` <small>(about ${k1(22 * n.mapSize / (doc.ppm || 10))} mi across)</small>` : ""}</label>
+        ${+n.mapSize > 0 ? `<button class="btn small" id="f-mapsizenow" style="margin:2px 0 0 22px" title="Zoom in till it looks right, then press this">Keep the size it is now</button>` : ""}`}
         <div class="field" style="margin-top:12px"><label>Notes</label><textarea id="f-notes" placeholder="Who's here, what they want, what's on the board.">${esc(n.notes)}</textarea></div>`, true)}
       ${planOf || sailsAbout(n) ? "" : csec("node:screen", "On the players' screen", n.hidden ? "hidden" : "shown", `
         <label class="check" style="margin:0 0 6px" title="Leave it off the players' screen until they find it"><input type="checkbox" data-pshide="node" ${n.hidden?"checked":""}> Hidden from the players' screen</label>
@@ -23478,6 +23489,8 @@ function renderInspectInner(){
     $("#f-name").oninput = e=>{ n.name=e.target.value; touch(); };
     $("#f-kind").onchange = e=>{ const k = e.target.value, po = KINDS[k] && KINDS[k].pirateOf; n.kind = po || k; if(po) n.pirate = true; else delete n.pirate; if(planOf) syncServices(planOf); touch(); renderInspect(); };
     $("#f-region").onchange = e=>{ n.region=e.target.value; touch(); };
+    const ms = $("#f-mapsize"); if(ms) ms.onchange = e=>{ if(e.target.checked) n.mapSize = MAP_SIZE_DEFAULT(); else delete n.mapSize; touch(); render(); renderInspect(); };
+    const mn = $("#f-mapsizenow"); if(mn) mn.onclick = ()=>{ n.mapSize = 1 / view.k; touch(); render(); renderInspect(); flash(`${n.name || "It"} stays this size on the map from here out.`); };
     $("#f-level").oninput = e=>{ n.level=+e.target.value||1; touch(); };
     $("#f-notes").oninput = e=>{ n.notes=e.target.value; touch(); };
     const _or=$("#f-origin"); if(_or) _or.onchange = e=>{

@@ -31,6 +31,17 @@ step("the region's name written faintly across its islands, as a group", async (
   const t = [...document.querySelectorAll("svg text.islelab")].map(e => `"${e.textContent}" at ${Math.round(+e.getAttribute("x"))},${Math.round(+e.getAttribute("y"))} size ${Math.round(+e.getAttribute("font-size") * view.k)}px on screen`);
   return `the islands span ${Math.round(x0)}–${Math.round(x1)}, ${Math.round(y0)}–${Math.round(y1)} | written: ${t.join("; ") || "nothing"} | page errors ${__KIT.errors.length}`;
 });
+step("the island's places shrink when zoomed out; a plain place stays its size on screen", async () => {
+  const pc = root.nodes.find(n => n.name === "Port Gallows"), other = repPorts().find(p => !p.pirate && p.kind === "city");
+  select("shape", "s_pi"); renderInspect(); await wait(20); document.getElementById("s-islesmall").click(); await wait(20);
+  const sz = n => { const g = document.querySelector(`svg [data-pn="${n.id}"] .nodeglyph`); if (!g) return "not drawn"; const r = g.getBoundingClientRect(); return `${Math.round(r.width)}px`; };
+  const named = n => [...document.querySelectorAll(`svg [data-pn="${n.id}"] text.nodename`)].length > 0;
+  const near = `${pc.name} ${sz(pc)}, ${other.name} ${sz(other)}`;
+  sel = null; centreView(); await wait(30);
+  const far = `${pc.name} ${sz(pc)} (name shown ${named(pc)}), ${other.name} ${sz(other)}`;
+  select("node", pc.id); renderInspect(); await wait(20); const box = document.getElementById("f-mapsize");
+  return `mapSize ${pc.mapSize} | zoomed in: ${near} | zoomed out to the whole map: ${far} | its box ticked: ${box && box.checked}, "${box && box.parentElement.innerText.trim()}" | page errors ${__KIT.errors.length}`;
+});
 step("the fleet: the pirate based at the pirate port, honest ships keep away; the Kind box turns it back to a plain city", async () => {
   seaLanesFromMap(); fleetRoll(); const pir = root.fleet.find(s => s.kind === "pirate");
   const pc = root.nodes.find(n => n.name === "Port Gallows"); let honest = 0;
