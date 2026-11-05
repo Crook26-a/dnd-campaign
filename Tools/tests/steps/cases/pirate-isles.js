@@ -40,7 +40,7 @@ step("the island's places shrink when zoomed out; a plain place stays its size o
   sel = null; centreView(); await wait(30);
   const far = `${pc.name} ${sz(pc)} (name shown ${named(pc)}), ${other.name} ${sz(other)}`;
   select("node", pc.id); renderInspect(); await wait(20); const box = document.getElementById("f-mapsize");
-  return `mapSize ${pc.mapSize} | zoomed in: ${near} | zoomed out to the whole map: ${far} | its box ticked: ${box && box.checked}, "${box && box.parentElement.innerText.trim()}" | page errors ${__KIT.errors.length}`;
+  return `mapSize ${pc.mapSize} | zoomed in: ${near} | zoomed out to the whole map: ${far} | its box ticked: ${box && box.checked}, "${box && box.parentElement.innerText.replace(/\s+/g, " ").trim()}" | page errors ${__KIT.errors.length}`;
 });
 step("the fleet: the pirate based at the pirate port, honest ships keep away; the Kind box turns it back to a plain city", async () => {
   seaLanesFromMap(); fleetRoll(); const pir = root.fleet.find(s => s.kind === "pirate");
