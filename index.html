@@ -1425,7 +1425,13 @@ const SURVEY_KINDS = {
   wreck:   { label:"Wreck",      key:"",  services:{},
              draw:c=>`<path d="M-10 0 L4 6 L-1 9 L-9 6 Z" fill="${c}" stroke="${INK}" stroke-width="1.3"/><path d="M-3 3 L3 -9" stroke="${INK}" stroke-width="1.3"/><path d="M5 1 L10 3 L8 7" fill="none" stroke="${INK}" stroke-width="1.2"/>` },
   light:   { label:"Lighthouse", key:"",  services:{},
-             draw:c=>`<path d="M-4 8 L-2.5 -5 L2.5 -5 L4 8 Z" fill="${c}" stroke="${INK}" stroke-width="1.3"/><rect x="-3" y="-9" width="6" height="4" fill="${INK}"/><path d="M-5 -7 L-10 -9 M5 -7 L10 -9 M-5 -6 L-10 -4 M5 -6 L10 -4" stroke="${INK}" stroke-width="1"/>` }
+             draw:c=>`<path d="M-4 8 L-2.5 -5 L2.5 -5 L4 8 Z" fill="${c}" stroke="${INK}" stroke-width="1.3"/><rect x="-3" y="-9" width="6" height="4" fill="${INK}"/><path d="M-5 -7 L-10 -9 M5 -7 L10 -9 M-5 -6 L-10 -4 M5 -6 L10 -4" stroke="${INK}" stroke-width="1"/>` },
+  /* where stolen cargo sells with no questions asked (Joseph, 2026-11-05): a smugglers' port, a little town with a
+     plan and a market; a pirate hideout, like Lantern Rock but smaller still: no plan, just a map of its own */
+  smuggle: { label:"Smugglers' port", key:"", services:svc("inn","board","fence"),
+             draw:c=>`<circle r="7" fill="${c}" stroke="${INK}" stroke-width="1.5" stroke-dasharray="3 2"/><rect x="-2.5" y="-4" width="5" height="8" rx="1.6" fill="${INK}"/>` },
+  hideout: { label:"Pirate hideout", key:"", services:{},
+             draw:c=>`<path d="M-9 7 A9 9 0 0 1 9 7 Z" fill="${c}" stroke="${INK}" stroke-width="1.5"/><path d="M-3.5 0 L3.5 6 M3.5 0 L-3.5 6" stroke="${INK}" stroke-width="1.6"/>` }
 };
 /* ── what stands in a town: the trades the survey already tracks, plus
    the plain fabric of a place. Anything carrying a `svc` sites one of the
@@ -2791,9 +2797,16 @@ const PLAN_DISTRICTS = [
 ];
 function blankPlan(n){
   const sc = PLAN_SCALE[n.kind] || { ppm:8, unit:"yd" };
-  return { format:"ordinate-plan-v1", of:n.id, title:n.name||KINDS[n.kind].label,
+  const P = { format:"ordinate-plan-v1", of:n.id, title:n.name||KINDS[n.kind].label,
            ppm:sc.ppm, unit:sc.unit, compass:8,
            regions:PLAN_DISTRICTS.map(d=>({...d})), nodes:[], roads:[], shapes:[] };
+  /* a smugglers' port starts with what makes it one: a tavern, a fence, a bonded warehouse and a landing, to move or redraw */
+  if(n.kind==="smuggle"){ const at = (kind, name, x, y, w, d, notes) => ({ id:uid("n"), name, kind, region:P.regions[2] ? P.regions[2].id : P.regions[0].id, level:n.level || 1, origin:false, seat:false, services:{...((PLAN_KINDS[kind]||{}).services||{})}, notes, x, y, w, d, rot:0 });
+    P.nodes.push(at("inn", "The tavern", -90, -40, 14, 10, "Where the captains drink and the deals are struck. Nobody asks where a cargo came from."),
+      at("fence", "The fence", 40, -60, 9, 7, "Buys what shouldn't be sold: the party's loot, no questions asked."),
+      at("warehouse", "The bonded warehouse", 50, 40, 18, 10, "Stolen cargo changes hands here, for a cut."),
+      at("boat", "The landing", -60, 110, 6, 3, "Where the boats come in after dark.")); }
+  return P;
 }
 function normaliseDoc(d){
   d.regions = (d.regions&&d.regions.length) ? d.regions : DEFAULT_REGIONS.map(x=>({...x}));
@@ -4004,7 +4017,9 @@ function voyage(ship, from, to){
 /* where a ship can sail to: places out on the sea chart that are a port of call (a city, town, village or
    lighthouse to start; any place can be ticked on or off), and any with a known route. Places inside them
    (a town's buildings, a wreck on an island) are reached from there. */
-const PORT_KINDS = new Set(["city","town","village","light"]);
+const PORT_KINDS = new Set(["city","town","village","light","smuggle","hideout"]);
+const SHADY_KINDS = new Set(["smuggle","hideout"]);      // honest ships keep away; stolen cargo sells there unasked
+const shadyPort = id => { const n = typeof id==="string" ? repNode(id) : id; return !!n && SHADY_KINDS.has(n.kind); };
 const isPort = n => !!n && !sailsAbout(n) && (n.route || (n.port!=null ? !!n.port : PORT_KINDS.has(n.kind)));
 const chartOf = () => root.chart = root.chart || { on:false, sight:5, spot:10, seen:[] };
 const spotMiles = () => +(root.chart && root.chart.spot) || 10;
@@ -6145,7 +6160,7 @@ const ICONS = {
   connect:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="14" r="2.4"/><circle cx="14" cy="4" r="2.4"/><path d="M5.8 12.2 12.2 5.8"/></svg>`
 };
 /* Build view's palette: everything the rail offers, by name, in groups, with a box to find a kind */
-const PAL_PLACES = { survey:[["Settlements","city town village"],["Along the roads","post toll stone"],["In the wild","ruin cave wood camp"],["At sea","ship wreck light"]],
+const PAL_PLACES = { survey:[["Settlements","city town village"],["Along the roads","post toll stone"],["In the wild","ruin cave wood camp"],["At sea","ship wreck light smuggle hideout"]],
   plan:[["Lodging and drink","inn stable coachhouse house hall"],["Trade","market store provision smith apothecary fence stall"],["Civic","reeve archive office gate tower well statue"],
     ["Faith and care","temple healer trainer"],["Docks and water","warehouse shipwright ship boat wreck light tent"],["Out of the way","ruinlet cave"]] };
 const PAL_AREAS = { survey:[["The land","wood grassland hills mountain marsh desert arctic"],["Water and coast","water river island reef"],["In the way","impasse"]],
@@ -7184,6 +7199,7 @@ function placeNode(kind,x,y){
   const near = doc.nodes.length ? doc.nodes.reduce((a,b)=>Math.hypot(b.x-x,b.y-y)<Math.hypot(a.x-x,a.y-y)?b:a) : null;
   const n = newNode(kind,x,y,near);
   if(!doc.nodes.length && !planOf) n.origin=true;
+  if(!planOf && kind==="hideout") n.hidden = true;               // a hideout is off the players' screen till they find it
   doc.nodes.push(n); select("node",n.id);
   if(planOf) syncServices(planOf);
   const joined = joinRoadAt(n);
@@ -12102,6 +12118,27 @@ const BMAPS = {
     labels:[[3.5,9.6,"hoist"],[17.5,8.6,"to the loft"]],
     start:{ party:[[8,11],[9,11],[10,11],[11,11],[7,11],[12,11]], enemy:[[3,3],[16,3],[5,5],[14,5],[6,8],[15,8]] },
     notes:"The default for warehouses: aisles between stacks of crates, a hoist, and stairs up to the loft." },
+  /* a pirate hideout's own map (Joseph, 2026-11-05: "very small and not really even drawn, but with a small area for a
+     map"): a sea cave with a jetty, the plunder stacked by the wall, a fire, bedrolls and a couple of tents */
+  cove:{ name:"A pirates' cove", w:20, h:14,
+    rows:[
+      "mmmmmmm~~~~~~mmmmmmm",
+      "mmmmmm~~~~~~~~mmmmmm",
+      "mmmmm~~~~~~~~~~mmmmm",
+      "mmmmaa~~~==~~~aammmm",
+      "mmmsaa~~~==~~~aasmmm",
+      "mmsssaa~~==~~aasssmm",
+      "mm.sssss.==.sssss.mm",
+      "m..CC.............xm",
+      "m.CCc.....p....B.B.m",
+      "m.x...............Bm",
+      "mm...E.......E...mmm",
+      "mmm..............mmm",
+      "mmmmm.........mmmmmm",
+      "mmmmmmmmmmmmmmmmmmmm"],
+    labels:[[9.5,1.5,"the sea"],[9.5,3.6,"the jetty"],[10,9.6,"the fire"],[3,6.6,"plunder"]],
+    start:{ party:[[9,6],[10,6],[9,7],[10,7],[8,7],[11,7]], enemy:[[10,9],[12,8],[5,9],[14,9],[16,9],[8,10]] },
+    notes:"The default for a pirate hideout: a sea cave, a boat comes in along the jetty; plunder stacked by the west wall, the fire, bedrolls and tents. The fence does business by the fire." },
   tower:{ name:"A tower (ground floor)", w:9, h:9,
     rows:[
       "..#####..",
@@ -12117,13 +12154,13 @@ const BMAPS = {
     start:{ party:[[4,7],[3,7],[5,7],[4,6],[3,6],[5,5]], enemy:[[2,3],[6,3],[2,4],[6,4],[3,2],[5,2]] },
     notes:"The default for towers: a round stone room with the stairs spiralling up the middle." }
 };
-const BMAP_ORDER = ["blank","docks","boat","ship","liner","linerupper","linerlower","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
+const BMAP_ORDER = ["blank","docks","cove","boat","ship","liner","linerupper","linerlower","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
 /* the paint tool's palette, in sets */
 const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiVy@BkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
 /* inside a town, a building with no layout of its own gets its kind's default */
 const KIND_INTERIOR = { house:"hut", ruinlet:"hut", store:"shop", provision:"shop", apothecary:"shop", smith:"shop", healer:"shop",
   fence:"shop", office:"shop", trainer:"shop", archive:"shop", stall:"stall", tent:"tent", warehouse:"warehouse", tower:"tower", light:"tower", ship:"ship", stable:"shop_stables", coachhouse:"shop_stables" };
-const defaultInterior = n => n && sailsAbout(n) ? "ship" : planOf && n && n.shop ? (typeof BMAPS!=="undefined" && BMAPS["shop_" + n.shop.tpl] ? "shop_" + n.shop.tpl : "shop") : planOf && n && KIND_INTERIOR[n.kind] ? KIND_INTERIOR[n.kind] : "";     // a shop opens its own kind's map     // a ship anywhere: a ship's deck to start with
+const defaultInterior = n => n && sailsAbout(n) ? "ship" : planOf && n && n.shop ? (typeof BMAPS!=="undefined" && BMAPS["shop_" + n.shop.tpl] ? "shop_" + n.shop.tpl : "shop") : planOf && n && KIND_INTERIOR[n.kind] ? KIND_INTERIOR[n.kind] : n && n.kind==="hideout" && !planOf ? "cove" : "";     // a shop opens its own kind's map     // a ship anywhere: a ship's deck to start with
 /* ── camps: a clearing with the fire in the middle and a tent for each explorer, in country of six kinds.
    Each place's camp is laid out the same way every time (seeded by the place), and the tents follow the party. ── */
 const CAMP_KINDS = [["camp-forest","Camp: forest"],["camp-plains","Camp: plains"],["camp-desert","Camp: desert"],["camp-beach","Camp: beach"],["camp-hills","Camp: hills"],["camp-swamp","Camp: swamp"]];
@@ -12500,7 +12537,7 @@ function berthSetting(n){
 }
 /* places with an inside to enter: every place in a town or aboard, and a ship out on the sea chart (one that leads to
    a plan of her own, like a ship with several decks, is entered through that instead) */
-const hasInside = n => !!n && !n.link && n.berth!=="open" && (!!planOf || (sailsAbout(n) && !hasDecks(n.id)));
+const hasInside = n => !!n && !n.link && n.berth!=="open" && (!!planOf || (sailsAbout(n) && !hasDecks(n.id)) || (n.kind==="hideout" && !hasPlan(n.id)));     // a hideout: its own map, no plan
 /* picking a map for a place; choosing the plain grid where there's a default has to say so */
 function setBmap(n, key){
   if(key==="blank") { if(defaultInterior(n)) n.bmap = { preset:"blank" }; else delete n.bmap; }
@@ -17776,6 +17813,11 @@ function shopTpl(id){
 }
 const shopKinds = () => [...new Set([...Object.keys(SHOP_TEMPLATES), ...(lib().shops||[]).map(s=>s.id)])];
 const shopOwn = () => (lib().shops||[]).filter(s=>!SHOP_TEMPLATES[s.id]);       // kinds you made, not the app's ones you edited
+/* a fence (Joseph, 2026-11-05: smugglers' ports and pirate hideouts, "places to sell loot"): buys anything, sells
+   what a thief needs */
+SHOP_TEMPLATES.fence = { label:"Fence", keeper:"fence", staff:[], n:[3,6],
+  srd:["Thieves' Tools","Disguise Kit","Forgery Kit","Poisoner's Kit","Caltrops (bag of 20)","Manacles","Lantern, Hooded","Crowbar"],
+  goods:[["A forged bill of lading","5 gp","Says the cargo came from somewhere honest."],["A navy pass, nearly genuine","25 gp","Good for one search, if nobody looks closely."],["A stolen signet ring","10 gp","Whose, the fence won't say."],["A chart of the reefs","15 gp","With the safe channel marked in pencil."]] };
 const shopOptions = cur => Object.keys(SHOP_TEMPLATES).map(id=>`<option value="${id}" ${cur===id?"selected":""}>${esc(shopTpl(id).label)}</option>`).join("")
   + (shopOwn().length ? `<optgroup label="Yours">${shopOwn().map(s=>`<option value="${s.id}" ${cur===s.id?"selected":""}>${esc(s.name||"Shop")}</option>`).join("")}</optgroup>` : "");
 /* a shop's own goods go into the library the first time they're stocked, priced by this app (Joseph's table rule) */
@@ -17987,8 +18029,8 @@ function shopBuyRows(n){
 }
 /* the shop on a place's card (DM mode) and in its Build panel */
 function shopBlock(n){
-  if(!n.shop) return hasFootprint(n) || ["store","provision","market","smith","apothecary","inn","stable","stall","tent","shipwright","warehouse","fence"].includes(n.kind)
-    ? `<div class="pcrow" style="margin:6px 0 8px"><select data-shop="tpl" style="flex:1;min-width:0"><option value="">Make it a shop…</option>${shopOptions("")}</select><button class="btn" data-shopb="open">Open it</button></div>` : "";
+  if(!n.shop) return hasFootprint(n) || ["store","provision","market","smith","apothecary","inn","stable","stall","tent","shipwright","warehouse","fence","hideout"].includes(n.kind)
+    ? `<div class="pcrow" style="margin:6px 0 8px"><select data-shop="tpl" style="flex:1;min-width:0"><option value="">Make it a shop…</option>${shopOptions(["fence","hideout"].includes(n.kind) ? "fence" : "")}</select><button class="btn" data-shopb="open">Open it</button></div>` : "";
   const S = n.shop, T = shopTpl(S.tpl) || { label:"Shop" }, st = n.site || {}, keep = libNpcById(S.keeper);
   return `<p class="eyebrow spaced">The ${esc(T.label.toLowerCase())}</p>
     <div class="pcrow" style="align-items:center;margin:2px 0"><div class="sbl" style="flex:1;margin:0"><b>Kept by</b> ${keep ? `<span class="libref" data-libopen="npcs:${keep.id}">${esc(keep.name)}</span>` : "nobody"}</div><button class="btn small ${shopRoll.open===n.id?"on":""}" data-shopb="rekeep" title="Roll a new keeper: choose what kind of person first">Reroll</button></div>
@@ -19799,19 +19841,20 @@ function fleetRoll(){
   const P = repPorts(); if(P.length < 2){ flash("Fewer than two ports on the water: nothing to sail between."); return 0; }
   if(!(repOf().lanes||[]).length) seaLanesFromMap();
   const used = new Set(), out = [], pick = A => A[rollD(A.length) - 1], cities = P.filter(p=>p.kind==="city"), D = campaignDay();
+  const honestP = P.filter(p=>!shadyPort(p)).length ? P.filter(p=>!shadyPort(p)) : P, smugP = P.filter(p=>p.kind==="smuggle");
   const walk = (home, n, only) => { const r = [home.id]; let at = home.id;
-    for(let i = 0; i < n; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !fleetReef(id) && (!only || only(id))); if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); }
+    for(let i = 0; i < n; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !fleetReef(id) && !shadyPort(id) && (!only || only(id))); if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); }
     return r; };
   const mk = (kind, mode, home, route) => ({ id:uid("sh"), name:fleetName(used), kind, mode, home:home.id, ...(route ? { route } : {}), at:home.id, stay:D + rollD(6), carry:[] });
   const spread = (k, cs) => pick(cs || P);
-  for(let i = 0; i < 6; i++){ const h = spread(i, cities.length ? cities : P); out.push(i < 3 ? mk("merchant", "route", h, walk(h, 2 + rollD(2))) : mk("merchant", "wander", h)); }
-  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : P); out.push(mk("navy", "route", h, walk(h, 3, id=>{ const n = repNode(id); return n && n.region===h.region; }))); }
-  for(let i = 0; i < 3; i++){ const h = spread(i); out.push(mk("fishing", "wander", h)); }
-  for(let i = 0; i < 2; i++) out.push(mk("explorer", "wander", spread(i)));
-  for(let i = 0; i < 2; i++) out.push(mk("smuggler", "wander", spread(i)));
-  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : P); out.push(mk("packet", "route", h, walk(h, 2))); }
+  for(let i = 0; i < 6; i++){ const h = spread(i, cities.length ? cities : honestP); out.push(i < 3 ? mk("merchant", "route", h, walk(h, 2 + rollD(2))) : mk("merchant", "wander", h)); }
+  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : honestP); out.push(mk("navy", "route", h, walk(h, 3, id=>{ const n = repNode(id); return n && n.region===h.region; }))); }
+  for(let i = 0; i < 3; i++){ const h = spread(i, honestP); out.push(mk("fishing", "wander", h)); }
+  for(let i = 0; i < 2; i++) out.push(mk("explorer", "wander", spread(i, honestP)));
+  for(let i = 0; i < 2; i++) out.push(mk("smuggler", "wander", spread(i, smugP.length ? smugP : P)));     // smugglers out of a smugglers' port, if there is one
+  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : honestP); out.push(mk("packet", "route", h, walk(h, 2))); }
   /* the pirate's hideout: a port in the reefs if there is one (Kalatecha: Lantern Rock), else the one furthest from the rest */
-  const lonely = P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
+  const lonely = pickOne(P.filter(p=>p.kind==="hideout").length ? P.filter(p=>p.kind==="hideout") : [null]) || P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
   out.push(mk("pirate", "pirate", lonely));
   for(const s of fleetOf()) fleetForget(s);                               // the old fleet's crews out of the Library
   root.fleet = out; root.fday = D;
@@ -19831,10 +19874,10 @@ function fleetNext(s){
       if(!L.length) return null; const l = L[rollD(L.length) - 1], a = repNode(l.from), b = repNode(l.to); if(!a || !b) return null;
       const way = l.pts && l.pts.length > 2 ? l.pts : [a, b], mid = way[Math.floor(way.length / 2)], pre = way[Math.floor(way.length / 2) - 1] || mid;      // a spot on the lane itself, at sea
       return { lurk:{ x:(mid.x + pre.x) / 2, y:(mid.y + pre.y) / 2, on:l.id }, wait:1 + rollD(4) }; }
-    if(rollD(10) <= 3){ const P = repPorts().filter(p=>p.id!==s.home); return { to:P[rollD(P.length) - 1].id, direct:true }; }      // off to a port to sell
+    if(rollD(10) <= 3){ const P = repPorts().filter(p=>p.id!==s.home), S = P.filter(p=>shadyPort(p)), Q = S.length && Math.random() < 0.75 ? S : P; if(!Q.length) return { to:s.home, direct:true }; return { to:Q[rollD(Q.length) - 1].id, direct:true }; }      // off to sell: a smugglers' port or another hideout, mostly
     return { to:s.home, direct:true };
   }
-  let nb = lanesOf(at).map(l=>({ id:l.from===at ? l.to : l.from, w:{ dense:5, busy:4, normal:3, light:2, quiet:1 }[trafficOf(l)] || 3 })).filter(x=>!(FLEET_HONEST.has(s.kind) && fleetReef(x.id)) && !shunned(x.id));
+  let nb = lanesOf(at).map(l=>({ id:l.from===at ? l.to : l.from, w:{ dense:5, busy:4, normal:3, light:2, quiet:1 }[trafficOf(l)] || 3 })).filter(x=>!(FLEET_HONEST.has(s.kind) && (fleetReef(x.id) || shadyPort(x.id))) && !shunned(x.id));     // honest ships keep out of the reefs, the smugglers' ports and the hideouts
   for(const x of nb) if(typeof troubleAt==="function" && (troubleAt(x.id)||{}).kind==="festival") x.w *= 3;     // a festival: they flock in
   if(s.kind==="fishing"){ const h = repNode(s.home); nb = nb.filter(x=>{ const n = repNode(x.id); return n && h && repMilesBetween(n, h) <= 80; }); if(!nb.length && at!==s.home) return { to:s.home }; }
   if(!nb.length) return null;
@@ -20146,7 +20189,7 @@ const TRADE_GOODS = {        // [name, gp a load (a crate, barrel or bale), raw 
   sugar:["Sugar",10,"raw"], tobacco:["Tobacco",18,"raw"], cloth:["Cloth",15,"made"], ironware:["Ironware and tools",20,"made"],
   rum:["Rum",12,"made"], wine:["Wine",15,"made"], tea:["Tea",30,"lux"], coffee:["Coffee",25,"lux"], spices:["Spices",60,"lux"],
   dyes:["Dyes",35,"lux"], silk:["Silk",80,"lux"], pearls:["Pearls",100,"lux",1] };
-const TRADE_DEPTH = { city:60, town:30, village:12 }, TRADE_CAP = { small:10, medium:40, large:20 };
+const TRADE_DEPTH = { city:60, town:30, village:12, smuggle:12, hideout:6 }, TRADE_CAP = { small:10, medium:40, large:20 };
 const TRADE_SHIPS = new Set(["merchant","smuggler","packet"]), TRADE_DRIFT = 0.9, TRADE_SELL = 0.9;
 const tradeOf = () => { const T = root.trade = root.trade && typeof root.trade==="object" ? root.trade : {};
   T.places = T.places || {}; T.glut = T.glut || {}; T.hold = T.hold || {}; if(T.cap==null) T.cap = 40; return T; };
@@ -20219,19 +20262,20 @@ function tradeCall(s, port, day){
 /* a place's card (only the DM's): its prices, what it makes and wants, and the party's trading */
 function tradeHere(n){
   const place = repPlaceOf(n), P = repNode(place); if(!tradeIsPlace(P)) return "";
-  const T = tradeOf(), M = tradePlace(place), H = T.hold, pcs = partyRoster(), loaded = tradeLoaded(H), key = "trade:" + place, R = stolenRules(), office = tradeOffice(place), navy = tradeNavy();
+  const T = tradeOf(), M = tradePlace(place), H = T.hold, pcs = partyRoster(), loaded = tradeLoaded(H), key = "trade:" + place, R = stolenRules(), cut = shadyCut(place), office = !cut && tradeOffice(place), navy = tradeNavy();
   const stolen = Object.entries(H).filter(([, h])=>h && h.stolen), guildLots = Object.entries(H).filter(([, h])=>h && h.guild);
   const guildHtml = guildLots.length ? `<p class="eyebrow spaced">The Guild's cargo <small>trade runs: theirs to carry, not to sell</small></p>
     ${guildLots.map(([k, h])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${h.n} ${esc(tradeGoodName(h.g).toLowerCase())} <small>for ${esc(h.from)}, to ${esc(repPlaceName(h.to))}${h.due ? ` by day ${h.due}${campaignDay() > h.due ? " (late)" : ""}` : ""}</small></span>
       ${h.to===place ? `<button class="btn small" data-trade="deliver" data-k="${esc(k)}" title="Hand it over: the fee to whoever's paid (half if late)">Deliver</button>` : ""}</div>`).join("")}` : "";
   const stolenHtml = `<p class="eyebrow spaced">Stolen cargo <small>${stolen.length ? `${stolen.reduce((a, [, h])=>a + h.n, 0)} loads in the hold` : "none in the hold"}${tradeSuspect() ? ` · ${esc(navy ? navy.name : "the navy")} suspects the party (day ${T.suspect})` : ""}</small></p>
     ${stolen.map(([k, h])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${h.n} ${esc(tradeGoodName(h.g).toLowerCase())} <small>(${h.stolen==="pirate" ? "a pirate's plunder, from" : "taken from"} ${esc(h.from||"a ship")}; ${tradeSellAt(place, h.g, h.n)} gp a load here)</small></span>
-      <button class="btn small" data-trade="fence" data-k="${esc(k)}" title="Sells like any cargo, with a ${R.sell}% chance of being caught">Sell (${R.sell}% risk)</button>${h.stolen==="pirate" && office ? `<button class="btn small" data-trade="prize" data-k="${esc(k)}" title="${esc(navy ? navy.name : "The navy")}'s prize office pays ${R.prize}% of what it would fetch here, with a ${R.suspect}% chance they suspect the party of piracy">Turn in (${R.prize}%)</button>` : ""}</div>`).join("")}
+      ${cut ? `<button class="btn small" data-trade="fence" data-k="${esc(k)}" title="No questions here: ${cut}% of the price, and no risk">Sell (${cut}%, no risk)</button>` : `<button class="btn small" data-trade="fence" data-k="${esc(k)}" title="Sells like any cargo, with a ${R.sell}% chance of being caught">Sell (${R.sell}% risk)</button>`}${h.stolen==="pirate" && office ? `<button class="btn small" data-trade="prize" data-k="${esc(k)}" title="${esc(navy ? navy.name : "The navy")}'s prize office pays ${R.prize}% of what it would fetch here, with a ${R.suspect}% chance they suspect the party of piracy">Turn in (${R.prize}%)</button>` : ""}</div>`).join("")}
     ${office ? `<p class="empty-note" style="font-size:11px;margin:2px 0">${esc(navy ? navy.name : "The navy")} has a prize office here: a pirate's plunder turned in for ${R.prize}%.</p>` : ""}
-    <button class="btn small" data-trade="search" title="${R.search}% they search (${R.search + 25}% while they suspect the party); anything stolen in the hold is caught">The navy searches the hold</button>
+    ${cut ? `<p class="empty-note" style="font-size:11px;margin:2px 0">${esc(repPlaceName(place))} is ${P.kind==="hideout" ? "a pirate hideout" : "a smugglers' port"}: stolen cargo sells here for ${cut}% of the price, and nobody's caught. The navy doesn't come here.</p>` : `<button class="btn small" data-trade="search" title="${R.search}% they search (${R.search + 25}% while they suspect the party); anything stolen in the hold is caught">The navy searches the hold</button>`}
     <details style="margin-top:4px"><summary><small>The rules for stolen cargo</small></summary>
       <div class="pcrow"><div class="field" style="flex:1"><label>Caught selling, %</label><input type="number" min="0" max="100" data-strule="sell" value="${R.sell}"></div><div class="field" style="flex:1"><label>Prize office pays, %</label><input type="number" min="0" max="100" data-strule="prize" value="${R.prize}"></div></div>
       <div class="pcrow"><div class="field" style="flex:1"><label>Suspected turning in, %</label><input type="number" min="0" max="100" data-strule="suspect" value="${R.suspect}"></div><div class="field" style="flex:1"><label>Navy searches, %</label><input type="number" min="0" max="100" data-strule="search" value="${R.search}"></div></div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Smugglers' port pays, %</label><input type="number" min="0" max="100" data-strule="smuggle" value="${R.smuggle}"></div><div class="field" style="flex:1"><label>Pirate hideout pays, %</label><input type="number" min="0" max="100" data-strule="hideout" value="${R.hideout}"></div></div>
       <div class="pcrow"><div class="field" style="flex:1"><label>The navy is</label><select id="tr-navy">${factionOptions(navy ? navy.id : "", "No faction")}</select></div>
         <label style="flex:1;align-self:end"><input type="checkbox" id="tr-office" ${office ? "checked" : ""}> A prize office here</label></div>
       <p class="empty-note" style="font-size:11px;margin:2px 0">Suspected: −1 with the navy and a local deed. Caught selling or holding: everything stolen confiscated, a fine of its full value from whoever pays, −3 with the navy and a notable deed. A prize office is wherever a navy ship is based or calls, unless you say otherwise here.</p></details>`;
@@ -20275,7 +20319,10 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   if(a==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); renderPane(true); return; }
   if(a==="search"){ tradeNavySearch(`${(tradeNavy()||{}).name || "The navy"} at ${repPlaceName(place)}`, place); saveParty(); renderPane(true); return; }
   if(a==="fence" || a==="prize"){ const k = b.dataset.k, h = T.hold[k], payer = partyRoster().find(c=>c.id===T.payer), R = stolenRules(); if(!h) return;
-    if(a==="fence"){ const r = rollD(100); if(r <= R.sell){ tradeCaught(place, [k], "selling", `d100 ${r} vs ${R.sell}`); saveParty(); renderPane(true); return; }
+    const cut = shadyCut(place);
+    if(a==="fence" && cut){ const each = Math.round(tradeSellAt(place, h.g, h.n) * cut) / 100, cp = Math.round(each * h.n * 100); if(payer) addCoins(purseOf(payer), cp); tradeBump(place, h.g, h.n); delete T.hold[k];
+      gameLog("note", `Trade at ${repPlaceName(place)}: the party sold ${h.n} stolen ${tradeGoodName(h.g).toLowerCase()} at ${each} gp a load (${cut}% of the price; ${cp / 100} gp${payer ? `, to ${payer.name}` : ""}); no questions here`); flash(`Sold for ${cp / 100} gp; no questions here.`); }
+    else if(a==="fence"){ const r = rollD(100); if(r <= R.sell){ tradeCaught(place, [k], "selling", `d100 ${r} vs ${R.sell}`); saveParty(); renderPane(true); return; }
       const each = tradeSellAt(place, h.g, h.n), cp = Math.round(each * h.n * 100); if(payer) addCoins(purseOf(payer), cp); tradeBump(place, h.g, h.n); delete T.hold[k];
       gameLog("note", `Trade at ${repPlaceName(place)}: the party sold ${h.n} stolen ${tradeGoodName(h.g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, to ${payer.name}` : ""}); nobody asked (d100 ${r} vs ${R.sell})`); flash(`Sold for ${cp / 100} gp; nobody asked.`); }
     else { const each = Math.round(tradeEach(place, h.g) * R.prize) / 100, cp = Math.round(each * h.n * 100), r = rollD(100); if(payer) addCoins(purseOf(payer), cp); delete T.hold[k];
@@ -20310,7 +20357,9 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !
    Caught selling or holding (a navy search): everything stolen confiscated, a fine of its value, worse standing ── */
 const FLEET_MAGIC = { packet:[["Rare",30],["Very Rare",20],["Legendary",5],["Artifact",1]],
   merchant:[["Rare",15],["Very Rare",5],["Artifact",0.4]], pirate:[["Rare",15],["Very Rare",5],["Artifact",0.4]] };
-const STOLEN_RULES = { sell:5, prize:60, suspect:15, search:50 };
+const STOLEN_RULES = { sell:5, prize:60, suspect:15, search:50, smuggle:80, hideout:70 };
+/* at a smugglers' port or a pirate hideout, stolen cargo sells with no risk, for a cut: the share of the price paid */
+const shadyCut = id => { const n = repNode(id); return n && SHADY_KINDS.has(n.kind) ? stolenRules()[n.kind] : 0; };
 const stolenRules = () => { const T = tradeOf(), R = T.rules = T.rules || {}; for(const k in STOLEN_RULES) if(!(R[k] >= 0)) R[k] = STOLEN_RULES[k]; return R; };
 const tradeNavy = () => { const T = tradeOf(), F = lib().factions || []; return T.navy!=null ? F.find(f=>f.id===T.navy) || null : F.find(f=>/admiralty|navy/i.test(f.name||"")) || null; };
 const tradeSuspect = () => { const T = tradeOf(); return T.suspect!=null && campaignDay() - T.suspect <= 30; };      // they remember for a month
@@ -20527,14 +20576,52 @@ function fleetGoAboard(s){
   if(decked){ enterPlan(n.id); const deck = nodeById("fvrd"); select("node", "fvrd"); pane = "inspect"; syncTabs(); render();
     if(deck) board(n.id, deck); flash(`${s.name}: aboard, on her deck. Drag someone onto the stairs or the hatch to go below; onto the rail to go back.`); return; }
   select("node", n.id); pane = "inspect"; syncTabs(); render(); board("survey", n); flash(`${s.name}: aboard, on her deck. Drag someone onto the rail to go back to your ship.`); }
+/* a route rolled: her home and up to three ports on from it along the lanes, each trading well with the last (honest
+   ships keep out of the reefs, the smugglers' ports and the hideouts) */
+function fleetRouteRoll(s){
+  const r = [s.home]; let at = s.home;
+  for(let i = 0; i < 3; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !(FLEET_HONEST.has(s.kind) && (fleetReef(id) || shadyPort(id))));
+    if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); }
+  s.route = r; return r;
+}
+/* a set route, by hand (Joseph, 2026-11-05): her stops in order, each a port; moved up or down, taken off, added; or
+   rolled again. She sails them round and round; a stretch with no way by water is said */
+function fleetRouteEditor(s, portOpts){
+  const R = s.route || [], gap = (a, b) => a && b && a!==b && !seaPath(a, b);
+  const bad = R.map((id, i)=>gap(id, R[(i + 1) % R.length]) ? `${repPlaceName(id)} → ${repPlaceName(R[(i + 1) % R.length])}` : "").filter(Boolean);
+  const odd = FLEET_HONEST.has(s.kind) ? R.filter(id=>shadyPort(id) || fleetReef(id)).map(repPlaceName) : [];
+  return `<details class="pcset" style="margin:2px 0 4px" data-invfor="route:${s.id}" ${openInv.has("route:" + s.id) ? "open" : ""}><summary><small>Route:</small> ${R.length ? R.map(id=>esc(repPlaceName(id))).join(" → ") + " → (round again)" : "<i>no stops yet</i>"}</summary>
+    ${R.map((id, i)=>`<div class="pcrow" style="align-items:center;margin:2px 0"><small class="mono" style="width:1.6em">${i + 1}.</small><select data-rstop="${i}" data-sid="${s.id}" style="flex:1;min-width:0">${portOpts(id)}</select>
+      <button class="btn small" data-rt="up" data-i="${i}" data-sid="${s.id}" ${i===0 ? "disabled" : ""} title="Earlier">↑</button><button class="btn small" data-rt="down" data-i="${i}" data-sid="${s.id}" ${i===R.length - 1 ? "disabled" : ""} title="Later">↓</button><button class="fdel" data-rt="del" data-i="${i}" data-sid="${s.id}" title="Take this stop off">×</button></div>`).join("")}
+    <div class="pcrow" style="align-items:center;margin:4px 0 0"><select data-rtadd="${s.id}" style="flex:1;min-width:0"><option value="">Add a stop at the end…</option>${portOpts("")}</select><button class="btn small" data-rt="roll" data-sid="${s.id}" title="Her home and up to three ports on from it, each trading well with the last">Roll a new route</button></div>
+    ${R.length < 2 ? `<p class="empty-note" style="font-size:11px;margin:2px 0 0">A route needs two stops at least; till then she goes where she likes.</p>` : ""}
+    ${bad.length ? `<p class="empty-note" style="font-size:11px;margin:2px 0 0;color:var(--lead)">No sea lanes join ${bad.map(esc).join("; ")}. She'll find her own way by water (or go straight across, if there's none): draw a lane to keep her on the lanes.</p>` : ""}
+    ${odd.length ? `<p class="empty-note" style="font-size:11px;margin:2px 0 0">${esc(odd.join(", "))}: not where an honest ship would call, but she will, since you've put it on her route.</p>` : ""}
+    <p class="empty-note" style="font-size:11px;margin:2px 0 0">Changes count from her next sailing; a voyage under way finishes first.</p></details>`;
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !(t.dataset.rstop!=null || t.dataset.rtadd || t.dataset.fleetmode)) return;
+  const s = fleetOf().find(x=>x.id===(t.dataset.sid || t.dataset.rtadd || t.dataset.fleetmode)); if(!s) return;
+  if(t.dataset.fleetmode){ s.mode = t.value; if(s.mode==="route"){ if(!(s.route||[]).length) fleetRouteRoll(s); openInv.add("route:" + s.id); } bgLog("fleet", `${s.name} ${s.mode==="route" ? `sails a set route now: ${s.route.map(repPlaceName).join(" → ")}` : "goes where she likes now"}`); }
+  else if(t.dataset.rtadd){ if(!t.value) return; s.route = [...(s.route||[]), t.value]; }
+  else { const i = +t.dataset.rstop; s.route = (s.route||[]).slice(); s.route[i] = t.value; }
+  openInv.add("route:" + s.id); saveParty(); renderNamedPane("background"); render(); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-rt]"); if(!b) return; const s = fleetOf().find(x=>x.id===b.dataset.sid); if(!s) return;
+  const R = (s.route||[]).slice(), i = +b.dataset.i, a = b.dataset.rt;
+  if(a==="up" && i > 0) [R[i - 1], R[i]] = [R[i], R[i - 1]];
+  else if(a==="down" && i < R.length - 1) [R[i + 1], R[i]] = [R[i], R[i + 1]];
+  else if(a==="del") R.splice(i, 1);
+  if(a==="roll"){ fleetRouteRoll(s); flash(`${s.name}: ${s.route.map(repPlaceName).join(" → ")}.`); } else s.route = R;
+  openInv.add("route:" + s.id); saveParty(); renderNamedPane("background"); render(); });
 /* a ship added by hand (the builder): her kind or random, size, crew, home, how she sails */
 function fleetAdd(o){
   const P = repPorts(); if(!P.length){ flash("No ports on the water yet."); return null; }
   const kinds = Object.keys(FLEET_KINDS), kind = kinds.includes(o.kind) ? o.kind : pickOne(kinds.filter(k=>k!=="pirate"));
-  const home = repNode(o.home) && repIsCoastal(repNode(o.home)) ? repNode(o.home) : pickOne(kind==="pirate" ? (P.filter(p=>fleetReef(p.id)).length ? P.filter(p=>fleetReef(p.id)) : P) : P.filter(p=>!(FLEET_HONEST.has(kind) && fleetReef(p.id))));
+  const firstOf = (...L) => L.find(x=>x.length) || P;     // the first of these that has any ports in it
+  const home = repNode(o.home) && repIsCoastal(repNode(o.home)) ? repNode(o.home) : pickOne(kind==="pirate" ? firstOf(P.filter(p=>p.kind==="hideout"), P.filter(p=>fleetReef(p.id)))
+    : kind==="smuggler" ? firstOf(P.filter(p=>p.kind==="smuggle"), P) : firstOf(P.filter(p=>!(FLEET_HONEST.has(kind) && (fleetReef(p.id) || shadyPort(p))))));
   const mode = kind==="pirate" ? "pirate" : o.mode==="route" || o.mode==="wander" ? o.mode : (["navy","packet"].includes(kind) || Math.random() < .4 ? "route" : "wander");
   const used = new Set(fleetOf().map(s=>s.name)), s = { id:uid("sh"), name:(o.name||"").trim() || fleetName(used), kind, mode, home:home.id, at:home.id, stay:campaignDay() + 1, carry:[], ...(FLEET_SIZES[o.size] ? { size:o.size } : {}) };
-  if(mode==="route"){ const r = [home.id]; let at = home.id; for(let i = 0; i < 3; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !(FLEET_HONEST.has(kind) && fleetReef(id))); if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); } s.route = r; }
+  if(mode==="route") fleetRouteRoll(s);
   fleetOf().push(s); if(root.fday==null) root.fday = campaignDay();
   const crew = fleetCrewRoll(s, o.crew===""||o.crew==null ? null : +o.crew); tradeCall(s, home, campaignDay());
   bgLog("fleet", `A ship put to sea: ${s.name}, a ${(FLEET_KINDS[kind])[0].toLowerCase()} out of ${home.name}${crew ? `, ${crew} aboard` : ""}`);
@@ -20563,7 +20650,8 @@ function fleetBlock(){
     ${F.map(s=>`<div class="facfx${fleetFocus===s.id ? " fleetfocus" : ""}" id="fleetrow-${s.id}" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
         <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
       <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
-      ${s.mode==="route" ? `<div class="sbl"><small>Route:</small> ${(s.route||[]).map(id=>esc(repPlaceName(id))).join(" → ")} → (round again)</div>` : ""}
+      ${s.mode!=="pirate" ? `<div class="sbl"><small>Sails</small> <select data-fleetmode="${s.id}"><option value="route" ${s.mode==="route" ? "selected" : ""}>A set route</option><option value="wander" ${s.mode!=="route" ? "selected" : ""}>Where she likes</option></select></div>` : ""}
+      ${s.mode==="route" ? fleetRouteEditor(s, portOpts) : ""}
       ${(s.carry||[]).length ? `<div class="sbl"><small>Her crew has heard:</small> ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</div>` : ""}
       <div class="sbl"><small>${esc(FLEET_SIZES[fleetSizeOf(s)][0])}. Aboard:</small> ${(()=>{ const ppl = [s.captain, ...(s.crew||[])].map(libNpcById).filter(Boolean);
         return ppl.length ? ppl.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</span>`).join(", ") : FLEET_CREW[s.kind] ? "<i>no crew rolled yet</i>" : "<i>no crew rules for her kind yet</i>"; })()}</div>
@@ -20874,7 +20962,8 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   else if(a==="crew"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s){ const n = fleetCrewRoll(s); flash(`${s.name}: a new crew of ${n}.`); } }
   else if(a==="aboard"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s){ fleetGoAboard(s); return; } }
   else if(a==="add"){ const v = id => ($(id)||{}).value || ""; const s = fleetAdd({ kind:v("#fa-kind"), size:v("#fa-size"), crew:v("#fa-crew"), mode:v("#fa-mode"), home:v("#fa-home"), name:v("#fa-name") });
-    if(s) flash(`${s.name} put to sea: ${(FLEET_KINDS[s.kind])[0].toLowerCase()} out of ${repPlaceName(s.home)}${(s.crew||[]).length ? `, a captain and ${s.crew.length} crew` : ""}.`); }
+    if(s){ flash(`${s.name} put to sea: ${(FLEET_KINDS[s.kind])[0].toLowerCase()} out of ${repPlaceName(s.home)}${(s.crew||[]).length ? `, a captain and ${s.crew.length} crew` : ""}.${s.mode==="route" ? " Her route's open below to change." : ""}`);
+      if(s.mode==="route") openInv.add("route:" + s.id); renderPane(true); render(); fleetShowEntry(s.id); return; } }
   renderPane(true); render(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset) return;
   if(t.dataset.fleetname){ const s = fleetOf().find(x=>x.id===t.dataset.fleetname); if(s){ s.name = t.value.trim() || s.name; saveParty(); render(); } }
