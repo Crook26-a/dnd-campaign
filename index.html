@@ -19329,7 +19329,7 @@ function shopFactionLine(n){
    3 writes in each table; legendary ones go on the world table too), where, the factions it touched. The bigger it is,
    the likelier the other side comes along: a character's deed pinned on the party too, a party deed with a name on it.
    On the DM's screen only. Stage 1: no gossip yet (stage 2: it spreads along roads and sea lanes; stage 3: garbling) ══ */
-const REP_SIZES = [["local","Local (stays in its region)",1],["minor","Minor",1],["notable","Notable",2],["legendary","Legendary",3]];
+const REP_SIZES = [["local","Local (stays in its town)",1],["minor","Minor",1],["notable","Notable",2],["legendary","Legendary",3]];
 const REP_PULL = { 1:25, 2:60, 3:100 };     // % chance the other side comes along
 function repOf(){ const R = root.rep = root.rep || {}; R.tables = R.tables || {}; R.deeds = R.deeds || []; R.history = R.history || []; if(!(R.share >= 0 && R.share <= 1)) R.share = 0.75; return R; }
 const repNode = id => (root.nodes||[]).find(n=>n.id===id) || null;
@@ -19384,7 +19384,7 @@ function repSpread(deed, R){
     if(prev && prev.d!==deed.id) R.history.push({ key, slot:s, old:prev, by:deed.id, day:deed.day });
     said.push(`${label(key)} d${die} ${s}${prev && prev.d!==deed.id ? " (over an older story)" : ""}`); } };
   if(deed.place) put(()=>"place:" + deed.place, repPlaceDie(deed.place), repTableLabel);
-  for(const fid of deed.factions){ const f = factionById(fid); if(f) put(s=>repFacKey(f, s, deed.place), repFacDie(f), repTableLabel); }
+  for(const fid of deed.factions){ const f = factionById(fid); if(f) put(s=>deed.size==="local" && deed.place ? `fac:${f.id}@${deed.place}` : repFacKey(f, s, deed.place), repFacDie(f), repTableLabel); }   // a local deed: only the branch in its town, never the faction's shared slots
   if(n===3) put(()=>"world", 100, repTableLabel);
   deed.writes = [...(deed.writes||[]), ...writes];
   const how = deed.forced ? "spread on your say" : deed.told ? "the party told it" : (deed.seenBy||[]).length ? `seen by ${deed.seenBy.map(s=>s.name).join(", ")}` : "";
@@ -19477,7 +19477,7 @@ function repBlock(){
     <div class="pcrow"><select id="rep-lanea" style="flex:1;min-width:0">${placeOpts("")}</select><select id="rep-laneb" style="flex:1;min-width:0">${placeOpts("")}</select>
       <select id="rep-lanet">${REP_TRAFFIC.map(([v, w])=>`<option value="${v}" ${v==="normal"?"selected":""}>${w}</option>`).join("")}</select><button class="btn" data-rep="lane">Add</button></div>
     <div class="xprule" style="margin-top:8px">A faction's slots shared by all its branches: <input class="mono" data-rep="share" type="number" min="0" max="100" step="5" value="${Math.round(R.share * 100)}" style="width:52px"> % (the rest are each branch's own). Each faction's die is on its Library page.<br>
-      A road or sea crossing carries a story: local <input class="mono" data-repcarry="local" type="number" min="0" max="100" step="5" value="${repCarry("local")}" style="width:50px"> % (its own region only, never by sea), minor <input class="mono" data-repcarry="minor" type="number" min="0" max="100" step="5" value="${repCarry("minor")}" style="width:50px"> %, notable <input class="mono" data-repcarry="notable" type="number" min="0" max="100" step="5" value="${repCarry("notable")}" style="width:50px"> %, legendary <input class="mono" data-repcarry="legendary" type="number" min="0" max="100" step="5" value="${repCarry("legendary")}" style="width:50px"> % of the time.<br>
+      A road or sea crossing carries a story (a local one never leaves its town): minor <input class="mono" data-repcarry="minor" type="number" min="0" max="100" step="5" value="${repCarry("minor")}" style="width:50px"> %, notable <input class="mono" data-repcarry="notable" type="number" min="0" max="100" step="5" value="${repCarry("notable")}" style="width:50px"> %, legendary <input class="mono" data-repcarry="legendary" type="number" min="0" max="100" step="5" value="${repCarry("legendary")}" style="width:50px"> % of the time.<br>
       A story gets garbled on the way: by road <input class="mono" data-repg="garbleRoad" type="number" min="0" max="100" step="5" value="${repGarbleAt(false)}" style="width:50px"> %, by sea <input class="mono" data-repg="garbleSea" type="number" min="0" max="100" step="5" value="${repGarbleAt(true)}" style="width:50px"> % of the times it travels (a faction's branches, half that).<br>
       A story goes on the world's table by itself once it's known in<input class="mono" data-repset="worldTowns" type="number" min="1" value="${repWorldAt().towns}" style="width:46px"> places or <input class="mono" data-repset="worldRegions" type="number" min="1" value="${repWorldAt().regions}" style="width:46px"> regions (or with To the world, your call).</div></details>`;
 }
@@ -19522,7 +19522,7 @@ const trafficDays = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[2];
 const trafficWord = t => (REP_TRAFFIC.find(x=>x[0]===t) || REP_TRAFFIC[2])[1];
 const REP_FAC_FASTER = 2, REP_FAC_LOSS = 15;
 /* % of crossings that carry a story, by how big the deed is (Joseph: "minor deeds carry far less well than big deeds") */
-const REP_CARRY = { local:30, minor:30, notable:70, legendary:100 };     // Joseph: 30 / 70 / 100, all changeable; local only within its region, never by sea
+const REP_CARRY = { local:30, minor:30, notable:70, legendary:100 };     // Joseph: 30 / 70 / 100, all changeable; local never leaves its town
 const repCarry = size => { const C = repOf().carryBy || {}, k = REP_CARRY[size]!=null ? size : "minor", c = C[k]; return c!=null && c >= 0 && c <= 100 ? +c : REP_CARRY[k]; };
 const repWorldAt = () => { const R = repOf(); return { towns:+R.worldTowns || 5, regions:+R.worldRegions || 2 }; };
 function repRoutes(){
@@ -19532,8 +19532,9 @@ function repRoutes(){
   return out;
 }
 const repGap = days => Math.max(1, Math.round(days * (0.75 + Math.random() * 0.5)));
-/* a local deed (the blacksmith they cheated) stays in its region: never by sea, never to another region's places */
-const repLocalBlocked = (d, rt, s, t) => !!d && d.size==="local" && (rt.sea || ((repNode(s)||{}).region || "") !== ((repNode(t)||{}).region || ""));
+/* a local deed (the blacksmith they cheated) stays in its town (Joseph, 2026-11-05: "just that town"): it never
+   crosses a road or a sea to anywhere else */
+const repLocalBlocked = (d, rt, s, t) => !!d && d.size==="local" && s!==t;
 /* a faction is in a place: the place is its own, or someone there (on the survey or inside its plan) belongs to it */
 function repFacHere(f, place){
   const n = repNode(place); if(!n) return false;
@@ -19833,7 +19834,8 @@ function fleetPortCall(s, port, day, moved){
     const val = repRetell(e, rt, e.from, day, repGarbleAt(true)); if(val.g && R.tables[key] && Object.values(R.tables[key].slots).some(x=>x.d===e.d)) continue;
     const slot = rollD(die); if(repWriteIn(key, die, slot, val, e.d, "gossip")) moved.push({ d:e.d, sea:true, day, from:e.from, to:port.id, how:`aboard ${s.name}, ${repPlaceName(e.from)} → ${repPlaceName(port.id)} d${die} ${slot}${val.g && !val.rev ? " (garbled)" : ""}` }); }
   s.carry = [];
-  const T = R.tables[key], told = T ? Object.keys(T.slots) : []; if(told.length){ const e = T.slots[told[Math.floor(Math.random() * told.length)]]; s.carry.push({ ...e, from:port.id }); }
+  const T = R.tables[key], told = T ? Object.keys(T.slots).filter(k=>(R.deeds.find(x=>x.id===T.slots[k].d)||{}).size!=="local") : [];     // a local story stays ashore
+  if(told.length){ const e = T.slots[told[Math.floor(Math.random() * told.length)]]; s.carry.push({ ...e, from:port.id }); }
 }
 /* the days since: every ship's departures and arrivals in turn */
 function fleetCatchUp(){
