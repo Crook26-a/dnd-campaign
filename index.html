@@ -3050,6 +3050,7 @@ function sendPlayers(now){
       else if(playerShow.kind==="awards") msg = { kind:"board", html:awardsTvHtml(playerShow.sess || sessKey()) };
       else if(playerShow.kind==="puzzle") msg = { kind:"board", html:pzTvHtml(playerShow.id) };
       else if(playerShow.kind==="say") msg = { kind:"board", html:sayTvHtml(playerShow) };
+      else if(playerShow.kind==="market") msg = { kind:"board", html:marketTvHtml(playerShow.id) };
       else if(playerShow.kind==="tokens") msg = { kind:"board", html:tokensTvHtml() };
       else if(playerShow.kind==="card"){ const k = playerShow.key, at = k.indexOf(":"), x = cardFind(k.slice(0, at), k.slice(at+1)), blob = x ? await cardBlob(k.slice(0, at), x) : null;
         msg = blob ? { kind:"picture", blob } : { kind:"blank" }; }
@@ -3303,6 +3304,7 @@ function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecha
   const s = document.getElementById("timeBar"); if(s){ s.value = timeOfDay(); s.title = `The time of day, everywhere: about ${hourWord(clockHour())}`; } const d = document.getElementById("dayNum"); if(d && document.activeElement!==d) d.value = campaignDay();
   if(typeof syncWeather==="function") try{ syncWeather(); }catch(err){}
   /* the ships catch up, and the chart and the panel show where they are now (Joseph: "I don't see that happening") */
+  if(typeof worldCatchUp==="function") try{ worldCatchUp(); }catch(err){}          // world news, troubles, the guilds' weekly boards (before the ships sail, so they see the troubles)
   if(typeof fleetCatchUp==="function") try{ const r = fleetCatchUp(), t = Array.isArray(root.fleet) && root.fleet.length ? fleetT() : null;
     if(t!=null && t!==fleetDrawnAt){ fleetDrawnAt = t;
       setTimeout(()=>{ if(!battleOf) render(); renderPane(true);
@@ -6520,6 +6522,8 @@ svg.addEventListener("pointerdown", steady(e=>{
   if(placing) return;
   const fsEl = e.target.closest && e.target.closest("[data-fleetship]");             // a ship at sea: her card, nothing else
   if(fsEl && e.button===0 && typeof fleetCard==="function"){ e.preventDefault(); fleetCard(fsEl.dataset.fleetship); return; }
+  const lnEl = e.target.closest && e.target.closest("[data-lane]");                    // a sea lane: its card
+  if(lnEl && e.button===0 && typeof laneCard==="function" && !e.target.closest("[data-node]")){ e.preventDefault(); laneCard(lnEl.dataset.lane); return; }
   if(e.isPrimary){ pointers.clear(); pinch = null; }  // a first finger (or the mouse): nothing else is down
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   if(pointers.size===2){ pinchStart(); return; }
@@ -17534,6 +17538,23 @@ const PEOPLE_KINDS = {
     secret:["lost their faith once in a storm and found it again","heals the guards first in a fight, whatever the vows say","took a passenger's last confession and knows a crime"],
     knows:["every passenger's troubles","the sea's omens","the guards' rota, and their wounds"],
     carries:["Mace","Holy Symbol","Healer's Kit"], quirk:["blesses the ship every morning","keeps a candle lit below decks","sings hymns in a storm"] },
+  /* an explorer ship's specialists (Joseph, 2026-11-05) */
+  cartographer:{ label:"Cartographer", group:"Sea and docks", cls:"Wizard", blocks:["Commoner","Mage"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:2,
+    titles:["Cartographer","Map-maker","Chart-master","Surveyor"],
+    look:["ink to the elbows","a roll of charts under one arm","squints at every coastline","a brass compass on a chain"],
+    voice:["measures everything aloud","corrects other people's maps, politely","talks of 'the blank parts' with longing"],
+    wants:["a coast no one has drawn","the Guild's prize for a new chart","better instruments","their name on a cape or a bay"],
+    secret:["copied a rival's chart and sold it as their own","knows a sea lane the Guild doesn't","drew a reef in the wrong place, and a ship was lost"],
+    knows:["every chart in the Guild's archive","the depths off a dozen harbours","which maps are lies"],
+    carries:["Cartographer's Tools","Ink","Paper"], quirk:["sketches everyone's face in the margins","names islands after their cats","won't sail without their lucky compass"] },
+  naturalist:{ label:"Naturalist", group:"Sea and docks", cls:"Druid", blocks:["Commoner","Druid","Priest Acolyte"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:1,
+    titles:["Naturalist","Botanist","Collector of curiosities","Beast-scholar"],
+    look:["specimen jars clinking in a satchel","sunburnt and delighted","a butterfly net, always","burrs on every hem"],
+    voice:["Latin names for everything","forgets to be afraid of anything with scales","describes a sea monster as 'magnificent'"],
+    wants:["a beast no one has named","seeds of every island's flowers","to be taken seriously by the Guild","to go ashore, now"],
+    secret:["is smuggling a live egg in the hold","was expelled from the academy","has eaten something they shouldn't have, and feels odd"],
+    knows:["which plants heal and which kill","what the birds mean about the weather","the habits of sea serpents"],
+    carries:["Herbalism Kit","Book"], quirk:["talks to the specimens","collects everything, including the inedible","sleeps on deck to watch the birds"] },
   passlow:{ label:"Passenger (low class)", group:"Sea and docks", cls:"Commoner", blocks:["Commoner"], disp:{ ally:4, neutral:5, enemy:1 }, wealth:0,
     titles:["Emigrant","Pilgrim","Labourer seeking work","Farmhand going home","Deckhand working their passage","Widow and her bundle","Indentured servant"],
     look:["everything they own in one bundle","patched clothes and good boots","a family keepsake held tight","seasick and determined"],
@@ -18827,6 +18848,7 @@ function boardBlock(n){
         <button class="btn wide" data-mb="del" data-mid="${m.id}">Delete this mission</button></details>`).join("")
       : `<p class="empty-note" style="font-size:11px;margin:4px 0">No missions yet.</p>`}
     <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-mb="addm">Add a mission</button><button class="btn" style="flex:1" data-mb="addtrade" title="A cargo to carry from here to a market that wants it, by a day, for a fee: rolled from this place's market">Add a trade run</button></div>
+    ${n.guild==="explore" ? `<button class="btn wide" style="margin-top:4px" data-mb="addexplore" title="Chart the unknown, a lost expedition, a specimen or an escort: rolled from here">Add a commission</button>` : ""}
     <button class="btn wide" style="margin-top:4px" data-mb="drop" title="Take the whole board down, missions and all">Remove the board</button>`;
 }
 function boardAdd(n){
@@ -18852,6 +18874,8 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
   if(a==="addm"){ const m = { id:uid("ms"), title:"", patron:"", reward:"", text:"", notes:"", to:"", status:"draft" }; M.push(m); mbOpen = m.id; touch(); boardRedraw(); return; }
   if(a==="addtrade"){ const from = repPlaceOf(n) || n.id, m = tradeRunRoll(from, guildPatron(n, from)); if(!m){ flash("No market here or nowhere to send a cargo: a trade run needs a city, town or village on each end."); return; }
     m.status = "draft"; M.push(m); mbOpen = m.id; touch(); boardRedraw(); flash(`A trade run: ${m.title}. Post it when you're ready.`); return; }
+  if(a==="addexplore"){ const from = repPlaceOf(n) || n.id, m = exploreRoll(from, guildPatron(n, from)); if(!m) return;
+    m.status = "draft"; M.push(m); mbOpen = m.id; touch(); boardRedraw(); flash(`A commission: ${m.title}. Post it when you're ready.`); return; }
   if(a==="del"){ const m = M.find(x=>x.id===b.dataset.mid); if(!m || !confirm(`Delete "${m.title||"this mission"}"?`)) return;
     n.board.missions = M.filter(x=>x!==m); touch(); boardRedraw(); refreshBoardOnTv(); return; }
   if(a==="drop"){ if(!confirm(`Remove the mission board from ${placeLabel(n)}, with its ${M.length} mission${M.length===1?"":"s"}?`)) return;
@@ -18875,7 +18899,7 @@ document.getElementById("pane-inspect").addEventListener("change", e=>{
   const m = boardMissions(n.board).find(x=>x.id===t.dataset.mid); if(!m) return;
   const was = m.status; m[t.dataset.mbf] = t.value; let said = "";
   if(t.dataset.mbf==="status" && t.value!==was){
-    if(t.value==="taken") said = missionTaken(m) + (m.kind==="trade" ? tradeRunLoad(m) : "");
+    if(t.value==="taken") said = missionTaken(m) + (m.kind==="trade" ? tradeRunLoad(m) : "") + (m.kind==="explore" ? exploreTaken(m) : "");
     else if(m.kind==="trade" && was==="taken") said = tradeRunUnload(m);          // a trade run called off or marked done by hand: the Guild's cargo comes out of the hold
     gameLog("mission", `${m.title || "A mission"}: ${(MISSION_STATUS.find(([k])=>k===t.value)||["", t.value])[1].toLowerCase()}`);
     flash(`${m.title || "The mission"}: ${(MISSION_STATUS.find(([k])=>k===t.value)||["", t.value])[1].toLowerCase()}.${said}`);
@@ -19795,7 +19819,8 @@ function fleetRoll(){
 /* where a ship goes next */
 function fleetNext(s){
   const at = s.at, lanesOf = id => (repOf().lanes||[]).filter(l=>l.from===id || l.to===id);
-  if(s.mode==="route" && (s.route||[]).length > 1){ const i = s.route.indexOf(at); return { to:s.route[(i + 1) % s.route.length] }; }
+  const shunned = id => FLEET_HONEST.has(s.kind) && typeof troubleAt==="function" && ((troubleAt(id)||{}).kind==="plague" || (troubleAt(id)||{}).kind==="blockade");     // plague or a blockade: honest ships keep away
+  if(s.mode==="route" && (s.route||[]).length > 1){ const i = s.route.indexOf(at), R = s.route; for(let j = 1; j < R.length; j++){ const to = R[(i + j) % R.length]; if(!shunned(to) || j===R.length - 1) return { to }; } }
   if(s.mode==="pirate"){
     if(at===s.home || !at){ const busy = (repOf().lanes||[]).filter(l=>["dense","busy"].includes(trafficOf(l))), L = (busy.length ? busy : repOf().lanes||[]);
       if(!L.length) return null; const l = L[rollD(L.length) - 1], a = repNode(l.from), b = repNode(l.to); if(!a || !b) return null;
@@ -19804,7 +19829,8 @@ function fleetNext(s){
     if(rollD(10) <= 3){ const P = repPorts().filter(p=>p.id!==s.home); return { to:P[rollD(P.length) - 1].id, direct:true }; }      // off to a port to sell
     return { to:s.home, direct:true };
   }
-  let nb = lanesOf(at).map(l=>({ id:l.from===at ? l.to : l.from, w:{ dense:5, busy:4, normal:3, light:2, quiet:1 }[trafficOf(l)] || 3 })).filter(x=>!(FLEET_HONEST.has(s.kind) && fleetReef(x.id)));
+  let nb = lanesOf(at).map(l=>({ id:l.from===at ? l.to : l.from, w:{ dense:5, busy:4, normal:3, light:2, quiet:1 }[trafficOf(l)] || 3 })).filter(x=>!(FLEET_HONEST.has(s.kind) && fleetReef(x.id)) && !shunned(x.id));
+  for(const x of nb) if(typeof troubleAt==="function" && (troubleAt(x.id)||{}).kind==="festival") x.w *= 3;     // a festival: they flock in
   if(s.kind==="fishing"){ const h = repNode(s.home); nb = nb.filter(x=>{ const n = repNode(x.id); return n && h && repMilesBetween(n, h) <= 80; }); if(!nb.length && at!==s.home) return { to:s.home }; }
   if(!nb.length) return null;
   if(TRADE_SHIPS.has(s.kind) && tradeLoaded(s.cargo)){                  // a trader goes where her cargo sells: the best market, mostly
@@ -19890,7 +19916,10 @@ function fleetLayer(forPlayers){
   const ppm = root.ppm || 10, inv = 1 / Math.max(.05, view.k || 1), t = fleetT(), me = fleetParty();
   let s = "";
   if(!forPlayers) for(const l of repOf().lanes || []){ const a = repNode(l.from), b = repNode(l.to); if(!a || !b) continue;
-    s += `<path class="sealane" fill="none" d="M${(l.pts && l.pts.length > 1 ? l.pts : [a, b]).map(p=>`${Math.round(p.x)} ${Math.round(p.y)}`).join(" L")}" stroke="#2c5a72" stroke-opacity=".45" stroke-width="${({ dense:2.4, busy:2, normal:1.5, light:1.1, quiet:.8 }[trafficOf(l)] || 1.2) * inv}" stroke-dasharray="${6*inv} ${5*inv}" pointer-events="none"/>`; }
+    const P = l.pts && l.pts.length > 1 ? l.pts : [a, b], d = `M${P.map(p=>`${Math.round(p.x)} ${Math.round(p.y)}`).join(" L")}`;
+    s += `<path class="sealane" fill="none" d="${d}" stroke="#2c5a72" stroke-opacity="${laneSel===l.id ? ".9" : ".45"}" stroke-width="${({ dense:2.4, busy:2, normal:1.5, light:1.1, quiet:.8 }[trafficOf(l)] || 1.2) * inv * (laneSel===l.id ? 2 : 1)}" stroke-dasharray="${6*inv} ${5*inv}" pointer-events="none"/>`
+      + `<path data-lane="${l.id}" fill="none" d="${d}" stroke="transparent" stroke-width="${10 * inv}" style="cursor:pointer" pointer-events="stroke"><title>${esc(l.name ? `${l.name}: ` : "")}${esc(a.name)} – ${esc(b.name)} (click for the lane)</title></path>`;
+    if(l.name){ const m = P[Math.floor(P.length / 2)]; s += `<text x="${Math.round(m.x)}" y="${Math.round(m.y)}" text-anchor="middle" font-size="${10 * inv}" font-style="italic" font-family="var(--serif)" fill="#2c5a72" stroke="#fff8e6" stroke-width="${2.5 * inv}" paint-order="stroke" pointer-events="none">${esc(l.name)}</text>`; } }
   for(const sh of root.fleet){ const p = fleetPos(sh, t); if(!p) continue;
     if(forPlayers && !(me && Math.hypot(p.x - me.x, p.y - me.y) <= FLEET_SIGHT * ppm)) continue;
     const pir = sh.kind==="pirate" && !forPlayers;
@@ -19905,23 +19934,123 @@ function fleetSight(){
   const me = fleetParty(), pop = $("#fleetPop"); if(!pop) return; if(!me){ if(!pop.dataset.card) pop.hidden = true; return; }
   const ppm = root.ppm || 10, t = fleetT(), d = campaignDay();
   const near = root.fleet.map(s=>({ s, p:fleetPos(s, t) })).filter(x=>x.p && x.s.asked!==d && Math.hypot(x.p.x - me.x, x.p.y - me.y) <= FLEET_SIGHT * ppm);
-  if(pop.dataset.card && !pop.hidden) return;                            // a ship's card you opened: the sighting waits till it's closed
+  if((pop.dataset.card || pop.dataset.view==="parley") && !pop.hidden) return;   // a card you opened, or a parley going: the sighting waits
   if(!near.length){ if(!pop.dataset.ship) pop.hidden = true; return; }
   delete pop.dataset.card;
-  const { s, p } = near[0], mi = Math.round(Math.hypot(p.x - me.x, p.y - me.y) / ppm), K = FLEET_KINDS[s.kind] || FLEET_KINDS.merchant;
-  const bound = s.leg ? (s.leg.to ? `bound for ${repPlaceName(s.leg.to)}` : "hove to on the lanes") : s.at ? `at ${repPlaceName(s.at)}` : "lying in wait";
-  pop.dataset.ship = s.id;
-  pop.innerHTML = `<p style="margin:0 0 6px"><b>${esc(s.name)}</b>, a ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))}, ${esc(bound)}: in sight, ${mi} mile${mi===1?"":"s"} off.</p>
-    ${(s.carry||[]).length ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Her crew has heard: ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</p>` : ""}
-    <div class="pcrow"><button class="btn" data-fleet="meet">Make it an encounter</button><button class="btn" data-fleet="pass">Let her pass</button></div>`;
-  pop.hidden = false;
+  const { s, p } = near[0], mi = Math.round(Math.hypot(p.x - me.x, p.y - me.y) / ppm);
+  pop.dataset.ship = s.id; pop.dataset.view = ""; seaMeetRoll(s, d); pop.innerHTML = seaMeetHtml(s, mi); pop.hidden = false;
 }
+/* ── meeting a ship at sea (Joseph, 2026-11-05): hail and parley (her captain's reaction, by her kind and how he
+   feels about the party), swap news, trade from her hold, a pirate's toll; and now and then a ship in trouble, to help
+   or to leave ── */
+const SEA_TROUBLE = ["fire aboard, smoke pouring from her hatches", "her mainmast down and dragging", "sickness aboard: a yellow flag at her masthead", "boarders on her deck: a fight already going", "taking on water, low in the sea and pumping"];
+const SEA_REACT = { pirate:-2, smuggler:-1, navy:0, merchant:1, packet:1, fishing:1, explorer:1 };
+function seaMeetRoll(s, d){ if(s.meetDay===d) return; s.meetDay = d; s.trouble = s.kind!=="pirate" && rollD(100) <= 12 ? pickOne(SEA_TROUBLE) : null; }
+/* how her captain takes the party: her kind, plus his own feelings and his faction's, as steps */
+function seaReaction(s){
+  const cap = s.captain && libNpcById(s.captain), M = cap ? moodOf(cap, null) : null, step = Math.max(-3, Math.min(3, (SEA_REACT[s.kind] ?? 0) + (M && M.any ? M.step : 0)));
+  const key = MOOD_BY_STEP[step + 3], word = { allies:"glad to see you", trusted:"glad to see you", friendly:"friendly", neutral:"wary", unfriendly:"suspicious", hostile:"hostile", sworn:"out for blood" }[key];
+  return { key, step, word, cap, why:M && M.any ? M.why : "" };
+}
+const seaLastPort = s => (s.leg && s.leg.from) || s.at || s.home, seaNextPort = s => (s.leg && s.leg.to) || s.at || s.home;
+function seaMeetHtml(s, mi){
+  const K = FLEET_KINDS[s.kind] || FLEET_KINDS.merchant, bound = s.leg ? (s.leg.to ? `bound for ${repPlaceName(s.leg.to)}` : "hove to on the lanes") : s.at ? `at ${repPlaceName(s.at)}` : "lying in wait", R = seaReaction(s);
+  return `<p style="margin:0 0 6px"><b>${esc(s.name)}</b>, a ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))}, ${esc(bound)}${mi!=null ? `: in sight, ${mi} mile${mi===1?"":"s"} off` : ""}.</p>
+    ${s.trouble ? `<p style="margin:0 0 6px;color:var(--lead)"><b>She's in trouble:</b> ${esc(s.trouble)}.</p>` : ""}
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">If hailed, ${R.cap ? `Captain ${esc(R.cap.name)}` : "her captain"} is ${esc(R.word)}${R.why ? ` (${esc(R.why)})` : ""}${s.kind==="pirate" ? ": a toll, or your cargo" : ""}.</p>
+    <div class="pcrow">${s.trouble ? `<button class="btn" data-fleet="help">Help her</button><button class="btn" data-fleet="leave">Leave her</button>` : `<button class="btn" data-fleet="hail">Hail her</button>`}
+      <button class="btn" data-fleet="meet" title="Her deck: board her, or a fight">Make it an encounter</button><button class="btn" data-fleet="pass">Let her pass</button></div>`;
+}
+/* the parley: news both ways, her hold to buy from (or sell to), a pirate's toll */
+function seaParleyHtml(s){
+  const R = seaReaction(s), T = tradeOf(), room = Math.max(0, (+T.cap||0) - tradeLoaded(T.hold)), last = seaLastPort(s), next = seaNextPort(s), C = s.cargo || {};
+  const buyAt = g => Math.round(tradeEach(last, g) * 1.1 * 100) / 100, sellAt = g => Math.round(tradeEach(next, g) * 0.8 * 100) / 100;
+  const herRoom = Math.max(0, tradeCap(s) - tradeLoaded(C)), mine = Object.entries(T.hold).filter(([k, h])=>h && !h.stolen && !h.guild);
+  const toll = Math.max(25, Math.round(Object.values(T.hold).reduce((a, h)=>a + h.n * tradeBase(h.g), 0) * 0.1 / 5) * 5);
+  const trade = R.step >= 0 && TRADE_SHIPS.has(s.kind);
+  return `<p style="margin:0 0 4px"><b>${esc(s.name)}</b>: ${R.cap ? `Captain ${esc(R.cap.name)}` : "her captain"} is ${esc(R.word)}.</p>
+    ${s.kind==="pirate" ? `<p style="margin:0 0 6px">"Strike your colours. ${toll} gp and you sail on, or we take what's in your hold."</p>
+      <div class="pcrow"><button class="btn" data-parley="toll" data-gp="${toll}">Pay ${toll} gp</button><button class="btn" data-fleet="meet">Refuse: fight</button></div>` : ""}
+    ${R.step >= -1 ? `<p class="grouplab" style="margin:6px 0 2px">News</p><p class="empty-note" style="font-size:11px;margin:0 0 4px">${(s.carry||[]).length ? `Her crew tells: ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}` : "Her crew has no news worth telling."}</p>
+      <button class="btn small" data-parley="news" title="What she's heard goes in your log; the party's own latest deeds go with her to ${esc(repPlaceName(next))}">Swap news</button>` : ""}
+    ${trade ? `<p class="grouplab" style="margin:8px 0 2px">Trade <small>her prices: ${esc(repPlaceName(last))}'s, +10% · she buys at 80% of ${esc(repPlaceName(next))}'s</small></p>
+      ${Object.keys(C).length ? Object.entries(C).map(([g, c])=>`<div class="pcrow" style="align-items:center;margin:1px 0"><span style="flex:1">${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>${buyAt(g)} gp a load</small></span><input type="number" min="1" max="${c.n}" value="${Math.max(1, Math.min(c.n, room))}" data-pqty="${g}" style="width:3.2em"><button class="btn small" data-parley="buy" data-g="${g}">Buy</button></div>`).join("") : `<p class="empty-note" style="font-size:11px;margin:0">Her hold is empty.</p>`}
+      ${mine.length ? mine.map(([k, h])=>`<div class="pcrow" style="align-items:center;margin:1px 0"><span style="flex:1">Yours: ${h.n} ${esc(tradeGoodName(h.g || k).toLowerCase())} <small>she'd pay ${sellAt(h.g || k)}</small></span><input type="number" min="1" max="${h.n}" value="${Math.max(1, Math.min(h.n, herRoom))}" data-pqty="${esc(k)}" style="width:3.2em"><button class="btn small" data-parley="sell" data-k="${esc(k)}">Sell</button></div>`).join("") : ""}` : ""}
+    <div class="pcrow" style="margin-top:6px"><button class="btn" data-fleet="meet">Board her / a fight</button><button class="btn" data-fleet="pass">Part ways</button></div>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-parley]"); if(!b) return; const pop = $("#fleetPop"), s = fleetOf().find(x=>x.id===pop.dataset.ship); if(!s) return;
+  const a = b.dataset.parley, T = tradeOf(), payer = partyRoster().find(c=>c.id===T.payer), qty = Math.max(1, Math.round(+((b.parentElement.querySelector("[data-pqty]")||{}).value) || 1));
+  if(a==="toll"){ const gp = +b.dataset.gp; if(payer && !payFrom(purseOf(payer), gp * 100)){ flash(`${payer.name} can't pay ${gp} gp: refuse, or someone else pays (the market's "Who pays").`); return; }
+    gameLog("sight", `Paid ${s.name} a toll of ${gp} gp${payer ? ` (${payer.name})` : ""} and sailed on`); s.asked = campaignDay(); delete pop.dataset.ship; pop.hidden = true; saveParty(); flash(`Paid: ${s.name} lets you sail on.`); return; }
+  if(a==="news"){ const told = (s.carry||[]).map(e=>repEntryWords(e, repOf().deeds.find(x=>x.id===e.d))), R = repOf();
+    const ours = R.deeds.filter(d=>d.size!=="local" && !d.quiet).slice(-3), from = seaLastPort(s); s.carry = s.carry || [];
+    for(const d of ours) if(!s.carry.some(e=>e.d===d.id)) s.carry.push({ d:d.id, day:campaignDay(), from });
+    gameLog("rep", `News from ${s.name}: ${told.join("; ") || "nothing much"}. She takes the party's news on to ${repPlaceName(seaNextPort(s))}${ours.length ? `: ${ours.map(d=>d.text).join("; ")}` : ""}`);
+    flash(told.length ? `${told.length} piece${told.length===1?"":"s"} of news, in your log.` : "Nothing much: in your log."); saveParty(); }
+  if(a==="buy"){ const g = b.dataset.g, c = (s.cargo||{})[g]; if(!c) return; const room = Math.max(0, (+T.cap||0) - tradeLoaded(T.hold)), n = Math.min(qty, c.n, room); if(n <= 0){ flash("The party's hold is full."); return; }
+    const each = Math.round(tradeEach(seaLastPort(s), g) * 1.1 * 100) / 100, cp = Math.round(each * n * 100); if(payer && !payFrom(purseOf(payer), cp)){ flash(`${payer.name} can't pay ${cp / 100} gp.`); return; }
+    const h = T.hold[g] || { n:0, paid:0 }; T.hold[g] = { n:h.n + n, paid:Math.round((h.n * h.paid + n * each) / (h.n + n) * 100) / 100 }; c.n -= n; if(c.n <= 0) delete s.cargo[g];
+    gameLog("note", `Trade at sea with ${s.name}: bought ${n} ${tradeGoodName(g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, ${payer.name}` : ""})`); saveParty(); }
+  if(a==="sell"){ const k = b.dataset.k, h = T.hold[k]; if(!h) return; const herRoom = Math.max(0, tradeCap(s) - tradeLoaded(s.cargo)), n = Math.min(qty, h.n, herRoom); if(n <= 0){ flash(`${s.name}'s hold is full.`); return; }
+    const g = h.g || k, each = Math.round(tradeEach(seaNextPort(s), g) * 0.8 * 100) / 100, cp = Math.round(each * n * 100); if(payer) addCoins(purseOf(payer), cp);
+    h.n -= n; if(h.n <= 0) delete T.hold[k]; s.cargo = s.cargo || {}; const c = s.cargo[g] || { n:0, paid:each, from:seaLastPort(s) }; c.n += n; s.cargo[g] = c;
+    gameLog("note", `Trade at sea with ${s.name}: sold ${n} ${tradeGoodName(g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, to ${payer.name}` : ""})`); saveParty(); }
+  pop.innerHTML = seaParleyHtml(s); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fleet]"); if(!b) return; const pop = $("#fleetPop"), s = fleetOf().find(x=>x.id===pop.dataset.ship); if(!s) return;
+  if(b.dataset.fleet==="hail"){ pop.dataset.view = "parley"; pop.innerHTML = seaParleyHtml(s); gameLog("sight", `Hailed ${s.name}: her captain is ${seaReaction(s).word}`); return; }
+  /* a ship in trouble: helped (a minor good deed, seen by her crew, and they remember), or left (a quarter of the
+     time she's lost; else a minor ill deed her crew carries) */
+  if(b.dataset.fleet==="help" || b.dataset.fleet==="leave"){ const help = b.dataset.fleet==="help", what = s.trouble, crew = [s.captain, ...(s.crew||[]), ...(s.pass||[])].filter(id=>id && libNpcById(id)).map(id=>({ id, name:libNpcById(id).name }));
+    s.trouble = null; s.asked = campaignDay(); delete pop.dataset.ship; pop.hidden = true; const port = seaNextPort(s);
+    if(help){ repRecord({ text:`Came to the aid of ${s.name} (${what.split(/[,:]/)[0]})`, who:"party", fame:"fame", size:"minor", place:port, seenBy:crew, force:true }); gameLog("sight", `Helped ${s.name}: ${what}`); flash(`${s.name}'s crew won't forget it.`); }
+    else if(rollD(100) <= 25){ fleetForget(s); root.fleet = fleetOf().filter(x=>x!==s); worldOf().replace.push({ day:campaignDay() + 14 + rollD(14), kind:s.kind, size:s.size || "", home:s.home });
+      bgLog("world", `${s.name} lost at sea (${what}); the party sailed past`); gameLog("sight", `Left ${s.name} to her trouble: she was lost with all hands`); flash(`${s.name} went down. Nobody's left to tell of it.`); }
+    else { repRecord({ text:`Sailed past ${s.name} in distress`, who:"party", fame:"infamy", size:"minor", place:port, seenBy:crew, force:true }); gameLog("sight", `Left ${s.name} to her trouble (${what}); she limped on`); flash(`${s.name} limped on, and her crew will talk.`); }
+    saveParty(); fleetSight(); return; }
   s.asked = campaignDay(); delete pop.dataset.ship; pop.hidden = true;
   if(b.dataset.fleet==="meet"){ s.met = campaignDay(); gameLog("sight", `An encounter at sea: ${s.name}, a ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}`);
     if(s.kind==="navy") tradeNavySearch(s.name, null);               // a navy ship may search the party's hold
     saveParty(); fleetGoAboard(s); return; }     // her place: her crew to meet, her deck for a fight
   saveParty(); fleetSight(); });
+/* ── a sea lane clicked on your chart (Joseph, 2026-11-05): its name, its traffic, or gone; new ones drawn between
+   two ports from the Background tab ── */
+var laneSel = null;
+const LANE_TRAFFIC = ["dense","busy","normal","light","quiet"];
+/* the ports a set of lanes leaves cut off from the rest (none if they're all still joined) */
+function lanesApart(lanes){
+  const P = repPorts(), par = new Map(P.map(p=>[p.id, p.id])), find = x => par.get(x)===x ? x : (par.set(x, find(par.get(x))), par.get(x));
+  for(const l of lanes) if(par.has(l.from) && par.has(l.to)) par.set(find(l.from), find(l.to));
+  const groups = new Map(); for(const p of P){ const r = find(p.id); groups.set(r, [...(groups.get(r)||[]), p]); }
+  const big = [...groups.values()].sort((a, b)=>b.length - a.length)[0] || []; return P.filter(p=>!big.includes(p));
+}
+function laneCard(id){
+  const l = (repOf().lanes||[]).find(x=>x.id===id), pop = $("#fleetPop"); if(!l || !pop) return;
+  laneSel = id; delete pop.dataset.ship; pop.dataset.card = "lane:" + id;
+  pop.innerHTML = `<p style="margin:0 0 4px"><b>${esc(l.name || "A sea lane")}</b>: ${esc(repPlaceName(l.from))} – ${esc(repPlaceName(l.to))} <small>(${Math.round(+l.miles || 0)} mi${l.auto ? ", worked out from the map" : ", yours"})</small></p>
+    <div class="pcrow"><div class="field" style="flex:1.4"><label>Its name</label><input type="text" data-lanef="name" value="${esc(l.name||"")}" placeholder="The Spice Road"></div>
+      <div class="field" style="flex:1"><label>Traffic</label><select data-lanef="traffic">${LANE_TRAFFIC.map(t=>`<option value="${t}" ${trafficOf(l)===t?"selected":""}>${t[0].toUpperCase() + t.slice(1)}</option>`).join("")}</select></div></div>
+    <p class="empty-note" style="font-size:11px;margin:0 0 4px">Traffic: how often word crosses it (dense weekly … quiet every three months) and how much ships favour it.</p>
+    <div class="pcrow"><button class="btn" data-laneact="del" title="Ships stop using it">Delete the lane</button><button class="btn" data-laneact="close">Close</button></div>`;
+  pop.hidden = false; render();
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.lanef) return; const l = (repOf().lanes||[]).find(x=>x.id===laneSel); if(!l) return;
+  if(t.dataset.lanef==="name"){ const v = t.value.trim(); if(v){ if(v!==l.name) bgLog("world", `The lane ${repPlaceName(l.from)} – ${repPlaceName(l.to)} is called ${v} now`); l.name = v; } else delete l.name; }
+  else if(t.dataset.lanef==="traffic") l.traffic = t.value;
+  l.auto = false;                                                        // yours now: working the lanes out again keeps it
+  saveParty(); render(); laneCard(l.id); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-laneact]"); if(!b) return; const pop = $("#fleetPop"), R = repOf(), l = (R.lanes||[]).find(x=>x.id===laneSel);
+  if(b.dataset.laneact==="del" && l){ const rest = R.lanes.filter(x=>x!==l), cut = lanesApart(rest), was = lanesApart(R.lanes);
+    const newly = cut.filter(p=>!was.includes(p)); if(newly.length && !confirm(`Without this lane ${newly.map(p=>p.name).join(", ")} ${newly.length===1 ? "is" : "are"} cut off from the rest: ships can't reach ${newly.length===1 ? "it" : "them"}. Delete it anyway?`)) return;
+    R.lanes = rest; bgLog("world", `The lane ${l.name ? `${l.name} (${repPlaceName(l.from)} – ${repPlaceName(l.to)})` : `${repPlaceName(l.from)} – ${repPlaceName(l.to)}`} is gone from the chart`); saveParty(); flash("The lane is gone."); }
+  laneSel = null; delete pop.dataset.card; pop.hidden = true; render(); renderPane(true); });
+/* a lane drawn by hand between two ports, by water like the others */
+function laneDraw(a, b){
+  const A = repNode(a), B = repNode(b); if(!A || !B || a===b){ flash("Pick two different ports."); return null; }
+  const R = repOf(); if((R.lanes||[]).some(l=>(l.from===a && l.to===b) || (l.from===b && l.to===a))){ flash("There's a lane between them already: click it on the chart to change it."); return null; }
+  const lo = a < b ? A : B, hi = lo===A ? B : A, rt = seaRoute(lo, hi); if(!rt){ flash(`No way by water between ${A.name} and ${B.name}.`); return null; }
+  const l = { id:uid("ln"), from:lo.id, to:hi.id, traffic:"normal", auto:false, pts:rt.pts, miles:rt.miles }; R.lanes = [...(R.lanes||[]), l];
+  bgLog("world", `A new lane: ${A.name} – ${B.name}, ${Math.round(rt.miles)} mi`); saveParty(); render(); return l;
+}
 /* a ship clicked on your chart: her card (Joseph, 2026-11-04: "it's not letting me click on those ships") */
 function fleetCard(id){
   const s = fleetOf().find(x=>x.id===id), pop = $("#fleetPop"); if(!s || !pop) return;
@@ -19930,7 +20059,7 @@ function fleetCard(id){
     : s.at ? `in port at ${repPlaceName(s.at)} till day ${s.stay}` : `lying in wait on the lanes till day ${s.stay}`;
   const hold = Object.entries(s.cargo||{}).map(([g, c])=>`${c.n} ${esc(tradeGoodName(g).toLowerCase())}`).join(", ");
   const magic = [...(s.magic||[]).map(libLootById).filter(Boolean).map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)];
-  delete pop.dataset.ship; pop.dataset.card = s.id;
+  delete pop.dataset.ship; pop.dataset.card = s.id; laneSel = null;
   pop.innerHTML = `<p style="margin:0 0 4px"><b>${esc(s.name)}</b>, ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))} <small>(${esc(FLEET_SIZES[fleetSizeOf(s)][0].toLowerCase())})</small></p>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${esc(where)}. ${s.mode==="route" ? `Her route: ${(s.route||[]).map(x=>esc(repPlaceName(x))).join(" → ")}.` : s.mode==="pirate" ? "She goes her own way." : "She goes where she likes."}</p>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${cap ? `Captain ${esc(cap.name)}; ` : ""}${ppl.length ? `${ppl.length} aboard` : "no crew rolled"}${(s.pass||[]).length ? `, and ${s.pass.length} passengers` : ""}.${TRADE_SHIPS.has(s.kind) || s.kind==="pirate" ? ` Hold: ${hold || "empty"} (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads).` : ""}${magic.length ? ` Hidden aboard: ${magic.join(", ")}.` : ""}</p>
@@ -19960,6 +20089,8 @@ const tradeOf = () => { const T = root.trade = root.trade && typeof root.trade==
   T.places = T.places || {}; T.glut = T.glut || {}; T.hold = T.hold || {}; if(T.cap==null) T.cap = 40; return T; };
 const tradeIsPlace = n => !!n && !!n.name && Object.prototype.hasOwnProperty.call(TRADE_DEPTH, n.kind) && !sailsAbout(n);
 const tradeGoodName = g => (TRADE_GOODS[g] || [g])[0];
+/* a good's usual price: the DM's own (Background, Economics), else the list's */
+const tradeBase = g => { const b = (tradeOf().base || {})[g]; return b > 0 ? +b : (TRADE_GOODS[g] || [0, 1])[1]; };
 /* what a place makes and wants, rolled: a city leans to made goods and wants raw ones, a village the other way; only
    a place on the water makes what comes from the sea */
 function tradeRollPlace(n){
@@ -19977,7 +20108,7 @@ function tradeGlut(id, g, day){ const e = (tradeOf().glut[id]||{})[g]; if(!e) re
 function tradeBump(id, g, loads, day){ day = day==null ? campaignDay() : day; const T = tradeOf(), m = T.glut[id] = T.glut[id] || {}, e = m[g];
   m[g] = { s:Math.max(-3, Math.min(3, tradeGlut(id, g, day) + loads / tradeDepth(id))), d:Math.max(day, e ? e.d : day) }; }
 const tradeRole = (id, g) => { const P = tradePlace(id); return P.make.includes(g) ? 0.8 : P.want.includes(g) ? 1.25 : 1; };
-const tradeEach = (id, g, extra, day) => TRADE_GOODS[g][1] * Math.max(0.5, Math.min(2, tradeRole(id, g) * Math.pow(2, -(tradeGlut(id, g, day) + (extra||0)))));
+const tradeEach = (id, g, extra, day) => tradeBase(g) * Math.max(0.5, Math.min(2, tradeRole(id, g) * Math.pow(2, -(tradeGlut(id, g, day) + (extra||0)))));
 /* a load's price buying n, or selling n: the average over the lot, as the price moves with it */
 const tradeBuyAt = (id, g, n, day) => Math.round(tradeEach(id, g, -(n||1) / (2 * tradeDepth(id)), day) * 100) / 100;
 const tradeSellAt = (id, g, n, day) => Math.round(TRADE_SELL * tradeEach(id, g, (n||1) / (2 * tradeDepth(id)), day) * 100) / 100;
@@ -19999,6 +20130,7 @@ function tradeGain(s, id, day){ const C = s.cargo || {}, paid = Object.values(C)
 /* a trading ship in port: sells what pays (or has waited three ports for a buyer), then buys what sells best next.
    Every port, a new roll for the magic hidden in her hold; the pirate's hold, new plunder */
 function tradeCall(s, port, day){
+  if(s.kind==="fishing"){ if(tradeIsPlace(port)){ const n = 2 + rollD(4); tradeBump(port.id, "saltfish", n, day); bgLog("trade", `${s.name} lands her catch at ${port.name}: ${n} loads of salt fish`, day); } return; }     // a fishing boat in: the fish market fills (Joseph, 2026-11-05)
   if(FLEET_MAGIC[s.kind]) fleetMagicRoll(s);
   if(s.kind==="pirate"){ fleetPlunder(s); return; }
   if(!TRADE_SHIPS.has(s.kind) || !tradeIsPlace(port)) return;
@@ -20041,27 +20173,43 @@ function tradeHere(n){
         <label style="flex:1;align-self:end"><input type="checkbox" id="tr-office" ${office ? "checked" : ""}> A prize office here</label></div>
       <p class="empty-note" style="font-size:11px;margin:2px 0">Suspected: −1 with the navy and a local deed. Caught selling or holding: everything stolen confiscated, a fine of its full value from whoever pays, −3 with the navy and a notable deed. A prize office is wherever a navy ship is based or calls, unless you say otherwise here.</p></details>`;
   const order = [...M.make, ...M.want, ...Object.keys(TRADE_GOODS).filter(g=>!M.make.includes(g) && !M.want.includes(g))];
-  const row = g => { const f = tradeEach(place, g) / TRADE_GOODS[g][1], h = H[g];
+  const row = g => { const f = tradeEach(place, g) / tradeBase(g), h = H[g];
     return `<tr><td>${esc(tradeGoodName(g))}${M.make.includes(g) ? ` <small title="Made here">made</small>` : M.want.includes(g) ? ` <small title="Wanted here">wanted</small>` : ""}</td>
       <td style="text-align:right" title="A load, buying one">${tradeBuyAt(place, g, 1)}${f < 0.9 ? " ▼" : f > 1.1 ? " ▲" : ""}</td><td style="text-align:right" title="A load, selling one">${tradeSellAt(place, g, 1)}</td>
       <td style="text-align:right">${h ? `${h.n} <small>(${h.paid})</small>` : ""}</td>
       <td style="white-space:nowrap"><input type="number" min="1" value="1" data-tradeqty="${g}" style="width:3.2em"><button class="btn small" data-trade="buy" data-g="${g}">Buy</button>${h ? `<button class="btn small" data-trade="sell" data-g="${g}">Sell</button>` : ""}</td></tr>`; };
   const pick = (k, i) => `<select data-trademw="${k}:${i}">${Object.keys(TRADE_GOODS).map(g=>`<option value="${g}" ${M[k][i]===g ? "selected" : ""}>${esc(tradeGoodName(g))}</option>`).join("")}</select>`;
+  const knowers = pcs.filter(c=>c.marketSense), onTv = playerShow.kind==="market" && playerShow.id===place;
+  const senseHtml = `<p class="grouplab" style="margin:8px 0 2px">Knows the markets <small>(the feat: they can see this market's prices)</small></p>
+    <div class="pcrow" style="flex-wrap:wrap;gap:2px 10px">${pcs.map(c=>`<label class="check" style="margin:0"><input type="checkbox" data-msense="${c.id}" ${c.marketSense ? "checked" : ""}> ${esc(c.name||"Character")}</label>`).join("")}</div>
+    ${knowers.length ? (onTv ? `<button class="btn wide on" data-trade="tvoff">Take it off the players' screen</button>` : `<button class="btn wide" data-trade="tv" title="${esc(knowers.map(c=>c.name).join(", "))} know${knowers.length===1?"s":""} the markets">Show this market on the players' screen</button>`) : ""}`;
   return `<details class="pcset" data-invfor="${key}" ${openInv.has(key) ? "open" : ""} style="margin-top:8px"><summary class="eyebrow">Market <small>${esc(P.name)} · makes ${M.make.map(tradeGoodName).join(", ").toLowerCase()} · wants ${M.want.map(tradeGoodName).join(", ").toLowerCase()} · only you see this</small></summary>
     <p class="empty-note" style="font-size:11px;margin:0 0 4px">Gold a load (a crate, barrel or bale). ▼ cheap here now, ▲ dear. Ships unloading push a price down, buying pushes it up; it drifts back by about a tenth a day. Buying or selling many moves the price as you go.</p>
     <div class="pcrow"><div class="field" style="flex:1"><label>Who pays, or is paid</label><select id="tr-pay"><option value="">Nobody (don't count coin)</option>${pcs.map(c=>`<option value="${c.id}" ${T.payer===c.id ? "selected" : ""}>${esc(c.name||"Character")} (${Math.floor(purseGp(purseOf(c)))} gp)</option>`).join("")}</select></div>
       <div class="field" style="width:9em"><label>The party's hold</label><input id="tr-cap" type="number" min="0" value="${T.cap}" title="Loads the party's ship (or wagons) can carry"><small>${loaded} loaded</small></div></div>
     <table style="width:100%;font-size:11.5px;border-collapse:collapse"><tr><th style="text-align:left">Good</th><th>Buy</th><th>Sell</th><th title="In the party's hold (what they paid a load)">Hold</th><th></th></tr>${order.map(row).join("")}</table>
-    ${guildHtml}${stolenHtml}
+    ${guildHtml}${senseHtml}${stolenHtml}
     <details style="margin-top:6px"><summary><small>Change what it makes and wants</small></summary>
       <div class="sbl"><small>Makes</small> ${[0,1,2,3].map(i=>pick("make", i)).join(" ")}</div><div class="sbl"><small>Wants</small> ${[0,1,2,3].map(i=>pick("want", i)).join(" ")}</div>
       <button class="btn small" data-trade="reroll" title="Roll what it makes and wants again">Roll again</button></details></details>`;
+}
+/* a market on the players' screen, for the one who knows the markets (Joseph, 2026-11-05: "the market where they are") */
+function marketTvHtml(place){
+  const P = repNode(place); if(!tradeIsPlace(P)) return `<div class="lb lb-tv"><div class="lb-h">No market</div></div>`;
+  const M = tradePlace(place), who = partyRoster().filter(c=>c.marketSense).map(c=>c.name).join(", ");
+  const order = [...M.make, ...M.want, ...Object.keys(TRADE_GOODS).filter(g=>!M.make.includes(g) && !M.want.includes(g))];
+  const row = g => { const f = tradeEach(place, g) / tradeBase(g);
+    return `<tr><td style="text-align:left;padding:2px 10px 2px 0">${esc(tradeGoodName(g))}${M.make.includes(g) ? " <small>made here</small>" : M.want.includes(g) ? " <small>wanted here</small>" : ""}</td><td style="text-align:right;padding:2px 8px">${tradeBuyAt(place, g, 1)} gp${f < 0.9 ? " ▼" : f > 1.1 ? " ▲" : ""}</td><td style="text-align:right;padding:2px 0 2px 8px">${tradeSellAt(place, g, 1)} gp</td></tr>`; };
+  return `<div class="lb lb-tv"><div class="lb-h">${esc(P.name)}: the market</div>${who ? `<p style="margin:0 0 6px;opacity:.8">As ${esc(who)} reckon${who.includes(",") ? "" : "s"} it: gold a load. ▼ cheap here now, ▲ dear.</p>` : ""}
+    <table style="border-collapse:collapse;font-size:15px;margin:0 auto"><tr><th></th><th style="padding:0 8px">Buy</th><th style="padding:0 0 0 8px">Sell</th></tr>${order.map(row).join("")}</table></div>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-trade]"); if(!b) return;
   const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n); if(!tradeIsPlace(repNode(place))) return;
   const T = tradeOf(), a = b.dataset.trade;
   if(a==="reroll"){ T.places[place] = tradeRollPlace(repNode(place)); saveParty(); renderPane(true); return; }
   if(a==="deliver"){ tradeRunDeliver(b.dataset.k, place); saveParty(); renderPane(true); return; }
+  if(a==="tv"){ playerShow = { kind:"market", id:place }; sendPlayers(true); renderPScreen(); renderPane(true); flash(playersUp() ? "The market is on the players' screen." : "Showing it once the players' screen is open (top bar)."); return; }
+  if(a==="tvoff"){ playerShow = { kind:"map" }; sendPlayers(true); renderPScreen(); renderPane(true); return; }
   if(a==="search"){ tradeNavySearch(`${(tradeNavy()||{}).name || "The navy"} at ${repPlaceName(place)}`, place); saveParty(); renderPane(true); return; }
   if(a==="fence" || a==="prize"){ const k = b.dataset.k, h = T.hold[k], payer = partyRoster().find(c=>c.id===T.payer), R = stolenRules(); if(!h) return;
     if(a==="fence"){ const r = rollD(100); if(r <= R.sell){ tradeCaught(place, [k], "selling", `d100 ${r} vs ${R.sell}`); saveParty(); renderPane(true); return; }
@@ -20081,9 +20229,10 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
     if(payer) addCoins(purseOf(payer), cp); h.n -= k; if(h.n <= 0) delete H[g]; tradeBump(place, g, k);
     gameLog("note", `Trade at ${repPlaceName(place)}: the party sold ${k} ${tradeGoodName(g).toLowerCase()} at ${each} gp a load (${cp / 100} gp${payer ? `, to ${payer.name}` : ""}; they'd paid ${h.paid})`); flash(`Sold ${k} ${tradeGoodName(g).toLowerCase()} for ${cp / 100} gp.`); }
   saveParty(); renderPane(true); });
-document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !(t.dataset && (t.dataset.trademw || t.dataset.strule))) return;
+document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !(t.dataset && (t.dataset.trademw || t.dataset.strule || t.dataset.msense))) return;
   if(t.id==="tr-pay"){ tradeOf().payer = t.value || null; saveParty(); return; }
   if(t.id==="tr-navy"){ tradeOf().navy = t.value || ""; saveParty(); renderPane(true); return; }
+  if(t.dataset && t.dataset.msense){ const c = partyRoster().find(x=>x.id===t.dataset.msense); if(c){ if(t.checked) c.marketSense = true; else delete c.marketSense; saveParty(); renderPane(true); } return; }
   if(t.dataset && t.dataset.strule){ stolenRules()[t.dataset.strule] = Math.max(0, Math.min(100, +t.value || 0)); saveParty(); renderPane(true); return; }
   if(t.id==="tr-office"){ const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n); if(!place) return; const T = tradeOf(); T.office = T.office || {}; T.office[place] = t.checked; saveParty(); renderPane(true); return; }
   if(t.id==="tr-cap"){ tradeOf().cap = Math.max(0, Math.round(+t.value || 0)); saveParty(); renderPane(true); return; }
@@ -20128,7 +20277,7 @@ function cargoHere(n){
   const V = repNode(repPlaceOf(n)), s = V && V.fleetShip && fleetOf().find(x=>x.id===V.fleetShip); if(!s) return "";
   const C = s.cargo || {}, T = tradeOf(), room = Math.max(0, (+T.cap||0) - tradeLoaded(T.hold)), items = (s.magic||[]).map(libLootById).filter(Boolean);
   return `<p class="eyebrow spaced">Her cargo <small>${tradeLoaded(C)} of ${tradeCap(s)} loads · only you see this</small></p>
-    ${Object.keys(C).length ? Object.entries(C).map(([g, c])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(about ${Math.round(c.n * TRADE_GOODS[g][1])} gp)</small></span>
+    ${Object.keys(C).length ? Object.entries(C).map(([g, c])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(about ${Math.round(c.n * tradeBase(g))} gp)</small></span>
       <input type="number" min="1" max="${c.n}" value="${Math.max(1, Math.min(c.n, room))}" data-seizeqty="${g}" style="width:3.5em"><button class="btn small" data-seize="${g}" data-ship="${s.id}" title="Into the party's hold, as stolen goods">Seize</button></div>`).join("") : `<p class="empty-note">Her hold is empty.</p>`}
     ${items.length || (s.magicNote||[]).length ? `<p class="empty-note" style="font-size:11px;margin:4px 0">Hidden in her hold (Search, DC 15), ${fleetSizeOf(s)==="large" ? "in the cargo hold off steerage" : "under the hatch"}: ${[...items.map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)].join(", ")}. Found and taken like anything else.</p>` : ""}
     <p class="empty-note" style="font-size:11px;margin:0">The party's hold has room for ${room} more load${room===1?"":"s"}.${s.kind==="pirate" ? ` A pirate's plunder: the navy's prize office pays ${stolenRules().prize}% for it.` : " Taking it is piracy: risky to sell, and to be caught holding."}
@@ -20164,7 +20313,7 @@ function piracyDeed(s, key){
 /* caught: everything named confiscated, a fine of its value from whoever pays, −3 with the navy, a notable deed */
 function tradeCaught(place, keys, doing, roll){
   const T = tradeOf(), H = T.hold, f = tradeNavy(), payer = partyRoster().find(c=>c.id===T.payer), what = []; let worth = 0;
-  for(const k of keys){ const h = H[k]; if(!h) continue; worth += h.n * TRADE_GOODS[h.g][1]; what.push(`${h.n} ${tradeGoodName(h.g).toLowerCase()}`); delete H[k]; }
+  for(const k of keys){ const h = H[k]; if(!h) continue; worth += h.n * tradeBase(h.g); what.push(`${h.n} ${tradeGoodName(h.g).toLowerCase()}`); delete H[k]; }
   const fine = Math.round(worth); let took = 0;
   if(payer){ const p = purseOf(payer); took = Math.min(Math.floor(purseGp(p) * 100), fine * 100); payFrom(p, took); }
   T.suspect = campaignDay();
@@ -20193,7 +20342,8 @@ function tradeNavySearch(by, place){
    then navy 7 fighters of level 2; merchant 4 ordinary hands and 1 fighter of level 2; fishing 3 ordinary hands, one
    family; smuggler 4 rogues of level 2; pirate 3 rogues and 2 fighters of level 2 and a caster of level 3, anything but
    a cleric; a passenger ship (packet) a fighter for captain, 5 hospitality (stewards, a purser, waiters), 4 guards of
-   level 4 and a chaplain, a cleric of level 5, and 19 passengers by fare. Explorers have no crew rules yet. Going
+   level 4 and a chaplain, a cleric of level 5, and 19 passengers by fare; an explorer (2026-11-05) a navigator, a
+   cartographer, a naturalist, 4 hands and 2 marines of level 2. Going
    aboard (or an encounter) makes her a place at her spot on the chart, hidden from the players: her crew to meet, and
    her deck for a fight; a large ship is three decks, a plan of her own (fleetDecks) ── */
 const FLEET_SIZES = { small:["Small (a fishing boat)","boat"], medium:["Medium (a ship)","ship"], large:["Large (a passenger ship)","liner"] };
@@ -20205,7 +20355,9 @@ const FLEET_CREW = {
   smuggler:[["smuggler","Rogue",2],["smuggler","Rogue",2],["smuggler","Rogue",2],["smuggler","Rogue",2]],
   pirate:  [["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Rogue",2],["pirate","Fighter",2],["pirate","Fighter",2],["pirate","caster",3]],
   packet:  [["steward",null,1],["steward",null,1],["purser",null,1],["waiter",null,1],["waiter",null,1],
-            ["shipguard","warrior",4],["shipguard","warrior",4],["shipguard","warrior",4],["shipguard","warrior",4],["chaplain","Cleric",5]] };
+            ["shipguard","warrior",4],["shipguard","warrior",4],["shipguard","warrior",4],["shipguard","warrior",4],["chaplain","Cleric",5]],
+  explorer:[["navigator",null,1],["cartographer",null,1],["naturalist",null,1],["*","Commoner",1],["*","Commoner",1],["*","Commoner",1],["*","Commoner",1],
+            ["marine","Fighter",2],["marine","Fighter",2]] };
 const FLEET_HANDS = ["sailor","shipcook","lookout","shipwright","sailmaker","cabinhand","navigator","quartermaster"];
 const FLEET_CAPTAIN = ["Fighter","Barbarian","Paladin","Ranger"], FLEET_CASTER = ["Wizard","Sorcerer","Warlock","Bard","Druid"];
 const FLEET_CAPTAIN_BY = { packet:"Fighter" };
@@ -20333,6 +20485,8 @@ function fleetBlock(){
   return `<details class="partysec" data-invfor="party:fleet" ${openInv.has("party:fleet")?"open":""}><summary class="eyebrow">Ships at sea <small>${F.length} · ${P.length} ports on the water · ${(repOf().lanes||[]).length} sea lanes</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Ships that aren't the party's, sailing between ports as the days pass, carrying word as they go. On your chart with the sea lanes; on the players' chart when one is within ${FLEET_SIGHT} miles of them, and then you're offered an encounter.</p>
     <div class="pcrow"><button class="btn" style="flex:1" data-fleetact="lanes" title="Each port on the water to its three nearest, then joined up so every port can reach every other. Your own lanes are kept">Work out the sea lanes from the map</button><button class="btn" style="flex:1" data-fleetact="roll" title="18 ships: six merchants, two navy patrols, three fishing boats, two explorers, two smugglers, two packets and one pirate">${F.length ? "Roll a new fleet" : "Roll a fleet"}</button></div>
+    <div class="pcrow" style="margin-top:4px;align-items:flex-end"><div class="field" style="flex:1"><label>A new lane from</label><select id="ln-a">${portOpts("")}</select></div><div class="field" style="flex:1"><label>to</label><select id="ln-b">${portOpts("")}</select></div>
+      <button class="btn" data-fleetact="lane" style="margin-bottom:11px" title="A lane between them by water, yours to keep; click a lane on your chart to name it, change its traffic or delete it">Draw it</button></div>
     ${F.some(s=>FLEET_CREW[s.kind] && !(s.crew||[]).length) ? `<button class="btn wide" data-fleetact="crews" style="margin-top:4px" title="Every ship with crew rules and no crew yet: a captain and her crew, each a person in the Library">Roll crews for every ship</button>` : ""}
     <details class="pcset" style="margin-top:6px" ${openInv.has("party:fleetadd") ? "open" : ""} data-invfor="party:fleetadd"><summary>Add a ship <small>a type or random; her size, her crew</small></summary>
       <div class="pcrow"><div class="field" style="flex:1"><label>Type</label><select id="fa-kind"><option value="">Random</option>${Object.entries(FLEET_KINDS).map(([k, [l]])=>`<option value="${k}">${l}</option>`).join("")}</select></div>
@@ -20342,7 +20496,7 @@ function fleetBlock(){
       <div class="pcrow"><div class="field" style="flex:1"><label>Home port</label><select id="fa-home"><option value="">Random</option>${portOpts("")}</select></div>
         <div class="field" style="flex:1"><label>Name</label><input id="fa-name" type="text" placeholder="rolled"></div></div>
       <button class="btn wide calmgo" data-fleetact="add">Put her to sea, crew and all</button>
-      <p class="empty-note" style="font-size:11px;margin:4px 0 0">Crews by type: navy 7 fighters of level 2; merchant 4 hands and a fighter of level 2; fishing 3 hands, one family; smuggler 4 rogues of level 2; pirate 3 rogues, 2 fighters and a caster of level 3; passenger ship 5 stewards, waiters and a purser, 4 guards of level 4 and a chaplain (a cleric of level 5), and 19 passengers (10 low class in steerage, 5 middle and 4 first class in cabins). Every ship has a captain of level 3 (a passenger ship's, a fighter). Explorers: no crew rules yet.</p></details>
+      <p class="empty-note" style="font-size:11px;margin:4px 0 0">Crews by type: navy 7 fighters of level 2; merchant 4 hands and a fighter of level 2; fishing 3 hands, one family; smuggler 4 rogues of level 2; pirate 3 rogues, 2 fighters and a caster of level 3; passenger ship 5 stewards, waiters and a purser, 4 guards of level 4 and a chaplain (a cleric of level 5), and 19 passengers (10 low class in steerage, 5 middle and 4 first class in cabins). explorer a navigator, a cartographer, a naturalist, 4 hands and 2 marines of level 2. Every ship has a captain of level 3 (a passenger ship's, a fighter).</p></details>
     ${F.map(s=>`<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
         <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
       <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
@@ -20388,7 +20542,7 @@ const econColour = f => { const t = Math.max(-1, Math.min(1, Math.log2(f || 1)))
 function econBlock(){
   const P = repPlaces().filter(tradeIsPlace).sort((a, b)=>["city","town","village"].indexOf(a.kind) - ["city","town","village"].indexOf(b.kind) || (a.name||"").localeCompare(b.name||""));
   if(!P.length) return `<details class="partysec" data-invfor="bg:econ" ${openInv.has("bg:econ") ? "open" : ""}><summary class="eyebrow">Economics</summary><p class="empty-note">No cities, towns or villages on the map yet: nowhere to trade.</p></details>`;
-  const G = Object.keys(TRADE_GOODS), gName = g => tradeGoodName(g), base = g => TRADE_GOODS[g][1];
+  const G = Object.keys(TRADE_GOODS), gName = g => tradeGoodName(g), base = g => tradeBase(g);
   const price = {}; for(const p of P){ price[p.id] = {}; for(const g of G) price[p.id][g] = tradeEach(p.id, g); }
   /* the best runs: for each good, the cheapest place to buy one load and the dearest to sell it */
   const runs = G.map(g=>{ let lo = null, hi = null; for(const p of P){ const v = price[p.id][g]; if(!lo || v < lo.v) lo = { p, v }; if(!hi || v > hi.v) hi = { p, v }; }
@@ -20413,7 +20567,11 @@ function econBlock(){
     <p class="grouplab" style="margin:8px 0 2px">Every market's prices</p>
     <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ink-soft);margin:2px 0 4px"><span>half</span><span style="flex:1;max-width:160px;height:8px;border-radius:2px;background:linear-gradient(90deg, ${ECON_CHEAP}, ${ECON_MID}, ${ECON_DEAR})"></span><span>double</span><span style="margin-left:6px">the usual price · <b>m</b> made there · <b>w</b> wanted there</span></div>
     <div style="overflow-x:auto"><table style="border-collapse:collapse">${head}${body}</table></div>
-    <p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Hover a square for its price; click a place for its market on its card.</p></details>`;
+    <p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Hover a square for its price; click a place for its market on its card.</p>
+    ${(()=>{ const T = Object.entries(worldOf().troubles).filter(([id])=>troubleAt(id)); return `<p class="grouplab" style="margin:8px 0 2px">Ports in trouble</p>` + (T.length ? T.map(([id, t])=>`<div class="sbl"><span class="libref" data-bgplace="${id}">${esc(repPlaceName(id))}</span>: ${esc(t.label.toLowerCase())} till about day ${t.until} <small>(${esc(TROUBLES[t.kind].says)})</small></div>`).join("") : `<p class="empty-note" style="font-size:11px;margin:0">None just now.</p>`); })()}
+    <details style="margin-top:8px"><summary><small>The goods' usual prices (gp a load)</small></summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-top:4px">${G.map(g=>`<label style="display:flex;align-items:center;gap:4px;font-size:11px"><span style="flex:1">${esc(gName(g))}</span><input type="number" min="0.1" step="0.1" data-tbase="${g}" value="${base(g)}" style="width:4.2em" title="The list's: ${TRADE_GOODS[g][1]} gp"></label>`).join("")}</div>
+      <button class="btn small" data-bgbase="reset" style="margin-top:4px">Back to the list's prices</button></details></details>`;
 }
 /* ── THE GUILDS (Joseph, 2026-11-05): the Trade Guild and the Guild of Explorers, each a faction with its main hall in
    the hub (Kalatecha) and a smaller branch in every city: a building in the city's plan, the faction's, with a mission
@@ -20485,7 +20643,7 @@ function tradeRunRoll(from, patron){
   const good = pickOne(M.make.length ? M.make : Object.keys(TRADE_GOODS));
   const to = tradePickBy(P, p=>(tradePlace(p.id).want.includes(good) ? 4 : 1) * (guildIn(tf, p.id) ? 2 : 1) * (p.id===A.id ? 0 : 1));
   const loads = 4 + rollD(16), miles = tradeRunMiles(from, to.id), days = Math.ceil(miles / (FLEET_KINDS.merchant || [0, 90])[1]) + 2 + rollD(4);
-  const worth = Math.round(loads * TRADE_GOODS[good][1]), fee = Math.max(15, Math.round(worth * 0.15 + miles * 0.3)), due = campaignDay() + days, G = tradeGoodName(good).toLowerCase();
+  const worth = Math.round(loads * tradeBase(good)), fee = Math.max(15, Math.round(worth * 0.15 + miles * 0.3)), due = campaignDay() + days, G = tradeGoodName(good).toLowerCase();
   return { id:uid("ms"), kind:"trade", title:`Trade run: ${loads} loads of ${G} to ${to.name}`, patron:patron || "", good, loads, from, to:to.id, due, fee,
     reward:`${fee} gp on delivery by day ${due} (half if late)`,
     text:`Wanted: ${sea && repIsCoastal(to) ? "a ship" : "a ship or a wagon"} to carry ${loads} loads of ${G} from ${A.name} to ${to.name}, about ${miles} miles, by day ${due}. The cargo is the Guild's: deliver it whole${guildIn(tf, to.id) ? ` to the Guild's office in ${to.name}` : ""}.`,
@@ -20523,22 +20681,113 @@ function guildPostRuns(){
   saveParty(); touch(); refreshBoardOnTv(); if(n) bgLog("trade", `${f.name} posted ${n} fresh trade runs`);
   return n;
 }
+/* ── the Guild of Explorers' commissions (Joseph, 2026-11-05): chart an unknown place (one not yet on the players'
+   chart: the notice only hints where), recover a lost expedition, bring back a specimen (to any Guild lodge), escort
+   a Guild scholar there and back. Rewards by how far; the DM marks them done ── */
+const EXPLORE_SPECIMENS = ["a moonpetal orchid, alive", "a sea-serpent's egg, unbroken", "a branch of fire coral", "the skull of a giant crab", "seeds of the singing palm",
+  "a jar of the glowing plankton", "a live rainbow parrot", "a basilisk's shed skin", "a stone that floats", "a clutch of storm-gull eggs", "a vial of the giant spider's venom",
+  "a cutting of the blood-vine", "a pearl from the deep beds, still in its shell", "a tusk from the island boars", "honey from the cliff bees"];
+const EXPLORE_KINDS = [["chart","Chart the unknown"],["lost","A lost expedition"],["specimen","Specimen wanted"],["escort","Escort an expedition"]];
+const compassWord = (a, b) => { const ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI, d = ["east","south-east","south","south-west","west","north-west","north","north-east"];
+  return d[(Math.round(ang / 45) + 8) % 8]; };      // y grows downward on the chart
+function exploreRoll(from, patron, kind){
+  const A = repNode(from), known = repPlaces().filter(p=>!p.hidden && p.id!==from), unknown = (root.nodes||[]).filter(n=>n.name && n.hidden && !sailsAbout(n));
+  if(!A) return null;
+  const kinds = EXPLORE_KINDS.map(k=>k[0]).filter(k=>k!=="chart" || unknown.length), k = kind && kinds.includes(kind) ? kind : pickOne(kinds);
+  const far = list => tradePickBy(list, p=>1 + repMilesBetween(A, p) / 100), base = { id:uid("ms"), kind:"explore", ek:k, patron:patron || "", from, status:"posted" };
+  const mi = p => Math.round(repMilesBetween(A, p)), gp = (b, p, r) => Math.round((b + mi(p) * r) / 5) * 5, due = p => campaignDay() + Math.ceil(mi(p) * 2 / 90) + 10 + rollD(10);
+  if(k==="chart"){ const t = pickOne(unknown), near = known.slice().sort((a, b)=>repMilesBetween(a, t) - repMilesBetween(b, t))[0] || A, fee = gp(100, t, .5);
+    return { ...base, title:`Chart the unknown: out past ${near.name}`, target:t.id, fee, reward:`${fee} gp for a true chart`,
+      text:`The Guild's maps go blank ${compassWord(near, t)} of ${near.name}. Find what's there, chart it true, and bring the chart to any Guild lodge.`,
+      notes:`It's ${t.name}, not yet on the players' chart. Done when they've found it and charted it.` }; }
+  if(k==="lost"){ const t = far(known.length ? known : [A]), ship = fleetName(new Set(fleetOf().map(s=>s.name))), fee = gp(150, t, .5);
+    return { ...base, title:`A lost expedition: ${ship}`, to:t.id, fee, reward:`${fee} gp, and more for survivors`, due:due(t),
+      text:`${ship} sailed for the Guild and was last heard of near ${t.name}. Find her, or what's left of her, and bring back her logbook. Survivors earn a bonus.`,
+      notes:`What happened to ${ship} is yours to decide: wrecked, taken, marooned, or something stranger.` }; }
+  if(k==="specimen"){ const t = far(known.length ? known : [A]), thing = pickOne(EXPLORE_SPECIMENS), fee = gp(60, t, .4);
+    return { ...base, title:`Specimen wanted: ${thing.replace(/,.*$/, "")}`, to:t.id, fee, reward:`${fee} gp on delivery`, due:due(t), specimen:thing,
+      text:`The Guild's naturalists want ${thing}, from around ${t.name}. Deliver it to any Guild lodge.`,
+      notes:`Where exactly it's found near ${t.name}, and what guards it, is yours.` }; }
+  const t = far(known.length ? known : [A]), sch = genPerson({ kind:"scholar" }).name, fee = gp(80, t, .6);
+  return { ...base, title:`Escort an expedition to ${t.name}`, to:t.id, fee, reward:`${fee} gp when ${sch.split(" ")[0]} is home safe`, due:due(t), scholar:sch,
+    text:`${sch}, a scholar of the Guild, must reach ${t.name} with their instruments, work there, and come home alive. Passage, protection, and patience.`,
+    notes:`${sch.split(" ")[0]} joins the party (a person in your Library) when they take it.` };
+}
+/* an escort taken: the scholar is a person now, travelling with the party */
+function exploreTaken(m){
+  if(m.ek!=="escort" || m.scholarId) return "";
+  const g = genPerson({ kind:"scholar" }), p = g.person; p.name = m.scholar || p.name; p.where = "with the party"; p.notes = `${p.notes ? p.notes + "\n" : ""}On a Guild expedition to ${repPlaceName(m.to)}.`;
+  const L = lib(); L.npcs = [...(L.npcs||[]), p]; m.scholarId = p.id; saveParty();
+  return ` ${p.name} is in your Library, travelling with the party.`;
+}
+/* fresh commissions on every Explorers' board: what's still only posted comes down, two go up (three at the hall) */
+function explorePost(quiet){
+  const f = guildFaction("explore"); if(!f) return 0; let n = 0;
+  for(const { plan, n:b } of boardsAll()){ if(b.faction!==f.id) continue; const from = plan || b.id;
+    b.board.missions = boardMissions(b.board).filter(m=>!(m.kind==="explore" && (m.status==="posted" || m.status==="draft")));
+    for(let i = 0; i < (b.guildHall ? 3 : 2); i++){ const m = exploreRoll(from, guildPatron(b, from)); if(m){ b.board.missions.push(m); n++; } }
+    if(plan) markDirty(K_PLAN(plan)); }
+  saveParty(); touch(); refreshBoardOnTv(); if(n && !quiet) bgLog("world", `${f.name} posted ${n} fresh commissions`);
+  return n;
+}
+/* ── THE WORLD GOES ON (Joseph, 2026-11-05: "cap at one a week, but a percentile chance of 10%"): each day a d100,
+   10 or under is world news, and never two within a week. A ship lost (a storm, a reef, or the pirate; another put to
+   sea in her place two to four weeks on), a market shock (a good's price leaps or crashes in a place, then drifts
+   back), or a port in trouble for two to four weeks (plague or a blockade: honest ships keep away; a festival: they
+   flock in). And every week the guilds post fresh trade runs and commissions. All in the Background tab's log ── */
+const WORLD_NEWS_PCT = 10, WORLD_NEWS_GAP = 7;
+const TROUBLES = { plague:{ label:"Plague", away:true, says:"ships keep away" }, blockade:{ label:"A blockade", away:true, says:"ships keep away" }, festival:{ label:"A festival", away:false, says:"ships flock in" } };
+const worldOf = () => { const W = root.world = root.world && typeof root.world==="object" ? root.world : {}; W.troubles = W.troubles || {}; W.replace = W.replace || []; return W; };
+const troubleAt = (id, day) => { const t = worldOf().troubles[id]; return t && t.until >= (day==null ? campaignDay() : day) ? t : null; };
+function worldNews(d){
+  const F = fleetOf().filter(s=>s.kind!=="pirate"), pirate = fleetOf().find(s=>s.kind==="pirate"), M = repPlaces().filter(tradeIsPlace), P = repPorts().filter(tradeIsPlace);
+  const kinds = [F.length && "lost", M.length && "shock", P.some(p=>!troubleAt(p.id, d)) && "trouble"].filter(Boolean); if(!kinds.length) return false;
+  const k = pickOne(kinds);
+  if(k==="lost"){ const s = pickOne(F.filter(x=>x.leg).length ? F.filter(x=>x.leg) : F), near = repPlaceName(s.leg ? s.leg.to : s.at || s.home);
+    const how = pirate && rollD(100) <= 40 ? `taken by ${pirate.name}` : pickOne(["lost with all hands in a storm", "wrecked on a reef", "gone missing, not a plank found"]);
+    fleetForget(s); root.fleet = fleetOf().filter(x=>x!==s);
+    worldOf().replace.push({ day:d + 14 + rollD(14), kind:s.kind, size:s.size || "", home:s.home });
+    bgLog("world", `${s.name}, ${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0].toLowerCase()} out of ${repPlaceName(s.home)}, ${how} near ${near}. Her crew and cargo with her`, d); return true; }
+  if(k==="shock"){ const p = pickOne(M), g = pickOne(Object.keys(TRADE_GOODS)), up = rollD(2)===1, loads = tradeDepth(p.id) * (1.2 + Math.random() * 0.8);
+    tradeBump(p.id, g, up ? -loads : loads, d);
+    const why = up ? pickOne(["a blight", "a warehouse fire", "a rich buyer from abroad", "a war's quartermasters buying it all"]) : pickOne(["a bumper harvest", "three ships unloading at once", "a hoard of it found", "a merchant gone bust, selling off"]);
+    bgLog("world", `${why[0].toUpperCase() + why.slice(1)} at ${p.name}: ${tradeGoodName(g).toLowerCase()} ${up ? "dear" : "cheap"} there for a while`, d); return true; }
+  const p = pickOne(P.filter(x=>!troubleAt(x.id, d))), tk = tradePickBy(Object.keys(TROUBLES), x=>({ plague:35, blockade:25, festival:40 })[x]), days = 14 + rollD(14), T = TROUBLES[tk];
+  worldOf().troubles[p.id] = { kind:tk, label:T.label, from:d, until:d + days };
+  bgLog("world", `${T.label} at ${p.name}, till about day ${d + days}: ${T.says}`, d); return true;
+}
+function worldCatchUp(){
+  if(typeof root==="undefined" || !root || location.hash==="#player") return null;
+  const W = worldOf(), now = campaignDay(); if(W.day==null || now < W.day){ W.day = now; if(W.posted==null) W.posted = now; return null; } if(now===W.day) return null;
+  let news = 0;
+  for(let d = W.day + 1; d <= now; d++){
+    if(d - (W.posted ?? d) >= 7){ W.posted = d; guildPostRuns(); explorePost(); }                       // the guilds' boards, weekly
+    if(d - (W.news ?? -99) >= WORLD_NEWS_GAP && rollD(100) <= WORLD_NEWS_PCT && worldNews(d)){ W.news = d; news++; }
+    for(const r of W.replace.filter(x=>x.day===d)) fleetAdd({ kind:r.kind, size:r.size, home:r.home });        // a new ship in place of one lost (it says so in the log)
+    for(const [id, t] of Object.entries(W.troubles)) if(t.until===d) bgLog("world", `${t.label} at ${repPlaceName(id)} is over`, d);
+  }
+  W.replace = W.replace.filter(x=>x.day > now); for(const id of Object.keys(W.troubles)) if(W.troubles[id].until < now) delete W.troubles[id];
+  W.day = now; saveParty(); return { news };
+}
 function guildBlock(){
   const hub = guildHub(), C = guildCities();
   const row = key => { const G = GUILDS[key], f = guildFaction(key), have = f ? C.filter(c=>guildIn(f, c.id)).length : 0, hall = f && hub ? guildIn(f, hub.id) : null;
-    const runs = key==="trade" && f ? missionsAll().filter(x=>x.m.kind==="trade" && x.n.faction===f.id) : [];
+    const runs = f ? missionsAll().filter(x=>x.m.kind===(key==="trade" ? "trade" : "explore") && x.n.faction===f.id) : [];
     return `<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><b style="flex:1">${esc(f ? f.name : G.name)}</b>${f ? `<small>${esc(factionEffects(f).tier.label)}</small>` : `<small>not in your Library yet</small>`}</div>
       <div class="sbl">${hall ? `Hall: <span class="libref" data-bgplace="${hub.id}">${esc(hall.name)}</span>, ${esc(hub.name)}` : hub ? `No hall in ${esc(hub.name)} yet` : "No hub city"} · branches in ${Math.max(0, have - (hall ? 1 : 0))} of ${Math.max(0, C.length - 1)} other cities</div>
-      ${key==="trade" && f ? `<div class="sbl">Trade runs: ${runs.filter(x=>x.m.status==="posted").length} posted, ${runs.filter(x=>x.m.status==="taken").length} taken, ${runs.filter(x=>x.m.status==="done").length} done</div>` : ""}
+      ${f ? `<div class="sbl">${key==="trade" ? "Trade runs" : "Commissions"}: ${runs.filter(x=>x.m.status==="posted").length} posted, ${runs.filter(x=>x.m.status==="taken").length} taken, ${runs.filter(x=>x.m.status==="done").length} done · fresh ones every week</div>` : ""}
       <div class="pcrow" style="margin-top:2px"><button class="btn small" data-guild="setup" data-key="${key}" title="${f ? "Any city without a branch gets one; the hall too, if it's missing" : "The faction in your Library, its hall in the hub, a branch in every city"}">${f && have >= C.length ? "Check its branches" : f ? "Add the missing branches" : "Found it: hall and branches"}</button>
-        ${key==="trade" && f ? `<button class="btn small" data-guild="runs" title="Every Trade Guild board: what's still only posted comes down, fresh runs go up (three at the hall, two at each office)">Post fresh trade runs</button>` : ""}</div></div>`; };
+        ${key==="trade" && f ? `<button class="btn small" data-guild="runs" title="Every Trade Guild board: what's still only posted comes down, fresh runs go up (three at the hall, two at each office)">Post fresh trade runs</button>` : ""}
+        ${key==="explore" && f ? `<button class="btn small" data-guild="commissions" title="Every Explorers' board: what's still only posted comes down, fresh commissions go up (three at the hall, two at each lodge)">Post fresh commissions</button>` : ""}</div></div>`; };
   return `<details class="partysec" data-invfor="bg:guilds" ${openInv.has("bg:guilds") ? "open" : ""}><summary class="eyebrow">Guilds <small>halls in ${esc(hub ? hub.name : "the hub")}, branches in every city</small></summary>${row("trade")}${row("explore")}</details>`;
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-guild]"); if(!b) return;
   if(b.dataset.guild==="setup"){ const r = guildSetup(b.dataset.key), G = GUILDS[b.dataset.key];
     if(b.dataset.key==="trade" && (r.hall || r.branches)) guildPostRuns();
+    if(b.dataset.key==="explore" && (r.hall || r.branches)) explorePost();
     flash(`${G.name}: ${r.faction ? "in your Library now; " : ""}${r.hall ? "its hall built; " : ""}${r.branches} new branch${r.branches===1?"":"es"}.`); }
   else if(b.dataset.guild==="runs"){ const n = guildPostRuns(); flash(n ? `${n} fresh trade runs posted on the Trade Guild's boards.` : "No Trade Guild boards yet: found the guild first."); }
+  else if(b.dataset.guild==="commissions"){ const n = explorePost(); flash(n ? `${n} fresh commissions posted on the Explorers' boards.` : "No Explorers' boards yet: set the guild up first."); }
   renderNamedPane("background"); });
 function renderBackground(){
   const el = $("#pane-background"); if(!el) return;
@@ -20549,9 +20798,13 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   if(b.dataset.bgmore){ bgShow += 300; renderNamedPane("background"); return; }
   const n = nodeById(b.dataset.bgplace) || (root.nodes||[]).find(x=>x.id===b.dataset.bgplace); if(!n) return; if(planOf) leavePlan();
   openInv.add("trade:" + n.id); select("node", n.id); if(!(tableOn() || buildOn())){ pane = "inspect"; syncTabs(); } renderPane(true); render(); });
-document.addEventListener("change", e=>{ const t = e.target; if(t && t.id==="bg-filter"){ bgFilter = t.value; bgShow = 150; renderNamedPane("background"); } });
+document.addEventListener("change", e=>{ const t = e.target; if(t && t.id==="bg-filter"){ bgFilter = t.value; bgShow = 150; renderNamedPane("background"); }
+  if(t && t.dataset && t.dataset.tbase){ const T = tradeOf(), v = +t.value; T.base = T.base || {}; if(v > 0 && v!==TRADE_GOODS[t.dataset.tbase][1]) T.base[t.dataset.tbase] = Math.round(v * 10) / 10; else delete T.base[t.dataset.tbase];
+    saveParty(); renderNamedPane("background"); } });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-bgbase]"); if(!b) return; delete tradeOf().base; saveParty(); renderNamedPane("background"); flash("The goods' usual prices are the list's again."); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-fleetact]"); if(!b) return; const a = b.dataset.fleetact;
   if(a==="lanes"){ const r = seaLanesFromMap(); flash(`${r.lanes} sea lanes between ${r.ports} ports on the water: every port can reach every other.`); }
+  else if(a==="lane"){ const l = laneDraw(($("#ln-a")||{}).value, ($("#ln-b")||{}).value); if(l) flash(`A new lane, ${Math.round(l.miles)} miles: click it on your chart to name it.`); }
   else if(a==="roll"){ if(fleetOf().length && !confirm("Roll a new fleet? The ships at sea now are replaced.")) return; const n = fleetRoll(); if(n) flash(`${n} ships put to sea.`); }
   else if(a==="del"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s) fleetForget(s); root.fleet = fleetOf().filter(s=>s.id!==b.dataset.id); saveParty(); }
   else if(a==="crews"){ let n = 0; for(const s of fleetOf()) if(FLEET_CREW[s.kind] && !(s.crew||[]).length) n += fleetCrewRoll(s); flash(`${n} people aboard, captains and crews: each in the Library.`); }
