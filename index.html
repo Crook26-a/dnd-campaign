@@ -1431,8 +1431,18 @@ const SURVEY_KINDS = {
   smuggle: { label:"Smugglers' port", key:"", services:svc("inn","board","fence"),
              draw:c=>`<circle r="7" fill="${c}" stroke="${INK}" stroke-width="1.5" stroke-dasharray="3 2"/><rect x="-2.5" y="-4" width="5" height="8" rx="1.6" fill="${INK}"/>` },
   hideout: { label:"Pirate hideout", key:"", services:{},
-             draw:c=>`<path d="M-9 7 A9 9 0 0 1 9 7 Z" fill="${c}" stroke="${INK}" stroke-width="1.5"/><path d="M-3.5 0 L3.5 6 M3.5 0 L-3.5 6" stroke="${INK}" stroke-width="1.6"/>` }
+             draw:c=>`<path d="M-9 7 A9 9 0 0 1 9 7 Z" fill="${c}" stroke="${INK}" stroke-width="1.5"/><path d="M-3.5 0 L3.5 6 M3.5 0 L-3.5 6" stroke="${INK}" stroke-width="1.6"/>` },
+  /* a pirate city and a pirate town (Joseph, 2026-11-05, the Islands of Lost Hope): placed, each is a city or a town
+     like any other (n.pirate marks it), so everything a city does still works; it's a shady port besides */
+  piratecity: { label:"Pirate city", key:"", pirateOf:"city",
+             services:svc("inn","stable","board","store","provision","smith","apothecary","market","temple","healer","fence"),
+             draw:c=>`<rect x="-9" y="-9" width="18" height="18" fill="${c}" stroke="${INK}" stroke-width="1.5"/><path d="M-4.5 -4.5 L4.5 4.5 M4.5 -4.5 L-4.5 4.5" stroke="${INK}" stroke-width="2.4"/>` },
+  piratetown: { label:"Pirate town", key:"", pirateOf:"town",
+             services:svc("inn","board","store","provision","smith","market","fence"),
+             draw:c=>`<rect x="-7.5" y="-7.5" width="15" height="15" fill="${c}" stroke="${INK}" stroke-width="1.5"/><path d="M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5" stroke="${INK}" stroke-width="2"/>` }
 };
+/* what a place shows as: a pirate city or town under its own kind and mark (on the survey) */
+const shownKind = n => n && n.pirate && !planOf && SURVEY_KINDS["pirate" + n.kind] ? "pirate" + n.kind : n && n.kind;
 /* ── what stands in a town: the trades the survey already tracks, plus
    the plain fabric of a place. Anything carrying a `svc` sites one of the
    marker's own services, and ticking it here ticks it up on the survey. ── */
@@ -4019,7 +4029,7 @@ function voyage(ship, from, to){
    (a town's buildings, a wreck on an island) are reached from there. */
 const PORT_KINDS = new Set(["city","town","village","light","smuggle","hideout"]);
 const SHADY_KINDS = new Set(["smuggle","hideout"]);      // honest ships keep away; stolen cargo sells there unasked
-const shadyPort = id => { const n = typeof id==="string" ? repNode(id) : id; return !!n && SHADY_KINDS.has(n.kind); };
+const shadyPort = id => { const n = typeof id==="string" ? repNode(id) : id; return !!n && (SHADY_KINDS.has(n.kind) || !!n.pirate); };     // and a pirate city or town
 const isPort = n => !!n && !sailsAbout(n) && (n.route || (n.port!=null ? !!n.port : PORT_KINDS.has(n.kind)));
 const chartOf = () => root.chart = root.chart || { on:false, sight:5, spot:10, seen:[] };
 const spotMiles = () => +(root.chart && root.chart.spot) || 10;
@@ -5882,7 +5892,7 @@ function render(){
   const rankOf = n => (sel && sel.kind==="node" && sel.id===n.id) || partyIds.has(n.id) || (J && J.to===n.id) ? 10 : n.route ? 6 : planOf ? 3 : (LABEL_RANK[n.kind] ?? 2) - (n.hidden ? .5 : 0);
   for(const n of doc.nodes){
     if(!onFloor(n)) continue;
-    const kd = KINDS[n.kind]||KINDS.stone, hex = regionHex(n.region);
+    const kd = KINDS[shownKind(n)]||KINDS.stone, hex = regionHex(n.region);
     const on = sel&&sel.kind==="node"&&sel.id===n.id;
 
     /* inside a plan a building is drawn at the size it is */
@@ -6160,7 +6170,7 @@ const ICONS = {
   connect:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="14" r="2.4"/><circle cx="14" cy="4" r="2.4"/><path d="M5.8 12.2 12.2 5.8"/></svg>`
 };
 /* Build view's palette: everything the rail offers, by name, in groups, with a box to find a kind */
-const PAL_PLACES = { survey:[["Settlements","city town village"],["Along the roads","post toll stone"],["In the wild","ruin cave wood camp"],["At sea","ship wreck light smuggle hideout"]],
+const PAL_PLACES = { survey:[["Settlements","city town village"],["Along the roads","post toll stone"],["In the wild","ruin cave wood camp"],["At sea","ship wreck light"],["Pirates and smugglers","piratecity piratetown smuggle hideout"]],
   plan:[["Lodging and drink","inn stable coachhouse house hall"],["Trade","market store provision smith apothecary fence stall"],["Civic","reeve archive office gate tower well statue"],
     ["Faith and care","temple healer trainer"],["Docks and water","warehouse shipwright ship boat wreck light tent"],["Out of the way","ruinlet cave"]] };
 const PAL_AREAS = { survey:[["The land","wood grassland hills mountain marsh desert arctic"],["Water and coast","water river island reef"],["In the way","impasse"]],
@@ -7200,6 +7210,7 @@ function placeNode(kind,x,y){
   const n = newNode(kind,x,y,near);
   if(!doc.nodes.length && !planOf) n.origin=true;
   if(!planOf && kind==="hideout") n.hidden = true;               // a hideout is off the players' screen till they find it
+  if(!planOf && KINDS[kind] && KINDS[kind].pirateOf){ n.kind = KINDS[kind].pirateOf; n.pirate = true; }     // a pirate city is a city, marked
   doc.nodes.push(n); select("node",n.id);
   if(planOf) syncServices(planOf);
   const joined = joinRoadAt(n);
@@ -16877,7 +16888,7 @@ function renderPlayNow(){
   const n = nodeById(sel.id); if(!n){ sel = null; return renderPlay(); }
   const reg = doc.regions.find(r=>r.id===n.region), st = n.site;
   const people = (n.npcs||[]).map(libNpcById).filter(Boolean);
-  let h = `${planBackBar()}<p class="eyebrow">${esc((KINDS[n.kind]||{label:""}).label)}${reg?` · ${esc(reg.name)}`:""}</p>
+  let h = `${planBackBar()}<p class="eyebrow">${esc((KINDS[shownKind(n)]||{label:""}).label)}${reg?` · ${esc(reg.name)}`:""}</p>
     <p class="playname">${esc(placeLabel(n))}</p>
     <label class="check" style="margin:-2px 0 8px" title="Leave it off the players' screen until they find it"><input type="checkbox" data-pshide="node" ${n.hidden?"checked":""}> Hidden from the players' screen</label>${nameHideBlock(n)}${chartFlags(n)}
     ${n.notes?`<p class="playnotes">${esc(n.notes)}</p>`:""}
@@ -19733,6 +19744,8 @@ function repIsCoastal(n){
   return !on || coastDist(on, n.x, n.y) <= 3 * (root.ppm || 10);
 }
 const repPorts = () => (root.nodes||[]).filter(n=>n.name && repIsCoastal(n));
+/* the places on an island, or on its shore (within 2 miles of it): for putting a chain of islands in one region */
+const islePlaces = sh => (doc.nodes||[]).filter(n=>!sailsAbout(n) && (sh.pts||[]).length > 2 && (landIn(sh, n.x, n.y) || coastDist(sh, n.x, n.y) <= 2 * (doc.ppm || 10)));
 /* ── the water, as a grid of 2-mile squares (Joseph, 2026-11-04: "so many sea routes are going over land"): land is
    filled in row by row from the map's outlines (the mainland less the sea's shape, and every island), quick even for
    a mainland of thousands of points. Lanes go by water: the shortest way through the squares (A*), smoothed into a few
@@ -19840,7 +19853,7 @@ function fleetName(used){ for(let i = 0; i < 50; i++){ const r = rollD(6), nm = 
 function fleetRoll(){
   const P = repPorts(); if(P.length < 2){ flash("Fewer than two ports on the water: nothing to sail between."); return 0; }
   if(!(repOf().lanes||[]).length) seaLanesFromMap();
-  const used = new Set(), out = [], pick = A => A[rollD(A.length) - 1], cities = P.filter(p=>p.kind==="city"), D = campaignDay();
+  const used = new Set(), out = [], pick = A => A[rollD(A.length) - 1], cities = P.filter(p=>p.kind==="city" && !p.pirate), D = campaignDay();
   const honestP = P.filter(p=>!shadyPort(p)).length ? P.filter(p=>!shadyPort(p)) : P, smugP = P.filter(p=>p.kind==="smuggle");
   const walk = (home, n, only) => { const r = [home.id]; let at = home.id;
     for(let i = 0; i < n; i++){ const nb = (repOf().lanes||[]).filter(l=>l.from===at || l.to===at).map(l=>l.from===at ? l.to : l.from).filter(id=>!r.includes(id) && !fleetReef(id) && !shadyPort(id) && (!only || only(id))); if(!nb.length) break; const was = at; at = tradePickBy(nb, id=>tradeFit(was, id)); r.push(at); }
@@ -19854,7 +19867,7 @@ function fleetRoll(){
   for(let i = 0; i < 2; i++) out.push(mk("smuggler", "wander", spread(i, smugP.length ? smugP : P)));     // smugglers out of a smugglers' port, if there is one
   for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : honestP); out.push(mk("packet", "route", h, walk(h, 2))); }
   /* the pirate's hideout: a port in the reefs if there is one (Kalatecha: Lantern Rock), else the one furthest from the rest */
-  const lonely = pickOne(P.filter(p=>p.kind==="hideout").length ? P.filter(p=>p.kind==="hideout") : [null]) || P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
+  const lonely = pickOne(P.filter(p=>p.kind==="hideout").length ? P.filter(p=>p.kind==="hideout") : P.filter(p=>p.pirate).length ? P.filter(p=>p.pirate) : [null]) || P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
   out.push(mk("pirate", "pirate", lonely));
   for(const s of fleetOf()) fleetForget(s);                               // the old fleet's crews out of the Library
   root.fleet = out; root.fday = D;
@@ -20271,11 +20284,12 @@ function tradeHere(n){
     ${stolen.map(([k, h])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${h.n} ${esc(tradeGoodName(h.g).toLowerCase())} <small>(${h.stolen==="pirate" ? "a pirate's plunder, from" : "taken from"} ${esc(h.from||"a ship")}; ${tradeSellAt(place, h.g, h.n)} gp a load here)</small></span>
       ${cut ? `<button class="btn small" data-trade="fence" data-k="${esc(k)}" title="No questions here: ${cut}% of the price, and no risk">Sell (${cut}%, no risk)</button>` : `<button class="btn small" data-trade="fence" data-k="${esc(k)}" title="Sells like any cargo, with a ${R.sell}% chance of being caught">Sell (${R.sell}% risk)</button>`}${h.stolen==="pirate" && office ? `<button class="btn small" data-trade="prize" data-k="${esc(k)}" title="${esc(navy ? navy.name : "The navy")}'s prize office pays ${R.prize}% of what it would fetch here, with a ${R.suspect}% chance they suspect the party of piracy">Turn in (${R.prize}%)</button>` : ""}</div>`).join("")}
     ${office ? `<p class="empty-note" style="font-size:11px;margin:2px 0">${esc(navy ? navy.name : "The navy")} has a prize office here: a pirate's plunder turned in for ${R.prize}%.</p>` : ""}
-    ${cut ? `<p class="empty-note" style="font-size:11px;margin:2px 0">${esc(repPlaceName(place))} is ${P.kind==="hideout" ? "a pirate hideout" : "a smugglers' port"}: stolen cargo sells here for ${cut}% of the price, and nobody's caught. The navy doesn't come here.</p>` : `<button class="btn small" data-trade="search" title="${R.search}% they search (${R.search + 25}% while they suspect the party); anything stolen in the hold is caught">The navy searches the hold</button>`}
+    ${cut ? `<p class="empty-note" style="font-size:11px;margin:2px 0">${esc(repPlaceName(place))} is ${P.pirate ? `a pirate ${P.kind}` : P.kind==="hideout" ? "a pirate hideout" : "a smugglers' port"}: stolen cargo sells here for ${cut}% of the price, and nobody's caught. The navy doesn't come here.</p>` : `<button class="btn small" data-trade="search" title="${R.search}% they search (${R.search + 25}% while they suspect the party); anything stolen in the hold is caught">The navy searches the hold</button>`}
     <details style="margin-top:4px"><summary><small>The rules for stolen cargo</small></summary>
       <div class="pcrow"><div class="field" style="flex:1"><label>Caught selling, %</label><input type="number" min="0" max="100" data-strule="sell" value="${R.sell}"></div><div class="field" style="flex:1"><label>Prize office pays, %</label><input type="number" min="0" max="100" data-strule="prize" value="${R.prize}"></div></div>
       <div class="pcrow"><div class="field" style="flex:1"><label>Suspected turning in, %</label><input type="number" min="0" max="100" data-strule="suspect" value="${R.suspect}"></div><div class="field" style="flex:1"><label>Navy searches, %</label><input type="number" min="0" max="100" data-strule="search" value="${R.search}"></div></div>
       <div class="pcrow"><div class="field" style="flex:1"><label>Smugglers' port pays, %</label><input type="number" min="0" max="100" data-strule="smuggle" value="${R.smuggle}"></div><div class="field" style="flex:1"><label>Pirate hideout pays, %</label><input type="number" min="0" max="100" data-strule="hideout" value="${R.hideout}"></div></div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Pirate city or town pays, %</label><input type="number" min="0" max="100" data-strule="pirate" value="${R.pirate}"></div><div style="flex:1"></div></div>
       <div class="pcrow"><div class="field" style="flex:1"><label>The navy is</label><select id="tr-navy">${factionOptions(navy ? navy.id : "", "No faction")}</select></div>
         <label style="flex:1;align-self:end"><input type="checkbox" id="tr-office" ${office ? "checked" : ""}> A prize office here</label></div>
       <p class="empty-note" style="font-size:11px;margin:2px 0">Suspected: −1 with the navy and a local deed. Caught selling or holding: everything stolen confiscated, a fine of its full value from whoever pays, −3 with the navy and a notable deed. A prize office is wherever a navy ship is based or calls, unless you say otherwise here.</p></details>`;
@@ -20357,9 +20371,10 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !
    Caught selling or holding (a navy search): everything stolen confiscated, a fine of its value, worse standing ── */
 const FLEET_MAGIC = { packet:[["Rare",30],["Very Rare",20],["Legendary",5],["Artifact",1]],
   merchant:[["Rare",15],["Very Rare",5],["Artifact",0.4]], pirate:[["Rare",15],["Very Rare",5],["Artifact",0.4]] };
-const STOLEN_RULES = { sell:5, prize:60, suspect:15, search:50, smuggle:80, hideout:70 };
-/* at a smugglers' port or a pirate hideout, stolen cargo sells with no risk, for a cut: the share of the price paid */
-const shadyCut = id => { const n = repNode(id); return n && SHADY_KINDS.has(n.kind) ? stolenRules()[n.kind] : 0; };
+const STOLEN_RULES = { sell:5, prize:60, suspect:15, search:50, smuggle:80, hideout:70, pirate:75 };
+/* at a smugglers' port, a pirate hideout or a pirate city or town, stolen cargo sells with no risk, for a cut: the
+   share of the price paid */
+const shadyCut = id => { const n = repNode(id); return !n ? 0 : n.pirate ? stolenRules().pirate : SHADY_KINDS.has(n.kind) ? stolenRules()[n.kind] : 0; };
 const stolenRules = () => { const T = tradeOf(), R = T.rules = T.rules || {}; for(const k in STOLEN_RULES) if(!(R[k] >= 0)) R[k] = STOLEN_RULES[k]; return R; };
 const tradeNavy = () => { const T = tradeOf(), F = lib().factions || []; return T.navy!=null ? F.find(f=>f.id===T.navy) || null : F.find(f=>/admiralty|navy/i.test(f.name||"")) || null; };
 const tradeSuspect = () => { const T = tradeOf(); return T.suspect!=null && campaignDay() - T.suspect <= 30; };      // they remember for a month
@@ -20617,7 +20632,7 @@ function fleetAdd(o){
   const P = repPorts(); if(!P.length){ flash("No ports on the water yet."); return null; }
   const kinds = Object.keys(FLEET_KINDS), kind = kinds.includes(o.kind) ? o.kind : pickOne(kinds.filter(k=>k!=="pirate"));
   const firstOf = (...L) => L.find(x=>x.length) || P;     // the first of these that has any ports in it
-  const home = repNode(o.home) && repIsCoastal(repNode(o.home)) ? repNode(o.home) : pickOne(kind==="pirate" ? firstOf(P.filter(p=>p.kind==="hideout"), P.filter(p=>fleetReef(p.id)))
+  const home = repNode(o.home) && repIsCoastal(repNode(o.home)) ? repNode(o.home) : pickOne(kind==="pirate" ? firstOf(P.filter(p=>p.kind==="hideout"), P.filter(p=>p.pirate), P.filter(p=>fleetReef(p.id)))
     : kind==="smuggler" ? firstOf(P.filter(p=>p.kind==="smuggle"), P) : firstOf(P.filter(p=>!(FLEET_HONEST.has(kind) && (fleetReef(p.id) || shadyPort(p))))));
   const mode = kind==="pirate" ? "pirate" : o.mode==="route" || o.mode==="wander" ? o.mode : (["navy","packet"].includes(kind) || Math.random() < .4 ? "route" : "wander");
   const used = new Set(fleetOf().map(s=>s.name)), s = { id:uid("sh"), name:(o.name||"").trim() || fleetName(used), kind, mode, home:home.id, at:home.id, stay:campaignDay() + 1, carry:[], ...(FLEET_SIZES[o.size] ? { size:o.size } : {}) };
@@ -20742,7 +20757,7 @@ const GUILDS = {
     branchNote:"An Explorers' Guild lodge: a map room, a board of commissions, and travellers' tales over the fire." } };
 const guildFaction = key => (lib().factions||[]).find(f=>GUILDS[key].match.test(f.name||"")) || null;
 const guildHub = () => repHub(repPorts()) || (root.nodes||[]).find(n=>n.kind==="city") || null;
-const guildCities = () => (root.nodes||[]).filter(n=>n.kind==="city" && n.name && !sailsAbout(n));
+const guildCities = () => (root.nodes||[]).filter(n=>n.kind==="city" && !n.pirate && n.name && !sailsAbout(n));     // no guild branch in a pirate city
 /* the faction's building in a place's plan, if it has one */
 const guildIn = (f, placeId) => f ? ((plans[placeId]||{}).nodes||[]).find(x=>x.faction===f.id) || null : null;
 /* a free spot in a plan for a new building: around its market (or the middle), clear of what's there */
@@ -23325,7 +23340,10 @@ function renderInspectInner(){
       <label class="check" style="margin-top:6px"><input id="s-imp" type="checkbox" ${sh.impassable?"checked":""}> Roads can't cross this</label>
       ${sh.kind==="zone" ? `<div class="field" style="margin-top:8px"><label>Built up as</label><select id="s-density">${Object.entries(BUILT_DENSITY).filter(([k])=>k!=="none").map(([k, v])=>`<option value="${k}" ${(sh.density||"town")===k?"selected":""}>${v.label}</option>`).join("")}</select></div>
         <p class="empty-note" style="font-size:11px">The town fills this area with houses, gardens and back lanes, round whatever is already drawn here. Once a plan has a zone, only zoned ground is built up.</p>` : ""}
-      ${sh.kind==="island" ? `<div class="field" style="margin-top:8px"><label>Open land here is</label><select id="s-terrain" title="Travel Terrain (2024) for any land on this island not drawn as Forest, Hill, Swamp and so on; 2 miles of shore all round is Coastal">${Object.entries(TERRAINS).filter(([k])=>k!=="coastal").map(([k, T])=>`<option value="${k}" ${(sh.terrain||"grassland")===k?"selected":""}>${T.label}</option>`).join("")}</select></div>` : ""}
+      ${sh.kind==="island" ? `<div class="field" style="margin-top:8px"><label>Open land here is</label><select id="s-terrain" title="Travel Terrain (2024) for any land on this island not drawn as Forest, Hill, Swamp and so on; 2 miles of shore all round is Coastal">${Object.entries(TERRAINS).filter(([k])=>k!=="coastal").map(([k, T])=>`<option value="${k}" ${(sh.terrain||"grassland")===k?"selected":""}>${T.label}</option>`).join("")}</select></div>
+        ${planOf ? "" : (()=>{ const on = islePlaces(sh), regs = [...new Set(on.map(n=>n.region))];
+          return `<p class="eyebrow spaced">Its places' region</p><p class="empty-note" style="font-size:11px;margin:0 0 4px">${on.length ? `${on.length} place${on.length===1?"":"s"} on it or on its shore: ${regs.map(id=>esc((doc.regions.find(r=>r.id===id)||{}).name || "none")).join(", ")}.` : "No places on it yet."} Islands in a chain share a region when you put each one's places into it.</p>
+          <div class="pcrow"><select id="s-isleregion" style="flex:1;min-width:0">${regionOptions(regs.length===1 ? regs[0] : "")}<option value="__new">A new region…</option></select><button class="btn" id="s-isleregiongo" ${on.length ? "" : "disabled"}>Put them in it</button></div>`; })()}` : ""}
       ${kd.road?`
         <div class="field" style="margin-top:12px"><label>Width</label>
           <input id="s-w" class="mono" type="number" step="0.5" min="0.5" max="60" value="${sh.w==null?kd.w:sh.w}"></div>`:""}
@@ -23360,6 +23378,11 @@ function renderInspectInner(){
       touch(); renderInspect();
     };
     $("#s-straight").onchange = e=>{ sh.straight = e.target.checked; drawStraight = sh.straight; touch(); };
+    const ig = $("#s-isleregiongo"); if(ig) ig.onclick = ()=>{ let id = ($("#s-isleregion")||{}).value;
+      if(id==="__new"){ const nm = (prompt("The new region's name:", sh.name || "") || "").trim(); if(!nm) return;
+        const r = { id:uid("r"), name:nm, threat:1, hex:REGION_HEX[doc.regions.length % REGION_HEX.length], notes:"" }; doc.regions.push(r); id = r.id; }
+      const on = islePlaces(sh); for(const n of on) n.region = id; touch(); render(); renderInspect();
+      flash(`${on.length} place${on.length===1?"":"s"} on ${sh.name || "the island"} now in ${(doc.regions.find(r=>r.id===id)||{}).name}.`); };
     const wS = $("#s-w"); if(wS) wS.oninput = e=>{ sh.w = Math.max(.5, Math.min(60, +e.target.value||kd.w)); touch(); };
     const cl = $("#s-closed"); if(cl) cl.onchange = e=>{ sh.closed=e.target.checked; if(sh.closed) editing=null; touch(); renderInspect(); };
     $("#s-imp").onchange = e=>{ sh.impassable=e.target.checked; touch(); };
@@ -23398,10 +23421,10 @@ function renderInspectInner(){
     const st = n.site || {}, foeN = (st.foes||[]).length, people = (n.npcs||[]).length, items = (st.items||[]).length;
     const inside = !planOf && hasPlan(n.id) ? "a town plan" : (n.bmap && Array.isArray(n.bmap.rows)) ? "its own map" : hasInside(n) ? "a ready-made map" : "nothing drawn yet";
     el.innerHTML = `
-      ${cardHead(KINDS[n.kind].label + (reg ? ` · ${reg.name}` : ""), `<input id="f-name" type="text" value="${esc(n.name)}" placeholder="unnamed">`, n.hidden, "node",
+      ${cardHead(KINDS[shownKind(n)].label + (reg ? ` · ${reg.name}` : ""), `<input id="f-name" type="text" value="${esc(n.name)}" placeholder="unnamed">`, n.hidden, "node",
         attached.length ? `Roads to ${attached.map(r=>esc((other(r)||{}).name || "a place")).join(", ")}` : (planOf ? "" : "No roads yet"))}
-      ${csec("node:place", "The place", `${KINDS[n.kind].label} · level ${n.level||1}`, `
-        <div class="field"><label>Kind</label><select id="f-kind">${KIND_KEYS.map(k=>`<option value="${k}" ${k===n.kind?"selected":""}>${KINDS[k].label}</option>`).join("")}</select></div>
+      ${csec("node:place", "The place", `${KINDS[shownKind(n)].label} · level ${n.level||1}`, `
+        <div class="field"><label>Kind</label><select id="f-kind">${KIND_KEYS.map(k=>`<option value="${k}" ${k===shownKind(n)?"selected":""}>${KINDS[k].label}</option>`).join("")}</select></div>
         <div class="row2">
           <div class="field"><label>Region</label><select id="f-region">${regionOptions(n.region)}</select></div>
           <div class="field"><label>Level</label><input id="f-level" class="mono" type="number" min="1" max="5" value="${n.level||1}"></div>
@@ -23443,7 +23466,7 @@ function renderInspectInner(){
       <div class="cfoot"><button class="btn wide danger" id="f-del">Remove this marker</button></div>`;
 
     $("#f-name").oninput = e=>{ n.name=e.target.value; touch(); };
-    $("#f-kind").onchange = e=>{ n.kind=e.target.value; if(planOf) syncServices(planOf); touch(); };
+    $("#f-kind").onchange = e=>{ const k = e.target.value, po = KINDS[k] && KINDS[k].pirateOf; n.kind = po || k; if(po) n.pirate = true; else delete n.pirate; if(planOf) syncServices(planOf); touch(); renderInspect(); };
     $("#f-region").onchange = e=>{ n.region=e.target.value; touch(); };
     $("#f-level").oninput = e=>{ n.level=+e.target.value||1; touch(); };
     $("#f-notes").oninput = e=>{ n.notes=e.target.value; touch(); };
