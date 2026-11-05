@@ -4,7 +4,7 @@
 // deck's map ("it just opens the panel on the side").
 const fdShips = () => [...document.querySelectorAll("svg g text")].filter(t => (root.fleet || []).some(s => s.name === t.textContent)).map(t => t.parentElement.getAttribute("transform")).join(";");
 const fdPane = () => (document.querySelector('[data-invfor="party:fleet"]') || {}).innerText || "";
-const fdMap = () => { if (!battleOf) return "no map open"; const n = (battleOf.doc.nodes || []).find(x => x.id === battleOf.nodeId), m = bmapOf(n); return `${n.name}: ${m.name} ${m.w}x${m.h}, ${((n.site || {}).combat || {}).list ? n.site.combat.list.length : 0} in the fight list`; };
+const fdMap = () => { if (!battleOf) return "no map open"; const n = (battleOf.doc.nodes || []).find(x => x.id === battleOf.nodeId), m = bmapOf(n); return `${n.name} (${battleOf.doc.title || "the survey"}):${m.name} ${m.w}x${m.h}, ${((n.site || {}).combat || {}).list ? n.site.combat.list.length : 0} in the fight list`; };
 step("ten days on from the day box: where the ships are, on the chart and in the Party tab", async () => {
   loadJSONNow(JSON.stringify(FIX.kal)); await wait(300); setDmMode(true); await wait(60); delete root.fleet; seaLanesFromMap(); fleetRoll(); render(); await wait(30);
   pane = "party"; syncTabs(); renderPane(true); const sec = document.querySelector('details[data-invfor="party:fleet"]'); if (sec) sec.open = true; await wait(30);
@@ -18,6 +18,16 @@ step("going aboard opens her deck's map: a merchantman, a passenger ship", async
   for (const k of ["merchant", "packet"]) { const s = root.fleet.find(x => x.kind === k); fleetGoAboard(s); await wait(80);
     out.push(`${k}: ${fdMap()}${planOf ? ", in her plan" : ""}`); if (battleOf) closeBattle(); await wait(30); if (planOf) leavePlan(); }
   return out.join(" | ") + ` | page errors ${__KIT.errors.length}`;
+});
+step("room to room, like Ashgrave: down the stairs and the hatch, and back aboard the party's ship", async () => {
+  const out = [], drop = (ids, x, y) => { const n = (battleOf.doc.nodes || []).find(r => r.id === battleOf.nodeId), ex = exitAt(n, x, y); return ex ? walkThrough(ids, ex, n) : `no way out at ${x},${y}`; };
+  const ids = memberIds().slice(0, 1), who = ids.map(memberName).join("");
+  for (const [k, steps] of [["packet", [[21, 5], [25, 8], [2, 4]]], ["merchant", [[11, 6], [8, 3], [12, 9]]]]) { const s = root.fleet.find(x => x.kind === k); fleetGoAboard(s); await wait(80);
+    const n0 = (battleOf.doc.nodes || []).find(r => r.id === battleOf.nodeId), ways = exitsOf(n0).map(e => `${e.x},${e.y} ${e.label}`).join("; "), path = [fdMap().split(":")[0]];
+    for (const [x, y] of steps) { const r = drop(ids, x, y); await wait(60); path.push(r === true ? fdMap().split(":")[0] : String(r)); }
+    out.push(`${k}: deck's ways out: ${ways} | ${who} walks: ${path.join(" -> ")}, standing at ${JSON.stringify(battleOf && ((battleOf.doc.nodes || []).find(r => r.id === battleOf.nodeId).site.combat.pos || {})[ids[0]])}`);
+    if (battleOf) closeBattle(); await wait(30); if (planOf) leavePlan(); }
+  return out.join(" || ") + ` | page errors ${__KIT.errors.length}`;
 });
 step("a ship clicked on the chart: her card, then Go aboard", async () => {
   render(); await wait(30); const g = document.querySelector("svg [data-fleetship]"), s = root.fleet.find(x => x.id === g.dataset.fleetship);

@@ -15,7 +15,8 @@ step("a fleet rolled: every ship with crew rules has her crew, by her kind", asy
 step("sizes and decks: going aboard a fishing boat, a merchantman, the pirate", async () => {
   const F = root.fleet, out = [];
   for (const k of ["fishing", "merchant", "pirate"]) { const s = F.find(x => x.kind === k), n = fleetBoard(s);
-    out.push(`${k}: ${fleetSizeOf(s)}, deck ${n.bmap.preset} (${bmapOf(n).w}x${bmapOf(n).h}), hidden ${n.hidden}, kind ${n.kind}, ${n.npcs.length} aboard, ready to fight ${n.site.foes.length}`); }
+    const P = plans[n.id], rooms = P ? P.nodes.map(r => `${r.name} ${r.bmap.preset} (${bmapOf(r).w}x${bmapOf(r).h}) ${(r.npcs || []).length} aboard, ${r.site.foes.length} ready to fight`).join(" + ") : `deck ${n.bmap.preset} (${bmapOf(n).w}x${bmapOf(n).h}), ${n.npcs.length} aboard, ready to fight ${n.site.foes.length}`;
+    out.push(`${k}: ${fleetSizeOf(s)}, hidden ${n.hidden}, kind ${n.kind}, ${rooms}`); }
   const pf = partyShip(); out.push(`the party's ship is still ${pf ? pf.name : "none"}`);
   return out.join(" | ");
 });

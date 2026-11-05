@@ -57,7 +57,7 @@ step("piracy: an honest ship robbed with everyone alive is a deed (once); robbed
   const said = (document.querySelector(`[data-seize="wine"]`).closest("p, div").parentElement.innerText.match(/Left to tell[^.]*\./) || [""])[0];
   for (let i = 0; i < 2; i++) { document.querySelector(`[data-seizeqty="wine"]`).value = "4"; document.querySelector(`[data-seize="wine"]`).click(); await wait(30); }
   const D = repOf().deeds.slice(d0), first = D.map(d => `${d.text} (${d.size} ${d.fame}, at ${repPlaceName(d.place)}, seen by ${d.seenBy.length})`).join("; ");
-  s.cargo = { rum: { n: 5, paid: 10, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; repOf().lastWitness = { day: campaignDay(), place: key, room: key, at: s.name, seen: [], names: [] };
+  s.cargo = { rum: { n: 5, paid: 10, from: s.home } }; s.met = campaignDay(); delete s.piracyAt; repOf().lastWitness = { day: campaignDay(), place: key, room: plans[key] ? "fvrd" : key, at: s.name, seen: [], names: [] };
   renderPane(true); await wait(30); document.querySelector(`[data-seize="rum"]`).click(); await wait(30);
   tradeOf().hold = {}; if (battleOf) closeBattle(); if (planOf) leavePlan();
   return `the card said: "${said}" | deeds after two seizures: ${D.length}: ${first} | after a fight with no survivors: ${repOf().deeds.length - d0 - D.length} more | page errors ${__KIT.errors.length}`;

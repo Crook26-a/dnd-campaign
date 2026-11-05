@@ -20160,27 +20160,52 @@ function fleetCrewRoll(s, n){
   s.pass = []; for(const [fare, k, many] of FLEET_PASS[s.kind] || []) for(let i = 0; i < many; i++){ const pid = one(k, null, 1), p = libNpcById(pid); p.fare = fare; s.pass.push(pid); }
   saveParty(); return ids.length + 1 + s.pass.length;
 }
-/* a large ship's three decks (the passenger ship's): the deck, the cabins, steerage, each its own room in her plan */
-const FLEET_DECKS = [["d","Main deck",0,"ship","liner"],["u","The cabins",-1,"warehouse","linerupper"],["l","Steerage",-2,"warehouse","linerlower"]];
+/* a ship's decks, each its own room in her plan, joined like Ashgrave's rooms (Joseph, 2026-11-05: "drag a player on
+   the map into the other room"): ways out on the stairs, the hatch and the ladder, [x, y, to deck, arrive x, arrive y,
+   kind, label]. A passenger ship: the deck, the cabins, steerage; a ship: the deck and the hold below. A fishing boat
+   stays one map. Every deck's rail is also a way back aboard the party's own ship */
+const FLEET_DECKS_BY = {
+  large:[["d","Main deck",0,"ship","liner",[[21,5,"u",23,8,"stairs","Stairs down to the cabins"]]],
+         ["u","The cabins",-1,"warehouse","linerupper",[[22,8,"d",20,5,"stairs","Stairs up to the deck"],[25,8,"l",3,4,"stairs","Stairs down to steerage"]]],
+         ["l","Steerage",-2,"warehouse","linerlower",[[2,4,"u",24,8,"stairs","Stairs up to the cabins"]]]],
+  medium:[["d","Main deck",0,"ship","ship",[[11,6,"b",9,3,"ladder","Down the hatch to the hold"],[12,6,"b",9,4,"ladder","Down the hatch to the hold"],[11,7,"b",9,3,"ladder","Down the hatch to the hold"],[12,7,"b",9,4,"ladder","Down the hatch to the hold"]]],
+          ["b","Below decks",-1,"warehouse","hold",[[8,3,"d",13,6,"ladder","Up the ladder to the deck"],[8,4,"d",13,7,"ladder","Up the ladder to the deck"]]]] };
+const FLEET_RAIL = { liner:[16,10], ship:[12,9], boat:[6,2] };            // where to step back aboard the party's ship
+const FLEET_DECKS = FLEET_DECKS_BY.large;
+const fleetDecksOf = s => FLEET_DECKS_BY[fleetSizeOf(s)] || null;
+/* the way back to the party's own ship, from a deck's rail: her deck's room if she has decks, else her map */
+function fleetHomeExit(preset){
+  const ship = partyShip(), r = FLEET_RAIL[preset]; if(!ship || !r) return [];
+  const deck = hasDecks(ship.id) ? ((plans[ship.id]||{}).nodes||[]).find(x=>x.kind==="ship") || ((plans[ship.id]||{}).nodes||[])[0] : null;
+  return [{ x:r[0], y:r[1], to:deck ? `${ship.id}/${deck.id}` : `survey/${ship.id}`, kind:"door", label:`Back aboard ${ship.name || "the party's ship"}`, auto:true }];
+}
+/* a room's ways out: hers (kept up to date), and anything the DM added by hand */
+function fleetExits(room, list, preset){
+  const b = room.bmap = room.bmap || { preset };                       // a map you've painted for her stays yours
+  b.exits = [...(b.exits||[]).filter(e=>!e.auto), ...list.map(([x, y, to, ax, ay, kind, label])=>({ x, y, to:"fvr" + to, at:[ax, ay], kind, label, auto:true })), ...fleetHomeExit(preset)];
+}
 function fleetDecks(s, n){
-  const id = n.id, hull = [{x:-85,y:-25},{x:45,y:-25},{x:75,y:-10},{x:85,y:0},{x:75,y:10},{x:45,y:25},{x:-85,y:25}];
+  const id = n.id, hull = [{x:-85,y:-25},{x:45,y:-25},{x:75,y:-10},{x:85,y:0},{x:75,y:10},{x:45,y:25},{x:-85,y:25}], DECKS = fleetDecksOf(s);
   let P = plans[id];
+  if(P && (P.floors||[]).map(f=>f.id).join()!==DECKS.map(d=>d[0]).join()){ if(planOf===id) leavePlan(); P = null; }   // a ship resized: her decks again
   if(!P){ P = plans[id] = { format:"ordinate-plan-v1", of:id, title:s.name, ppm:5, unit:"yd", compass:8,
       regions:[{ id:"fvr", name:s.name, threat:1, hex:"#3f6f78", notes:"" }], roads:[], sited:{},
-      floors:FLEET_DECKS.map(([f, nm, z])=>({ id:f, name:nm, z })),
+      floors:DECKS.map(([f, nm, z])=>({ id:f, name:nm, z })),
       shapes:[{ id:"fvsea", kind:"water", closed:true, straight:true, name:"The sea", side:1, impassable:false, notes:"", pts:[{x:-200,y:-110},{x:200,y:-110},{x:200,y:110},{x:-200,y:110}] },
-        ...FLEET_DECKS.map(([f, nm])=>({ id:"fvhull" + f, kind:"dock", closed:true, straight:true, name:`${s.name}: ${nm.toLowerCase()}`, side:1, impassable:false, notes:"", pts:hull.map(p=>({...p})), floor:f }))],
-      nodes:FLEET_DECKS.map(([f, nm, z, kind, preset])=>({ id:"fvr" + f, name:nm, kind, region:"fvr", level:5, origin:false, seat:false, services:{}, notes:"", x:0, y:0, w:14, d:6, rot:0, floor:f,
+        ...DECKS.map(([f, nm])=>({ id:"fvhull" + f, kind:"dock", closed:true, straight:true, name:`${s.name}: ${nm.toLowerCase()}`, side:1, impassable:false, notes:"", pts:hull.map(p=>({...p})), floor:f }))],
+      nodes:DECKS.map(([f, nm, z, kind, preset])=>({ id:"fvr" + f, name:nm, kind, region:"fvr", level:5, origin:false, seat:false, services:{}, notes:"", x:0, y:0, w:14, d:6, rot:0, floor:f,
         bmap:{ preset }, site:{ kind:"", level:5, once:false, waves:1, loot:{ coin:0 }, items:[], foes:[] } })) }; }
+  for(const [f,,,, preset, ways] of DECKS){ const r = P.nodes.find(x=>x.id==="fvr" + f); if(r) fleetExits(r, ways, preset); }
   /* who's where: the captain and her guards on deck, the stewards and the middle and first class in the cabins, low
-     class in steerage. Only when her people change, so you can move them about between boardings */
+     class in steerage (a deck she hasn't got: on deck). Only when her people change, so you can move them about */
   const sig = [s.captain, ...(s.crew||[]), ...(s.pass||[])].join(",");
   if(P.people !== sig){ P.people = sig;
     const ppl = [s.captain, ...(s.crew||[]), ...(s.pass||[])].map(libNpcById).filter(Boolean), room = f => P.nodes.find(r=>r.floor===f) || {};
-    const at = p => p.fare==="low" ? "l" : p.fare || p.aboard==="host" ? "u" : "d";
-    for(const [f] of FLEET_DECKS){ const r = room(f), here = ppl.filter(p=>at(p)===f); r.npcs = here.map(p=>p.id);
+    const has = f => DECKS.some(d=>d[0]===f), at = p => { const f = p.fare==="low" ? "l" : p.fare || p.aboard==="host" ? "u" : "d"; return has(f) ? f : "d"; };
+    for(const [f] of DECKS){ const r = room(f), here = ppl.filter(p=>at(p)===f); r.npcs = here.map(p=>p.id);
       if(r.site) r.site.foes = f==="d" ? here.map(p=>({ id:"npc:" + p.id, n:"1" })) : []; }   // a fight on deck: her captain and her guards
-    markDirty(K_PLAN(id)); }
+  }
+  markDirty(K_PLAN(id));
   return P;
 }
 /* going aboard: her place, where she is now (hidden from the players), her crew, her deck */
@@ -20191,23 +20216,27 @@ function fleetBoard(s){
   n.x = p.x; n.y = p.y; n.name = s.name;
   n.notes = `${(FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0]} out of ${repPlaceName(s.home)}. ${FLEET_SIZES[fleetSizeOf(s)][0]}.`;
   n.site = n.site || { kind:"", level:5, once:false, waves:1, loot:{ coin:0 }, items:[], foes:[] };
-  if(fleetSizeOf(s)==="large"){                                         // three decks: enter her for them, her people on each
-    fleetDecks(s, n); n.npcs = []; n.site.foes = []; delete n.bmap; n.notes += " Enter her for the deck, the cabins and steerage."; }
+  const DECKS = fleetDecksOf(s), size = fleetSizeOf(s);
+  if(DECKS){                                                            // decks of her own: enter her for them, her people on each
+    fleetDecks(s, n); n.npcs = []; n.site.foes = []; delete n.bmap; n.notes += ` Enter her for ${DECKS.map(d=>d[1].toLowerCase()).join(", ")}.`; }
   else { n.npcs = people;
     n.site.foes = people.map(pid=>({ id:"npc:" + pid, n:"1" }));      // if it comes to a fight: her captain and crew, on their own sheets
-    n.bmap = { preset:FLEET_SIZES[fleetSizeOf(s)][1] }; }
-  /* the magic in her hold: steerage's cargo hold on a passenger ship, under the hatch on the others */
-  const big = fleetSizeOf(s)==="large", hold = big ? ((plans[n.id]||{}).nodes||[]).find(r=>r.id==="fvrl") : n;
-  fleetMagicAboard(s, hold && hold.site, big ? ["17,1","25,2","24,6","15,5"] : fleetSizeOf(s)==="small" ? ["4,5","10,5"] : ["11,6","12,7","19,7"]);
-  if(big) markDirty(K_PLAN(n.id));
+    fleetExits(n, [], FLEET_SIZES[size][1]); }
+  /* the magic in her hold: steerage's cargo hold on a passenger ship, the hold below on a ship, by the hatch on a boat */
+  const hold = size==="large" ? ((plans[n.id]||{}).nodes||[]).find(r=>r.id==="fvrl") : size==="medium" && DECKS ? ((plans[n.id]||{}).nodes||[]).find(r=>r.id==="fvrb") : n;
+  fleetMagicAboard(s, hold && hold.site, size==="large" ? ["17,1","25,2","24,6","15,5"] : size==="small" ? ["4,5","10,5"] : ["11,1","19,1","13,5"]);
+  if(DECKS) markDirty(K_PLAN(n.id));
   touch(); return n;
 }
 /* going aboard opens her deck's map, calm, her people on it (Joseph: "it just opens the panel on the side") */
+/* the party goes with you, as going into a place does (unless some of them are already there), so they can be dragged
+   down the stairs or the hatch like Ashgrave's rooms */
 function fleetGoAboard(s){
-  if(battleOf) closeBattle(true); if(planOf) leavePlan(); const n = fleetBoard(s);
-  if(fleetSizeOf(s)==="large" && plans[n.id]){ enterPlan(n.id); const deck = nodeById("fvrd"); select("node", "fvrd"); pane = "inspect"; syncTabs(); render();
-    if(deck) openBattle(deck); flash(`${s.name}: aboard, on her deck. Back out of the map and use the floors bar for the cabins and steerage.`); return; }
-  select("node", n.id); pane = "inspect"; syncTabs(); render(); openBattle(n); flash(`${s.name}: aboard, on her deck. Her crew and cargo are on her card.`); }
+  if(battleOf) closeBattle(true); if(planOf) leavePlan(); const n = fleetBoard(s), decked = !!(fleetDecksOf(s) && plans[n.id]);
+  const board = (map, room) => { const here = { map, node:room.id }; if(!groupsOf().some(g=>sameAt(g.at, here))) setPartyAt(here, true); openBattle(room); };
+  if(decked){ enterPlan(n.id); const deck = nodeById("fvrd"); select("node", "fvrd"); pane = "inspect"; syncTabs(); render();
+    if(deck) board(n.id, deck); flash(`${s.name}: aboard, on her deck. Drag someone onto the stairs or the hatch to go below; onto the rail to go back.`); return; }
+  select("node", n.id); pane = "inspect"; syncTabs(); render(); board("survey", n); flash(`${s.name}: aboard, on her deck. Drag someone onto the rail to go back to your ship.`); }
 /* a ship added by hand (the builder): her kind or random, size, crew, home, how she sails */
 function fleetAdd(o){
   const P = repPorts(); if(!P.length){ flash("No ports on the water yet."); return null; }
