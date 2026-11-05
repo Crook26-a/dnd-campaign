@@ -1,3 +1,3 @@
-1. ashore, play at a day a second: the days go by and the ships sail; pause stops them: party at Briarford | day 1 -> after 3.5 s playing 4 (button ❚❚, 8 ships at sea, the day box 4) -> paused, 3 s later day 4, button ▶ | page errors 0
-2. a map opened while playing stops it: day 4 -> 5 with a map open, still playing false, the button ▶ | page errors 0
-3. at sea on the party's ship: a ship coming into sight stops it: day 5 -> 9, still playing false | the box: Saint Brennan, a merchantman out of Tamsfort, bound for Kalatecha: in sight, 7 miles off.  | page errors 0
+1. only in practice mode: hidden, then shown once practising; play at a day a second, then pause: button shown before practice false, while practising true | day 1 -> after 3.5 s playing 4 (8 ships at sea) -> paused, 3 s later day 4 | page errors 0
+2. at sea on the party's ship: no encounters while playing, the days keep going: day 4 -> 11, still playing true | encounter offered: none | once paused, the ship in sight is offered: Saint Brennan, a merchantman out of Tamsfort, at Kalatecha: in sight, 3 miles off. Make it | page errors 0
+3. a map opened while playing stops it; practice kept: the button goes away: day 11 -> 12 with a map open, still playing false | practice kept: button shown false, playing false | page errors 0

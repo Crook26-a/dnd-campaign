@@ -3280,13 +3280,13 @@ var fleetDrawnAt = null;               // the world time the ships were last dra
 var dayPlaying = null;                 // the play button's timer while the days go by
 function dayGo(){
   const play = document.getElementById("dayPlay"), ms = +((document.getElementById("daySpeed")||{}).value) || 2000;
+  if(typeof practice!=="undefined" && !practice){ flash("The play button is for practice mode."); return; }
   if(battleOf){ flash("Close the map first: the days don't go by during a scene."); return; }
   if(play){ play.textContent = "❚❚"; play.classList.add("on"); play.title = "Pause"; }
+  const pop = document.getElementById("fleetPop"); if(pop && pop.dataset.ship){ pop.hidden = true; delete pop.dataset.ship; }     // no encounters while the days go by
   dayPlaying = setInterval(()=>{
-    const pop = document.getElementById("fleetPop");
     if(battleOf){ dayStop(); flash(`Paused on day ${campaignDay()}: a map is open.`); return; }
     root.day = campaignDay() + 1; syncTimeBar(); saveParty();
-    setTimeout(()=>{ if(pop && !pop.hidden && pop.dataset.ship){ dayStop(); flash(`Paused on day ${campaignDay()}: a ship in sight.`); } }, 50);
   }, ms);
   flash(`Playing: a day every ${ms / 1000} s.`);
 }
@@ -3308,10 +3308,10 @@ function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecha
   if(typeof gossipCatchUp==="function") try{ gossipCatchUp(); }catch(err){} }                /* the date, the day's weather where the party is, and the gossip since */
 function wireTimeBar(){
   document.getElementById("pscreenBtn").insertAdjacentHTML("beforebegin", `<button id="upBtn" hidden></button><button id="sailBtn" hidden title="Out to the sea chart with the ship, ready to sail">⛵ Set sail</button><span class="worldclock" title="The world's clock: the campaign day and the time of day. Every place follows it (unless a place is set to always bright, dim or dark).">
-    <span class="wc-lab">World</span><span class="daybar">Day <input id="dayNum" type="number" min="1" value="1" title="Days since the campaign began"><button id="dayPlay" type="button" title="Play: the days go by one at a time (ships sail, word spreads, prices drift). Stops by itself when a ship comes into sight or a map opens">▶</button><select id="daySpeed" title="How fast the days go by while playing"><option value="1000">1 s a day</option><option value="2000" selected>2 s a day</option><option value="4000">4 s a day</option></select></span><button id="wxChip" class="wxchip" type="button" title="The date and the weather where the party is"></button><select id="timeBar" title="The time of day, everywhere">${TIMES.map(([k,l])=>`<option value="${k}">${({ day:"☀", dim:"◐", night:"☾" })[k]} ${l}</option>`).join("")}</select><button id="timeNext" title="On to the next part of the day (night goes on to the next morning)">Next ▸</button></span>`);
+    <span class="wc-lab">World</span><span class="daybar">Day <input id="dayNum" type="number" min="1" value="1" title="Days since the campaign began"><button id="dayPlay" type="button" hidden title="Play (in practice mode): the days go by one at a time (ships sail, word spreads, prices drift), with no encounters on the way. Stops if a map opens">▶</button><select id="daySpeed" hidden title="How fast the days go by while playing"><option value="1000">1 s a day</option><option value="2000" selected>2 s a day</option><option value="4000">4 s a day</option></select></span><button id="wxChip" class="wxchip" type="button" title="The date and the weather where the party is"></button><select id="timeBar" title="The time of day, everywhere">${TIMES.map(([k,l])=>`<option value="${k}">${({ day:"☀", dim:"◐", night:"☾" })[k]} ${l}</option>`).join("")}</select><button id="timeNext" title="On to the next part of the day (night goes on to the next morning)">Next ▸</button></span>`);
   const dn = document.getElementById("dayNum");
   dn.onchange = ()=>{ root.day = Math.max(1, Math.round(+dn.value||1)); dn.value = root.day; syncTimeBar(); saveParty(); flash(`Day ${root.day}.`); };
-  /* play (Joseph, 2026-11-05): the days go by one at a time; a ship coming into sight, a map opening or a fight stops it */
+  /* play (Joseph, 2026-11-05): in practice mode only, the days go by one at a time with no encounters; a map opening stops it */
   const play = document.getElementById("dayPlay"), speed = document.getElementById("daySpeed");
   play.onclick = ()=>dayPlaying ? dayStop() : dayGo();
   speed.onchange = ()=>{ if(dayPlaying){ dayStop(true); dayGo(); } };
@@ -19865,6 +19865,7 @@ function fleetLayer(forPlayers){
 /* a ship within 10 miles of the party: an encounter, if the DM wants one (once a ship a day) */
 function fleetSight(){
   if(planOf || !Array.isArray(root.fleet) || !root.fleet.length || location.hash==="#player") return;
+  if(typeof dayPlaying!=="undefined" && dayPlaying) return;              // the play button: the days go by without encounters
   const me = fleetParty(), pop = $("#fleetPop"); if(!pop) return; if(!me){ if(!pop.dataset.card) pop.hidden = true; return; }
   const ppm = root.ppm || 10, t = fleetT(), d = campaignDay();
   const near = root.fleet.map(s=>({ s, p:fleetPos(s, t) })).filter(x=>x.p && x.s.asked!==d && Math.hypot(x.p.x - me.x, x.p.y - me.y) <= FLEET_SIGHT * ppm);
@@ -24128,6 +24129,9 @@ function practiceStop(keep){
 function practiceUi(){
   const b = $("#practiceBtn"); if(b){ b.textContent = practice ? "Practising: not saving ■" : "Practice"; b.style.background = practice ? "#9c2b1f" : ""; b.style.color = practice ? "#fff" : "";
     b.title = practice ? "Stop practising: keep what you did, or throw it all away" : "Stop saving for a while: try things out, then keep them or throw them away"; }
+  /* the play button only while practising (Joseph, 2026-11-05) */
+  for(const id of ["#dayPlay", "#daySpeed"]){ const el = $(id); if(el) el.hidden = !practice; }
+  if(!practice && typeof dayPlaying!=="undefined" && dayPlaying) dayStop(true);
   setSaved();
 }
 document.addEventListener("click", e=>{
