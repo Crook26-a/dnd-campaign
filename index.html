@@ -1335,6 +1335,7 @@
         <button data-pane="regions">Regions</button>
         <button data-pane="party">Party</button>
         <button data-pane="background">Background</button>
+        <button data-pane="review">Review</button>
         <button data-pane="where">Where</button>
         <button data-pane="notes">Notes</button>
         <button data-pane="session">Session</button>
@@ -1354,6 +1355,7 @@
       <div class="pane" id="pane-library" hidden></div>
       <div class="pane" id="pane-roll" hidden></div>
       <div class="pane" id="pane-background" hidden></div>
+      <div class="pane" id="pane-review" hidden></div>
       <div class="pane" id="pane-data" hidden></div>
       <div class="tsplit" id="tr-split" data-tsplit="right" title="Drag to size the card and the Action box"></div>
       <div class="pane" id="actionbox"></div>
@@ -7361,6 +7363,7 @@ $("#tabs").addEventListener("click", e=>{
 function syncTabs(){
   { const tb = document.querySelector('button[data-pane="session"]'); if(tb) tb.textContent = isArena() ? "Arena" : "Session"; }     // the Test Arena's room picker (2026-10-30)
   for(const b of $("#tabs").children) b.classList.toggle("on", b.dataset.pane===pane);
+  if(typeof reviewItems==="function" && typeof root!=="undefined" && root) try{ reviewTabLabel(reviewItems().n); }catch(err){}     // the Review tab says how many are waiting
   /* table mode: the card stays in the panel, the script on the left, any other tab in the drawer */
   if(typeof buildOn==="function" && buildOn()){
     if(pane!=="inspect"){ const p = pane; pane = "inspect"; openDrawer(p); }
@@ -7372,7 +7375,7 @@ function syncTabs(){
     for(const p of PANES) $("#pane-"+p).hidden = !(p==="inspect" || p==="session" || p===drawerPane);
     return;
   }
-  for(const p of ["inspect","ledger","regions","party","background","where","notes","session","docs","library","roll","data"]) $("#pane-"+p).hidden = (p!==pane);
+  for(const p of ["inspect","ledger","regions","party","background","review","where","notes","session","docs","library","roll","data"]) $("#pane-"+p).hidden = (p!==pane);
 }
 /* ── the side panel stays put: only a pane scrolls, never the page or the frames around it ── */
 /* bring something into view by scrolling its pane alone (the browser's scrollIntoView also shifts the fixed frames) */
@@ -7405,6 +7408,7 @@ function renderPane(force){
   else if(pane==="regions") renderRegions();
   else if(pane==="party") renderParty();
   else if(pane==="background") renderBackground();
+  else if(pane==="review") renderReview();
   else if(pane==="where") renderWhere();
   else if(pane==="library") renderLibrary();
   else if(pane==="roll") renderRoll();
@@ -20981,11 +20985,58 @@ function fightWitnesses(st, n, c){
   repOf().lastWitness = W;
   gameLog("fight", seen.length || names.length ? `Witnesses who'll talk: ${[...seen.map(s=>s.name), ...names].join(", ")}` : `No survivors and no witnesses at ${placeLabel(n)}: nobody will hear of it unless the party tells it`);
 }
+/* ══════════════════════════════════════════════════════════════
+   REVIEW (Joseph, 2026-11-05: "a tab for me that lets me approve or disapprove things that need my input"): lines
+   read from the log into people's memories (good, bad, neither, or not a memory at all), stories garbled on the way
+   (keep, your words, or put back), deeds nobody knows yet (told, or spread anyway), and guild jobs that look done or
+   have run late. "Read the log for everyone" fills it. A log memory is waiting till it's marked (m.ok)
+   ══════════════════════════════════════════════════════════════ */
+const memWaiting = m => m && m.src==="log" && !m.ok;
+function reviewItems(){
+  const mems = []; for(const p of lib().npcs || []) for(const m of p.mem || []) if(memWaiting(m)) mems.push({ p, m });
+  const R = repOf(), garbled = repToReview(), quiet = R.deeds.filter(d=>d.quiet), now = campaignDay();
+  const jobs = missionsAll().filter(({ m })=>m.status==="taken" && ((m.kind==="trade" || m.kind==="explore") && m.due && now > +m.due || (m.kind==="explore" && m.ek==="chart" && m.target && repNode(m.target) && !repNode(m.target).hidden)));
+  return { mems, garbled, quiet, jobs, n:mems.length + garbled.length + quiet.length + jobs.length };
+}
+function memFromLogAll(){ let n = 0, who = 0; for(const p of lib().npcs || []){ if(!p.name) continue; const k = memFromLog(p); if(k){ n += k; who++; } } return { n, who }; }
+var rvShow = 60;
+function renderReview(){
+  const el = $("#pane-review"); if(!el) return; const I = reviewItems(), deedOf = id => R.deeds.find(d=>d.id===id), R = repOf();
+  const byPerson = new Map(); for(const x of I.mems){ byPerson.set(x.p, [...(byPerson.get(x.p) || []), x.m]); }
+  const memHtml = [...byPerson.entries()].slice(0, rvShow).map(([p, M])=>`<div class="facfx" style="margin:0 0 6px"><b class="libref" data-libopen="npcs:${p.id}">${esc(p.name)}</b> <small>${M.length} line${M.length===1?"":"s"} from the log</small>
+      ${M.map(m=>`<div class="sbl"><small class="mono">day ${m.day}</small> ${esc(m.text)} <small>· ${esc(memWho(m))}</small><br>
+        <span style="white-space:nowrap"><button class="btn small" data-mem="tone" data-p="${p.id}" data-m="${m.id}" data-v="1" title="A good memory of them">Good</button><button class="btn small" data-mem="tone" data-p="${p.id}" data-m="${m.id}" data-v="-1" title="A bad memory of them">Bad</button><button class="btn small" data-mem="tone" data-p="${p.id}" data-m="${m.id}" data-v="0" title="They'll remember it, but it doesn't sway them">Neither</button><button class="btn small" data-mem="del" data-p="${p.id}" data-m="${m.id}" title="Not something they'd remember: forget it">Not a memory</button></span></div>`).join("")}</div>`).join("");
+  const jobHtml = I.jobs.map(({ m })=>{ const found = m.ek==="chart" && m.target && !repNode(m.target).hidden;
+    return `<div class="facfx" style="margin:0 0 6px"><b>${esc(m.title || "A job")}</b> <small>${esc(m.patron || "")}</small><div class="sbl">${found ? `They've found ${esc(repPlaceName(m.target))}: it looks done.` : `Late: it was due by day ${m.due}.`}</div>
+      <div class="pcrow">${found ? `<button class="btn small" data-rv="done" data-mid="${m.id}">Mark it done</button>` : `<button class="btn small" data-rv="more" data-mid="${m.id}" title="The patron waits a week more">Give them 7 more days</button><button class="btn small" data-rv="off" data-mid="${m.id}" title="The patron calls it off${m.kind==="trade" ? " and wants the cargo back" : ""}">Call it off</button><button class="btn small" data-rv="done" data-mid="${m.id}">It's done</button>`}</div></div>`; }).join("");
+  keepPaneScroll("pane-review", ()=>{ el.innerHTML = `<p class="eyebrow">Review <small>${I.n ? `${I.n} thing${I.n===1?"":"s"} waiting on you` : "nothing waiting on you"} · only you see this</small></p>
+    <button class="btn wide" data-rv="readall" title="Every line in the game log and the notes with someone's name in it becomes a memory of theirs, waiting here to be marked. Lines already read are skipped">Read the log for everyone</button>
+    ${I.mems.length ? `<p class="grouplab" style="margin:10px 0 3px">Memories from the log <small>${I.mems.length}: good, bad, neither, or not a memory</small></p>${memHtml}${byPerson.size > rvShow ? `<button class="btn wide" data-rv="moremem">Show more people (${byPerson.size - rvShow})</button>` : ""}` : ""}
+    ${I.garbled.length ? `<p class="grouplab" style="margin:10px 0 3px">Garbled on the way <small>${I.garbled.length}: keep the new words, write your own, or put it back</small></p>
+      ${I.garbled.map(v=>{ const d = deedOf(v.d), key = encodeURIComponent(v.d + "|" + v.t); return `<div class="facfx" style="margin:0 0 6px"><div class="sbl"><small>Was:</small> ${esc(d ? d.text : "")}</div>
+        <div class="sbl"><small>Now told${v.sea ? " (it came by sea)" : ""}:</small> <input type="text" data-revtext="${key}" value="${esc(v.t)}" style="width:100%"></div><div class="sbl"><small>In ${esc(v.where.join(", "))}</small></div>
+        <div class="pcrow"><button class="btn small" data-rep="revok" data-k="${key}">Keep it</button><button class="btn small" data-rep="revmine" data-k="${key}">Use my words</button><button class="btn small" data-rep="revback" data-k="${key}">Put it back as it was</button></div></div>`; }).join("")}` : ""}
+    ${I.quiet.length ? `<p class="grouplab" style="margin:10px 0 3px">Deeds nobody knows yet <small>${I.quiet.length}: nobody saw them and the party hasn't told</small></p>
+      ${I.quiet.map(d=>`<div class="sbl">${esc(repDeedWords(d))}<br><button class="btn small" data-rep="tell" data-d="${d.id}">They told it</button><button class="btn small" data-rep="force" data-d="${d.id}">Spread it anyway</button></div>`).join("")}` : ""}
+    ${I.jobs.length ? `<p class="grouplab" style="margin:10px 0 3px">Guild jobs <small>${I.jobs.length}: done, or late</small></p>${jobHtml}` : ""}
+    ${I.n ? "" : `<p class="empty-note" style="margin-top:10px">All caught up. Things land here when they need your say: lines read from the log, stories garbled on the way, deeds nobody knows yet, guild jobs done or late.</p>`}`; });
+  reviewTabLabel(I.n);
+}
+const reviewTabLabel = n => { const b = document.querySelector('#tabs [data-pane="review"]'); if(b) b.textContent = n ? `Review (${n})` : "Review"; };
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-rv]"); if(!b) return; const a = b.dataset.rv;
+  if(a==="readall"){ const r = memFromLogAll(); flash(r.n ? `${r.n} line${r.n===1?"":"s"} from the log, for ${r.who} ${r.who===1?"person":"people"}: waiting here to be marked.` : "Nothing new in the log with anyone's name."); }
+  else if(a==="moremem"){ rvShow += 60; }
+  else { const x = missionsAll().find(y=>y.m.id===b.dataset.mid); if(!x) return; const m = x.m;
+    if(a==="more"){ m.due = (+m.due || campaignDay()) + 7; const h = Object.values(tradeOf().hold).find(h=>h && h.guild===m.id); if(h) h.due = m.due; flash(`Due by day ${m.due} now.`); }
+    else if(a==="off"){ m.status = "down"; const said = m.kind==="trade" ? tradeRunUnload(m) : ""; gameLog("mission", `${m.title || "A job"}: called off (late)`); flash(`Called off.${said}`); }
+    else if(a==="done"){ if(m.kind==="trade") tradeRunUnload(m); m.status = "done"; gameLog("mission", `${m.title || "A job"}: done`); flash("Done."); }
+    if(x.plan) markDirty(K_PLAN(x.plan)); refreshBoardOnTv(); }
+  saveParty(); renderPane(true); });
 function memRedo(){ saveParty(); if(dmMode) renderPlay(); else renderInspect(); if(battleOf) renderBattlePanel(); if(pane==="library") renderLibList(); renderPane(true); }
 document.addEventListener("click", e=>{
   const b = e.target.closest && e.target.closest("button[data-mem]"); if(!b) return; e.preventDefault(); e.stopPropagation();
   const p = libNpcById(b.dataset.p); if(!p) return; const a = b.dataset.mem, m = (p.mem||[]).find(x=>x.id===b.dataset.m);
-  if(a==="tone" && m) m.tone = +b.dataset.v;
+  if(a==="tone" && m){ m.tone = +b.dataset.v; m.ok = true; }                // looked at: off the Review tab
   else if(a==="del" && m) p.mem = p.mem.filter(x=>x!==m);
   else if(a==="roll"){ p.memHold = memRollHold(); flash(`${p.name||"They"}: good things ${MEM_HOLD.find(h=>h[0]===p.memHold.good)[1].toLowerCase()}, slights ${MEM_HOLD.find(h=>h[0]===p.memHold.bad)[1].toLowerCase()}.`); }
   else if(a==="log"){ const n = memFromLog(p); flash(n ? `${n} line${n===1?"":"s"} from the log, neither good nor bad till you mark them.` : "Nothing new in the log with their name."); }
@@ -24898,12 +24949,12 @@ function tableOn(){ return !!tableReady && !!dmMode && window.innerWidth > 860 &
 /* Build view: Build mode on a laptop: the named palette on the left, the map, the card on the right, the rare tabs in the ☰ drawer */
 function buildOn(){ return !!tableReady && !dmMode && window.innerWidth > 860 && location.hash!=="#player"; }
 var drawerPane = null, tcard = null, tlTab = "log", tlKind = "", tlDraft = "", tlToLog = true;
-const PANES = ["inspect","ledger","regions","party","background","where","notes","session","docs","library","roll","data"];
-const DRAWER_TABS = [["library","Library"],["docs","Docs"],["roll","Roll"],["where","Where"],["party","Party & XP"],["background","Background"],["notes","Notes"],["ledger","Ledger"],["data","Data"]];
+const PANES = ["inspect","ledger","regions","party","background","review","where","notes","session","docs","library","roll","data"];
+const DRAWER_TABS = [["library","Library"],["docs","Docs"],["roll","Roll"],["where","Where"],["party","Party & XP"],["background","Background"],["review","Review"],["notes","Notes"],["ledger","Ledger"],["data","Data"]];
 const BUILD_DRAWER_TABS = [["library","Library"],["docs","Docs"],["regions","Regions"],["ledger","The survey's numbers"],["data","Data"]];
 const drawerTabs = () => buildOn() ? BUILD_DRAWER_TABS : DRAWER_TABS;
 function renderNamedPane(p){
-  ({ inspect:renderInspect, ledger:renderLedger, regions:renderRegions, party:renderParty, background:renderBackground, where:renderWhere, library:renderLibrary,
+  ({ inspect:renderInspect, ledger:renderLedger, regions:renderRegions, party:renderParty, background:renderBackground, review:renderReview, where:renderWhere, library:renderLibrary,
      roll:renderRoll, notes:renderNotes, session:renderSession, docs:renderDocs, data:renderData })[p]?.();
 }
 function applyTable(){
