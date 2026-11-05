@@ -19670,7 +19670,8 @@ function repHub(P){
    hub to the mainland coast (busy) and every island port to the hub, then joined up; every lane by water */
 function seaLanesFromMap(){
   const P = repPorts(), R = repOf(), keep = (R.lanes||[]).filter(l=>!l.auto), have = new Set(keep.map(l=>[l.from, l.to].sort().join("|"))), out = [], G = seaGrid(), memo = new Map();
-  const route = (a, b) => { const k = [a.id, b.id].sort().join("|"); if(!memo.has(k)) memo.set(k, seaRoute(a, b, G)); const r = memo.get(k); return r && a.id < b.id ? r : r ? { pts:r.pts.slice().reverse(), miles:r.miles } : null; };
+  const route = (a, b) => { const lo = a.id < b.id ? a : b, hi = lo===a ? b : a, k = lo.id + "|" + hi.id;      // worked out one way, lo to hi, and turned round for the other
+    if(!memo.has(k)) memo.set(k, seaRoute(lo, hi, G)); const r = memo.get(k); return r && a===lo ? r : r ? { pts:r.pts.slice().reverse(), miles:r.miles } : null; };
   const big = n => n.kind==="city", small = n => n.kind==="village" || n.kind==="light", reef = n => /reef/i.test(((root.regions||[]).find(r=>r.id===n.region)||{}).name || "");
   const add = (a, b, force) => { const k = [a.id, b.id].sort().join("|"); if(a===b || have.has(k)) return false; const rt = route(a, b); if(!rt) return false; have.add(k);
     const traffic = force || (reef(a) || reef(b) ? "quiet" : big(a) && big(b) ? "busy" : small(a) || small(b) ? "light" : "normal");
@@ -19760,8 +19761,14 @@ function fleetLeg(s, go, day){
   const from = repNode(s.at) || (s.pos ? { x:s.pos.x, y:s.pos.y } : null); if(!from) return null;
   /* by water: along the lanes' own routes, port to port; off the lanes (the pirate), the way water allows */
   const water = (p, q) => { const r = seaRoute(p, q); return r ? r.pts : [{ x:p.x, y:p.y }, { x:q.x, y:q.y }]; };
+  /* a lane's way from a to b: its points turned to start at the end nearer a (Joseph, 2026-11-05: ships appeared at a
+     lane's far end; some lanes were saved backwards), and joined to the ports themselves at both ends */
   const lane = (a, b) => { const l = (repOf().lanes||[]).find(x=>(x.from===a && x.to===b) || (x.from===b && x.to===a)), A = repNode(a), B = repNode(b);
-    if(l && l.pts && l.pts.length > 1) return l.from===a ? l.pts : l.pts.slice().reverse(); return A && B ? water(A, B) : []; };
+    if(!(l && l.pts && l.pts.length > 1)) return A && B ? water(A, B) : [];
+    const d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y), P = l.pts, f = P[0], z = P[P.length - 1];
+    let pts = A ? (d(f, A) + (B ? d(z, B) : 0) <= d(z, A) + (B ? d(f, B) : 0) ? P.slice() : P.slice().reverse()) : (l.from===a ? P.slice() : P.slice().reverse());
+    if(A && d(pts[0], A) > 1) pts.unshift({ x:A.x, y:A.y }); if(B && d(pts[pts.length - 1], B) > 1) pts.push({ x:B.x, y:B.y });
+    return pts; };
   let pts;
   if(go.lurk) pts = water(from, go.lurk);
   else { const to = repNode(go.to); if(!to) return null; const path = go.direct || !s.at ? null : seaPath(s.at, go.to);
@@ -19775,6 +19782,9 @@ function fleetLeg(s, go, day){
 /* where a ship is at a moment (day + the hour's share) */
 function fleetPos(s, t){
   const L = s.leg; if(!L){ const n = repNode(s.at); return n ? { x:n.x, y:n.y } : s.pos || null; }
+  if(!L.ok && L.pts && L.pts.length > 1){ L.ok = true; const A = L.from ? repNode(L.from) : null, B = L.to ? repNode(L.to) : null, d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);     // a voyage set out on a lane saved backwards: turned round, joined to her ports
+    if(A && B && d(L.pts[0], A) + d(L.pts[L.pts.length - 1], B) > d(L.pts[L.pts.length - 1], A) + d(L.pts[0], B)) L.pts.reverse();
+    if(A && d(L.pts[0], A) > 1) L.pts.unshift({ x:A.x, y:A.y }); if(B && d(L.pts[L.pts.length - 1], B) > 1) L.pts.push({ x:B.x, y:B.y }); }
   const f = Math.max(0, Math.min(1, (t - L.left) / Math.max(1, L.arrive - L.left)));
   let tot = 0; const seg = []; for(let i = 1; i < L.pts.length; i++){ const d = Math.hypot(L.pts[i].x - L.pts[i-1].x, L.pts[i].y - L.pts[i-1].y); seg.push(d); tot += d; }
   let want = f * tot; for(let i = 1; i < L.pts.length; i++){ if(want <= seg[i-1] || i===L.pts.length - 1){ const k = seg[i-1] ? Math.min(1, want / seg[i-1]) : 1, a = L.pts[i-1], b = L.pts[i]; return { x:a.x + (b.x - a.x) * k, y:a.y + (b.y - a.y) * k }; } want -= seg[i-1]; }
