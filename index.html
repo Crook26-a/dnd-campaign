@@ -923,6 +923,7 @@
   #bt-rooms .rt.tv{font-size:11.5px;padding:2px 7px} #bt-rooms .rt.tv.on{border-color:var(--lead);box-shadow:inset 0 -3px 0 var(--lead);font-weight:600} #bt-rooms .rt-i{font:10.5px var(--mono);color:#2f6170;margin-left:3px}
   body.player .turnring{animation:turnpulse 1.4s ease-in-out infinite}
   @keyframes turnpulse{0%,100%{stroke-width:4;opacity:1}50%{stroke-width:9;opacity:.55}}
+  .facfx.fleetfocus{outline:2px solid var(--lead);outline-offset:2px;border-radius:4px;background:rgba(192,57,43,.06)}
   .pv-img{max-width:100vw;max-height:100vh;object-fit:contain;display:block}
   /* mission boards on the players' screen: the board's skin comes from the map (n.board.skin) */
   .pv-board{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:3vh 3vw;box-sizing:border-box;overflow:auto}
@@ -10607,7 +10608,7 @@ function whoYoullMeet(n){
   return many ? `<details class="pcset" data-invfor="meet:${n.id}" ${openInv.has("meet:"+n.id) ? "open" : ""}><summary>Who you'll meet <small>${people.length} people</small></summary>${inner}</details>`
     : `<p class="eyebrow spaced">Who you'll meet</p>` + inner;
 }
-const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + repHere(n) + tradeHere(n) + cargoHere(n) + whoYoullMeet(n);
+const placeTalk = n => boardBlock(n) + threadsHere(n) + factionsHere(n) + repHere(n) + tradeHere(n) + portShipsHere(n) + cargoHere(n) + whoYoullMeet(n);
 const placeTail = n => adderBlock(n) + `<div class="field" style="margin-top:12px"><label>Session notes</label>
     <textarea id="pl-notes" rows="3" placeholder="What happened here, what the players promised, what they took…">${esc(n.dmNotes||"")}</textarea></div>` + boardAdd(n);
 function wirePlaceTail(el, n){
@@ -20044,6 +20045,31 @@ function laneShips(l){
       out.push({ s, how:`${repPlaceName(a)} → ${repPlaceName(b)}${path.length > 2 ? `, on her way from ${repPlaceName(L.from)} to ${repPlaceName(L.to)}` : ""}, arriving day ${L.arrive} (${Math.round(f * 100)}% of the voyage done)` }); }
   return out;
 }
+/* the ships for a port (Joseph, 2026-11-05: "click on a port city/town and see what ships are going to be heading
+   there"): in port now, on their way (soonest first), and set routes that call here later. Wanderers and pirates
+   choose when they get there, so they show only once they've set sail for it */
+function portShips(place){
+  const here = [], coming = [], later = [];
+  for(const s of fleetOf()){ const L = s.leg;
+    if(!L && s.at===place){ here.push({ s, how:`in port till day ${s.stay}` }); continue; }
+    if(L && !L.lurk && L.to===place){ coming.push({ s, day:L.arrive, how:`from ${repPlaceName(L.from || s.at || s.home)}, arriving day ${L.arrive}` }); continue; }
+    const R = s.mode==="route" ? s.route || [] : []; if(R.length < 2 || !R.includes(place)) continue;
+    const now = L && !L.lurk ? L.to : s.at, i = R.indexOf(now); if(i < 0) continue;
+    const k = (R.indexOf(place) - i + R.length) % R.length + (L && !L.lurk ? 1 : 0);      // stops ahead: at sea, the port she's bound for is the first
+    later.push({ s, k, how:`calls here on her route, ${k===1 ? "her next stop" : k===2 ? "the stop after next" : `${k} stops on`} (${L && !L.lurk ? `bound for ${repPlaceName(L.to)} now` : `at ${repPlaceName(s.at)} now`})` }); }
+  coming.sort((a, b)=>a.day - b.day); later.sort((a, b)=>a.k - b.k);
+  return { here, coming, later };
+}
+function portShipsHere(n){
+  const place = repPlaceOf(n); if(!place || !repPorts().some(p=>p.id===place) || !fleetOf().length) return "";
+  const S = portShips(place), all = [...S.here, ...S.coming, ...S.later];
+  const line = x => `<div class="sbl"><span class="libref" data-laneship="${x.s.id}" title="Her card">${esc(x.s.name)}</span> <small>${esc((FLEET_KINDS[x.s.kind]||FLEET_KINDS.merchant)[0].toLowerCase())}</small>: ${esc(x.how)}</div>`;
+  const part = (lab, A) => A.length ? `<p class="grouplab" style="margin:4px 0 2px">${lab} <small>${A.length}</small></p>${A.map(line).join("")}` : "";
+  return `<details class="partysec" data-portfold="${place}" ${openInv.has("portshut:" + place) ? "" : "open"}><summary class="eyebrow">Ships for this port <small>${all.length ? `${S.here.length} in port · ${S.coming.length} on the way · ${S.later.length} later` : "none in or coming"} · only you see this</small></summary>
+    ${part("In port now", S.here)}${part("On their way here", S.coming)}${part("Later, on their routes", S.later)}
+    ${all.length ? "" : `<p class="empty-note">No ship is in port or bound here.</p>`}<p class="empty-note" style="font-size:11px;margin:2px 0 0">Ships that go where they like (and pirates) show only once they've set sail for here.</p></details>`;
+}
+document.addEventListener("toggle", e=>{ const d = e.target; if(d.dataset && d.dataset.portfold){ const k = "portshut:" + d.dataset.portfold; if(d.open) openInv.delete(k); else openInv.add(k); } }, true);     // open unless you've shut it
 function laneCard(id){
   const l = (repOf().lanes||[]).find(x=>x.id===id), pop = $("#fleetPop"); if(!l || !pop) return;
   const ships = laneShips(l);
@@ -20094,7 +20120,19 @@ function fleetCard(id){
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fleetcard]"); if(!b) return;
   const pop = $("#fleetPop"), a = b.dataset.fleetcard, s = fleetOf().find(x=>x.id===b.dataset.id); delete pop.dataset.card; pop.hidden = true;
   if(a==="aboard" && s) fleetGoAboard(s);
-  else if(a==="party"){ openInv.add("party:fleet"); if(tableOn() || buildOn()) openDrawer("background"); else { pane = "background"; syncTabs(); renderPane(true); } } });
+  else if(a==="party" && s) fleetShowEntry(s.id); });
+/* her own entry in the Background tab, scrolled to and marked (Joseph, 2026-11-05: "takes you to the actual entry, not
+   just the list") */
+var fleetFocus = null;
+function fleetShowEntry(id){
+  fleetFocus = id; openInv.add("party:fleet"); bgFirst = false; openInv.add("bg:log");
+  if(tableOn() || buildOn()) openDrawer("background"); else { pane = "background"; syncTabs(); renderPane(true); }
+  const row = document.getElementById("fleetrow-" + id); if(!row) return;
+  let sc = row.parentElement; while(sc && sc!==document.body){ const o = getComputedStyle(sc).overflowY; if((o==="auto" || o==="scroll") && sc.scrollHeight > sc.clientHeight) break; sc = sc.parentElement; }
+  if(sc && sc!==document.body){ const r = row.getBoundingClientRect(), p = sc.getBoundingClientRect(); sc.scrollTop += r.top - p.top - (p.height - r.height) / 2; }
+  const nm = row.querySelector("[data-fleetname]"); if(nm) nm.focus({ preventScroll:true });
+  setTimeout(()=>{ if(fleetFocus===id){ fleetFocus = null; const r = document.getElementById("fleetrow-" + id); if(r) r.classList.remove("fleetfocus"); } }, 6000);
+}
 /* ── cargo and trade (Joseph, 2026-11-04): every place makes 4 trade goods and wants 4 others. A good's price there is
    its base × 0.8 if it's made there, × 1.25 if it's wanted, × 2^-glut, held between half and double. The glut goes up
    by loads ÷ the market's depth (a city 60, a town 30, a village 12) as cargo is unloaded, down as it's bought, and back
@@ -20522,7 +20560,7 @@ function fleetBlock(){
         <div class="field" style="flex:1"><label>Name</label><input id="fa-name" type="text" placeholder="rolled"></div></div>
       <button class="btn wide calmgo" data-fleetact="add">Put her to sea, crew and all</button>
       <p class="empty-note" style="font-size:11px;margin:4px 0 0">Crews by type: navy 7 fighters of level 2; merchant 4 hands and a fighter of level 2; fishing 3 hands, one family; smuggler 4 rogues of level 2; pirate 3 rogues, 2 fighters and a caster of level 3; passenger ship 5 stewards, waiters and a purser, 4 guards of level 4 and a chaplain (a cleric of level 5), and 19 passengers (10 low class in steerage, 5 middle and 4 first class in cabins). explorer a navigator, a cartographer, a naturalist, 4 hands and 2 marines of level 2. Every ship has a captain of level 3 (a passenger ship's, a fighter).</p></details>
-    ${F.map(s=>`<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
+    ${F.map(s=>`<div class="facfx${fleetFocus===s.id ? " fleetfocus" : ""}" id="fleetrow-${s.id}" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
         <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
       <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
       ${s.mode==="route" ? `<div class="sbl"><small>Route:</small> ${(s.route||[]).map(id=>esc(repPlaceName(id))).join(" → ")} → (round again)</div>` : ""}
