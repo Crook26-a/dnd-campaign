@@ -19945,7 +19945,7 @@ function fleetSight(){
    or to leave ── */
 const SEA_TROUBLE = ["fire aboard, smoke pouring from her hatches", "her mainmast down and dragging", "sickness aboard: a yellow flag at her masthead", "boarders on her deck: a fight already going", "taking on water, low in the sea and pumping"];
 const SEA_REACT = { pirate:-2, smuggler:-1, navy:0, merchant:1, packet:1, fishing:1, explorer:1 };
-function seaMeetRoll(s, d){ if(s.meetDay===d) return; s.meetDay = d; s.trouble = s.kind!=="pirate" && rollD(100) <= 12 ? pickOne(SEA_TROUBLE) : null; }
+function seaMeetRoll(s, d){ if(s.meetDay===d) return; s.meetDay = d; s.trouble = s.kind!=="pirate" && rollD(16)===1 ? pickOne(SEA_TROUBLE) : null; }     // 1 in 16 (Joseph, 2026-11-05)
 /* how her captain takes the party: her kind, plus his own feelings and his faction's, as steps */
 function seaReaction(s){
   const cap = s.captain && libNpcById(s.captain), M = cap ? moodOf(cap, null) : null, step = Math.max(-3, Math.min(3, (SEA_REACT[s.kind] ?? 0) + (M && M.any ? M.step : 0)));
