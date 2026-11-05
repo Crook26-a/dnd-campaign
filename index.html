@@ -19400,6 +19400,7 @@ function factionForm(x, a, t, ta, draft){
     <div class="facfx"><b>${E.tier.label}.</b> ${esc(E.text)}${standingLines(E).map(l=>`<div class="sbl">${l}</div>`).join("")}</div>
     <div class="field" style="margin-top:8px"><label>Reputation table <small>what its people have heard: bigger for a big faction</small></label><select ${a} data-f="repDie">${[8,12,20].map(d=>`<option value="${d}" ${repFacDie(x)===d?"selected":""}>d${d}</option>`).join("")}</select></div>
     ${draft ? "" : `<p class="grouplab" style="margin:8px 0 3px">Members <small>set on a person's Library page</small></p>${mem.length ? mem.map(p=>`<span class="libref" data-libopen="npcs:${p.id}">${esc(p.name||"Someone")}</span>${p.align && moralOf(p.align)!==moralOf(x.align) ? ` <small>(${esc(ALIGN_ABBR[p.align]||p.align)}: treats you as ${moralOf(p.align)} would)</small>` : ""}`).join(", ") : `<span class="empty-note">Nobody yet.</span>`}
+    <p class="grouplab" style="margin:8px 0 3px">With the other factions <small>changed in the Background tab</small></p>${facRelLine(x) || `<span class="empty-note">No dealings set yet.</span>`} <button class="btn small" data-frel="open" title="The Background tab's Between the factions">Between the factions…</button>
     ${log.length ? `<details class="pcset"><summary>Changes <small>${(x.slog||[]).length}</small></summary>${log.map(l=>`<div class="sbl"><small class="mono">day ${l.day}</small> ${sgn(l.from)} → ${sgn(l.to)}${l.why ? `: ${esc(l.why)}` : ""}</div>`).join("")}</details>` : ""}`}`;
 }
 /* a person's chip on a place's card: their faction and how they're inclined to the party */
@@ -19415,7 +19416,7 @@ function factionsHere(n){
   return `<p class="eyebrow spaced">Factions here</p>` + F.map(f=>{ const E = factionEffects(f);
     return `<div class="facrow"><div class="pcrow" style="align-items:center;margin:0"><span class="libref" data-libopen="factions:${f.id}" style="flex:1">${esc(f.name||"Faction")}</span><small>${esc(E.tier.label)}</small>
         <button class="btn small" data-fac="-1" data-id="${f.id}" title="Standing down one">−1</button><b class="mono">${sgn(E.s)}</b><button class="btn small" data-fac="1" data-id="${f.id}" title="Standing up one">+1</button></div>
-      <div class="facfx">${esc(E.text)}${standingLines(E).map(l=>`<div class="sbl">${l}</div>`).join("")}</div></div>`; }).join("");
+      <div class="facfx">${esc(E.text)}${standingLines(E).map(l=>`<div class="sbl">${l}</div>`).join("")}${facRelLine(f)}</div></div>`; }).join("");
 }
 /* the shop's faction (its keeper's, or the place's): the price change, or a warning that they won't serve the party */
 function shopFaction(n){ const k = n.shop && libNpcById(n.shop.keeper), f = (k && k.faction && factionById(k.faction)) || (n.faction && factionById(n.faction)); return f ? { f, E:factionEffects(f, k && k.faction===f.id ? k.align : "") } : null; }
@@ -20696,7 +20697,7 @@ function fleetBlock(){
    the gluts and the shortages, and every market's prices at a glance
    ══════════════════════════════════════════════════════════════ */
 const BGLOG_MAX = 3000;
-const BGLOG_KIND = { ship:"Ships", trade:"Trade", gossip:"Gossip", world:"The world", fleet:"The fleet" };
+const BGLOG_KIND = { ship:"Ships", trade:"Trade", gossip:"Gossip", world:"The world", fleet:"The fleet", factions:"Factions" };
 const bgLogList = () => root ? (Array.isArray(root.bgLog) ? root.bgLog : (root.bgLog = [])) : [];
 function bgLog(kind, text, day){
   if(!root || !text) return; const L = bgLogList();
@@ -20936,6 +20937,79 @@ function worldNews(d){
   worldOf().troubles[p.id] = { kind:tk, label:T.label, from:d, until:d + days };
   bgLog("world", `${T.label} at ${p.name}, till about day ${d + days}: ${T.says}`, d); return true;
 }
+/* ── between the factions (Joseph, 2026-11-05: the pirate islands are "loosely confederated, but are cut throat and can
+   get pretty mad at each other"): how each pair of factions stands with the other, −10 to +10 on the party's scale.
+   Changed by hand, or by an incident as the days pass: a 10% chance a day, no more than one a week, the worse feuds
+   more often and mostly for the worse. All of it in the Background tab's log ── */
+const FAC_INCIDENT_PCT = 10, FAC_INCIDENT_GAP = 7;
+const facRelAll = () => { const L = lib(); L.facRel = L.facRel && typeof L.facRel==="object" ? L.facRel : {}; return L.facRel; };
+const facRelKey = (a, b) => [a, b].sort().join("|");
+const facRelOf = (a, b) => (facRelAll()[facRelKey(a, b)] || {}).s || 0;
+const facMid = f => String((f && f.name) || "a faction").replace(/^The /, "the ");      // "the Scarlet Fleet", mid-sentence
+const facRelPairs = () => Object.entries(facRelAll()).map(([k, e])=>({ k, e, ids:k.split("|") })).filter(p=>p.ids.length===2 && p.ids.every(id=>factionById(id)));
+function facRelSet(a, b, s, why, day){
+  const A = factionById(a), B = factionById(b); if(!A || !B || a===b) return null;
+  const R = facRelAll(), k = facRelKey(a, b), e = R[k] = R[k] || { s:0, log:[] }, from = e.s || 0; e.s = Math.max(-10, Math.min(10, Math.round(+s || 0)));
+  day = day==null ? campaignDay() : day;
+  if(e.s!==from){ e.log = [...(e.log||[]), { day, from, to:e.s, why:why || "" }].slice(-30);
+    const t0 = standingTier(from), t1 = standingTier(e.s);
+    bgLog("factions", `${A.name} and ${facMid(B)}: ${sgn(from)} → ${sgn(e.s)}${t0!==t1 ? `, ${t1.label.toLowerCase()} now` : ""}${why ? `. ${why}` : ""}`, day); }
+  saveParty(); return e;
+}
+const FAC_INCIDENTS = [
+  [-1, "{A} took a prize {B} had claimed"], [-1, "{A} called in a debt {B} couldn't pay"], [-2, "blood was spilled between {A} and {B} at {P}"],
+  [-1, "{A} insulted the leaders of {B} in front of everyone"], [-2, "{A} were caught spying on {B}"], [-1, "{A} poached crews from {B} with better shares"],
+  [-3, "{A} burned a ship belonging to {B}"], [-1, "{A} undercut {B} at {P}"],
+  [1, "{A} and {B} split a rich prize fairly"], [1, "{A} paid an old debt to {B}"], [2, "{A} stood with {B} against a common enemy"], [1, "{A} sent {B} a gift, and it was taken well"]];
+/* an incident between two factions with dealings (a pair you've set): which pair, the worse feuds more often; which
+   way, mostly for the worse while they're at odds */
+function facIncident(d, pk){
+  const P = facRelPairs(); if(!P.length) return false;
+  const pick = pk ? P.find(p=>p.k===pk) : (()=>{ const w = P.map(p=>Math.max(1, 6 - p.e.s)); let r = Math.random() * w.reduce((a, x)=>a + x, 0); for(let i = 0; i < P.length; i++){ r -= w[i]; if(r <= 0) return P[i]; } return P[0]; })();
+  if(!pick) return false;
+  let [a, b] = pick.ids; if(Math.random() < .5) [a, b] = [b, a];
+  const s = pick.e.s || 0, bad = Math.random() < Math.min(.9, Math.max(.35, .6 - s * .04)), [dd, txt] = pickOne(FAC_INCIDENTS.filter(x=>bad ? x[0] < 0 : x[0] > 0));
+  const at = pickOne((root.nodes||[]).filter(n=>n.name && (n.faction===a || n.faction===b)));
+  let why = txt.replace("{A}", facMid(factionById(a))).replace("{B}", facMid(factionById(b))).replace("at {P}", at ? `at ${at.name}` : "at sea");
+  why = why[0].toUpperCase() + why.slice(1);
+  facRelSet(a, b, s + dd, why, d); return true;
+}
+/* a faction's dealings with the others, worst first, in a line: for its Library page and a place's card */
+function facRelLine(f){
+  const P = facRelPairs().filter(p=>p.ids.includes(f.id)).sort((x, y)=>x.e.s - y.e.s); if(!P.length) return "";
+  return `<div class="sbl"><small>With the others:</small> ${P.map(p=>{ const o = factionById(p.ids[0]===f.id ? p.ids[1] : p.ids[0]), T = standingTier(p.e.s);
+    return `${esc(o.name)} <small class="mono">${esc(T.label.toLowerCase())} ${sgn(p.e.s)}</small>`; }).join(" · ")}</div>`;
+}
+function facRelBlock(){
+  const F = lib().factions || [], W = worldOf(), P = facRelPairs().sort((x, y)=>x.e.s - y.e.s);
+  const opts = sel => F.map(f=>`<option value="${f.id}" ${f.id===sel?"selected":""}>${esc(f.name || "A faction")}</option>`).join("");
+  const bad = P.filter(p=>p.e.s <= -5).length;
+  return `<details class="partysec" data-invfor="bg:facrel" ${openInv.has("bg:facrel") ? "open" : ""}><summary class="eyebrow">Between the factions <small>${P.length} pair${P.length===1?"":"s"} with dealings${bad ? ` · ${bad} hostile or worse` : ""} · only you see this</small></summary>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">How factions stand with each other, −10 to +10 like the party's standing. ${W.facOff ? "Incidents are off: only what you record changes them." : `Each day there's a ${FAC_INCIDENT_PCT}% chance of an incident between a pair (no more than one a week), the worse feuds more often. Each change goes in the log.`}</p>
+    ${P.map(p=>{ const [a, b] = p.ids, T = standingTier(p.e.s), last = (p.e.log||[]).slice(-1)[0];
+      return `<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><span style="flex:1;min-width:0"><b>${esc(factionById(a).name)}</b> and <b>${esc(factionById(b).name)}</b></span>
+          <button class="btn small" data-frel="-1" data-k="${esc(p.k)}" title="Worse by one (What happened, below, goes in the log)">−1</button><b class="mono" style="min-width:28px;text-align:center">${sgn(p.e.s)}</b><button class="btn small" data-frel="1" data-k="${esc(p.k)}" title="Better by one">+1</button><button class="btn small" data-frel="inc" data-k="${esc(p.k)}" title="Roll an incident between these two">Incident</button><button class="fdel" data-frel="del" data-k="${esc(p.k)}" title="No dealings: forget this pair">×</button></div>
+        <div class="pcrow" style="align-items:center;margin:2px 0 0"><div style="flex:1">${standingMeter(p.e.s)}</div><small>${esc(T.label)}</small></div>${last ? `<div class="sbl"><small class="mono">day ${last.day}</small> ${esc(last.why || `${sgn(last.from)} → ${sgn(last.to)}`)}</div>` : ""}</div>`; }).join("") || `<p class="empty-note">No two factions have dealings yet: record one below.</p>`}
+    ${F.length >= 2 ? `<p class="grouplab" style="margin:8px 0 2px">Something happened between two factions</p>
+    <div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1"><label>Between</label><select id="fr-a">${opts(F[0].id)}</select></div><div class="field" style="flex:1"><label>and</label><select id="fr-b">${opts(F[1].id)}</select></div></div>
+    <div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:2"><label>What happened <small>for the log</small></label><input id="fr-why" type="text" placeholder="The Fleet hanged a Ledger collector at Gallows Quay"></div>
+      <div class="field" style="flex:.8"><label>Change</label><select id="fr-d">${[-3,-2,-1,0,1,2,3].map(v=>`<option value="${v}" ${v===-1?"selected":""}>${v ? sgn(v) : "set only"}</option>`).join("")}</select></div><button class="btn" data-frel="add" style="margin-bottom:11px">Record it</button></div>` : `<p class="empty-note">Make two factions in the Library (Factions) first.</p>`}
+    <div class="pcrow" style="align-items:center;margin-top:4px"><button class="btn" data-frel="roll" style="flex:1" ${P.length ? "" : "disabled"} title="An incident between a pair, as the days would roll it">Roll an incident now</button><label class="check" style="flex:1;margin:0"><input type="checkbox" id="fr-on" ${W.facOff ? "" : "checked"}> Incidents as the days pass</label></div></details>`;
+}
+function facRelOpen(){ openInv.add("bg:facrel"); bgFirst = false; openInv.add("bg:log"); if(tableOn() || buildOn()) openDrawer("background"); else { pane = "background"; syncTabs(); renderPane(true); }
+  const el = document.querySelector('#pane-background [data-invfor="bg:facrel"]'); if(el) scrollInPane(el, "top"); }
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-frel]"); if(!b) return; const a = b.dataset.frel, R = facRelAll();
+  if(a==="open"){ facRelOpen(); return; }
+  const why = (($("#fr-why")||{}).value || "").trim();
+  if(a==="add"){ const x = ($("#fr-a")||{}).value, y = ($("#fr-b")||{}).value, dv = +(($("#fr-d")||{}).value || 0); if(!x || !y || x===y){ flash("Pick two different factions."); return; }
+    const k = facRelKey(x, y); if(!R[k]) R[k] = { s:0, log:[] }; facRelSet(x, y, R[k].s + dv, why); flash(`${factionById(x).name} and ${facMid(factionById(y))}: ${sgn(R[k].s)} (${standingTier(R[k].s).label.toLowerCase()}).`); }
+  else if(a==="roll"){ if(!facIncident(campaignDay())) flash("No two factions have dealings yet."); }
+  else { const k = b.dataset.k, [x, y] = k.split("|"); if(!R[k]) return;
+    if(a==="del"){ if(!confirm(`Forget the dealings between ${factionById(x).name} and ${facMid(factionById(y))}? No more incidents between them.`)) return; delete R[k]; saveParty(); }
+    else if(a==="inc") facIncident(campaignDay(), k);
+    else facRelSet(x, y, R[k].s + (+a), why || (+a > 0 ? "Better, your call" : "Worse, your call")); }
+  renderNamedPane("background"); });
+document.addEventListener("change", e=>{ const t = e.target; if(!t || t.id!=="fr-on") return; const W = worldOf(); if(t.checked) delete W.facOff; else W.facOff = true; saveParty(); renderNamedPane("background"); });
 function worldCatchUp(){
   if(typeof root==="undefined" || !root || location.hash==="#player") return null;
   const W = worldOf(), now = campaignDay(); if(W.day==null || now < W.day){ W.day = now; if(W.posted==null) W.posted = now; return null; } if(now===W.day) return null;
@@ -20943,6 +21017,7 @@ function worldCatchUp(){
   for(let d = W.day + 1; d <= now; d++){
     if(d - (W.posted ?? d) >= 7){ W.posted = d; guildPostRuns(); explorePost(); }                       // the guilds' boards, weekly
     if(d - (W.news ?? -99) >= WORLD_NEWS_GAP && rollD(100) <= WORLD_NEWS_PCT && worldNews(d)){ W.news = d; news++; }
+    if(!W.facOff && d - (W.facInc ?? -99) >= FAC_INCIDENT_GAP && rollD(100) <= FAC_INCIDENT_PCT && facIncident(d)) W.facInc = d;     // trouble between factions
     for(const r of W.replace.filter(x=>x.day===d)) fleetAdd({ kind:r.kind, size:r.size, home:r.home });        // a new ship in place of one lost (it says so in the log)
     for(const [id, t] of Object.entries(W.troubles)) if(t.until===d) bgLog("world", `${t.label} at ${repPlaceName(id)} is over`, d);
   }
@@ -20972,7 +21047,7 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
 function renderBackground(){
   const el = $("#pane-background"); if(!el) return;
   if(bgFirst){ bgFirst = false; openInv.add("bg:log"); openInv.add("party:fleet"); }     // open to start with: the log and the ships
-  keepPaneScroll("pane-background", ()=>{ el.innerHTML = `<p class="eyebrow">The background <small>day ${campaignDay()} · what goes on whether or not the party is there</small></p>${bgLogBlock()}${fleetBlock()}${guildBlock()}${econBlock()}`; });
+  keepPaneScroll("pane-background", ()=>{ el.innerHTML = `<p class="eyebrow">The background <small>day ${campaignDay()} · what goes on whether or not the party is there</small></p>${bgLogBlock()}${fleetBlock()}${facRelBlock()}${guildBlock()}${econBlock()}`; });
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-bgmore],[data-bgplace]"); if(!b) return;
   if(b.dataset.bgmore){ bgShow += 300; renderNamedPane("background"); return; }
