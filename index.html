@@ -7210,6 +7210,8 @@ function placeNode(kind,x,y){
   const n = newNode(kind,x,y,near);
   if(!doc.nodes.length && !planOf) n.origin=true;
   if(!planOf && kind==="hideout") n.hidden = true;               // a hideout is off the players' screen till they find it
+  if(!planOf){ const isle = (doc.shapes||[]).find(sh=>sh.kind==="island" && sh.region && doc.regions.some(r=>r.id===sh.region) && (sh.pts||[]).length > 2 && (landIn(sh, n.x, n.y) || coastDist(sh, n.x, n.y) <= 3 * (doc.ppm || 10)));
+    if(isle) n.region = isle.region; }                             // placed on an island with a region: it joins it
   if(!planOf && KINDS[kind] && KINDS[kind].pirateOf){ n.kind = KINDS[kind].pirateOf; n.pirate = true; }     // a pirate city is a city, marked
   doc.nodes.push(n); select("node",n.id);
   if(planOf) syncServices(planOf);
@@ -19744,8 +19746,8 @@ function repIsCoastal(n){
   return !on || coastDist(on, n.x, n.y) <= 3 * (root.ppm || 10);
 }
 const repPorts = () => (root.nodes||[]).filter(n=>n.name && repIsCoastal(n));
-/* the places on an island, or on its shore (within 2 miles of it): for putting a chain of islands in one region */
-const islePlaces = sh => (doc.nodes||[]).filter(n=>!sailsAbout(n) && (sh.pts||[]).length > 2 && (landIn(sh, n.x, n.y) || coastDist(sh, n.x, n.y) <= 2 * (doc.ppm || 10)));
+/* the places on an island, or on its shore (within 3 miles of it, as a port is): for putting a chain of islands in one region */
+const islePlaces = sh => (doc.nodes||[]).filter(n=>!sailsAbout(n) && (sh.pts||[]).length > 2 && (landIn(sh, n.x, n.y) || coastDist(sh, n.x, n.y) <= 3 * (doc.ppm || 10)));
 /* ── the water, as a grid of 2-mile squares (Joseph, 2026-11-04: "so many sea routes are going over land"): land is
    filled in row by row from the map's outlines (the mainland less the sea's shape, and every island), quick even for
    a mainland of thousands of points. Lanes go by water: the shortest way through the squares (A*), smoothed into a few
@@ -23341,9 +23343,9 @@ function renderInspectInner(){
       ${sh.kind==="zone" ? `<div class="field" style="margin-top:8px"><label>Built up as</label><select id="s-density">${Object.entries(BUILT_DENSITY).filter(([k])=>k!=="none").map(([k, v])=>`<option value="${k}" ${(sh.density||"town")===k?"selected":""}>${v.label}</option>`).join("")}</select></div>
         <p class="empty-note" style="font-size:11px">The town fills this area with houses, gardens and back lanes, round whatever is already drawn here. Once a plan has a zone, only zoned ground is built up.</p>` : ""}
       ${sh.kind==="island" ? `<div class="field" style="margin-top:8px"><label>Open land here is</label><select id="s-terrain" title="Travel Terrain (2024) for any land on this island not drawn as Forest, Hill, Swamp and so on; 2 miles of shore all round is Coastal">${Object.entries(TERRAINS).filter(([k])=>k!=="coastal").map(([k, T])=>`<option value="${k}" ${(sh.terrain||"grassland")===k?"selected":""}>${T.label}</option>`).join("")}</select></div>
-        ${planOf ? "" : (()=>{ const on = islePlaces(sh), regs = [...new Set(on.map(n=>n.region))];
-          return `<p class="eyebrow spaced">Its places' region</p><p class="empty-note" style="font-size:11px;margin:0 0 4px">${on.length ? `${on.length} place${on.length===1?"":"s"} on it or on its shore: ${regs.map(id=>esc((doc.regions.find(r=>r.id===id)||{}).name || "none")).join(", ")}.` : "No places on it yet."} Islands in a chain share a region when you put each one's places into it.</p>
-          <div class="pcrow"><select id="s-isleregion" style="flex:1;min-width:0">${regionOptions(regs.length===1 ? regs[0] : "")}<option value="__new">A new region…</option></select><button class="btn" id="s-isleregiongo" ${on.length ? "" : "disabled"}>Put them in it</button></div>`; })()}` : ""}
+        ${planOf ? "" : (()=>{ const on = islePlaces(sh), regs = [...new Set(on.map(n=>n.region))], mine = sh.region && doc.regions.find(r=>r.id===sh.region);
+          return `<p class="eyebrow spaced">Its region</p><p class="empty-note" style="font-size:11px;margin:0 0 4px">${mine ? `In <b>${esc(mine.name)}</b>: anything you place on it joins it. ` : ""}${on.length ? `${on.length} place${on.length===1?"":"s"} on it or on its shore, in ${regs.map(id=>esc((doc.regions.find(r=>r.id===id)||{}).name || "none")).join(", ")}.` : "No places on it yet."} Give each island of a chain the same region.</p>
+          <div class="pcrow"><select id="s-isleregion" style="flex:1;min-width:0">${regionOptions(sh.region || (regs.length===1 ? regs[0] : ""))}<option value="__new">A new region…</option></select><button class="btn" id="s-isleregiongo">Put it in this region</button></div>`; })()}` : ""}
       ${kd.road?`
         <div class="field" style="margin-top:12px"><label>Width</label>
           <input id="s-w" class="mono" type="number" step="0.5" min="0.5" max="60" value="${sh.w==null?kd.w:sh.w}"></div>`:""}
@@ -23381,8 +23383,9 @@ function renderInspectInner(){
     const ig = $("#s-isleregiongo"); if(ig) ig.onclick = ()=>{ let id = ($("#s-isleregion")||{}).value;
       if(id==="__new"){ const nm = (prompt("The new region's name:", sh.name || "") || "").trim(); if(!nm) return;
         const r = { id:uid("r"), name:nm, threat:1, hex:REGION_HEX[doc.regions.length % REGION_HEX.length], notes:"" }; doc.regions.push(r); id = r.id; }
-      const on = islePlaces(sh); for(const n of on) n.region = id; touch(); render(); renderInspect();
-      flash(`${on.length} place${on.length===1?"":"s"} on ${sh.name || "the island"} now in ${(doc.regions.find(r=>r.id===id)||{}).name}.`); };
+      const on = islePlaces(sh); sh.region = id; for(const n of on) n.region = id; touch(); render(); renderInspect(); if(typeof renderRegions==="function" && $("#pane-regions")) renderRegions();
+      const nm = (doc.regions.find(r=>r.id===id)||{}).name;
+      flash(on.length ? `${sh.name || "The island"} is in ${nm}, and so ${on.length===1 ? "is the place" : `are the ${on.length} places`} on it. Anything you place on it from now on joins it.` : `${sh.name || "The island"} is in ${nm}: anything you place on it from now on joins it.`); };
     const wS = $("#s-w"); if(wS) wS.oninput = e=>{ sh.w = Math.max(.5, Math.min(60, +e.target.value||kd.w)); touch(); };
     const cl = $("#s-closed"); if(cl) cl.onchange = e=>{ sh.closed=e.target.checked; if(sh.closed) editing=null; touch(); renderInspect(); };
     $("#s-imp").onchange = e=>{ sh.impassable=e.target.checked; touch(); };
