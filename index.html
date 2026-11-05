@@ -18806,10 +18806,16 @@ function boardBlock(n){
         ${f(m, "text", "What the notice says (the players read this)", "What needs doing, and why…", 3)}
         ${f(m, "reward", "Reward", "50 gp each")}
         <div class="field"><label>It sends them to</label>${dest(m)}</div>
+        ${m.kind==="trade" ? `<div class="pcrow"><div class="field" style="flex:1.4"><label>The cargo</label><select data-mbf="good" data-mid="${m.id}">${Object.keys(TRADE_GOODS).map(g=>`<option value="${g}" ${m.good===g?"selected":""}>${esc(tradeGoodName(g))}</option>`).join("")}</select></div>
+          <div class="field" style="flex:1"><label>Loads</label><input data-mbf="loads" data-mid="${m.id}" type="number" min="1" value="${m.loads||1}"></div></div>
+          <div class="pcrow"><div class="field" style="flex:1"><label>Due by day</label><input data-mbf="due" data-mid="${m.id}" type="number" min="1" value="${m.due||""}"></div>
+          <div class="field" style="flex:1"><label>Fee, gp</label><input data-mbf="fee" data-mid="${m.id}" type="number" min="0" value="${m.fee||0}"></div></div>
+          <p class="empty-note" style="font-size:11px;margin:0 0 6px">A trade run: taking it loads the cargo into the party's hold; it's delivered from the market on the destination's card, for the fee (half if late).</p>` : ""}
         ${f(m, "notes", "DM only: what's really going on", "The truth, the twist, the DCs…", 2)}
         <button class="btn wide" data-mb="del" data-mid="${m.id}">Delete this mission</button></details>`).join("")
       : `<p class="empty-note" style="font-size:11px;margin:4px 0">No missions yet.</p>`}
-    <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-mb="addm">Add a mission</button><button class="btn" style="flex:1" data-mb="drop" title="Take the whole board down, missions and all">Remove the board</button></div>`;
+    <div class="pcrow" style="margin-top:4px"><button class="btn" style="flex:1" data-mb="addm">Add a mission</button><button class="btn" style="flex:1" data-mb="addtrade" title="A cargo to carry from here to a market that wants it, by a day, for a fee: rolled from this place's market">Add a trade run</button></div>
+    <button class="btn wide" style="margin-top:4px" data-mb="drop" title="Take the whole board down, missions and all">Remove the board</button>`;
 }
 function boardAdd(n){
   return n.board ? "" : `<button class="btn wide" data-mb="add" style="margin-top:10px" title="A notice board for jobs and quests: the Guild's commissions, a tavern's odd jobs, the Admiralty's bounties">Put up a mission board here</button>`;
@@ -18832,6 +18838,8 @@ document.getElementById("pane-inspect").addEventListener("click", e=>{
     if(!playersUp()) flash("Showing it once the players' screen is open (top bar)."); else flash("The board is on the players' screen.");
     gameLog("pic", `Showed the players ${n.board.title || `the mission board at ${placeLabel(n)}`}`); return; }
   if(a==="addm"){ const m = { id:uid("ms"), title:"", patron:"", reward:"", text:"", notes:"", to:"", status:"draft" }; M.push(m); mbOpen = m.id; touch(); boardRedraw(); return; }
+  if(a==="addtrade"){ const from = repPlaceOf(n) || n.id, m = tradeRunRoll(from, guildPatron(n, from)); if(!m){ flash("No market here or nowhere to send a cargo: a trade run needs a city, town or village on each end."); return; }
+    m.status = "draft"; M.push(m); mbOpen = m.id; touch(); boardRedraw(); flash(`A trade run: ${m.title}. Post it when you're ready.`); return; }
   if(a==="del"){ const m = M.find(x=>x.id===b.dataset.mid); if(!m || !confirm(`Delete "${m.title||"this mission"}"?`)) return;
     n.board.missions = M.filter(x=>x!==m); touch(); boardRedraw(); refreshBoardOnTv(); return; }
   if(a==="drop"){ if(!confirm(`Remove the mission board from ${placeLabel(n)}, with its ${M.length} mission${M.length===1?"":"s"}?`)) return;
@@ -18855,7 +18863,8 @@ document.getElementById("pane-inspect").addEventListener("change", e=>{
   const m = boardMissions(n.board).find(x=>x.id===t.dataset.mid); if(!m) return;
   const was = m.status; m[t.dataset.mbf] = t.value; let said = "";
   if(t.dataset.mbf==="status" && t.value!==was){
-    if(t.value==="taken") said = missionTaken(m);
+    if(t.value==="taken") said = missionTaken(m) + (m.kind==="trade" ? tradeRunLoad(m) : "");
+    else if(m.kind==="trade" && was==="taken") said = tradeRunUnload(m);          // a trade run called off or marked done by hand: the Guild's cargo comes out of the hold
     gameLog("mission", `${m.title || "A mission"}: ${(MISSION_STATUS.find(([k])=>k===t.value)||["", t.value])[1].toLowerCase()}`);
     flash(`${m.title || "The mission"}: ${(MISSION_STATUS.find(([k])=>k===t.value)||["", t.value])[1].toLowerCase()}.${said}`);
   }
@@ -19993,7 +20002,10 @@ function tradeCall(s, port, day){
 function tradeHere(n){
   const place = repPlaceOf(n), P = repNode(place); if(!tradeIsPlace(P)) return "";
   const T = tradeOf(), M = tradePlace(place), H = T.hold, pcs = partyRoster(), loaded = tradeLoaded(H), key = "trade:" + place, R = stolenRules(), office = tradeOffice(place), navy = tradeNavy();
-  const stolen = Object.entries(H).filter(([, h])=>h && h.stolen);
+  const stolen = Object.entries(H).filter(([, h])=>h && h.stolen), guildLots = Object.entries(H).filter(([, h])=>h && h.guild);
+  const guildHtml = guildLots.length ? `<p class="eyebrow spaced">The Guild's cargo <small>trade runs: theirs to carry, not to sell</small></p>
+    ${guildLots.map(([k, h])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${h.n} ${esc(tradeGoodName(h.g).toLowerCase())} <small>for ${esc(h.from)}, to ${esc(repPlaceName(h.to))}${h.due ? ` by day ${h.due}${campaignDay() > h.due ? " (late)" : ""}` : ""}</small></span>
+      ${h.to===place ? `<button class="btn small" data-trade="deliver" data-k="${esc(k)}" title="Hand it over: the fee to whoever's paid (half if late)">Deliver</button>` : ""}</div>`).join("")}` : "";
   const stolenHtml = `<p class="eyebrow spaced">Stolen cargo <small>${stolen.length ? `${stolen.reduce((a, [, h])=>a + h.n, 0)} loads in the hold` : "none in the hold"}${tradeSuspect() ? ` · ${esc(navy ? navy.name : "the navy")} suspects the party (day ${T.suspect})` : ""}</small></p>
     ${stolen.map(([k, h])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${h.n} ${esc(tradeGoodName(h.g).toLowerCase())} <small>(${h.stolen==="pirate" ? "a pirate's plunder, from" : "taken from"} ${esc(h.from||"a ship")}; ${tradeSellAt(place, h.g, h.n)} gp a load here)</small></span>
       <button class="btn small" data-trade="fence" data-k="${esc(k)}" title="Sells like any cargo, with a ${R.sell}% chance of being caught">Sell (${R.sell}% risk)</button>${h.stolen==="pirate" && office ? `<button class="btn small" data-trade="prize" data-k="${esc(k)}" title="${esc(navy ? navy.name : "The navy")}'s prize office pays ${R.prize}% of what it would fetch here, with a ${R.suspect}% chance they suspect the party of piracy">Turn in (${R.prize}%)</button>` : ""}</div>`).join("")}
@@ -20017,7 +20029,7 @@ function tradeHere(n){
     <div class="pcrow"><div class="field" style="flex:1"><label>Who pays, or is paid</label><select id="tr-pay"><option value="">Nobody (don't count coin)</option>${pcs.map(c=>`<option value="${c.id}" ${T.payer===c.id ? "selected" : ""}>${esc(c.name||"Character")} (${Math.floor(purseGp(purseOf(c)))} gp)</option>`).join("")}</select></div>
       <div class="field" style="width:9em"><label>The party's hold</label><input id="tr-cap" type="number" min="0" value="${T.cap}" title="Loads the party's ship (or wagons) can carry"><small>${loaded} loaded</small></div></div>
     <table style="width:100%;font-size:11.5px;border-collapse:collapse"><tr><th style="text-align:left">Good</th><th>Buy</th><th>Sell</th><th title="In the party's hold (what they paid a load)">Hold</th><th></th></tr>${order.map(row).join("")}</table>
-    ${stolenHtml}
+    ${guildHtml}${stolenHtml}
     <details style="margin-top:6px"><summary><small>Change what it makes and wants</small></summary>
       <div class="sbl"><small>Makes</small> ${[0,1,2,3].map(i=>pick("make", i)).join(" ")}</div><div class="sbl"><small>Wants</small> ${[0,1,2,3].map(i=>pick("want", i)).join(" ")}</div>
       <button class="btn small" data-trade="reroll" title="Roll what it makes and wants again">Roll again</button></details></details>`;
@@ -20026,6 +20038,7 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   const n = sel && sel.kind==="node" ? nodeById(sel.id) : null, place = repPlaceOf(n); if(!tradeIsPlace(repNode(place))) return;
   const T = tradeOf(), a = b.dataset.trade;
   if(a==="reroll"){ T.places[place] = tradeRollPlace(repNode(place)); saveParty(); renderPane(true); return; }
+  if(a==="deliver"){ tradeRunDeliver(b.dataset.k, place); saveParty(); renderPane(true); return; }
   if(a==="search"){ tradeNavySearch(`${(tradeNavy()||{}).name || "The navy"} at ${repPlaceName(place)}`, place); saveParty(); renderPane(true); return; }
   if(a==="fence" || a==="prize"){ const k = b.dataset.k, h = T.hold[k], payer = partyRoster().find(c=>c.id===T.payer), R = stolenRules(); if(!h) return;
     if(a==="fence"){ const r = rollD(100); if(r <= R.sell){ tradeCaught(place, [k], "selling", `d100 ${r} vs ${R.sell}`); saveParty(); renderPane(true); return; }
@@ -20379,10 +20392,135 @@ function econBlock(){
     <div style="overflow-x:auto"><table style="border-collapse:collapse">${head}${body}</table></div>
     <p class="empty-note" style="font-size:10.5px;margin:4px 0 0">Hover a square for its price; click a place for its market on its card.</p></details>`;
 }
+/* ── THE GUILDS (Joseph, 2026-11-05): the Trade Guild and the Guild of Explorers, each a faction with its main hall in
+   the hub (Kalatecha) and a smaller branch in every city: a building in the city's plan, the faction's, with a mission
+   board (so it's a branch for the gossip too). The Trade Guild posts trade runs: a cargo of the place's own goods to a
+   market that wants it, by a day, for a fee. Taking one loads the Guild's cargo into the party's hold (theirs to carry,
+   not to sell); it's delivered from the destination's market, for the fee (half if late) and the Guild's thanks ── */
+const GUILDS = {
+  trade:{ match:/trade guild|merchants'? guild/i, name:"The Trade Guild", align:"Neutral", repDie:12,
+    wants:"Goods moving on every lane, and the Guild's cut of each cargo.", how:"Posts trade runs and deals in cargo: the Guild Hall in the hub, an office in every city.",
+    hall:"The Trade Guild Hall", branch:"Trade Guild Office", board:"The Trade Guild: Trade Runs",
+    hallNote:"The Trade Guild's main hall: ledgers to the ceiling, a board of prices chalked fresh each morning, and trade runs posted by the door.",
+    branchNote:"A Trade Guild office: a clerk, a strongbox, the prices from the hub, and trade runs posted by the door." },
+  explore:{ match:/explor/i, name:"The Guild of Explorers", align:"Neutral", repDie:12,
+    wants:"To explore and turn a profit.", how:"Hires expeditions and buys new maps, from its main hall in the hub and a lodge in every city.",
+    hall:"The Charter House", branch:"Explorers' Guild Lodge", board:"The Guild of Explorers: Commissions",
+    hallNote:"The Guild of Explorers' headquarters: maps on every wall, half of each one empty.",
+    branchNote:"An Explorers' Guild lodge: a map room, a board of commissions, and travellers' tales over the fire." } };
+const guildFaction = key => (lib().factions||[]).find(f=>GUILDS[key].match.test(f.name||"")) || null;
+const guildHub = () => repHub(repPorts()) || (root.nodes||[]).find(n=>n.kind==="city") || null;
+const guildCities = () => (root.nodes||[]).filter(n=>n.kind==="city" && n.name && !sailsAbout(n));
+/* the faction's building in a place's plan, if it has one */
+const guildIn = (f, placeId) => f ? ((plans[placeId]||{}).nodes||[]).find(x=>x.faction===f.id) || null : null;
+/* a free spot in a plan for a new building: around its market (or the middle), clear of what's there */
+function guildSpot(P){
+  const N = P.nodes || []; if(!N.length) return { x:0, y:0 };
+  const mk = N.find(x=>x.kind==="market"), cx = mk ? mk.x : N.reduce((a, x)=>a + x.x, 0) / N.length, cy = mk ? mk.y : N.reduce((a, x)=>a + x.y, 0) / N.length;
+  const big = Math.max(24, ...N.map(x=>Math.max(+x.w||0, +x.d||0))), step = big * 1.6;
+  for(let r = 1; r < 40; r++) for(let k = 0; k < 8 * r; k++){ const a = k / (8 * r) * Math.PI * 2, x = Math.round(cx + Math.cos(a) * r * step), y = Math.round(cy + Math.sin(a) * r * step);
+    if(N.every(o=>Math.hypot(o.x - x, o.y - y) > step)) return { x, y }; }
+  return { x:Math.round(cx), y:Math.round(cy + step) };
+}
+/* set a guild up: its faction (made if missing), its hall in the hub, a branch in every other city (made if missing) */
+function guildSetup(key){
+  const G = GUILDS[key], L = lib(); L.factions = L.factions || [];
+  let f = guildFaction(key), made = { hall:0, branches:0, faction:false };
+  if(!f){ f = { id:uid("lfa_"), name:G.name, align:G.align, standing:0, repDie:G.repDie, wants:G.wants, how:G.how }; L.factions.push(f); made.faction = true; }
+  const hub = guildHub(); if(!hub){ saveParty(); return made; }
+  for(const c of [hub, ...guildCities().filter(c=>c!==hub)]){
+    const isHall = c===hub; let P = plans[c.id]; if(!P){ P = plans[c.id] = normaliseDoc(blankPlan(c)); }
+    let b = guildIn(f, c.id);
+    if(!b){ const at = guildSpot(P), reg = ((P.regions||[])[0] || {}).id || "";
+      b = { id:uid("pg"), name:isHall ? G.hall : G.branch, kind:"office", region:reg, level:1, origin:false, seat:false, services:{ office:1, board:1 },
+        notes:isHall ? G.hallNote : G.branchNote, x:at.x, y:at.y, w:24, d:16, rot:0, faction:f.id };
+      if((P.floors||[]).length) b.floor = groundFloor(P);
+      P.nodes.push(b); isHall ? made.hall++ : made.branches++; }
+    b.guild = key; b.guildHall = isHall;
+    if(!b.board) b.board = { title:G.board, skin:"parchment", missions:[] };
+    markDirty(K_PLAN(c.id)); }
+  saveParty(); touch();
+  bgLog("fleet", `${f.name}: ${made.faction ? "founded; " : ""}${made.hall ? `its hall in ${hub.name}; ` : ""}${made.branches} new branch${made.branches===1?"":"es"}`);
+  return made;
+}
+/* who posts it: the faction's office (the hall, or a branch named for its city), or the place itself */
+function guildPatron(n, from){ const f = n && n.faction ? factionById(n.faction) : null;
+  return f ? `${f.name}${n.guildHall===false ? `, ${repPlaceName(from)} office` : ""}` : placeLabel(n); }
+/* how far by sea (along the lanes) or, failing that, as the crow flies */
+function tradeRunMiles(a, b){
+  const A = repNode(a), B = repNode(b); if(!A || !B) return 0;
+  const path = repIsCoastal(A) && repIsCoastal(B) ? seaPath(a, b) : null; let mi = 0;
+  if(path) for(let i = 1; i < path.length; i++){ const l = (repOf().lanes||[]).find(x=>(x.from===path[i-1] && x.to===path[i]) || (x.to===path[i-1] && x.from===path[i])); mi += l && l.miles ? +l.miles : repMilesBetween(repNode(path[i-1]), repNode(path[i])); }
+  return Math.round(mi || repMilesBetween(A, B));
+}
+/* a trade run rolled: one of the place's own goods to a market that wants it (a Trade Guild office there, likelier),
+   5 to 20 loads, due in the days a merchantman takes plus a few, for a fee of 15% of the cargo's worth and a little a mile */
+function tradeRunRoll(from, patron){
+  const A = repNode(from); if(!tradeIsPlace(A)) return null;
+  const M = tradePlace(from), sea = repIsCoastal(A), all = repPlaces().filter(p=>tradeIsPlace(p) && p.id!==from), tf = guildFaction("trade");
+  const P = sea && all.some(repIsCoastal) ? all.filter(repIsCoastal) : all; if(!P.length) return null;          // from a port, to another port: a run by sea
+  const good = pickOne(M.make.length ? M.make : Object.keys(TRADE_GOODS));
+  const to = tradePickBy(P, p=>(tradePlace(p.id).want.includes(good) ? 4 : 1) * (guildIn(tf, p.id) ? 2 : 1) * (p.id===A.id ? 0 : 1));
+  const loads = 4 + rollD(16), miles = tradeRunMiles(from, to.id), days = Math.ceil(miles / (FLEET_KINDS.merchant || [0, 90])[1]) + 2 + rollD(4);
+  const worth = Math.round(loads * TRADE_GOODS[good][1]), fee = Math.max(15, Math.round(worth * 0.15 + miles * 0.3)), due = campaignDay() + days, G = tradeGoodName(good).toLowerCase();
+  return { id:uid("ms"), kind:"trade", title:`Trade run: ${loads} loads of ${G} to ${to.name}`, patron:patron || "", good, loads, from, to:to.id, due, fee,
+    reward:`${fee} gp on delivery by day ${due} (half if late)`,
+    text:`Wanted: ${sea && repIsCoastal(to) ? "a ship" : "a ship or a wagon"} to carry ${loads} loads of ${G} from ${A.name} to ${to.name}, about ${miles} miles, by day ${due}. The cargo is the Guild's: deliver it whole${guildIn(tf, to.id) ? ` to the Guild's office in ${to.name}` : ""}.`,
+    notes:`Worth about ${worth} gp at usual prices. Selling it instead is theft from the Guild.`, status:"posted" };
+}
+/* every mission anywhere, with its board */
+const missionsAll = () => boardsAll().flatMap(({ plan, n })=>boardMissions(n.board).map(m=>({ m, n, plan })));
+const tradeRunById = id => (missionsAll().find(x=>x.m.id===id) || {}).m || null;
+/* taking it: the Guild's cargo into the party's hold (as much as fits) */
+function tradeRunLoad(m){
+  const T = tradeOf(), k = `${m.good}|guild|${m.id}`; if(T.hold[k]) return "";
+  const room = Math.max(0, (+T.cap||0) - tradeLoaded(T.hold)), want = Math.max(1, +m.loads || 1), n = Math.min(want, room);
+  if(n <= 0) return ` The party's hold is full: no room for the Guild's cargo.`;
+  T.hold[k] = { g:m.good, n, paid:0, guild:m.id, from:m.patron || "the Guild", to:m.to, due:+m.due || null }; saveParty();
+  return ` ${n} load${n===1?"":"s"} of ${tradeGoodName(m.good).toLowerCase()} into the party's hold${n < want ? ` (room for only ${n} of ${want})` : ""}: deliver them from the market at ${repPlaceName(m.to)}.`;
+}
+function tradeRunUnload(m){ const T = tradeOf(), k = Object.keys(T.hold).find(x=>(T.hold[x]||{}).guild===m.id); if(!k) return ""; delete T.hold[k]; saveParty(); return " The Guild's cargo is out of the party's hold."; }
+/* delivered, from the destination's market: the fee (half if late) to whoever's paid, the run done, +1 with the Guild */
+function tradeRunDeliver(k, place){
+  const T = tradeOf(), h = T.hold[k]; if(!h) return; const m = tradeRunById(h.guild), payer = partyRoster().find(c=>c.id===T.payer);
+  const late = h.due && campaignDay() > h.due, short = m && h.n < (+m.loads||h.n), fee = m ? Math.round((+m.fee||0) * (late ? 0.5 : 1) * (short ? h.n / (+m.loads||h.n) : 1)) : 0;
+  if(payer && fee) addCoins(purseOf(payer), fee * 100); delete T.hold[k];
+  if(m){ m.status = "done"; }
+  const f = guildFaction("trade"); if(f && !late) setStanding(f, standingOf(f) + 1, `a trade run delivered to ${repPlaceName(place)}`);
+  gameLog("mission", `Trade run delivered: ${h.n} ${tradeGoodName(h.g).toLowerCase()} to ${repPlaceName(place)}${late ? `, late (due day ${h.due})` : ""}: ${fee} gp${payer ? ` to ${payer.name}` : ""}`);
+  flash(`Delivered: ${fee} gp${late ? " (late: half)" : ""}${short ? " (short: less)" : ""}.`); saveParty(); refreshBoardOnTv();
+}
+/* fresh trade runs on every Trade Guild board: what's still only posted comes down, two new ones go up (three at the hall) */
+function guildPostRuns(){
+  const f = guildFaction("trade"); if(!f) return 0; let n = 0;
+  for(const { plan, n:b } of boardsAll()){ if(b.faction!==f.id) continue; const from = plan || b.id, M = boardMissions(b.board);
+    b.board.missions = M.filter(m=>!(m.kind==="trade" && (m.status==="posted" || m.status==="draft")));
+    for(let i = 0; i < (b.guildHall ? 3 : 2); i++){ const m = tradeRunRoll(from, guildPatron(b, from)); if(m){ b.board.missions.push(m); n++; } }
+    if(plan) markDirty(K_PLAN(plan)); }
+  saveParty(); touch(); refreshBoardOnTv(); if(n) bgLog("trade", `${f.name} posted ${n} fresh trade runs`);
+  return n;
+}
+function guildBlock(){
+  const hub = guildHub(), C = guildCities();
+  const row = key => { const G = GUILDS[key], f = guildFaction(key), have = f ? C.filter(c=>guildIn(f, c.id)).length : 0, hall = f && hub ? guildIn(f, hub.id) : null;
+    const runs = key==="trade" && f ? missionsAll().filter(x=>x.m.kind==="trade" && x.n.faction===f.id) : [];
+    return `<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><b style="flex:1">${esc(f ? f.name : G.name)}</b>${f ? `<small>${esc(factionEffects(f).tier.label)}</small>` : `<small>not in your Library yet</small>`}</div>
+      <div class="sbl">${hall ? `Hall: <span class="libref" data-bgplace="${hub.id}">${esc(hall.name)}</span>, ${esc(hub.name)}` : hub ? `No hall in ${esc(hub.name)} yet` : "No hub city"} · branches in ${Math.max(0, have - (hall ? 1 : 0))} of ${Math.max(0, C.length - 1)} other cities</div>
+      ${key==="trade" && f ? `<div class="sbl">Trade runs: ${runs.filter(x=>x.m.status==="posted").length} posted, ${runs.filter(x=>x.m.status==="taken").length} taken, ${runs.filter(x=>x.m.status==="done").length} done</div>` : ""}
+      <div class="pcrow" style="margin-top:2px"><button class="btn small" data-guild="setup" data-key="${key}" title="${f ? "Any city without a branch gets one; the hall too, if it's missing" : "The faction in your Library, its hall in the hub, a branch in every city"}">${f && have >= C.length ? "Check its branches" : f ? "Add the missing branches" : "Found it: hall and branches"}</button>
+        ${key==="trade" && f ? `<button class="btn small" data-guild="runs" title="Every Trade Guild board: what's still only posted comes down, fresh runs go up (three at the hall, two at each office)">Post fresh trade runs</button>` : ""}</div></div>`; };
+  return `<details class="partysec" data-invfor="bg:guilds" ${openInv.has("bg:guilds") ? "open" : ""}><summary class="eyebrow">Guilds <small>halls in ${esc(hub ? hub.name : "the hub")}, branches in every city</small></summary>${row("trade")}${row("explore")}</details>`;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("button[data-guild]"); if(!b) return;
+  if(b.dataset.guild==="setup"){ const r = guildSetup(b.dataset.key), G = GUILDS[b.dataset.key];
+    if(b.dataset.key==="trade" && (r.hall || r.branches)) guildPostRuns();
+    flash(`${G.name}: ${r.faction ? "in your Library now; " : ""}${r.hall ? "its hall built; " : ""}${r.branches} new branch${r.branches===1?"":"es"}.`); }
+  else if(b.dataset.guild==="runs"){ const n = guildPostRuns(); flash(n ? `${n} fresh trade runs posted on the Trade Guild's boards.` : "No Trade Guild boards yet: found the guild first."); }
+  renderNamedPane("background"); });
 function renderBackground(){
   const el = $("#pane-background"); if(!el) return;
   if(bgFirst){ bgFirst = false; openInv.add("bg:log"); openInv.add("party:fleet"); }     // open to start with: the log and the ships
-  keepPaneScroll("pane-background", ()=>{ el.innerHTML = `<p class="eyebrow">The background <small>day ${campaignDay()} · what goes on whether or not the party is there</small></p>${bgLogBlock()}${fleetBlock()}${econBlock()}`; });
+  keepPaneScroll("pane-background", ()=>{ el.innerHTML = `<p class="eyebrow">The background <small>day ${campaignDay()} · what goes on whether or not the party is there</small></p>${bgLogBlock()}${fleetBlock()}${guildBlock()}${econBlock()}`; });
 }
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-bgmore],[data-bgplace]"); if(!b) return;
   if(b.dataset.bgmore){ bgShow += 300; renderNamedPane("background"); return; }
