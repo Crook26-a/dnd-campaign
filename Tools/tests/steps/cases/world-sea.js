@@ -45,8 +45,13 @@ step("sea lanes: clicked, named, its traffic; deleted with a warning; one drawn"
   let warned = "no port with a single lane"; if (end) { const only = repOf().lanes.find(x => x.from === end.id || x.to === end.id); laneCard(only.id); __KIT.answers.confirm = false; const n0 = repOf().lanes.length;
     document.querySelector('[data-laneact="del"]').click(); await wait(20); warned = `deleting ${end.name}'s only lane asked first, kept ${repOf().lanes.length === n0}`; }
   const a = P[0], b = P.find(p => p !== a && !repOf().lanes.some(x => (x.from === a.id && x.to === p.id) || (x.to === a.id && x.from === p.id)));
-  const nl = laneDraw(a.id, b.id); laneSel = null; pop.hidden = true; delete pop.dataset.card;
-  return `lane card shown: ${shown} | ${named} | ${warned} | drawn ${a.name} – ${b.name}: ${nl ? `${Math.round(nl.miles)} mi, ${nl.pts.length} points` : "no"} | page errors ${__KIT.errors.length}`;
+  const nl = laneDraw(a.id, b.id);
+  const busy = repOf().lanes.map(x => ({ x, n: laneShips(x).length })).sort((p, q) => q.n - p.n)[0]; laneCard(busy.x.id); await wait(20);
+  const onIt = [...pop.querySelectorAll("[data-laneship]")].map(s => s.parentElement.innerText.replace(/\s+/g, " ").trim());
+  if (onIt.length) { pop.querySelector("[data-laneship]").click(); await wait(20); }
+  const toShip = !!pop.dataset.card && !String(pop.dataset.card).startsWith("lane:");
+  laneSel = null; pop.hidden = true; delete pop.dataset.card;
+  return `lane card shown: ${shown} | the busiest lane, ${repPlaceName(busy.x.from)} – ${repPlaceName(busy.x.to)}: ${onIt.join(" / ")} | a name clicked opens her card: ${toShip} | ${named} | ${warned} | drawn ${a.name} – ${b.name}: ${nl ? `${Math.round(nl.miles)} mi, ${nl.pts.length} points` : "no"} | page errors ${__KIT.errors.length}`;
 });
 step("at sea: hail a merchant, swap news, buy from her hold; a pirate's toll; a ship in trouble helped", async () => {
   const T = tradeOf(), pc = partyRoster()[0]; T.hold = {}; T.cap = 40; T.payer = pc.id; purseOf(pc).gp += 500; const pop = document.getElementById("fleetPop");

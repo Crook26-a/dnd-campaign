@@ -19897,14 +19897,14 @@ function fleetCatchUp(){
     for(let guard = 0; guard < 400; guard++){
       if(s.leg){ if(s.leg.arrive > now) break;
         const L = s.leg; delete s.leg;
-        if(L.lurk){ s.at = null; s.pos = { x:L.lurk.x, y:L.lurk.y }; s.stay = L.arrive + L.wait; said.push(`${s.name} lies in wait on the lanes`); bgLog("ship", `${s.name} lies in wait on the lanes till day ${s.stay}`, L.arrive); continue; }
+        if(L.lurk){ s.at = null; s.pos = { x:L.lurk.x, y:L.lurk.y }; s.lurkOn = L.lurk.on; s.stay = L.arrive + L.wait; said.push(`${s.name} lies in wait on the lanes`); bgLog("ship", `${s.name} lies in wait on the lanes till day ${s.stay}`, L.arrive); continue; }
         s.at = L.to; delete s.pos; s.stay = L.arrive + 1 + rollD(3);
         const port = repNode(s.at); bgLog("ship", `${s.name} comes into ${repPlaceName(s.at)}, staying till day ${s.stay}`, L.arrive);
         if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); if(port) tradeCall(s, port, L.arrive); continue; }
       if((s.stay || 0) > now) break;
       const go = fleetNext(s); if(!go){ s.stay = now + rollD(6); break; }
       const leg = fleetLeg(s, go, s.stay || now); if(!leg){ s.stay = now + rollD(6); break; }
-      s.leg = leg; const line = `${s.name} sails${s.at ? ` from ${repPlaceName(s.at)}` : ""}${leg.to ? ` for ${repPlaceName(leg.to)}` : " to lie in wait on the lanes"} (${leg.miles} mi, arriving day ${leg.arrive})`;
+      s.leg = leg; delete s.lurkOn; const line = `${s.name} sails${s.at ? ` from ${repPlaceName(s.at)}` : ""}${leg.to ? ` for ${repPlaceName(leg.to)}` : " to lie in wait on the lanes"} (${leg.miles} mi, arriving day ${leg.arrive})`;
       said.push(line); bgLog("ship", line, leg.left);
     } }
   root.fday = now;                                                       // all of it in the Background tab's log, each on its day
@@ -20027,13 +20027,33 @@ function lanesApart(lanes){
   const groups = new Map(); for(const p of P){ const r = find(p.id); groups.set(r, [...(groups.get(r)||[]), p]); }
   const big = [...groups.values()].sort((a, b)=>b.length - a.length)[0] || []; return P.filter(p=>!big.includes(p));
 }
+/* the ships on a lane now (Joseph, 2026-11-05: "it should show me what ships are sailing on them"): those whose voyage
+   runs along it (each port to port of her way), and any lying in wait on it */
+function laneShips(l){
+  const t = fleetT(), out = [];
+  for(const s of fleetOf()){ const L = s.leg;
+    if(L && L.lurk){ if(L.lurk.on===l.id) out.push({ s, how:`heading out to lie in wait here (day ${L.arrive})` }); continue; }
+    if(!L){ if(!s.at && s.lurkOn===l.id) out.push({ s, how:`lying in wait here till day ${s.stay}` }); continue; }
+    const path = L.from && L.to ? seaPath(L.from, L.to) : null; if(!path) continue;
+    /* the stretch she's on now: how far along the voyage she is, against each lane's miles */
+    const f = Math.max(0, Math.min(1, (t - L.left) / Math.max(1, L.arrive - L.left))), laneOf = (a, b) => (repOf().lanes||[]).find(x=>(x.from===a && x.to===b) || (x.from===b && x.to===a));
+    const mi = path.slice(1).map((b, i)=>{ const x = laneOf(path[i], b); return x && +x.miles ? +x.miles : repMilesBetween(repNode(path[i]), repNode(b)); }), tot = mi.reduce((a, x)=>a + x, 0) || 1;
+    let at = f * tot, k = 0; while(k < mi.length - 1 && at > mi[k]){ at -= mi[k]; k++; }
+    const a = path[k], b = path[k + 1];
+    if((a===l.from && b===l.to) || (a===l.to && b===l.from))
+      out.push({ s, how:`${repPlaceName(a)} → ${repPlaceName(b)}${path.length > 2 ? `, on her way from ${repPlaceName(L.from)} to ${repPlaceName(L.to)}` : ""}, arriving day ${L.arrive} (${Math.round(f * 100)}% of the voyage done)` }); }
+  return out;
+}
 function laneCard(id){
   const l = (repOf().lanes||[]).find(x=>x.id===id), pop = $("#fleetPop"); if(!l || !pop) return;
+  const ships = laneShips(l);
   laneSel = id; delete pop.dataset.ship; pop.dataset.card = "lane:" + id;
   pop.innerHTML = `<p style="margin:0 0 4px"><b>${esc(l.name || "A sea lane")}</b>: ${esc(repPlaceName(l.from))} – ${esc(repPlaceName(l.to))} <small>(${Math.round(+l.miles || 0)} mi${l.auto ? ", worked out from the map" : ", yours"})</small></p>
     <div class="pcrow"><div class="field" style="flex:1.4"><label>Its name</label><input type="text" data-lanef="name" value="${esc(l.name||"")}" placeholder="The Spice Road"></div>
       <div class="field" style="flex:1"><label>Traffic</label><select data-lanef="traffic">${LANE_TRAFFIC.map(t=>`<option value="${t}" ${trafficOf(l)===t?"selected":""}>${t[0].toUpperCase() + t.slice(1)}</option>`).join("")}</select></div></div>
     <p class="empty-note" style="font-size:11px;margin:0 0 4px">Traffic: how often word crosses it (dense weekly … quiet every three months) and how much ships favour it.</p>
+    <p class="grouplab" style="margin:4px 0 2px">On it now <small>${ships.length ? `${ships.length} ship${ships.length===1?"":"s"}` : "no ships"}</small></p>
+    ${ships.map(x=>`<div class="sbl"><span class="libref" data-laneship="${x.s.id}">${esc(x.s.name)}</span> <small>${esc((FLEET_KINDS[x.s.kind]||FLEET_KINDS.merchant)[0].toLowerCase())}</small>: ${esc(x.how)}</div>`).join("")}
     <div class="pcrow"><button class="btn" data-laneact="del" title="Ships stop using it">Delete the lane</button><button class="btn" data-laneact="close">Close</button></div>`;
   pop.hidden = false; render();
 }
@@ -20042,6 +20062,7 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t
   else if(t.dataset.lanef==="traffic") l.traffic = t.value;
   l.auto = false;                                                        // yours now: working the lanes out again keeps it
   saveParty(); render(); laneCard(l.id); });
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-laneship]"); if(!b) return; laneSel = null; fleetCard(b.dataset.laneship); render(); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-laneact]"); if(!b) return; const pop = $("#fleetPop"), R = repOf(), l = (R.lanes||[]).find(x=>x.id===laneSel);
   if(b.dataset.laneact==="del" && l){ const rest = R.lanes.filter(x=>x!==l), cut = lanesApart(rest), was = lanesApart(R.lanes);
     const newly = cut.filter(p=>!was.includes(p)); if(newly.length && !confirm(`Without this lane ${newly.map(p=>p.name).join(", ")} ${newly.length===1 ? "is" : "are"} cut off from the rest: ships can't reach ${newly.length===1 ? "it" : "them"}. Delete it anyway?`)) return;
