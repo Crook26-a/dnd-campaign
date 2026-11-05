@@ -17917,7 +17917,18 @@ function haggleBox(n){
       <div class="field" style="flex:1"><label>How</label><select data-haggle="how">${["Persuasion","Deception","Intimidation"].map(s=>`<option ${haggle.how===s?"selected":""}>${s}</option>`).join("")}</select></div></div>
     <div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1.3"><label>DC <small>the keeper's mood</small></label><select data-haggle="dc">${[[10,"10, friendly"],[15,"15, neutral"],[20,"20, unfriendly"]].map(([v, l])=>`<option value="${v}" ${+haggle.dc===v?"selected":""}>${l}</option>`).join("")}</select></div>
       <div class="field" style="flex:.8"><label>Their total</label><input data-haggle="total" class="mono" type="number" value="${esc(haggle.total)}" placeholder="d20 + skill"></div>
-      <button class="btn" data-shopb="haggle" style="margin-bottom:11px">Settle it</button></div></div>`;
+      <button class="btn" data-shopb="haggleroll" style="margin-bottom:11px" title="d20 + their ${esc(haggle.how)}, with the keeper's feelings toward them">Roll</button><button class="btn" data-shopb="haggle" style="margin-bottom:11px">Settle it</button></div>
+    ${(()=>{ const k = n.shop && libNpcById(n.shop.keeper), p = R.find(q=>q.id===haggle.who), M = k && p ? moodOf(k, p.id, (shopFaction(n)||{}).f) : null;
+      return M && M.any ? `<p class="empty-note" style="font-size:11px;margin:0">${esc((k.name||"The keeper").split(" ")[0])} toward ${esc(p.name)}: ${esc(M.label.toLowerCase())} (${esc(M.why)})${M.check ? `: <b>${esc(M.check)}</b> on the haggle` : ""}.</p>` : ""; })()}
+    ${haggle.said ? `<p class="empty-note" style="font-size:11px;margin:0">${esc(haggle.said)}</p>` : ""}</div>`;
+}
+/* the haggle rolled: d20 (two for Advantage or Disadvantage) + their skill + the keeper's feelings' bonus */
+function haggleRoll(n){
+  const p = partyRoster().find(q=>q.id===haggle.who); if(!p){ flash("Pick who's haggling first."); return; }
+  const k = n.shop && libNpcById(n.shop.keeper), M = k ? moodOf(k, p.id, (shopFaction(n)||{}).f) : null, D = moodD20(M && M.any ? M : null), m = skillMod(p, haggle.how);
+  haggle.total = String(D.r + m + D.bonus);
+  haggle.said = `${p.name}: ${D.said || `d20 ${D.r}`}${m ? ` ${m < 0 ? "−" : "+"} ${Math.abs(m)}` : ""}${D.bonus ? ` ${D.bonus < 0 ? "−" : "+"} ${Math.abs(D.bonus)}` : ""} = ${haggle.total}${D.why ? ` (${D.why})` : ""}`;
+  flash(haggle.said);
 }
 function settleHaggle(n){
   const p = partyRoster().find(q=>q.id===haggle.who), tot = Math.round(+haggle.total); if(!p || !isFinite(tot) || haggle.total===""){ flash("Pick who's haggling and type their total."); return; }
@@ -17925,7 +17936,7 @@ function settleHaggle(n){
   const deal = d >= 10 ? -.25 : d >= 5 ? -.2 : d >= 0 ? -.1 : d > -5 ? 0 : rude ? .25 : .1;
   if(deal) n.shop.deal = deal; else delete n.shop.deal;
   const word = deal < 0 ? `talked down ${Math.round(-deal*100)}%` : deal > 0 ? `offended them: ${Math.round(deal*100)}% more` : "the price stands";
-  gameLog("note", `${p.name||"Someone"} haggled at ${placeLabel(n)}: ${haggle.how} ${tot} against DC ${haggle.dc}, ${word}`);
+  gameLog("note", `${p.name||"Someone"} haggled at ${placeLabel(n)}: ${haggle.how} ${tot}${haggle.said && haggle.said.endsWith(")") && haggle.total===String(tot) ? ` ${haggle.said.slice(haggle.said.lastIndexOf("("))}` : ""} against DC ${haggle.dc}, ${word}`);
   flash(`${p.name||"They"} ${deal < 0 ? "haggled them down" : deal > 0 ? "put them out" : "got nowhere"}: ${word}.`); haggle.total = "";
 }
 let shopFrom = "", shopRoll = { open:null, level:null, disp:"neutral", kind:"", species:"", align:"" };                                         // whose pack the shop is looking through, to buy from
@@ -17988,7 +17999,7 @@ const shopRedraw = () => { renderPane(true); if(typeof battleOf!=="undefined" &&
 document.addEventListener("change", e=>{
   const t = e.target; const n = shopNode(); if(!n) return;
   if(t.dataset.shop==="from"){ shopFrom = t.value; shopRedraw(); return; }
-  if(t.dataset.haggle){ haggle[t.dataset.haggle] = t.value; return; }
+  if(t.dataset.haggle){ haggle[t.dataset.haggle] = t.value; if(t.dataset.haggle==="who" && t.tagName==="SELECT"){ haggle.said = ""; shopRedraw(); } return; }     // who's dealing: the keeper's feelings toward them, in the prices
   if(t.dataset.shoproll){ shopRoll[t.dataset.shoproll] = t.dataset.shoproll==="level" ? clampLv(t.value) : t.value; return; }
   if(t.dataset.shop==="price" && n.shop){ n.shop.price = +t.value || 1; touch(); renderPane(true); }
   else if(t.dataset.shop==="deal" && n.shop){ if(+t.value) n.shop.deal = +t.value; else delete n.shop.deal; touch(); renderPane(true); }
@@ -18000,7 +18011,8 @@ document.addEventListener("click", e=>{
   const b = e.target.closest("[data-shopb]"); if(!b) return; const n = shopNode(); if(!n) return;
   const a = b.dataset.shopb;
   if(a==="till" && n.shop){ const T = rollTillFull(n.shop.tpl); n.shop.till = T.coins; n.shop.tillSaid = T.said; flash(`The till: ${T.said}.`); touch(); shopRedraw(); return; }
-  if(a==="haggle" && n.shop){ const i = document.querySelector('[data-haggle="total"]'); if(i) haggle.total = i.value; settleHaggle(n); touch(); shopRedraw(); return; }
+  if(a==="haggle" && n.shop){ const i = document.querySelector('[data-haggle="total"]'); if(i) haggle.total = i.value; settleHaggle(n); haggle.said = ""; touch(); shopRedraw(); return; }
+  if(a==="haggleroll" && n.shop){ haggleRoll(n); shopRedraw(); return; }
   if(a==="open"){ const s = b.parentElement.querySelector('[data-shop="tpl"]'), tid = s && s.value; if(!tid){ flash("Pick a kind of shop first."); return; }
     shopOpen(n, tid); saveParty(); touch(); render(); flash(`${placeLabel(n)} is open: ${(n.shop.items||[]).length} things for sale.`); }
   else if(a==="restock" && n.shop){ shopRestock(n); saveParty(); touch(); flash("New stock in."); }
@@ -19313,10 +19325,19 @@ function factionsHere(n){
 }
 /* the shop's faction (its keeper's, or the place's): the price change, or a warning that they won't serve the party */
 function shopFaction(n){ const k = n.shop && libNpcById(n.shop.keeper), f = (k && k.faction && factionById(k.faction)) || (n.faction && factionById(n.faction)); return f ? { f, E:factionEffects(f, k && k.faction===f.id ? k.align : "") } : null; }
-const shopFactionMult = n => { const F = shopFaction(n); return F ? 1 + F.E.price : 1; };
+/* the shop's mood toward whoever's dealing (the haggle's Who, else the party as a whole): its keeper's own feelings and
+   faction added (Joseph, 2026-11-05), or the shop's faction alone if it has no keeper */
+function shopMood(n){
+  const k = n.shop && libNpcById(n.shop.keeper), F = shopFaction(n), pc = (n.shop && haggle.who) || null;
+  if(k){ const M = moodOf(k, pc, F && F.f); return M && M.any ? M : null; }
+  if(!F) return null; const key = F.E.tier.key, T = STANDING_TERMS[key] || {};
+  return { step:MOOD_STEP[key], key, label:F.E.tier.label, check:T.check || "", price:T.price || 0, refuse:!!T.refuse, why:`${F.f.name}: ${F.E.tier.label.toLowerCase()}`, any:true };
+}
+const shopFactionMult = n => { const M = shopMood(n); return M ? 1 + M.price : 1; };
 function shopFactionLine(n){
-  const F = shopFaction(n); if(!F || (!F.E.price && !F.E.refuse)) return "";
-  return `<p class="empty-note" style="font-size:11px;margin:2px 0 6px;${F.E.refuse ? "color:var(--lead)" : ""}">${esc(F.f.name)} ${sgn(F.E.s)} (${esc(F.E.tier.label.toLowerCase())}): ${F.E.refuse ? "they won't serve the party." : `prices ${F.E.price > 0 ? "+" : "−"}${Math.round(Math.abs(F.E.price)*100)}% (in the prices below).`}</p>`;
+  const M = shopMood(n); if(!M || (!M.price && !M.refuse)) return "";
+  const who = haggle.who && partyRoster().find(c=>c.id===haggle.who);
+  return `<p class="empty-note" style="font-size:11px;margin:2px 0 6px;${M.refuse ? "color:var(--lead)" : ""}">${esc(M.label)} toward ${esc(who ? who.name : "the party")} (${esc(M.why)}): ${M.refuse ? "they won't serve them." : `prices ${M.price > 0 ? "+" : "−"}${Math.round(Math.abs(M.price)*100)}% (in the prices below).`}</p>`;
 }
 /* ══ REPUTATION TABLES (Joseph, 2026-11-04, after Luke Gearing's "Reputation Tables", July 2024): what people have
    heard, beside how much they like you (standing, which stays separate). Whenever the party does something people
@@ -20601,6 +20622,40 @@ function memImpression(p, pcId){
   return { s, n:L.length, tier:standingTier(s) };
 }
 const MEM_WORDS = { allies:"devoted to them", trusted:"trusts them", friendly:"likes them", neutral:"no strong feeling", unfriendly:"dislikes them", hostile:"hates them", sworn:"would see them ruined" };
+/* ── how someone feels about a character, all told (Joseph, 2026-11-05: memory and standing applied to rolls; "add the
+   two together"): their own impression from their memories and their faction's standing, each a step (allies +3,
+   trusted +2, friendly +1, unfriendly −1, hostile −2, sworn −3), added; the tier it lands on gives the effect:
+   Charisma checks and Insight with them (Advantage, +2, −2, Disadvantage), their shop's prices, and refusing to deal.
+   A faction can be given for someone without one (a shop's own) ── */
+const MOOD_STEP = { allies:3, trusted:2, friendly:1, neutral:0, unfriendly:-1, hostile:-2, sworn:-3 };
+const MOOD_BY_STEP = ["sworn","hostile","unfriendly","neutral","friendly","trusted","allies"];
+const MOOD_SKILLS = new Set(["Persuasion","Deception","Intimidation","Performance","Insight","cha"]);
+const moodTierLabel = key => (STANDING_TIERS.find(t=>t.key===key) || {}).label || key;
+const stepWord = n => n > 0 ? `+${n}` : n < 0 ? `−${-n}` : "0";
+function moodOf(p, pcId, faction){
+  if(!p) return null;
+  const I = memImpression(p, pcId), f = (p.faction && factionById(p.faction)) || faction || null, parts = []; let step = 0;
+  if(I.n){ const k = I.tier.key; step += MOOD_STEP[k]; parts.push(`${p.name||"They"} ${MEM_WORDS[k]} (${stepWord(MOOD_STEP[k])})`); }
+  if(f){ const k = standingTier(standingOf(f)).key; step += MOOD_STEP[k]; parts.push(`${f.name}: ${moodTierLabel(k).toLowerCase()} (${stepWord(MOOD_STEP[k])})`); }
+  step = Math.max(-3, Math.min(3, step)); const key = MOOD_BY_STEP[step + 3], T = STANDING_TERMS[key] || {};
+  return { step, key, label:moodTierLabel(key), check:T.check || "", price:T.price || 0, refuse:!!T.refuse, why:parts.join(", "), any:parts.length > 0 };
+}
+/* the check's effect as numbers: adv 1 (Advantage) or −1 (Disadvantage), and a bonus */
+const moodRollOf = M => !M ? { adv:0, bonus:0 } : M.check==="advantage" ? { adv:1, bonus:0 } : M.check==="disadvantage" ? { adv:-1, bonus:0 } : { adv:0, bonus:parseInt(String(M.check).replace("−", "-"), 10) || 0 };
+const moodShort = M => !M || !M.check ? "" : M.check==="advantage" ? "Adv." : M.check==="disadvantage" ? "Dis." : M.check;
+/* a d20 with their feelings: two dice for Advantage or Disadvantage, and the bonus; what it said */
+function moodD20(M){
+  const R = moodRollOf(M), a = rollD(20), b = R.adv ? rollD(20) : null, r = R.adv > 0 ? Math.max(a, b) : R.adv < 0 ? Math.min(a, b) : a;
+  return { r, bonus:R.bonus, said:R.adv ? `${R.adv > 0 ? "Advantage" : "Disadvantage"} ${a}/${b}` : "", why:M && M.check ? `${M.label}: ${M.why}` : "" };
+}
+/* the people at hand to be talking to: in the room on the battle map, at the place picked, where the party is */
+function peopleAtHand(){
+  const ids = new Set(), add = n => ((n && n.npcs) || []).forEach(id=>ids.add(id));
+  if(typeof battleOf!=="undefined" && battleOf) add((battleOf.doc.nodes||[]).find(x=>x.id===battleOf.nodeId));
+  if(typeof selNode==="function") add(selNode());
+  const here = repPlaceNow(); if(here) repPeopleAt(here).forEach(id=>ids.add(id));
+  return [...ids].map(libNpcById).filter(p=>p && p.name);
+}
 /* the place a person is: on the survey, or inside a place's plan */
 function personPlace(p){ for(const n of root.nodes || []) if((n.npcs||[]).includes(p.id)) return n.id; for(const k in plans) if(((plans[k]||{}).nodes||[]).some(n=>(n.npcs||[]).includes(p.id))) return k; return null; }
 /* a memory added; a big one becomes a story in their town, seen by them */
@@ -20637,7 +20692,7 @@ function memBlock(p, open){
     const ds = [...new Set(keys.flatMap(k=>Object.values((R.tables[k]||{ slots:{} }).slots).map(e=>e.d)))].map(id=>R.deeds.find(d=>d.id===id)).filter(Boolean);
     return ds.length ? `<p class="grouplab" style="margin:8px 0 2px">What they may have heard <small>their town's and faction's tables</small></p>${ds.slice(-6).map(d=>`<div class="sbl"><small>${esc(repDeedWords(d))}</small></div>`).join("")}` : ""; })();
   return `<details class="pcset" ${open ? "open" : ""} data-memfor="${p.id}"><summary>Remembers <small>${live.length} memor${live.length===1?"y":"ies"}${felt.length ? " · " + felt.map(x=>`${esc((x.c.name||"").split(" ")[0])} ${sgn(x.I.s)}`).join(", ") : ""} · only you see this</small></summary>
-    ${felt.length ? felt.map(x=>{ const T = STANDING_TERMS[x.I.tier.key] || {}; return `<div class="sbl"><b>${esc(x.c.name||"Someone")}</b> ${sgn(x.I.s)}: ${esc(MEM_WORDS[x.I.tier.key])}${T.check ? ` <small>· Charisma checks with them: ${esc(T.check)}</small>` : ""}${T.refuse ? " <small>· won't deal with them</small>" : ""}</div>`; }).join("") : `<p class="empty-note" style="margin:0 0 4px">No feelings about anyone in the party yet.</p>`}
+    ${felt.length ? felt.map(x=>{ const M = moodOf(p, x.c.id); return `<div class="sbl"><b>${esc(x.c.name||"Someone")}</b> ${sgn(x.I.s)}: ${esc(MEM_WORDS[x.I.tier.key])}${p.faction && M ? ` <small>· all told ${esc(M.label.toLowerCase())} (${esc(M.why)})</small>` : ""}${M && M.check ? ` <small>· Charisma checks and Insight with them: ${esc(M.check)}</small>` : ""}${M && M.refuse ? " <small>· won't deal with them</small>" : ""}</div>`; }).join("") : `<p class="empty-note" style="margin:0 0 4px">No feelings about anyone in the party yet.</p>`}
     <div class="pcrow" style="align-items:center;margin:6px 0"><small style="flex:1">Holds on to good things</small><select data-memhold="good" data-p="${p.id}">${MEM_HOLD.map(([k, l])=>`<option value="${k}" ${memHoldOf(p, "good")===k?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="pcrow" style="align-items:center;margin:0 0 6px"><small style="flex:1">Holds on to slights</small><select data-memhold="bad" data-p="${p.id}">${MEM_HOLD.map(([k, l])=>`<option value="${k}" ${memHoldOf(p, "bad")===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn small" data-mem="roll" data-p="${p.id}" title="Roll both">🎲</button></div>
     ${live.map(row).join("") || `<p class="empty-note" style="margin:0 0 4px">Nothing remembered yet.</p>`}
@@ -24870,6 +24925,9 @@ function wireTLog(){
    own action form ── */
 var ta = { who:"", what:"heal", how:"", on:"", amt:"", skill:"Perception", dc:"", tot:{}, item:"", to:"", quiet:false, rest:"short", spell:"", slot:null, note:"", other:"", otherLog:false };
 const TA_WHAT = [["heal","Heals someone"],["use","Uses an item"],["check","Makes a check"],["give","Gives an item"],["take","Takes an item"],["cast","Casts a spell"],["rest","Takes a rest"],["hide","Hides"]];
+/* a check's "With": how that person feels about this one of them (memories and faction, added), if it counts */
+const taMood = x => { if(!MOOD_SKILLS.has(ta.skill) || !ta.with || ta.moodOn===false || !x || !x.o || !x.o.id) return null;
+  const p = libNpcById(ta.with), M = p ? moodOf(p, x.o.id) : null; return M && M.any ? M : null; };
 const TA_SKILLS = ["Acrobatics","Animal Handling","Arcana","Athletics","Deception","History","Insight","Intimidation","Investigation","Medicine","Nature","Perception","Performance","Persuasion","Religion","Sleight of Hand","Stealth","Survival"];
 const SKILL_AB = { Athletics:"str", Acrobatics:"dex", "Sleight of Hand":"dex", Stealth:"dex", Arcana:"int", History:"int", Investigation:"int", Nature:"int", Religion:"int",
   "Animal Handling":"wis", Insight:"wis", Medicine:"wis", Perception:"wis", Survival:"wis", Deception:"cha", Intimidation:"cha", Performance:"cha", Persuasion:"cha" };
@@ -24947,7 +25005,10 @@ function renderActionBox(force){
     const who = party ? P.filter(x=>x.key.startsWith("pc:")) : [P.find(x=>x.key===ta.who)].filter(Boolean);
     body = `<div class="afr"><label>Check</label><select data-ta="skill"><optgroup label="Skills">${TA_SKILLS.map(s=>opt(s, s, ta.skill)).join("")}</optgroup><optgroup label="Abilities">${Object.entries(ABIL_NAME).map(([k,l])=>opt(k, l, ta.skill)).join("")}</optgroup></select></div>
       <div class="afr"><label>DC</label><input data-ta="dc" type="number" min="1" value="${esc(ta.dc)}" placeholder="—"></div>
-      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small></label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><label class="check tanat" title="A natural 20 on the die"><input type="checkbox" data-tanat="${x.key}" ${(ta.nat||{})[x.key]===20 ? "checked" : ""}> nat 20</label><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>`; }).join("")}</div>
+      ${MOOD_SKILLS.has(ta.skill) ? (()=>{ const ppl = peopleAtHand(), w = ppl.find(p=>p.id===ta.with);
+        return `<div class="afr"><label>With</label><select data-ta="with" title="Who they're talking to or reading: how that person feels about each of them (their memories and their faction's standing, added) changes the roll"><option value="">Nobody in particular</option>${ppl.map(p=>opt(p.id, p.name, ta.with||"")).join("")}</select></div>
+          ${w ? `<label class="check" style="margin:0 0 4px"><input type="checkbox" data-ta="moodOn" ${ta.moodOn===false ? "" : "checked"}> ${esc(w.name.split(" ")[0])}'s feelings count on the roll</label>` : ""}`; })() : ""}
+      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill), M = taMood(x); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small>${M && M.check ? ` <small class="mono" title="${esc(`${M.label}: ${M.why}`)}">${esc(moodShort(M))}</small>` : ""}</label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><label class="check tanat" title="A natural 20 on the die"><input type="checkbox" data-tanat="${x.key}" ${(ta.nat||{})[x.key]===20 ? "checked" : ""}> nat 20</label><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>`; }).join("")}</div>
       ${who.length>1 ? `<button class="btn wide" data-tar="checkall">Roll for everyone</button>` : ""}
       ${ta.skill===SEARCH_SKILL && checkSpot() ? `<label class="check" style="margin:4px 0 0" title="Each total is also that person's search of the place: hidden pieces, items and coin they can see"><input type="checkbox" data-ta="search" ${ta.search!==false?"checked":""}> Also search ${esc(placeLabel(checkSpot()))} with these totals</label>` : ""}`;
   } else if((ta.what==="give" || ta.what==="take") && o){
@@ -24991,7 +25052,7 @@ function wireActionBox(){
   el.addEventListener("change", e=>{ const t = e.target;
     if(t.dataset.tanat){ ta.nat = ta.nat || {}; if(t.checked) ta.nat[t.dataset.tanat] = 20; else delete ta.nat[t.dataset.tanat]; return; }      // a natural 20 rolled at the table
     if(!set(t)) return;
-    if(["who","what","to","how","spell","skill","slot"].includes(t.dataset.ta)){ if(t.dataset.ta==="who"||t.dataset.ta==="to"||t.dataset.ta==="what") ta.item = ""; if(t.dataset.ta==="how"||t.dataset.ta==="spell") ta.slot = null; renderActionBox(true); } });
+    if(["who","what","to","how","spell","skill","slot","with","moodOn"].includes(t.dataset.ta)){ if(t.dataset.ta==="who"||t.dataset.ta==="to"||t.dataset.ta==="what") ta.item = ""; if(t.dataset.ta==="how"||t.dataset.ta==="spell") ta.slot = null; renderActionBox(true); } });
   el.addEventListener("click", e=>{
     const b = e.target.closest("[data-tar],[data-tarest],[data-talog],[data-taother]"); if(!b) return;
     if(b.dataset.tarest){ ta.rest = b.dataset.tarest; return renderActionBox(true); }
@@ -25011,9 +25072,11 @@ function wireActionBox(){
         gameLog("item", line); flash(line + "."); saveParty(); }
       else { const keys = k==="checkall" ? taPeople().filter(x=>ta.who==="party" ? x.key.startsWith("pc:") : x.key===ta.who).map(x=>x.key) : [b.dataset.k];
         const said = [];
-        for(const key of keys){ const o = taObj(key); if(!o) continue; const r = d20(), m = skillMod(o, k==="hide" ? "Stealth" : ta.skill), F = fxRoll(o, "check", k==="hide" ? "Stealth" : ta.skill);     // Guidance's die, on its skill
-          const w = F.said ? `d20 ${r}${m ? ` ${m < 0 ? "−" : "+"} ${Math.abs(m)}` : ""}${F.said} = ${r + m + F.n}` : d20Words(r, m);
-          ta.tot[key] = String(r + m + F.n); (ta.nat = ta.nat || {})[key] = r;
+        for(const key of keys){ const o = taObj(key); if(!o) continue; const m = skillMod(o, k==="hide" ? "Stealth" : ta.skill), F = fxRoll(o, "check", k==="hide" ? "Stealth" : ta.skill);     // Guidance's die, on its skill
+          const M = k==="hide" ? null : taMood({ key, o }), D = M && M.check ? moodD20(M) : null, r = D ? D.r : d20();     // their feelings: two dice, or a bonus
+          const extra = F.n + (D ? D.bonus : 0), dSaid = D ? `${D.said || `d20 ${r}`}${m ? ` ${m < 0 ? "−" : "+"} ${Math.abs(m)}` : ""}${F.said || ""}${D.bonus ? ` ${D.bonus < 0 ? "−" : "+"} ${Math.abs(D.bonus)}` : ""} = ${r + m + extra} (${D.why})` : "";
+          const w = D ? dSaid : F.said ? `d20 ${r}${m ? ` ${m < 0 ? "−" : "+"} ${Math.abs(m)}` : ""}${F.said} = ${r + m + F.n}` : d20Words(r, m);
+          ta.tot[key] = String(r + m + extra); (ta.nat = ta.nat || {})[key] = r;
           (ta.d20 = ta.d20 || {})[key] = { v:ta.tot[key], said:w }; said.push(`${keys.length > 1 ? `${(o.name || "Someone").split(" ")[0]} ` : ""}${w}`); }
         if(said.length) flash(said.join(" · ")); }
       return renderActionBox(true);
@@ -25072,7 +25135,8 @@ function logTableAction(){
   } else if(ta.what==="check"){
     const who = (party ? P.filter(x=>x.key.startsWith("pc:")) : P.filter(x=>x.key===ta.who)).filter(x=>ta.tot[x.key]!==undefined && ta.tot[x.key]!=="");
     if(!who.length){ flash("Type or roll a total first."); return; }
-    const dc = +ta.dc || 0, what = ABIL_NAME[ta.skill] ? `${ABIL_NAME[ta.skill]} check` : `${ta.skill} check`;
+    const withP = MOOD_SKILLS.has(ta.skill) && ta.with ? libNpcById(ta.with) : null;
+    const dc = +ta.dc || 0, what = (ABIL_NAME[ta.skill] ? `${ABIL_NAME[ta.skill]} check` : `${ta.skill} check`) + (withP ? ` with ${withP.name}` : "");
     /* the d20 the app rolled, unless the total was changed by hand */
     const dW = x => { const R = (ta.d20 || {})[x.key]; return R && R.v===String(ta.tot[x.key]) ? ` (${R.said})` : ""; };
     const res = x => `${x.name.split(" ")[0]} ${ta.tot[x.key]}${dW(x)}${dc ? (+ta.tot[x.key] >= dc ? " ✓" : " ✗") : ""}`;
