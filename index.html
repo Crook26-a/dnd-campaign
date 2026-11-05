@@ -806,6 +806,8 @@
   .worldclock .wc-lab{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--lead)}
   .worldclock #timeNext,.worldclock #timeBar{margin-right:0;white-space:nowrap}
   .daybar{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-soft);margin-right:4px;white-space:nowrap}
+  .daybar button,.daybar select{margin-left:3px;background:var(--paper-lit);border:1px solid var(--rule);border-radius:2px;padding:1px 4px;font-family:var(--mono);font-size:10px;color:var(--ink-soft);cursor:pointer}
+  .daybar button.on{background:var(--ink-soft);color:var(--paper-lit)}
   .daybar input{width:42px;background:var(--paper-lit);border:1px solid var(--rule);border-radius:2px;padding:2px 3px;font-family:var(--mono);font-size:10px;text-align:right}
   .wxchip{font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--ink-soft);background:var(--paper-lit);border:1px solid var(--rule);border-radius:2px;padding:2px 6px;margin-right:4px;white-space:nowrap;cursor:pointer}
   .wxchip .wx-now{color:var(--ink)} .wxchip .wx-fey{color:#4f7a4a;font-weight:600}
@@ -3275,6 +3277,24 @@ function syncUpBtn(){
   const sb = document.getElementById("sailBtn"); if(sb) sb.hidden = !sailShipHere();
 }
 var fleetDrawnAt = null;               // the world time the ships were last drawn at
+var dayPlaying = null;                 // the play button's timer while the days go by
+function dayGo(){
+  const play = document.getElementById("dayPlay"), ms = +((document.getElementById("daySpeed")||{}).value) || 2000;
+  if(battleOf){ flash("Close the map first: the days don't go by during a scene."); return; }
+  if(play){ play.textContent = "❚❚"; play.classList.add("on"); play.title = "Pause"; }
+  dayPlaying = setInterval(()=>{
+    const pop = document.getElementById("fleetPop");
+    if(battleOf){ dayStop(); flash(`Paused on day ${campaignDay()}: a map is open.`); return; }
+    root.day = campaignDay() + 1; syncTimeBar(); saveParty();
+    setTimeout(()=>{ if(pop && !pop.hidden && pop.dataset.ship){ dayStop(); flash(`Paused on day ${campaignDay()}: a ship in sight.`); } }, 50);
+  }, ms);
+  flash(`Playing: a day every ${ms / 1000} s.`);
+}
+function dayStop(quiet){
+  if(dayPlaying) clearInterval(dayPlaying); dayPlaying = null;
+  const play = document.getElementById("dayPlay"); if(play){ play.textContent = "▶"; play.classList.remove("on"); play.title = "Play: the days go by one at a time"; }
+  if(!quiet){ saveParty(); flash(`Paused on day ${campaignDay()}.`); }
+}
 function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecharge==="function") try{ dawnRecharge(); }catch(err){}      /* a new day: charges come back */
   if(typeof rivalTick==="function" && rivalTick() && !planOf && !battleOf) setTimeout(render, 0);
   if(typeof threadCheck==="function") try{ threadCheck(); }catch(err){}                 /* a new day: loose threads that come due */
@@ -3288,9 +3308,13 @@ function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecha
   if(typeof gossipCatchUp==="function") try{ gossipCatchUp(); }catch(err){} }                /* the date, the day's weather where the party is, and the gossip since */
 function wireTimeBar(){
   document.getElementById("pscreenBtn").insertAdjacentHTML("beforebegin", `<button id="upBtn" hidden></button><button id="sailBtn" hidden title="Out to the sea chart with the ship, ready to sail">⛵ Set sail</button><span class="worldclock" title="The world's clock: the campaign day and the time of day. Every place follows it (unless a place is set to always bright, dim or dark).">
-    <span class="wc-lab">World</span><span class="daybar">Day <input id="dayNum" type="number" min="1" value="1" title="Days since the campaign began"></span><button id="wxChip" class="wxchip" type="button" title="The date and the weather where the party is"></button><select id="timeBar" title="The time of day, everywhere">${TIMES.map(([k,l])=>`<option value="${k}">${({ day:"☀", dim:"◐", night:"☾" })[k]} ${l}</option>`).join("")}</select><button id="timeNext" title="On to the next part of the day (night goes on to the next morning)">Next ▸</button></span>`);
+    <span class="wc-lab">World</span><span class="daybar">Day <input id="dayNum" type="number" min="1" value="1" title="Days since the campaign began"><button id="dayPlay" type="button" title="Play: the days go by one at a time (ships sail, word spreads, prices drift). Stops by itself when a ship comes into sight or a map opens">▶</button><select id="daySpeed" title="How fast the days go by while playing"><option value="1000">1 s a day</option><option value="2000" selected>2 s a day</option><option value="4000">4 s a day</option></select></span><button id="wxChip" class="wxchip" type="button" title="The date and the weather where the party is"></button><select id="timeBar" title="The time of day, everywhere">${TIMES.map(([k,l])=>`<option value="${k}">${({ day:"☀", dim:"◐", night:"☾" })[k]} ${l}</option>`).join("")}</select><button id="timeNext" title="On to the next part of the day (night goes on to the next morning)">Next ▸</button></span>`);
   const dn = document.getElementById("dayNum");
   dn.onchange = ()=>{ root.day = Math.max(1, Math.round(+dn.value||1)); dn.value = root.day; syncTimeBar(); saveParty(); flash(`Day ${root.day}.`); };
+  /* play (Joseph, 2026-11-05): the days go by one at a time; a ship coming into sight, a map opening or a fight stops it */
+  const play = document.getElementById("dayPlay"), speed = document.getElementById("daySpeed");
+  play.onclick = ()=>dayPlaying ? dayStop() : dayGo();
+  speed.onchange = ()=>{ if(dayPlaying){ dayStop(true); dayGo(); } };
   document.getElementById("timeNext").onclick = ()=>{
     const order = ["day","dim","night"], i = order.indexOf(timeOfDay());
     if(i===2){ root.day = campaignDay() + 1; root.timeOfDay = "day"; } else root.timeOfDay = order[i+1];

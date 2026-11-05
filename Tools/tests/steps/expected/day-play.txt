@@ -1,0 +1,3 @@
+1. ashore, play at a day a second: the days go by and the ships sail; pause stops them: party at Briarford | day 1 -> after 3.5 s playing 4 (button ❚❚, 8 ships at sea, the day box 4) -> paused, 3 s later day 4, button ▶ | page errors 0
+2. a map opened while playing stops it: day 4 -> 5 with a map open, still playing false, the button ▶ | page errors 0
+3. at sea on the party's ship: a ship coming into sight stops it: day 5 -> 9, still playing false | the box: Saint Brennan, a merchantman out of Tamsfort, bound for Kalatecha: in sight, 7 miles off.  | page errors 0
