@@ -25,6 +25,12 @@ step("an island with nothing on it yet: given the region, and a town placed on i
   placeNode("piratetown", cx, cy); const t = nodeById(sel.id); t.name = "Widow's Landing";
   return `the button enabled with nothing on the island: ${!btn.disabled} | the island's region: ${(root.regions.find(r => r.id === isle2.region) || {}).name} | ${t.name} placed on it, in ${(root.regions.find(r => r.id === t.region) || {}).name} | page errors ${__KIT.errors.length}`;
 });
+step("the region's name written faintly across its islands, as a group", async () => {
+  const S = root.shapes.filter(s => s.id === "s_pi" || s.id === "s_pi2"), P = S.flatMap(s => s.pts), x0 = Math.min(...P.map(p => p.x)), x1 = Math.max(...P.map(p => p.x)), y0 = Math.min(...P.map(p => p.y)), y1 = Math.max(...P.map(p => p.y));
+  const b = svg.getBoundingClientRect(); view.k = Math.min((b.width - 160) / (x1 - x0), (b.height - 160) / (y1 - y0)); view.tx = b.width / 2 - (x0 + x1) / 2 * view.k; view.ty = b.height / 2 - (y0 + y1) / 2 * view.k; sel = null; applyTransform(); render(); await wait(30);
+  const t = [...document.querySelectorAll("svg text.islelab")].map(e => `"${e.textContent}" at ${Math.round(+e.getAttribute("x"))},${Math.round(+e.getAttribute("y"))} size ${Math.round(+e.getAttribute("font-size") * view.k)}px on screen`);
+  return `the islands span ${Math.round(x0)}–${Math.round(x1)}, ${Math.round(y0)}–${Math.round(y1)} | written: ${t.join("; ") || "nothing"} | page errors ${__KIT.errors.length}`;
+});
 step("the fleet: the pirate based at the pirate port, honest ships keep away; the Kind box turns it back to a plain city", async () => {
   seaLanesFromMap(); fleetRoll(); const pir = root.fleet.find(s => s.kind === "pirate");
   const pc = root.nodes.find(n => n.name === "Port Gallows"); let honest = 0;

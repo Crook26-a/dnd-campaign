@@ -433,6 +433,7 @@
   .pz-tv{width:min(1100px,90vw)} .pz-tv p{font-family:var(--serif);font-size:min(3.4vh,30px);line-height:1.45;color:#3a2e1e;margin:1.4vh 0} .pz-tvgoal{border-top:1px solid #6d5c43;margin-top:2vh;padding-top:1vh}
   .thrform{border:1px solid var(--rule-soft);border-radius:4px;padding:6px 8px;margin:0 0 6px;background:var(--paper)}
   .sealab{font-family:var(--serif);font-style:italic;letter-spacing:.32em;fill:#4f6f76;fill-opacity:.8;paint-order:stroke;stroke:#cfdcd9;stroke-width:.6px;stroke-opacity:.6}
+  .islelab{font-family:var(--serif);font-style:italic;letter-spacing:.32em;fill:#3a2e1e;fill-opacity:.32;paint-order:stroke;stroke:#efe4c6;stroke-width:.8px;stroke-opacity:.5}
   .shoprow{display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px dotted var(--rule-soft);font-size:12px} .shoprow .sr-n{flex:1;min-width:0} .shoprow .sr-a{display:flex;gap:4px;flex:0 0 auto} .shoprow select{max-width:118px}
   #mapfurn .rosebox{position:absolute;right:62px;bottom:14px;opacity:.92} #mapfurn .rosebox[hidden]{display:none}
   .pv-weather{position:fixed;left:2vw;top:2vh;z-index:3;max-width:min(36vw,420px);background:rgba(239,228,198,.92);border:2px solid #3a2e1e;box-shadow:0 0 0 4px rgba(239,228,198,.92),0 0 0 6px #6d5c43;padding:1.2vh 1.4vw;font-family:var(--serif);color:#3a2e1e;pointer-events:none}
@@ -5884,6 +5885,12 @@ function render(){
     }
     s = s.slice(0, s0) + `<g data-pr="${r.id}" data-pa="${r.from}" data-pb="${r.to}">` + s.slice(s0) + `</g>`;
   }
+  /* on the survey, a chain of islands given one region (Joseph, 2026-11-05: the Islands of Lost Hope) has the region's
+     name written faintly across them as a group, sized to their spread, under the markers */
+  if(!planOf) for(const rg of doc.regions||[]){ const isl = (doc.shapes||[]).filter(sh=>sh.kind==="island" && sh.region===rg.id && (sh.pts||[]).length > 2); if(!isl.length || !rg.name) continue;
+    const P = isl.flatMap(sh=>sh.pts), x0 = Math.min(...P.map(p=>p.x)), x1 = Math.max(...P.map(p=>p.x)), y0 = Math.min(...P.map(p=>p.y)), y1 = Math.max(...P.map(p=>p.y));
+    const nm = String(rg.name).toUpperCase(), fs = Math.max(9*inv, Math.min(30*inv, (x1 - x0) * 1.1 / (nm.length * 1.05)));
+    s += `<text class="islelab" x="${k1((x0 + x1)/2)}" y="${k1((y0 + y1)/2)}" dy=".35em" font-size="${k1(fs)}" text-anchor="middle" pointer-events="none"${isl.every(sh=>sh.hidden) ? ` opacity=".55"` : ""}>${esc(nm)}</text>`; }
   gRoads.innerHTML = s;
 
   /* markers */
