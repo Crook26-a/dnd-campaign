@@ -7,7 +7,7 @@ const fdRel = () => facRelPairs().map(p => `${p.ids.map(id => factionById(id).na
 step("a notable deed hurting one faction, from the form: its friends and enemies take sides", async () => {
   loadJSONNow(JSON.stringify(FIX.kal)); await wait(300); setDmMode(true); await wait(60); delete root.world;
   fdMk("fd_a", "The Scarlet Fleet"); fdMk("fd_b", "The Black Ledger"); fdMk("fd_c", "The Keepers"); fdMk("fd_d", "The Wreckers");
-  facRelSet("fd_a", "fd_b", -3, "set"); facRelSet("fd_a", "fd_c", -4, "set"); facRelSet("fd_b", "fd_c", 2, "set"); facRelSet("fd_a", "fd_d", 3, "set");
+  facRelSet("fd_a", "fd_b", -30, "set"); facRelSet("fd_a", "fd_c", -40, "set"); facRelSet("fd_b", "fd_c", 20, "set"); facRelSet("fd_a", "fd_d", 30, "set");     // −100 to +100 now
   const box = document.createElement("div"); box.id = "fdbox"; document.body.appendChild(box); box.innerHTML = repBlock(); await wait(20);
   const has = ["rep-against", "rep-helped", "rep-blame", "rep-blameroll"].map(id => `${id} ${!!document.getElementById(id)}`).join(", ");
   document.getElementById("rep-text").value = "Burned the Scarlet Fleet's powder store"; document.getElementById("rep-fame").value = "infamy"; document.getElementById("rep-size").value = "notable";

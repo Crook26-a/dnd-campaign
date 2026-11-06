@@ -7,9 +7,9 @@ step("a feud recorded by hand in the Background tab; the buttons; the faction's 
   frMk("lfa_t1", "The Scarlet Fleet"); frMk("lfa_t2", "The Black Ledger"); frMk("lfa_t3", "The Keepers of the Articles");
   facRelOpen(); await wait(30); const pane0 = document.getElementById("pane-background"), q = s => pane0.querySelector(s);
   const sec = !!q('[data-invfor="bg:facrel"]');
-  q("#fr-a").value = "lfa_t1"; q("#fr-b").value = "lfa_t2"; q("#fr-why").value = "The Fleet hanged a Ledger collector at Gallows Quay"; q("#fr-d").value = "-3"; q('[data-frel="add"]').click(); await wait(20);
-  q("#fr-a").value = "lfa_t1"; q("#fr-b").value = "lfa_t3"; q("#fr-why").value = ""; q("#fr-d").value = "-2"; q('[data-frel="add"]').click(); await wait(20);
-  q(`[data-frel="-1"][data-k="${facRelKey("lfa_t1", "lfa_t3")}"]`).click(); await wait(20);
+  q("#fr-a").value = "lfa_t1"; q("#fr-b").value = "lfa_t2"; q("#fr-why").value = "The Fleet hanged a Ledger collector at Gallows Quay"; q("#fr-d").value = "-15"; q('[data-frel="add"]').click(); await wait(20);
+  q("#fr-a").value = "lfa_t1"; q("#fr-b").value = "lfa_t3"; q("#fr-why").value = ""; q("#fr-d").value = "-10"; q('[data-frel="add"]').click(); await wait(20);
+  q(`[data-frel="-5"][data-k="${facRelKey("lfa_t1", "lfa_t3")}"]`).click(); await wait(20);
   const rows = [...pane0.querySelectorAll('[data-invfor="bg:facrel"] .facfx')].map(r => r.innerText.replace(/\s+/g, " ").trim());
   const logs = bgLogList().filter(e => e.kind === "factions").map(e => e.text);
   const kal = root.nodes.find(n => n.name === "Kalatecha"); kal.faction = "lfa_t1"; const card = factionsHere(kal).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
