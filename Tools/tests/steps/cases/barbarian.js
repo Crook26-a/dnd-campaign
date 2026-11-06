@@ -32,6 +32,15 @@ step("Rage: a Bonus Action that spends a use, ends Concentration; Resistance, +2
   const card = barbCardHtml(K.p).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), wren = barbCardHtml(bbWho("Wren").p);
   return `${said} | uses ${r.max - r.used}/${r.max}, bonus ${bonusUsed(c, K.id)}, conc ${pcState(K.p).conc ? "still" : "gone"} | slashing: ${dmgTakes(K, "slashing")}, fire: "${dmgTakes(K, "fire")}" | greataxe ${axeDice} | shortbow chips [${bowKeys}] | Str save: ${JSON.stringify(saveModeT(c, K, "str"))} | card: ${card} | Wren's card: "${wren}"`;
 });
+step("Reckless Attack: the tick on Korg's first Greataxe attack gives Advantage; the Fanatic gets Advantage on him; it lapses on his next turn; Wren has no tick", async () => {
+  const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), W = bbWho("Wren"); c.round++; await bbTurn(K); bbAxe(K, F); renderBattlePanel(); await wait(20);
+  const tick = !!document.querySelector("#ac-reck"); document.querySelector("#ac-reck").click(); await wait(20);
+  document.querySelector('[data-acroll="hit"]').click(); await wait(20); const said = (act.toHit || {}).said || ""; act.dmg = "9"; renderBattlePanel(); await wait(20); bbAsk([]); $("#ac-go").click(); await wait(30);
+  bbAxe(K, F); renderBattlePanel(); await wait(20); const second = `tick again ${!!document.querySelector("#ac-reck")}, note ${/Reckless this turn/.test(document.querySelector(".actbox").textContent)}`;
+  const vs = rollAdvOf(c, F, K, actInfo(c, F)).why; await bbTurn(W); act.what = "pca:0"; act.targets = [F.id]; renderBattlePanel(); await wait(20); const wren = !!document.querySelector("#ac-reck");
+  c.round++; await bbTurn(K); const lapsed = reckOn(c, K);
+  return `tick ${tick} | ${said.replace(/^To hit: /, "").slice(0, 120)} | ${second} | Fanatic on Korg: ${vs} | Wren's tick ${wren} | next turn reckless ${lapsed}`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
   c.round++; await bbTurn(K); turnEnds(c); const ended = `${pcState(K.p).rage ? "still raging" : "ended"}: ${bbLast()}`;

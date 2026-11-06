@@ -11580,6 +11580,21 @@ function saveModeT(c, t, k){
   const stagger = !!(c && (c.effects || []).some(e => e.who===t.id && e.stagger)); if(stagger) D.push("Staggering Blow");
   return { adv:A.length > 0, dis:D.length > 0, why:[...A, ...D].join(", "), stagger };
 }
+/* Reckless Attack (level 2): decided on their first attack roll of their turn; Advantage on their Strength attack rolls,
+   and attack rolls against them have Advantage, until the start of their next turn. p.reck = { at: the turn }; it lapses
+   when their next turn comes round */
+function reckOn(c, t){
+  const p = t && t.kind!=="foe" && t.p; if(!p || !p.reck) return false;
+  if(c && c.turn===t.id && p.reck.at!==turnStamp(c)){ delete p.reck; return false; }
+  return true;
+}
+const reckWanted = (c, t) => reckOn(c, t) || !!(act.reck && act.actor===t.id && c && c.turn===t.id);
+function reckRowHtml(c, t, info){
+  if(!t || t.kind!=="pc" || !t.p || barbLevel(t.p) < 2 || c.turn!==t.id || !strAtkT(t, info)) return "";
+  if(reckOn(c, t)) return `<p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Reckless this turn: Advantage on their Strength attack rolls; attack rolls against them have Advantage until their next turn.</p>`;
+  if(((c.attacked || {})[t.id]) === turnStamp(c)) return "";     // only on the first attack roll of the turn
+  return `<label class="check" style="margin:-2px 0 6px" title="Advantage on Strength attack rolls until the start of their next turn, but attack rolls against them have Advantage"><input type="checkbox" id="ac-reck" ${act.reck ? "checked" : ""}> Reckless Attack</label>`;
+}
 function dangerSenseT(t){ return !!(t && t.kind!=="foe" && t.p && barbLevel(t.p) >= 2 && !condsOfT(t).some(k => INCAP.includes(k))); }
 function staggerUsed(c, t){ if(c && c.effects) c.effects = c.effects.filter(e => !(e.who===t.id && e.stagger)); }
 /* a save's d20 with those: the player's die (asked), or two dice when there's Advantage or Disadvantage */
@@ -14738,6 +14753,8 @@ function rollAdvOf(c, t, tg, info){
   for(const k of ["Paralyzed","Stunned","Unconscious","Petrified","Restrained","Blinded"]) if(them.includes(k)) A.push(`${tg.label} is ${k}`);
   if(them.includes("Prone")) (near ? A : D).push(`${tg.label} is Prone${near ? "" : ", more than 5 ft off"}`);
   if(fxVsAdv(hOfT(tg))) A.push("an effect on them");
+  if(reckWanted(c, t) && strAtkT(t, info) && !act.brutal) A.push(`${t.label} attacks recklessly`);     // Reckless Attack (Brutal Strike gives it up)
+  if(reckOn(c, tg)) A.push(`${tg.label} is attacking recklessly`);
   return { v:A.length && D.length ? "" : A.length ? "adv" : D.length ? "dis" : "", why:A.length && D.length ? `Advantage (${A.join(", ")}) and Disadvantage (${D.join(", ")}) cancel` : [...A, ...D].join(", "),
     crit:near && (them.includes("Paralyzed") || them.includes("Unconscious")) };
 }
@@ -15441,6 +15458,7 @@ function toHitRow(c, t, info, all){
       <select id="ac-adv" style="flex:1;min-width:0"><option value="">Straight roll</option><option value="adv" ${act.adv==="adv"?"selected":""}>Advantage</option><option value="dis" ${act.adv==="dis"?"selected":""}>Disadvantage</option></select>
       <input id="ac-d20" class="mono" type="number" min="1" max="20" value="${esc(act.d20||"")}" placeholder="d20" style="width:52px" title="The d20 rolled at the table (empty: the app rolls)">
       <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
+    ${reckRowHtml(c, t, info)}
     ${(() => { const me = luckLeft(t), vs = tg && tg.side!==t.side ? luckLeft(tg) : 0; if(!me && !vs) return "";
       return `<div class="pcrow" style="align-items:center;margin:-2px 0 6px;font-size:12px">${me ? `<label title="Lucky: Advantage on this attack roll (the 2024 rule; 3 points a long rest)"><input type="checkbox" id="ac-luckme" ${act.luckMe ? "checked" : ""}> ${esc(t.label)} spends a Luck point: Advantage (${me} left)</label>` : ""}
         ${vs ? `<label title="Lucky: an attack roll against them has Disadvantage"><input type="checkbox" id="ac-luckvs" ${act.luckVs ? "checked" : ""}> ${esc(tg.label)} spends a Luck point: Disadvantage on it (${vs} left)</label>` : ""}</div>`; })()}
@@ -16384,6 +16402,8 @@ function logAction(n, c){
   if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
   c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell && !act.miFree,
     ...(info.origin==="rush" || info.origin==="rage" ? { moved:movedBefore } : {}), ...(info.origin==="large" ? { big:{ id:actor.id, v:bigBefore } } : {}), ...(info.origin==="jaunt" ? { jaunt:true } : {}) }); gripSweep(c);
+  /* their first attack roll this turn (Reckless Attack is decided on it), and Reckless Attack itself */
+  if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) }; }
   /* a Rage kept up this turn: an attack roll against an enemy, a save forced on one, or a Bonus Action */
   if(ragingT(actor) && c.turn===actor.id && (isBonus || ((isAttackAct(info) || (act.saves && Object.keys(act.saves).length)) && targets.some(o => o.side!==actor.side)))) actor.p.rage.ext = turnStamp(c);
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
@@ -17067,6 +17087,7 @@ function renderBattlePanelNow(){
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
   const lv = $("#ac-lvl"); if(lv) lv.onchange = ()=>{ act.lvl = +lv.value; redraw(); };
+  { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; redraw(); }; }     // Reckless Attack
   { const mi = $("#ac-mi"); if(mi) mi.onchange = ()=>{ act.miFree = mi.checked; const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(act.miFree && info && info.spell) act.lvl = info.spell.lv; redraw(); }; }     // Magic Initiate: cast at its own level
   el.querySelectorAll("[data-actt]").forEach(b=>b.onclick = ()=>{ keep(); const id = b.dataset.actt; act.targets = act.targets.includes(id) ? act.targets.filter(x=>x!==id) : [...act.targets, id];
     /* a roll to hit was against one target's AC: another target, roll again (2026-10-31: a Specter's roll against Bennus was logged on the Specter itself) */
