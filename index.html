@@ -20260,6 +20260,9 @@ function shipFight(A, B, day, near){
   const sunk = [...A, ...B].filter(s=>!s.captain && !(s.crew||[]).length);
   return { aWins, odds, pa:Math.round(pa), pb:Math.round(pb), deadA, deadB, sunk };
 }
+/* what a fight costs between the factions (Joseph, 2026-11-06, halved: "they went to hunting each other way too fast"):
+   −3, and −½ for every one of the dead */
+const FIGHT_COST = dead => Math.round(3 + dead / 2);
 const nearPortName = (s, day) => { const P = fleetPos(s, day) || repNode(s.home) || { x:0, y:0 }; return repPlaceName((repPorts().slice().sort((p, q)=>Math.hypot(p.x - P.x, p.y - P.y) - Math.hypot(q.x - P.x, q.y - P.y))[0] || {}).id); };
 const takeHold = (to, from) => { let n = 0; for(const [g, c] of Object.entries(from.cargo||{})){ to.cargo = to.cargo || {}; const h = to.cargo[g] || { n:0, paid:0, from:"plunder" }; h.n += c.n; to.cargo[g] = h; n += c.n; } from.cargo = {}; return n; };
 /* two ships of feuding factions fight, at the odds of their strength; −5 between the factions and −1 for every one
@@ -20271,7 +20274,7 @@ function facClash(s1, s2, day, why){
   e.clashes = [...(e.clashes||[]), { day, dead:{ [A.id]:dW, [B.id]:dL } }].slice(-20);
   const sunk = r.sunk.includes(lose);
   bgLog("world", `${win.name} (${A.name}) beat ${lose.name} (${facMid(B)}) near ${near}${why ? `, ${why}` : ""}, at odds of ${odds}%: ${total} dead (${dL} of hers, ${dW} of theirs)${loot ? `, ${loot} loads taken` : ""}${sunk ? `; ${lose.name} lost with all hands` : ""}`, day);
-  facRelSet(A.id, B.id, facRelOf(A.id, B.id) - 5 - total, `A fight at sea: ${win.name} beat ${lose.name}, ${total} dead`, day);
+  facRelSet(A.id, B.id, facRelOf(A.id, B.id) - FIGHT_COST(total), `A fight at sea: ${win.name} beat ${lose.name}, ${total} dead`, day);
   const pay = /^Lawful/.test(A.align||"") ? 50 : /^Chaotic/.test(A.align||"") ? 10 : 25;
   if(total && rollD(100) <= pay) facRelSet(A.id, B.id, facRelOf(A.id, B.id) + 10, `${A.name} paid blood money for ${facMid(B)}'s dead`, day);
   for(const s of r.sunk) fleetGone(s, day, true);
@@ -20295,7 +20298,7 @@ function fleetAttack(p, v, day){
     if(taken) fleetGone(v, day); }
   else said = `${v.name}${es ? ` and her escort, ${es.name},` : ""} beat off ${who} on the way to ${near}, at odds of ${100 - odd}%: ${dP + dD} dead (${dP} of the pirates', ${dD} of theirs)${r.sunk.includes(p) ? `; ${p.name} lost with all hands` : ""}`;
   bgLog("world", said, day);
-  for(const s of D) if(s.faction && p.faction && s.faction!==p.faction && facRelAll()[facRelKey(s.faction, p.faction)]){ facRelSet(p.faction, s.faction, facRelOf(p.faction, s.faction) - 5 - dP - dD, `${p.name} went for ${v.name}: ${dP + dD} dead`, day); break; }
+  for(const s of D) if(s.faction && p.faction && s.faction!==p.faction && facRelAll()[facRelKey(s.faction, p.faction)]){ facRelSet(p.faction, s.faction, facRelOf(p.faction, s.faction) - FIGHT_COST(dP + dD), `${p.name} went for ${v.name}: ${dP + dD} dead`, day); break; }
   for(const s of r.sunk) if(fleetOf().includes(s)) fleetGone(s, day, true);
   return r.aWins ? "won" : "lost";
 }
@@ -21116,7 +21119,11 @@ function fleetAdd(o){
   const P = repPorts(); if(!P.length){ flash("No ports on the water yet."); return null; }
   const kinds = Object.keys(FLEET_KINDS), kind = kinds.includes(o.kind) ? o.kind : pickOne(kinds.filter(k=>k!=="pirate"));
   const firstOf = (...L) => L.find(x=>x.length) || P;     // the first of these that has any ports in it
-  const home = repNode(o.home) && repIsCoastal(repNode(o.home)) ? repNode(o.home) : pickOne(kind==="pirate" ? firstOf(P.filter(p=>p.kind==="hideout"), P.filter(p=>p.pirate), P.filter(p=>fleetReef(p.id)))
+  /* asked for a home that isn't a port (inland, say): the nearest port of her own faction, else the nearest port to it,
+     never one picked at random (Joseph, 2026-11-06: Tripolitania's ships ended up in Lost Hope's towns) */
+  const want = repNode(o.home), mineP = o.faction ? P.filter(p=>p.faction===o.faction) : [];
+  const fallback = want && !repIsCoastal(want) ? (mineP.length ? mineP : P).slice().sort((p, q)=>Math.hypot(p.x - want.x, p.y - want.y) - Math.hypot(q.x - want.x, q.y - want.y))[0] : null;
+  const home = want && repIsCoastal(want) ? want : fallback ? fallback : mineP.length && kind==="pirate" ? pickOne(mineP) : pickOne(kind==="pirate" ? firstOf(P.filter(p=>p.kind==="hideout"), P.filter(p=>p.pirate), P.filter(p=>fleetReef(p.id)))
     : kind==="smuggler" ? firstOf(P.filter(p=>p.kind==="smuggle"), P) : firstOf(P.filter(p=>!(FLEET_HONEST.has(kind) && (fleetReef(p.id) || shadyPort(p))))));
   const mode = kind==="pirate" ? "pirate" : o.mode==="route" || o.mode==="wander" ? o.mode : (["navy","packet"].includes(kind) || Math.random() < .4 ? "route" : "wander");
   const used = new Set(fleetOf().map(s=>s.name)), s = { id:uid("sh"), name:(o.name||"").trim() || fleetName(used), kind, mode, home:home.id, at:home.id, stay:campaignDay() + 1, carry:[], ...(FLEET_SIZES[o.size] ? { size:o.size } : {}) };
@@ -21521,7 +21528,7 @@ function facRelBlock(){
   const opts = sel => F.map(f=>`<option value="${f.id}" ${f.id===sel?"selected":""}>${esc(f.name || "A faction")}</option>`).join("");
   const bad = P.filter(p=>facState(p.e.s)).length, ctr = watersCentre(), wf = F.filter(f=>(f.waters||[]).length);
   return `<details class="partysec" data-invfor="bg:facrel" ${openInv.has("bg:facrel") ? "open" : ""}><summary class="eyebrow">Between the factions <small>${P.length} pair${P.length===1?"":"s"} with dealings${bad ? ` · ${bad} fighting` : ""} · only you see this</small></summary>
-    <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">How factions stand with each other, −100 to +100. At −60 they hunt each other, at −80 it's open war, at −95 a war of extermination; nobody gains ground. A fight costs −5 and −1 for each of the dead. Tempers cool by exhaustion, a parley, blood money, or a common enemy, never past a pair's ceiling. ${W.facOff ? "Incidents are off: only what you record and what happens at sea change them." : `Each day there's a ${FAC_INCIDENT_PCT}% chance of an incident between a pair (no more than one a week), the worse feuds more often.`}</p>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">How factions stand with each other, −100 to +100. At −60 they hunt each other, at −80 it's open war, at −95 a war of extermination; nobody gains ground. A fight costs −3 and −½ for each of the dead. Tempers cool by exhaustion, a parley, blood money, or a common enemy, never past a pair's ceiling. ${W.facOff ? "Incidents are off: only what you record and what happens at sea change them." : `Each day there's a ${FAC_INCIDENT_PCT}% chance of an incident between a pair (no more than one a week), the worse feuds more often.`}</p>
     <div class="pcrow" style="align-items:center;margin:0 0 6px"><label class="mini" style="margin:0;white-space:nowrap">Waters measured from</label><select id="fr-centre" style="flex:1;min-width:0">${repPorts().map(n=>`<option value="${n.id}" ${ctr && ctr.id===n.id ? "selected" : ""}>${esc(n.name)}</option>`).join("")}</select></div>
     ${wf.length ? `<p class="empty-note" style="font-size:11px;margin:0 0 6px">Waters (north, south, east and west of ${esc(ctr ? ctr.name : "the centre")}): ${wf.map(f=>`${esc(f.name)} ${f.waters.join(", ")}`).join(" · ")}. A faction's pirates keep to their own; 5% of voyages one strays some 50 miles into another's, and if one of theirs is within 10 miles, a 70% chance they fight. Set a faction's waters on its Library page.</p>` : `<p class="empty-note" style="font-size:11px;margin:0 0 6px">No faction has waters of its own yet: set them on a faction's Library page.</p>`}
     ${P.map(p=>{ const [a, b] = p.ids, T = facTier(p.e.s), st = facStateLabel(p.e.s), last = (p.e.log||[]).slice(-1)[0], cap = facRelCap(p.e);

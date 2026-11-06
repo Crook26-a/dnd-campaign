@@ -25,7 +25,7 @@ step("a stray met within 10 miles: 70% a fight; a fight: dead marked in the Libr
     if (!root.fleet.includes(isle) || !root.fleet.includes(trip)) break; }
   const fightLines = bgLogList().slice(n0).filter(e => / beat /.test(e.text)), last = fightLines.slice(-1)[0], rel = facRelAll()["fw_i|fw_t"];
   const dead = lib().npcs.filter(p => p.dead).slice(0, 2).map(p => `${p.name}: ${p.where}`);
-  return `of ${fights + lets} meetings: ${fights} fights, ${lets} let go | e.g. "${last && last.text}" | its change: ${(rel.log.slice(-2)).map(x => `${sgn(x.from)} → ${sgn(x.to)}: ${x.why}`).join(" ; ")} | the dead: ${dead.join(" / ")} | page errors ${__KIT.errors.length}`;
+  return `a fight costs: no dead ${FIGHT_COST(0)}, 4 dead ${FIGHT_COST(4)}, 10 dead ${FIGHT_COST(10)} | of ${fights + lets} meetings: ${fights} fights, ${lets} let go | e.g. "${last && last.text}" | its change: ${(rel.log.slice(-2)).map(x => `${sgn(x.from)} → ${sgn(x.to)}: ${x.why}`).join(" ; ")} | the dead: ${dead.join(" / ")} | page errors ${__KIT.errors.length}`;
 });
 step("ship against ship at the odds of their strength: a pirate and merchants; a rich passenger ship with guards and escort", async () => {
   const d = campaignDay(), mkPir = () => { const p = fleetAdd({ kind: "pirate" }); delete p.leg; p.at = null; return p; };
