@@ -9573,7 +9573,7 @@ function cbIntoPc(pc, x){
   for(const k of ["name","player","species","cls","subcls","bg","align","ac","hpMax","speed","init","pp","dc","satk","saves","skills","senses","langs","looks","persona"]) if(x[k]!=null && x[k]!=="") pc[k] = x[k];
   for(const k of ["str","dex","con","int","wis","cha","hp","temp"]) if(x[k]!=null) pc[k] = x[k];
   pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
-  if(x.feats) pc.feats = x.feats; if(x.giant) pc.giant = x.giant;     // their features by name (Alert, Savage Attacker…), and a Goliath's giant (2026-11-06)
+  if(x.feats) pc.feats = x.feats; if(x.giant) pc.giant = x.giant; if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds     // their features by name (Alert, Savage Attacker…), and a Goliath's giant (2026-11-06)
   if((+pc.xp || 0) < XP_LEVELS[pc.level]) pc.xp = XP_LEVELS[pc.level];     // the Character Book keeps no XP: a level it raised brings the XP up to that level's start (Joseph, 2026-11-03: "I updated Gnick, but it didn't update the xp")
   if(x.purse) pc.purse = { ...x.purse };
   if(x.death) pc.death = { s:+x.death.s||0, f:+x.death.f||0 };
@@ -9657,7 +9657,7 @@ function pcToCb(c){
     hpMax:numOr(c.hpMax,1), hp:numOr(c.hp, numOr(c.hpMax,1)), temp:numOr(c.temp,0), hd:{ die, max:hdRes ? +hdRes.max : clampLv(c.level), used:hdRes ? +hdRes.used||0 : 0 },
     death:{ ok:+((c.death||{}).s)||0, fail:+((c.death||{}).f)||0 }, conds:(c.conds||[]).slice(), exh:0, conc:null, effects:[],
     res:(c.res||[]).filter(r=>r && r.name && r!==hdRes).map(r=>({ id:r.id||uid("rs_"), name:r.name, max:+r.max||0, used:+r.used||0, rest:["short","long","one"].includes(r.rest) ? r.rest : "long" })),
-    slots, pact:c.cls==="Warlock", giant:c.giant || "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
+    slots, pact:c.cls==="Warlock", giant:c.giant || "", mastery:(c.mastery || []).slice(), attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
     purse:{ cp:0, sp:0, ep:0, gp:0, pp:0, ...(c.purse||{}) }, debtCp:0, marked:false, log:[], sessions:[], people:[],
     story:{ profs:[c.langs ? `Languages: ${c.langs}` : ""].filter(Boolean).join("\n"), traits:line("Trait") || (/^\w+:/m.test(persona) ? "" : persona), ideals:line("Ideal"), bonds:line("Bond"), flaws:line("Flaw"), looks:c.looks||"", backstory:"", more:"" },
     rolls:[], inspiration:false };
@@ -11549,6 +11549,60 @@ const ragingT = t => !!(t && t.kind!=="foe" && t.p && t.p.rage);
 const INCAP = ["Incapacitated", "Paralyzed", "Petrified", "Stunned", "Unconscious"];
 /* the SRD 5.2's weapons (Open5e's srd-2024 weapons, fetched 2026-11-06): each kind's properties */
 const WEAPON_PROPS = {"Battleaxe":"Versatile","Blowgun":"Ammunition/Loading","Club":"Light","Dagger":"Finesse/Light/Thrown","Dart":"Finesse/Thrown","Flail":"","Glaive":"Reach/Two-Handed","Greataxe":"Two-Handed","Greatclub":"Two-Handed","Greatsword":"Two-Handed","Halberd":"Reach/Two-Handed","Hand Crossbow":"Ammunition/Light/Loading","Handaxe":"Light/Thrown","Heavy Crossbow":"Ammunition/Heavy/Loading/Two-Handed","Javelin":"Thrown","Lance":"Reach","Light Crossbow":"Ammunition/Loading/Two-Handed","Light Hammer":"Light/Thrown","Longbow":"Ammunition/Two-Handed","Longsword":"Versatile","Mace":"","Maul":"Two-Handed","Morningstar":"","Musket":"Ammunition/Loading/Two-Handed","Pike":"Reach/Two-Handed","Pistol":"Ammunition/Loading","Quarterstaff":"Versatile","Rapier":"Finesse","Scimitar":"Finesse/Light","Shortbow":"Ammunition/Two-Handed","Shortsword":"Finesse/Light","Sickle":"Light","Sling":"Ammunition","Spear":"Thrown/Versatile","Trident":"Thrown/Versatile","War Pick":"","Warhammer":"Versatile","Whip":"Finesse/Reach"};
+/* ══ WEAPON MASTERY (Joseph, 2026-11-06, for every class that has it): each kind's mastery property and the properties'
+   own words (both from the SRD 5.2 via Open5e's srd-2024 weapons); how many kinds by class and level (the Character Book's
+   class tables: Barbarian 2/3 at 4/4 at 10, Fighter 3/4 at 4/5 at 10/6 at 16, Paladin, Ranger, Rogue 2); a character's
+   kinds in p.mastery, picked on their card (only theirs) or in the Character Book ══ */
+const WEAPON_MASTERY = {"Battleaxe":"Topple","Blowgun":"Vex","Club":"Slow","Dagger":"Nick","Dart":"Vex","Flail":"Sap","Glaive":"Graze","Greataxe":"Cleave","Greatclub":"Push","Greatsword":"Graze","Halberd":"Cleave","Hand Crossbow":"Vex","Handaxe":"Vex","Heavy Crossbow":"Push","Javelin":"Slow","Lance":"Topple","Light Crossbow":"Slow","Light Hammer":"Nick","Longbow":"Slow","Longsword":"Sap","Mace":"Sap","Maul":"Topple","Morningstar":"Sap","Musket":"Slow","Pike":"Push","Pistol":"Vex","Quarterstaff":"Topple","Rapier":"Vex","Scimitar":"Nick","Shortbow":"Vex","Shortsword":"Vex","Sickle":"Nick","Sling":"Slow","Spear":"Sap","Trident":"Topple","War Pick":"Sap","Warhammer":"Push","Whip":"Slow"};
+const MASTERY_TEXT = {
+  Topple:"If you hit a creature with this weapon, you can force the creature to make a Constitution saving throw (DC 8 plus the ability modifier used to make the attack roll and your Proficiency Bonus). On a failed save, the creature has the Prone condition.",
+  Vex:"If you hit a creature with this weapon and deal damage to the creature, you have Advantage on your next attack roll against that creature before the end of your next turn.",
+  Slow:"If you hit a creature with this weapon and deal damage to it, you can reduce its Speed by 10 feet until the start of your next turn. If the creature is hit more than once by weapons that have this property, the Speed reduction doesn't exceed 10 feet.",
+  Nick:"When you make the extra attack of the Light property, you can make it as part of the Attack action instead of as a Bonus Action. You can make this extra attack only once per turn.",
+  Sap:"If you hit a creature with this weapon, that creature has Disadvantage on its next attack roll before the start of your next turn.",
+  Graze:"If your attack roll with this weapon misses a creature, you can deal damage to that creature equal to the ability modifier you used to make the attack roll. This damage is the same type dealt by the weapon, and the damage can be increased only by increasing the ability modifier.",
+  Cleave:"If you hit a creature with a melee attack roll using this weapon, you can make a melee attack roll with the weapon against a second creature within 5 feet of the first that is also within your reach. On a hit, the second creature takes the weapon's damage, but don't add your ability modifier to that damage unless that modifier is negative. You can make this extra attack only once per turn.",
+  Push:"If you hit a creature with this weapon, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller." };
+function masteryMax(p){
+  if(!p) return 0; let n = 0;
+  for(const k of crClasses(p)){ const c = String(k.cls), lv = +k.lv || 1;
+    if(/barbarian/i.test(c)) n = Math.max(n, lv >= 10 ? 4 : lv >= 4 ? 3 : 2);
+    else if(/fighter/i.test(c)) n = Math.max(n, lv >= 16 ? 6 : lv >= 10 ? 5 : lv >= 4 ? 4 : 3);
+    else if(/paladin|ranger|rogue/i.test(c)) n = Math.max(n, 2); }
+  return n;
+}
+/* only a Barbarian is held to melee weapons ("Simple or Martial Melee weapons") */
+const masteryKinds = p => Object.keys(WEAPON_MASTERY).filter(k => !(crClasses(p).every(x => /barbarian/i.test(x.cls)) && /Ammunition/.test(WEAPON_PROPS[k] || "")));
+/* the mastery property of the weapon this attack uses, if they've mastered that kind */
+function masteryOf(t, info){
+  if(!t || t.kind!=="pc" || !t.p || !info || info.spell || !masteryMax(t.p)) return "";
+  const k = weaponKind(info.name); return k && (t.p.mastery || []).includes(k) ? WEAPON_MASTERY[k] || "" : "";
+}
+/* the ability modifier this weapon attack uses: Dexterity for one that shoots, the better for Finesse, else Strength */
+function abilModFor(t, info){
+  const p = t && t.p ? pcState(t.p) : null; if(!p) return 0; const pr = WEAPON_PROPS[weaponKind(info && info.name)] || "";
+  return /Ammunition/.test(pr) ? abBonus(p, "dex") : /Finesse/.test(pr) ? Math.max(abBonus(p, "str"), abBonus(p, "dex")) : abBonus(p, "str");
+}
+/* what a mastery property does on a hit (Topple, Vex, Slow, Sap, Push); Graze is on a miss, Cleave and Nick elsewhere */
+function masteryHit(c, actor, t, M, info, got, turned){
+  const add = e => (c.effects = c.effects || []).push({ id:uid("ef"), who:t.id, cond:"", by:actor.id, at:turnStamp(c), round:c.round, repeat:null, sp:null, rounds:null, ...e });
+  if(M==="Topple"){ const p = pcState(actor.p), dc = 8 + abilModFor(actor, info) + pbOfPc(p), b = saveBonusOf(t, "Constitution"), Q = saveD(t, "Constitution", `a Constitution save against DC ${dc} (Topple)`), tot = Q.d + b, ok = tot >= dc;
+    const prone = !ok && !condImmune(t, "Prone"); if(prone){ const cs = condsOfT(t); if(!cs.includes("Prone")) cs.push("Prone"); }
+    turned.push(`${t.label}: Topple, Constitution save d20 ${Q.d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${ok ? "made" : prone ? "failed: Prone" : "failed, but it can't be knocked Prone"}`); }
+  if(M==="Vex" && got){ c.effects = (c.effects || []).filter(e => !(e.vex && e.by===actor.id && e.who===t.id)); add({ name:"Vex", vex:true, end:"" }); turned.push(`${t.label}: Vex, ${actor.label}'s next attack roll on it has Advantage`); }
+  if(M==="Slow" && got){ add({ name:"Slow", slow:10, end:"srcStart" }); turned.push(`${t.label}: Slow, Speed −10 ft until the start of ${actor.label}'s next turn`); }
+  if(M==="Sap"){ c.effects = (c.effects || []).filter(e => !(e.sap && e.who===t.id && e.by===actor.id)); add({ name:"Sap", sap:true, end:"srcStart" }); turned.push(`${t.label}: Sap, Disadvantage on its next attack roll`); }
+  if(M==="Push"){ if(footOf(t) > 2) turned.push(`${t.label}: too big to Push (Large or smaller only)`);
+    else { const was = c.pos[t.id] ? { ...c.pos[t.id] } : null, sq = pushAway(c, actor, t, 2); if(was && sq) (act.pushed = act.pushed || {})[t.id] = was; turned.push(`${t.label}: Push, ${sq * 5} ft straight away${sq < 2 ? " (something in the way)" : ""}`); } }
+}
+/* Nick: the extra attack of the Light property (a Light weapon, as a Bonus Action) made part of the Attack action, once a turn,
+   when they've taken the Attack action this turn and mastered a Nick weapon they fight with */
+function nickCan(c, t, info){
+  if(!t || t.kind!=="pc" || !t.p || !info || info.spell || c.turn!==t.id || addonUsed(c, t.id, "nick")) return false;
+  if(!/Light/.test(WEAPON_PROPS[weaponKind(info.name)] || "") || !(((c.acted || {})[t.id] || {}).n > 0)) return false;
+  const kinds = new Set((pcState(t.p).attacks || []).map(a => weaponKind(a.name)).filter(Boolean));
+  return (t.p.mastery || []).some(k => WEAPON_MASTERY[k]==="Nick" && kinds.has(k));
+}
 /* the kind of weapon an attack line is ("+1 Greataxe", "Longsword (two hands)"): the longest name in it */
 function weaponKind(name){ const s = String(name || "").toLowerCase(); let best = ""; for(const k of Object.keys(WEAPON_PROPS)) if(s.includes(k.toLowerCase()) && k.length > best.length) best = k; return best; }
 /* a Strength attack: a weapon (not a spell, not one that shoots ammunition), Finesse only when their Strength is the better */
@@ -11566,6 +11620,7 @@ function rageEnd(c, t, why){
 /* the end of anyone's turn: a Rage not kept up ends at the end of its Barbarian's turn; Incapacitated (Unconscious, for
    Persistent Rage) or 10 minutes ends it at once */
 function barbTurnEnd(c, id){
+  if(c.effects) c.effects = c.effects.filter(e => !(e.vex && e.by===id && e.at!==turnStamp(c)));     // Vex: until the end of the attacker's next turn
   for(const t of combatants(c)){ if(!ragingT(t)) continue; const lv = barbLevel(t.p), cs = condsOfT(t), R = t.p.rage, persist = lv >= 15;
     const down = persist ? cs.includes("Unconscious") : cs.some(k => INCAP.includes(k));
     if(down) rageEnd(c, t, persist ? "Unconscious" : "Incapacitated");
@@ -12035,8 +12090,19 @@ function wildFormsEditor(c, i){
 }
 /* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
 function originCardHtml(c){
-  return goliathCardHtml(c) + barbCardHtml(c);
+  return goliathCardHtml(c) + barbCardHtml(c) + masteryCardHtml(c);
 }
+/* Weapon Mastery's kinds, on the card of a class that has it (only theirs) */
+function masteryCardHtml(c){
+  const max = masteryMax(c); if(!max) return "";
+  const on = (c.mastery || []).filter(k => WEAPON_MASTERY[k]), kinds = masteryKinds(c);
+  return `<details class="pcset" data-invfor="pcmast:${c.id}" ${openInv.has("pcmast:"+c.id)?"open":""}><summary>Weapon Mastery <small>${on.length} of ${max}${on.length ? `: ${esc(on.map(k => `${k} (${WEAPON_MASTERY[k]})`).join(", "))}` : ""}</small></summary>
+    <p class="empty-note" style="font-size:11px;margin:2px 0 4px">The kinds of weapons whose mastery property they use (${max} at their level; one can change after a Long Rest).</p>
+    <div class="fc-res">${kinds.map(k => `<label class="chip" title="${esc(MASTERY_TEXT[WEAPON_MASTERY[k]])}"><input type="checkbox" data-mast="${esc(c.id)}" data-k="${esc(k)}" ${on.includes(k) ? "checked" : ""} ${!on.includes(k) && on.length >= max ? "disabled" : ""}> ${esc(k)} <small>${WEAPON_MASTERY[k]}</small></label>`).join("")}</div></details>`;
+}
+document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.mast==null) return; const p = pcById(t.dataset.mast); if(!p) return;
+  const k = t.dataset.k, L = (p.mastery || []).filter(x => x!==k); if(t.checked){ if(L.length >= masteryMax(p)){ t.checked = false; flash(`${p.name || "They"} can master ${masteryMax(p)} kinds at their level.`); return; } L.push(k); }
+  p.mastery = L; saveParty(); touch(); try{ renderPane(true); if(battleOf) renderBattlePanel(); }catch(err){} });
 /* on a Barbarian's card (only theirs): their Rage while it's on, with End it */
 function barbCardHtml(c){
   const lv = barbLevel(c); if(!lv || !c.rage) return "";
@@ -14822,6 +14888,8 @@ function rollAdvOf(c, t, tg, info){
   if(them.includes("Prone")) (near ? A : D).push(`${tg.label} is Prone${near ? "" : ", more than 5 ft off"}`);
   if(fxVsAdv(hOfT(tg))) A.push("an effect on them");
   if(reckWanted(c, t) && strAtkT(t, info) && !act.brutal) A.push(`${t.label} attacks recklessly`);     // Reckless Attack (Brutal Strike gives it up)
+  if((c.effects || []).some(e => e.vex && e.by===t.id && e.who===tg.id)) A.push(`Vex on ${tg.label}`);     // Weapon Mastery: Vex, Sap
+  if((c.effects || []).some(e => e.sap && e.who===t.id)) D.push(`${t.label} is Sapped`);
   if(reckOn(c, tg)) A.push(`${tg.label} is attacking recklessly`);
   return { v:A.length && D.length ? "" : A.length ? "adv" : D.length ? "dis" : "", why:A.length && D.length ? `Advantage (${A.join(", ")}) and Disadvantage (${D.join(", ")}) cancel` : [...A, ...D].join(", "),
     crit:near && (them.includes("Paralyzed") || them.includes("Unconscious")) };
@@ -15885,7 +15953,7 @@ function spellAddonUp(c, t, key, v){
 function autoAddonKeys(c, t, info, rowDt){
   if(!t || !info) return [];
   const lit = (c.lit || {})[t.id] || {}, dt = String(rowDt || ""), weaponHit = !info.spell;
-  const own = [...(ragingT(t) && strAtkT(t, info) ? ["rage"] : []), ...(frenzyCan(c, t, info) ? ["frenzy"] : [])];     // Rage Damage, Frenzy: on by themselves
+  const own = [...(ragingT(t) && strAtkT(t, info) ? ["rage"] : []), ...(frenzyCan(c, t, info) ? ["frenzy"] : []), ...(masteryOf(t, info) && !["Nick", "Cleave"].includes(masteryOf(t, info)) ? ["mastery"] : [])];     // Rage Damage, Frenzy, a weapon's mastery: on by themselves
   return own.concat(attackAddons(t).filter(a => !new RegExp(`\\b${a.dtype}\\b`, "i").test(dt) && (
     (a.key.startsWith("inv:") && extraFits(a, act.what, info.name) && (!a.cond || lit[a.key])) ||
     (a.key.startsWith("spell:") && weaponHit && lit[a.key] && spellAddonUp(c, t, a.key, lit[a.key])))).map(a => a.key));
@@ -16105,7 +16173,8 @@ function actDice(c, t, info){
   const sc = info && info.spell ? scaledSpell(info.spell, act.lvl, t && t.kind==="pc" ? clampLv(t.p.level) : 0) : null;
   const part1 = sc && sc.parts[0] ? sc.parts[0] : (info && info.hint) || null, part2 = (sc && sc.parts[1]) || null;
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
-  const addons = (t && (isAtk || part1) ? attackAddons(t) : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)));     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
+  const MQ = isAtk ? masteryOf(t, info) : "";     // Weapon Mastery: the weapon's property, as a chip (on by itself)
+  const addons = (t && (isAtk || part1) ? [...attackAddons(t), ...(MQ ? [{ key:"mastery", name:`${MQ} (mastery)`, dice:"", dtype:"", mastery:MQ, note:MASTERY_TEXT[MQ] }] : [])] : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)));     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
   /* the modifier the rules add (Joseph, 2026-10-30: "a plus modifier for spiritual weapon and just in general"): a spell
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
@@ -16283,7 +16352,11 @@ function logAction(n, c){
     touch(); renderBattle(); renderBattlePanel(); return;
   }
   /* a concentration spell: if they're holding another, ask first (yes ends it); it starts once the cast is logged */
-  const part = !!(act.part && act.queue);     /* the 2nd, 3rd… attack of a Multiattack, a beam or ray after the first: no new action, slot or concentration */
+  /* Weapon Mastery's Nick: the Light weapon's extra attack made part of the Attack action, not a Bonus Action (once a turn) */
+  if(!act.reaction && !act.extraFree && (act.bonus ?? bonusActOf(actor, info, act.what)) && nickCan(c, actor, info)
+    && confirm(`Nick: make this Light weapon's extra attack part of ${actor.label}'s Attack action instead of a Bonus Action? (Once a turn.)`)){ act.bonus = false; act.extraFree = true; act.nicked = true; }
+  const wasCleave = !!act.cleave;     // this is Cleave's extra attack
+  const part = !!(act.part && act.queue) || !!act.extraFree;     /* the 2nd, 3rd… attack of a Multiattack, a beam or ray after the first, Cleave's and Nick's extra attacks: no new action, slot or concentration */
   const concSp = info.spell && info.spell.conc && !info.free && !part ? info.spell : null, concH = actor.kind==="foe" ? actor.x : actor.p;
   if(concSp && !concOK(concH, concSp, actor.label)) return;
   /* a bonus action: one a turn (asks first if they've had theirs) */
@@ -16297,7 +16370,7 @@ function logAction(n, c){
     else if(!confirm(`${actor.label} has already used a Bonus Action${baForAction() ? " and their action (your table rule spends the action on a second one)" : ""} this turn. Log this one anyway?`)) return; }
   /* the action: one a turn, more with Action Surge (asks first past them) */
   const isAction0 = !part && isActionAct(actor, info, act.what, isBonus), swing = isAction0 && isSwing(info, act.what);
-  const swingLeft = (swing || part) && ((c.acted||{})[actor.id]||{}).swings > 0;     // the second swing of Extra Attack, the next attack of a Multiattack: the same action
+  const swingLeft = !act.extraFree && (swing || part) && ((c.acted||{})[actor.id]||{}).swings > 0;     // (Cleave's and Nick's extra attacks are their own, not one of the action's)     // the second swing of Extra Attack, the next attack of a Multiattack: the same action
   const isAction = (isAction0 && !swingLeft) || baByAction;
   if(isAction && actionsLeft(c, actor.id) <= 0 && !confirm(`${actor.label} has already used ${actionUsed(c, actor.id) && (c.acted[actor.id].n > 1) ? "their actions" : "their action"} this turn. Log this one anyway?`)) return;
   if((isAction || isBonus) && c.turn===actor.id && haltedT(c, actor) && !confirm(`${actor.label} is under Command: “Halt!” They don't move and take no action or Bonus Action this turn. Log this anyway?`)) return;
@@ -16311,6 +16384,9 @@ function logAction(n, c){
     if(need > left){ flash(`Lay on Hands: that needs ${need} from the pool, and ${left} ${left===1 ? "is" : "are"} left.`); return; }
     const far = targets.filter(o=>o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) > 1);
     if(far.length && !confirm(`Lay on Hands is a touch: ${far.map(o=>o.label).join(", ")} ${far.length > 1 ? "aren't" : "isn't"} within 5 feet of ${actor.label}. Log it anyway?`)) return; }
+  /* Cleave's extra attack: at a second creature within 5 feet of the first */
+  if(act.cleaveOf){ const first = combatants(c).find(x => x.id===act.cleaveOf), bad = targets.filter(o => o.id===act.cleaveOf || (first && c.pos && c.pos[o.id] && c.pos[first.id] && chebSq(c.pos[o.id], c.pos[first.id]) > 1));
+    if(bad.length && !confirm(`Cleave's attack goes at a second creature within 5 feet of ${first ? first.label : "the first"}: ${bad.map(o => o.label).join(", ")} ${bad.length > 1 ? "aren't" : "isn't"}. Log it anyway?`)) return; }
   /* origins (2026-11-06): the ones that happen by themselves aren't logged from Resources */
   if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
   if(info.origin==="large" && actor.p && actor.p.big){ flash(`${actor.label} is Large already.`); return; }
@@ -16367,7 +16443,9 @@ function logAction(n, c){
   /* each target's own save (2026-10-30): a made one takes half or none, as the text says, and no condition */
   const SV = act.saves ? saveOfAct(c, actor, info) : null, svOf = t => SV ? (act.saves[t.id] || null) : null;
   const effectsBefore = JSON.stringify(c.effects || []), gripsBefore = JSON.stringify(c.grips || {});
-  let retal = null;     // a Berserker hurt from within 5 ft (Retaliation)
+  let retal = null, cleaveFrom = null;     // a Berserker hurt from within 5 ft (Retaliation); a Cleave weapon's first hit
+  const MW = isAttackAct(info) ? masteryOf(actor, info) : "", MQ = MW && D.on.some(a => a.mastery) ? MW : "";     // Weapon Mastery: this weapon's property, and whether it's on
+  const vexSap0 = new Set((c.effects || []).filter(e => e.vex || e.sap).map(e => e.id));     // Vex and Sap from before this attack, used up by it
   const reacted0 = JSON.stringify(c.reacted||{}), movedBefore = JSON.stringify(c.moved||{}), bigBefore = actor.kind==="pc" && actor.p ? !!actor.p.big : null;     // (Stone's Endurance and Storm's Thunder take reactions below)
   if(info.origin && actor.kind==="pc") turned.push(...originDo(c, actor, info));     // Adrenaline Rush, Large Form, Cloud's Jaunt
   { const G0 = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null; if(G0 && (act.cond==="Grappled" || G0.also.includes(act.cond))) act.cond = ""; }     // a grapple puts on what comes with it itself (not on someone too big)     // how long what it puts on lasts (effectAdd), and grapples, for undo
@@ -16378,6 +16456,7 @@ function logAction(n, c){
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
     if(!off && isAttackAct(info) && ["hit","crit"].includes(act.outcome)){ const m = mirrorCheck(actor, t); if(m){ off = m.off; turned.push(m.said); } }     // Mirror Image
     let dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
+    if(!dm && !off && act.outcome==="miss" && MQ==="Graze"){ const g = abilModFor(actor, info); if(g > 0){ dm = g; turned.push(`${t.label}: Graze, ${g} damage on the miss`); } }     // Weapon Mastery: Graze
     if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = stoneEndurance(c, t, dm, turned);     // a Goliath's Stone's Endurance: their Reaction, the damage cut
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(got && t.kind==="pc" && t.id!==actor.id) stormThunder(c, t, actor, turned);     // a Goliath's Storm's Thunder: their Reaction, 1d8 Thunder back
@@ -16385,6 +16464,8 @@ function logAction(n, c){
     if(["hit","crit"].includes(act.outcome) && !off && act.brutal && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 9 && isAttackAct(info)) brutalHit(c, actor, t, turned);     // Brutal Strike's effect
     if(got && ["hit","crit"].includes(act.outcome) && D.on.some(a => a.frenzy)){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).frenzy = turnStamp(c); }     // Frenzy: the first target hit this turn
     if(got && !retal && retalCan(c, t, actor)) retal = t;     // Retaliation, offered once this is logged
+    if(MQ && ["hit","crit"].includes(act.outcome) && !off) masteryHit(c, actor, t, MQ, info, got, turned);     // Topple, Vex, Slow, Sap, Push
+    if(MW==="Cleave" && ["hit","crit"].includes(act.outcome) && !off && !cleaveFrom && !wasCleave) cleaveFrom = t;
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
     else if(heal){ hl = healAny(t, heal); healed += hl; }
     if(info.loh && act.lohPoison){ const cs = condsOfT(t), k = cs.indexOf("Poisoned"); if(k >= 0){ cs.splice(k, 1); turned.push(`${t.label}: no longer Poisoned`); } }     // Lay on Hands' 5 points
@@ -16500,6 +16581,8 @@ function logAction(n, c){
   if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
     if(act.brutal){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).brutal = turnStamp(c); } }     // Brutal Strike: once on their turn
   if(act.sunderId && isAttackAct(info)) c.effects = (c.effects || []).filter(e => e.id!==act.sunderId);     // a Sundering Blow's +5, used
+  if(isAttackAct(info)){ const tid = new Set(targets.map(o => o.id)); c.effects = (c.effects || []).filter(e => !(vexSap0.has(e.id) && ((e.vex && e.by===actor.id && tid.has(e.who)) || (e.sap && e.who===actor.id)))); }     // Vex's Advantage and Sap's Disadvantage, used
+  if(act.nicked){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).nick = turnStamp(c); }
   /* a Rage kept up this turn: an attack roll against an enemy, a save forced on one, or a Bonus Action */
   if(ragingT(actor) && c.turn===actor.id && (isBonus || ((isAttackAct(info) || (act.saves && Object.keys(act.saves).length)) && targets.some(o => o.side!==actor.side)))) actor.p.rage.ext = turnStamp(c);
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
@@ -16529,6 +16612,13 @@ function logAction(n, c){
   /* Riposte: a melee miss on someone who has it, with their Reaction and a superiority die free */
   if(prev.outcome==="miss" && !prev.reaction && isAttackAct(info) && meleeAtk(info)){ const tg = targets.find(x=>riposteCan(c, x, actor)); if(tg) riposteOffer(c, tg, actor); }
   if(retal && retalCan(c, retal, actor)) retalOffer(c, retal, actor);     // Retaliation
+  /* Cleave: a hit with it, once a turn: one more melee attack with the weapon at a second creature within 5 feet of the
+     first, its damage without their ability modifier (unless that's negative) */
+  if(cleaveFrom && !addonUsed(c, actor.id, "cleave") && confirm(`Cleave: ${actor.label} can make one more melee attack with the ${weaponKind(info.name)} against a second creature within 5 feet of ${cleaveFrom.label}, without their ability modifier on its damage. Set it up?`)){
+    c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).cleave = turnStamp(c);
+    const mod = abilModFor(actor, info), what = prev.what; act = freshAct(actor.id); act.what = what; act.extraFree = true; act.cleave = true; act.cleaveOf = cleaveFrom.id; if(mod > 0) act.dmgMod = String(-mod);
+    act.targets = combatants(c).filter(o => o.id!==cleaveFrom.id && o.side!==actor.side && !isDownT(o) && c.pos && c.pos[o.id] && c.pos[cleaveFrom.id] && chebSq(c.pos[o.id], c.pos[cleaveFrom.id]) <= 1).slice(0, 1).map(o => o.id);
+    renderBattle(); renderBattlePanel(); flash(`Cleave: pick the second creature${act.targets.length ? "" : " (nobody else is within 5 feet of it)"}, then roll to hit.`); }
   /* Great Weapon Master: a crit or a creature dropped, with a melee weapon, on their turn: one more attack offered */
   if(c.turn===actor.id && !prev.reaction && !prev.bonus && isSwing(info, prev.what) && gwmMelee(info) && (prev.outcome==="crit" || kills > 0) && gwmHas(actor) && !bonusUsed(c, actor.id))
     c.gwm = { id:actor.id, at:turnStamp(c), what:prev.what, why:prev.outcome==="crit" ? "a critical hit" : `${hits.filter(h=>h.dropped).map(h=>h.label).join(" and ")} dropped` };
