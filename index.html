@@ -20242,14 +20242,17 @@ function facClash(s1, s2, day, why){
 /* a pirate lying in wait goes for a ship sailing by: her escort (a rich passenger ship's) fights beside her, and the
    fight goes at the odds of their strength. A pirate who sizes them up at worse than one in five sheers off. The
    pirate wins: four times in five the hold is emptied into hers and the ship sails on, once in five she's taken as a
-   prize (a new ship of her kind comes later). The pirate loses: beaten off, her dead with her */
-const PIRATE_NERVE = .2;
+   prize (a new ship of her kind comes later). The pirate loses: beaten off, her dead with her. (Worse than one in
+   four, she sheers off, unless she misjudges it: one time in five) */
+const PIRATE_NERVE = .25, PIRATE_RASH = 5;     // Joseph: sheers off at worse than one in four, but one time in five she misjudges it and goes in anyway
 function fleetAttack(p, v, day){
   const es = fleetEscortOf(v), D = [v, ...(es ? [es] : [])], near = repPlaceName(v.leg && v.leg.to || v.at || v.home), who = `${p.name}${p.faction && factionById(p.faction) ? ` (${factionById(p.faction).name})` : ""}`;
   const pa = shipPower(p), pd = sidePower(D), odds = pa + pd ? pa / (pa + pd) : .5;
-  if(odds < PIRATE_NERVE){ bgLog("world", `${who} sized up ${v.name}${es ? ` and her escort, ${es.name},` : ""} and sheered off: odds of ${Math.round(odds * 100)}%`, day); return "off"; }
+  const rash = odds < PIRATE_NERVE && rollD(PIRATE_RASH)===1;
+  if(odds < PIRATE_NERVE && !rash){ bgLog("world", `${who} sized up ${v.name}${es ? ` and her escort, ${es.name},` : ""} and sheered off: odds of ${Math.round(odds * 100)}%`, day); return "off"; }
   const r = shipFight([p], D, day, near), dP = r.deadA, dD = r.deadB, odd = Math.round(odds * 100);
   let said;
+  if(rash) bgLog("world", `${who} misjudged ${v.name}${es ? ` and her escort` : ""} and went in at odds of ${odd}%`, day);
   if(r.aWins){ const taken = !r.sunk.includes(v) && rollD(5)===1, n = takeHold(p, v);
     said = `${who} ${taken ? `took ${v.name} as a prize` : `robbed ${v.name}`}${es ? ` despite her escort, ${es.name},` : ""} on her way to ${near}, at odds of ${odd}%: ${n ? `${n} loads taken` : "her hold was empty"}; ${dP + dD} dead (${dD} of hers, ${dP} of the pirates')${taken ? ". Her crew and passengers with her" : r.sunk.includes(v) ? `; ${v.name} lost with all hands` : "; she sails on"}`;
     if(taken) fleetGone(v, day); }
