@@ -84,6 +84,24 @@ step("Peerless Skill (Lore 14): Lyra's own miss (8 + 5 = 13 vs AC 15) gets her d
   const one = await swing("8", "4"), two = await swing("2", "3"); p.level = 5; pcState(p);
   return `${one} || ${two}`;
 });
+step("outside a fight: Gives Bardic Inspiration only for a Bard; Bram's row offers his die only when his check is short; Lyra's Cutting Words only on an NPC's made check", async () => {
+  const L = bdWho("Lyra"), B = bdWho("Bram"), P = taPeople(), lk = P.find(x => x.o === L.p).key, bk = P.find(x => x.o === B.p).key, p = pcState(L.p); biRes(p).used = 0; delete B.p.bi;
+  const box = document.querySelector("#actionbox") || document.body, btns = x => { const host = document.createElement("div"); host.innerHTML = taBardBtns(x, taPeople()); return [...host.querySelectorAll("button")].map(b => b.textContent.trim()); };
+  Object.assign(ta, { who: lk, what: "bi", to: bk, note: "" }); logTableAction(); const gave = `${JSON.stringify(B.p.bi)}, Lyra's uses ${biLeft(pcState(L.p))}`;
+  const pB = taPeople().find(x => x.key === bk); ta.what = "check"; ta.dc = "15"; ta.tot = { [bk]: "12" }; const shortB = btns(pB); ta.tot[bk] = "16"; const madeB = btns(pB);
+  ta.tot[bk] = "12"; const host = document.createElement("div"); host.innerHTML = taBardBtns(pB, taPeople()); box.appendChild(host); bdAsk(["5"]); host.querySelector('[data-tabi="hold"]').click(); await wait(20); host.remove();
+  const after = `${ta.tot[bk]} (${(ta.d20[bk] || {}).said}), die ${JSON.stringify(B.p.bi || null)}`;
+  const npc = { key: "p:test", name: "Guard Captain", o: { name: "Guard Captain", cls: "" } }; ta.tot["p:test"] = "16"; const cut = btns(npc); ta.tot["p:test"] = "13"; const cut2 = btns(npc);
+  const nonBard = (Object.assign(ta, { who: bk, what: "bi" }), TA_WHAT.filter(([k]) => k !== "bi" || bardLevel(taObj(bk))).map(([k]) => k).includes("bi"));
+  ta.tot = {}; ta.d20 = {}; ta.dc = ""; ta.what = "check";
+  return `gave: ${gave} || Bram short: [${shortB}] | made: [${madeB}] | used: ${after} || NPC made 16: [${cut}] | NPC short 13: [${cut2}] | Bram offered the Give choice: ${nonBard}`;
+});
+step("Cutting Words on an enemy's ability check: the Fanatic breaks free of Bram's grapple (high roll); Lyra cuts it (6 typed) and it stays held", async () => {
+  const c = bdFight(), L = bdWho("Lyra"), B = bdWho("Bram"), F = bdWho("Cultist"); c.round++; delete (c.reacted || {})[L.id]; biRes(pcState(L.p)).used = 0;
+  (c.grips = c.grips || {})[F.id] = { by: B.id, dc: 13, cond: "Grappled", what: "grip", ends: [] }; if (!condsOfT(F).includes("Grappled")) condsOfT(F).push("Grappled");
+  bdAsk([true, "6"]); const r = Math.random; Math.random = () => 0.6; let line; try { line = gripEscape(c, F); } finally { Math.random = r; }
+  return `${line} | Lyra's uses ${biLeft(pcState(L.p))}, Reaction ${reactedThisRound(c, L.id)}`;
+});
 step("Jack of All Trades: Lyra (Bard 5, PB 3) adds 1 to a skill not on her sheet; Bram (a Fighter) doesn't", async () => {
   const L = pcState(bdWho("Lyra").p), B = pcState(bdWho("Bram").p);
   return `Lyra: Stealth ${skillMod(L, "Stealth")} (Dex +2), Athletics ${skillMod(L, "Athletics")} (Str −1) | Bram: Stealth ${skillMod(B, "Stealth")} (Dex +1), Athletics ${skillMod(B, "Athletics")} (on his sheet)`;

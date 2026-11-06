@@ -11738,7 +11738,7 @@ function cuttingWords(c, t, tot, need, what){
   if(!B) return null; const p = pcState(B.p), die = biDie(bardLevel(p));
   if(!confirm(`${t.label}'s ${what} comes to ${tot}${need!=null ? ` against ${need}` : ""}. Cutting Words: ${B.label}'s Reaction and a Bardic Inspiration use (${biLeft(p)} left): roll a d${die} and take it off?`)) return null;
   const Q = pcDie(B, `the Bardic Inspiration die (d${die}) for Cutting Words`, die), nt = tot - Q.d; biRes(p).used = (+biRes(p).used || 0) + 1; (c.reacted = c.reacted || {})[B.id] = c.round;
-  return { tot:nt, n:Q.d, miss:need!=null && nt < need, w:` (${B.label}'s Cutting Words: −${Q.d}${Q.w}${need!=null ? `, ${nt}${nt < need ? ": a miss" : ": still a hit"}` : ""})` };
+  return { tot:nt, n:Q.d, miss:need!=null && nt < need, w:` (${B.label}'s Cutting Words: −${Q.d}${Q.w}${need!=null ? `, ${nt}${/attack roll/.test(what) ? (nt < need ? ": a miss" : ": still a hit") : (nt < need ? ": it fails" : ": it still succeeds")}` : ""})` };
 }
 /* Cutting Words on a damage roll just rolled (the Action box's Damage) */
 function cwDamage(c, t){
@@ -14881,8 +14881,9 @@ function stealthOfT(t){
 }
 async function autoHide(c, t, v, said){
   if(!(await doBonus(c, t, v, "Hide"))) return;
-  const b = stealthOfT(t), d = 1 + Math.floor(Math.random() * 20), tot = d + b;
-  const line = tot >= 15 ? `${t.label} hides: Dexterity (Stealth) d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}, the DC to find it.` : `${t.label} tries to hide: Dexterity (Stealth) d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}, short of 15.`;
+  const b = stealthOfT(t), d = 1 + Math.floor(Math.random() * 20), tot0 = d + b, CWh = tot0 >= 15 ? cuttingWords(c, t, tot0, 15, "Dexterity (Stealth) check to hide") : null, tot = CWh ? CWh.tot : tot0;     // a Lore bard's Cutting Words on it
+  const roll = `Dexterity (Stealth) d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot0}${CWh ? CWh.w : ""}`;
+  const line = tot >= 15 ? `${t.label} hides: ${roll}, the DC to find it${CWh ? ` (${tot})` : ""}.` : `${t.label} tries to hide: ${roll}${CWh ? "" : ", short of 15"}.`;
   if(tot >= 15) ((c.stealth = c.stealth || {})[t.id] = (c.stealth || {})[t.id] || {}).hide = tot;
   said.push(line); gameLog("check", line); renderBattle(); await autoSay(line);
 }
@@ -14982,8 +14983,8 @@ async function autoConds(c, t, n, wantsOut, canFight){
   if(!(cs.includes("Grappled") || cs.includes("Restrained")) || (!wantsOut && canFight())) return false;
   const g = gripOf(c, t);
   if(!g){ const line = `${t.label} is ${cs.includes("Grappled") ? "Grappled" : "Restrained"}, but who or what holds it isn't on the map (no escape DC to roll against): yours to call.`; await autoSay(line); return false; }
-  const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath, d = 1 + Math.floor(Math.random() * 20), tot = d + b;
-  const roll = `${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against DC ${g.dc}`, from = g.what ? `${g.by.label}'s ${g.what}` : g.by.label;
+  const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath, d = 1 + Math.floor(Math.random() * 20), tot0 = d + b, CWe = tot0 >= g.dc ? cuttingWords(c, t, tot0, g.dc, "check to break free") : null, tot = CWe ? CWe.tot : tot0;     // a Lore bard's Cutting Words on it
+  const roll = `${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot0}${CWe ? CWe.w : ""} against DC ${g.dc}`, from = g.what ? `${g.by.label}'s ${g.what}` : g.by.label;
   await autoSay(`${t.label} tries to break free of ${from}!`);
   autoLogLine(c, t, `${t.label} uses its action to break free of ${from}: ${roll}: ${tot >= g.dc ? `free${g.ends.length ? ` (no longer ${andList([g.cond, ...g.ends])})` : ""}` : "still held"}.`);
   if(tot >= g.dc){ if(c.grips && c.grips[t.id]) delete c.grips[t.id]; for(const k of [g.cond, ...g.ends]){ const i = cs.indexOf(k); if(i >= 0) cs.splice(i, 1); } }
@@ -16915,9 +16916,9 @@ function gripEscape(c, t){
   const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath;
   const adv = escapeAdvT(t, useAcr), mode = g.dis && !adv ? "dis" : adv && !g.dis ? "adv" : "", why = adv ? (strAdvT(t) && !useAcr ? strAdvWhy(t) : "Powerful Build") : "";     // a Goliath: Advantage to end Grappled; Rage, Large Form: on a Strength check
   const Q = pcD20(t, `${useAcr ? "a Dexterity (Acrobatics)" : "a Strength (Athletics)"} check against DC ${g.dc} to break free`, mode);
-  const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = mode==="dis" ? Math.min(r1, r2) : mode==="adv" ? Math.max(r1, r2) : r1, RSg = d20Rescue(c, t, useAcr ? d + b : mightTot(t, "str", d + b), g.dc, "check to break free", "check"), tot = RSg.tot, ok = tot >= g.dc;     // Athletics: a Strength check (Indomitable Might); Peerless Skill, a Bardic Inspiration die
+  const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = mode==="dis" ? Math.min(r1, r2) : mode==="adv" ? Math.max(r1, r2) : r1, RSg = d20Rescue(c, t, useAcr ? d + b : mightTot(t, "str", d + b), g.dc, "check to break free", "check"), CWg = t.kind==="foe" && RSg.tot >= g.dc ? cuttingWords(c, t, RSg.tot, g.dc, "check to break free") : null, tot = CWg ? CWg.tot : RSg.tot, ok = tot >= g.dc;     // Athletics: a Strength check (Indomitable Might); Peerless Skill, a Bardic Inspiration die
   const snap = snapOf(c, [t.id]), gripsBefore = JSON.stringify(c.grips || {});
-  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${Q.typed ? `d20 ${d}${Q.w}` : mode ? `d20 ${r1} and ${r2}, ${mode==="dis" ? "Disadvantage" : `Advantage (${why})`}: ${d}` : `d20 ${d}${adv && g.dis ? ` (${why} cancels the Disadvantage)` : ""}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${useAcr ? "" : mightW(t, "str", d + b)}${RSg.w} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
+  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${Q.typed ? `d20 ${d}${Q.w}` : mode ? `d20 ${r1} and ${r2}, ${mode==="dis" ? "Disadvantage" : `Advantage (${why})`}: ${d}` : `d20 ${d}${adv && g.dis ? ` (${why} cancels the Disadvantage)` : ""}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${CWg ? RSg.tot : tot}${useAcr ? "" : mightW(t, "str", d + b)}${RSg.w}${CWg ? CWg.w : ""} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
   if(ok){ if(c.grips && c.grips[t.id]) gripEnd(c, t.id, ""); else { const cs = condsOfT(t); for(const k of [g.cond, ...(g.ends || [])]){ const i = cs.indexOf(k); if(i >= 0) cs.splice(i, 1); } } }
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, grips:gripsBefore }); gameLog("check", line); return line;
 }
@@ -26647,7 +26648,30 @@ function wireTLog(){
 /* ── the Action box: outside a fight, what someone does, credited to them in the game log; in a fight, the battle's
    own action form ── */
 var ta = { who:"", what:"heal", how:"", on:"", amt:"", skill:"Perception", dc:"", tot:{}, item:"", to:"", quiet:false, rest:"short", spell:"", slot:null, note:"", other:"", otherLog:false };
-const TA_WHAT = [["heal","Heals someone"],["use","Uses an item"],["check","Makes a check"],["give","Gives an item"],["take","Takes an item"],["cast","Casts a spell"],["rest","Takes a rest"],["hide","Hides"]];
+const TA_WHAT = [["heal","Heals someone"],["use","Uses an item"],["check","Makes a check"],["give","Gives an item"],["take","Takes an item"],["cast","Casts a spell"],["bi","Gives Bardic Inspiration"],["rest","Takes a rest"],["hide","Hides"]];     // "bi" only for a Bard
+/* the Bard outside a fight (Joseph, 2026-11-06: "That should show if there is a bard... only show if there is a player or npc
+   that has that action"): on a check's row, a held Bardic Inspiration die (a total short of the DC), a Lore bard's
+   Peerless Skill on their own (short), a Lore bard's Cutting Words on someone else's (an NPC's, made); each only there */
+function taBardBtns(x, P){
+  const tot = ta.tot[x.key], dc = +ta.dc || 0; if(tot===undefined || tot==="") return "";
+  const short = !dc || +tot < dc, made = !dc || +tot >= dc, o = x.o, B = [];
+  if(o.bi && short) B.push(`<button class="btn small" data-tabi="hold" data-k="${esc(x.key)}" title="Their Bardic Inspiration die, added to this check (it's used up)">Add their Bardic Inspiration (d${o.bi.die})</button>`);
+  if(loreOf(o) && bardLevel(o) >= 14 && biLeft(pcState(o)) > 0 && short) B.push(`<button class="btn small" data-tabi="peer" data-k="${esc(x.key)}" title="The use is spent only if it then succeeds">Peerless Skill (d${biDie(bardLevel(o))})</button>`);
+  if(!x.key.startsWith("pc:") && made) for(const b of P.filter(y => y.key!==x.key && y.o.cls && loreOf(y.o) && bardLevel(y.o) >= 3 && biLeft(pcState(y.o)) > 0))
+    B.push(`<button class="btn small" data-tabi="cut" data-k="${esc(x.key)}" data-by="${esc(b.key)}" title="${esc(b.name)}'s Reaction and a Bardic Inspiration use: the die off this check">${esc(b.name.split(" ")[0])}'s Cutting Words (d${biDie(bardLevel(b.o))})</button>`);
+  return B.length ? `<div class="afr" style="justify-content:flex-end;gap:4px;margin-top:-2px">${B.join("")}</div>` : "";
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("#actionbox [data-tabi]"); if(!b) return;
+  const P = taPeople(), x = P.find(y => y.key===b.dataset.k); if(!x) return; const kind = b.dataset.tabi, tot0 = +ta.tot[x.key] || 0, dc = +ta.dc || 0;
+  const asT = y => ({ kind:"pc", p:y.o, label:y.name, side:"party" }), prev = ((ta.d20 || {})[x.key] || {}).said || `${tot0}`;
+  let n = 0, w = "";
+  if(kind==="hold"){ const Q = pcDie(asT(x), `the Bardic Inspiration die (d${x.o.bi.die})`, +x.o.bi.die); n = Q.d; w = `Bardic Inspiration +${n}${Q.w}`; partyDoing("Bardic Inspiration", x.o); delete x.o.bi; }
+  if(kind==="peer"){ const o = pcState(x.o), Q = pcDie(asT(x), `the Bardic Inspiration die (d${biDie(bardLevel(o))}) for Peerless Skill`, biDie(bardLevel(o))); n = Q.d;
+    const ok = !dc || tot0 + n >= dc; partyDoing("Peerless Skill", x.o); if(ok) biRes(o).used = (+biRes(o).used || 0) + 1; w = `Peerless Skill +${n}${Q.w}${ok ? "" : ", still short: the use is kept"}`; }
+  if(kind==="cut"){ const y = P.find(z => z.key===b.dataset.by); if(!y) return; const o = pcState(y.o), Q = pcDie(asT(y), `the Bardic Inspiration die (d${biDie(bardLevel(o))}) for Cutting Words`, biDie(bardLevel(o)));
+    n = -Q.d; partyDoing("Cutting Words", y.o); biRes(o).used = (+biRes(o).used || 0) + 1; w = `${y.name.split(" ")[0]}'s Cutting Words −${Q.d}${Q.w}`; }
+  const tot = tot0 + n; ta.tot[x.key] = String(tot); (ta.d20 = ta.d20 || {})[x.key] = { v:String(tot), said:`${prev}, ${w}: ${tot}` };
+  saveParty(); flash(`${x.name.split(" ")[0]}: ${w}, ${tot}${dc ? ` vs DC ${dc}: ${tot >= dc ? "made" : "short"}` : ""}.`); renderActionBox(true); });
 /* a check's "With": how that person feels about this one of them (memories and faction, added), if it counts */
 const taMood = x => { if(!MOOD_SKILLS.has(ta.skill) || !ta.with || ta.moodOn===false || !x || !x.o || !x.o.id) return null;
   const p = libNpcById(ta.with), M = p ? moodOf(p, x.o.id) : null; return M && M.any ? M : null; };
@@ -26702,6 +26726,7 @@ function renderActionBox(force){
   const P = taPeople(); if(!ta.who || (ta.who!=="party" && !P.some(x=>x.key===ta.who))) ta.who = (P[0]||{}).key || "";
   const party = ta.who==="party", o = party ? null : taObj(ta.who);
   if(party && !["check","rest","hide"].includes(ta.what)) ta.what = "check";
+  if(ta.what==="bi" && !(o && bardLevel(o))) ta.what = "check";     // only a Bard gives Bardic Inspiration
   const opt = (v, l, cur) => `<option value="${esc(v)}" ${v===cur?"selected":""}>${esc(l)}</option>`;
   const others = P.filter(x=>x.key!==ta.who), on = ta.on && P.some(x=>x.key===ta.on) ? ta.on : (ta.what==="heal" ? (P.find(x=>x.key!==ta.who)||P[0]||{}).key : ta.who);
   let body = "";
@@ -26731,7 +26756,7 @@ function renderActionBox(force){
       ${MOOD_SKILLS.has(ta.skill) ? (()=>{ const ppl = peopleAtHand(), w = ppl.find(p=>p.id===ta.with);
         return `<div class="afr"><label>With</label><select data-ta="with" title="Who they're talking to or reading: how that person feels about each of them (their memories and their faction's standing, added) changes the roll"><option value="">Nobody in particular</option>${ppl.map(p=>opt(p.id, p.name, ta.with||"")).join("")}</select></div>
           ${w ? `<label class="check" style="margin:0 0 4px"><input type="checkbox" data-ta="moodOn" ${ta.moodOn===false ? "" : "checked"}> ${esc(w.name.split(" ")[0])}'s feelings count on the roll</label>` : ""}`; })() : ""}
-      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill), M = taMood(x); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small>${M && M.check ? ` <small class="mono" title="${esc(`${M.label}: ${M.why}`)}">${esc(moodShort(M))}</small>` : ""}</label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><label class="check tanat" title="A natural 20 on the die"><input type="checkbox" data-tanat="${x.key}" ${(ta.nat||{})[x.key]===20 ? "checked" : ""}> nat 20</label><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>`; }).join("")}</div>
+      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill), M = taMood(x); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small>${M && M.check ? ` <small class="mono" title="${esc(`${M.label}: ${M.why}`)}">${esc(moodShort(M))}</small>` : ""}</label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><label class="check tanat" title="A natural 20 on the die"><input type="checkbox" data-tanat="${x.key}" ${(ta.nat||{})[x.key]===20 ? "checked" : ""}> nat 20</label><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>${taBardBtns(x, P)}`; }).join("")}</div>
       ${who.length>1 ? `<button class="btn wide" data-tar="checkall">Roll for everyone</button>` : ""}
       ${ta.skill===SEARCH_SKILL && checkSpot() ? `<label class="check" style="margin:4px 0 0" title="Each total is also that person's search of the place: hidden pieces, items and coin they can see"><input type="checkbox" data-ta="search" ${ta.search!==false?"checked":""}> Also search ${esc(placeLabel(checkSpot()))} with these totals</label>` : ""}`;
   } else if((ta.what==="give" || ta.what==="take") && o){
@@ -26748,6 +26773,10 @@ function renderActionBox(force){
         <div class="afr"><label>On</label><select data-ta="on">${opt("", "No one in particular", on)}${P.map(x=>opt(x.key, x.name, on)).join("")}</select></div>
         ${s && SPELL_FX[s.id] && SPELL_FX[s.id].skillDie ? `<div class="afr"><label>Skill</label><select data-ta="fxSkill">${opt("", "Any check", ta.fxSkill||"")}${TA_SKILLS.map(k=>opt(k, k, ta.fxSkill||"")).join("")}</select></div>` : ""}`
       : `<p class="empty-note" style="font-size:12px">No spells on ${esc(o.name||"their")} sheet.</p>`;
+  } else if(ta.what==="bi" && o && bardLevel(o)){
+    const r = biRes(pcState(o)), to = others.some(x => x.key===ta.to) ? ta.to : (others[0] || {}).key;
+    body = `<div class="afr"><label>To</label><select data-ta="to">${others.map(x => opt(x.key, `${x.name}${x.o.bi ? ` (holds a d${x.o.bi.die})` : ""}`, to)).join("")}</select></div>
+      <p class="empty-note" style="font-size:11px;margin:0 0 4px">A d${biDie(bardLevel(o))}, ${r ? `${r.max - r.used} of ${r.max} left` : "no uses on the sheet"}. They add it to a failed d20 roll within the hour: offered on their check here, and in a fight.</p>`;
   } else if(ta.what==="rest"){
     body = `<div class="adtabs">${[["short","Short rest"],["long","Long rest"]].map(([k,l])=>`<button class="${ta.rest===k?"on":""}" data-tarest="${k}">${l}</button>`).join("")}</div>`;
   } else if(ta.what==="hide"){
@@ -26756,7 +26785,7 @@ function renderActionBox(force){
   }
   el.innerHTML = `<div class="tbhead"><span class="eyebrow">Action</span><span class="empty-note" style="margin:0;font-size:11px">outside a fight · credited to whoever does it</span></div>
     <div class="afr"><label>Who</label><select data-ta="who">${opt("party", "The whole party", ta.who)}${P.map(x=>opt(x.key, x.name, ta.who)).join("")}</select></div>
-    <div class="afr"><label>Does</label><select data-ta="what">${TA_WHAT.filter(([k])=>!party || ["check","rest","hide"].includes(k)).map(([k,l])=>opt(k, l, ta.what)).join("")}</select></div>
+    <div class="afr"><label>Does</label><select data-ta="what">${TA_WHAT.filter(([k])=>(!party || ["check","rest","hide"].includes(k)) && (k!=="bi" || (o && bardLevel(o)))).map(([k,l])=>opt(k, l, ta.what)).join("")}</select></div>
     ${body}
     <div class="afr"><label>Note</label><input data-ta="note" value="${esc(ta.note)}" placeholder="optional"></div>
     <button class="btn wide" data-talog style="background:var(--ink);color:var(--paper-lit);border-color:var(--ink)">Log it</button>
@@ -26872,6 +26901,13 @@ function logTableAction(){
     const xpSaid = checkXp(who, dc, ta.nat || {}, what); ta.result = xpSaid ? `XP: ${xpSaid}` : (dc ? `${what}: no XP either way` : "");
     ta.nat = {};
     ta.tot = {}; ta.d20 = {};
+  } else if(ta.what==="bi"){     // a Bard gives Bardic Inspiration outside a fight
+    const to = P.find(x => x.key===ta.to && x.key!==ta.who) || P.find(x => x.key!==ta.who), r = o && biRes(pcState(o));
+    if(!o || !bardLevel(o) || !r){ flash("Only a Bard gives Bardic Inspiration."); return; } if(!to){ flash("Pick who gets it."); return; }
+    if((+r.used || 0) >= (+r.max || 0) && !confirm(`${name} has no Bardic Inspiration left. Log it anyway?`)) return;
+    if(to.o.bi && !confirm(`${to.name} already holds a Bardic Inspiration die (a creature can have one). Give a new one in its place?`)) return;
+    partyDoing("Bardic Inspiration", o); r.used = Math.min(+r.max || 0, (+r.used || 0) + 1); const d = biDie(bardLevel(o)); to.o.bi = { die:d, by:name };
+    gameLog("check", `${name} gives ${to.name} a Bardic Inspiration die (d${d})${N}`); flash(`${to.name} holds a d${d}: it's offered on their checks here, and in a fight.`);
   } else if(ta.what==="give" || ta.what==="take"){
     const others = P.filter(x=>x.key!==ta.who), oKey = others.some(x=>x.key===ta.to) ? ta.to : (others[0]||{}).key, other = taObj(oKey);
     const from = ta.what==="give" ? o : other, to = ta.what==="give" ? other : o; if(!from || !to){ flash("Pick who."); return; }
