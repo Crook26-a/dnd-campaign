@@ -11640,6 +11640,9 @@ function brutalHit(c, actor, t, turned){
     if(k==="sundering"){ c.effects = (c.effects || []).filter(e => !(e.who===t.id && e.sunder)); add({ name:"Sundering Blow", sunder:5 }); turned.push(`${t.label}: Sundering Blow, the next attack roll on it by someone else gets +5`); }
   }
 }
+/* Indomitable Might (level 18): a Strength check or save whose total is under their Strength score counts as the score */
+function mightTot(t, abil, raw){ const k = String(abil || "").slice(0, 3).toLowerCase(), p = t && t.kind!=="foe" && t.p; if(!p || k!=="str" || barbLevel(p) < 18) return raw; const s = +pcState(p).str || 0; return raw < s ? s : raw; }
+const mightW = (t, abil, raw) => mightTot(t, abil, raw)!==raw ? ` (Indomitable Might: ${raw} counts as their Strength score)` : "";
 function dangerSenseT(t){ return !!(t && t.kind!=="foe" && t.p && barbLevel(t.p) >= 2 && !condsOfT(t).some(k => INCAP.includes(k))); }
 function staggerUsed(c, t){ if(c && c.effects) c.effects = c.effects.filter(e => !(e.who===t.id && e.stagger)); }
 /* a save's d20 with those: the player's die (asked), or two dice when there's Advantage or Disadvantage */
@@ -16357,8 +16360,8 @@ function logAction(n, c){
     /* an attack's save on a hit (the Ghoul's Claw: "Constitution Saving Throw: DC 10. Failure: ... Paralyzed"): rolled for each target it hits */
     let riderMade = false; act.riderMade = act.riderMade || {};
     if(act.cond && !off && isAttackAct(info) && !info.spell && ["hit","crit"].includes(act.outcome)){ const R = SAVE_WORD.exec(String(info.text || ""));
-      if(R){ const b = saveBonusOf(t, R[1]), Q = saveD(t, R[1], `a ${R[1]} save against DC ${R[2]} (${info.name || "the attack"})`), d = Q.d, tot = d + b; riderMade = tot >= +R[2]; act.riderMade[t.id] = riderMade;     /* (a grapple's save too) */
-        turned.push(`${t.label}: ${R[1]} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${R[2]}, ${riderMade ? "made" : `failed: ${act.cond}`}`); } }
+      if(R){ const b = saveBonusOf(t, R[1]), Q = saveD(t, R[1], `a ${R[1]} save against DC ${R[2]} (${info.name || "the attack"})`), d = Q.d, tot = mightTot(t, R[1], d + b); riderMade = tot >= +R[2]; act.riderMade[t.id] = riderMade;     /* (a grapple's save too) */
+        turned.push(`${t.label}: ${R[1]} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(t, R[1], d + b)} vs DC ${R[2]}, ${riderMade ? "made" : `failed: ${act.cond}`}`); } }
     /* a grapple (item 3): on a hit, or a failed save, if they're small enough: who holds them and the escape DC */
     { const GT = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null, landed = isAttackAct(info) ? ["hit","crit"].includes(act.outcome) : !["miss","save"].includes(act.outcome) && !(svOf(t) && svOf(t).made);
       if(GT && !off && landed && !riderMade && t.id!==actor.id && (GT.max==null || sizeRank(t) <= GT.max) && !condImmune(t, "Grappled")){ const cs = condsOfT(t);
@@ -16631,7 +16634,7 @@ function effectsSweep(c, id, when){
     if(when!=="end" || e.who!==id || e.at===now) continue;
     if(e.end==="targetNext"){ snapIds.add(e.who); out.push(effectEnd(c, e, "the end of its turn")); continue; }
     if(e.rounds && c.round >= e.round + e.rounds){ snapIds.add(e.who); out.push(effectEnd(c, e, `${e.rounds / 10} minute`)); continue; }
-    if(e.repeat){ const b = saveBonusOf(t, e.repeat.abil), Q = saveD(t, e.repeat.abil, `a ${e.repeat.abil} save against DC ${e.repeat.dc} to end ${e.name}`), d = Q.d, tot = d + b, ok = tot >= e.repeat.dc, roll = `${e.repeat.abil} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${e.repeat.dc}`;
+    if(e.repeat){ const b = saveBonusOf(t, e.repeat.abil), Q = saveD(t, e.repeat.abil, `a ${e.repeat.abil} save against DC ${e.repeat.dc} to end ${e.name}`), d = Q.d, tot = mightTot(t, e.repeat.abil, d + b), ok = tot >= e.repeat.dc, roll = `${e.repeat.abil} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(t, e.repeat.abil, d + b)} vs DC ${e.repeat.dc}`;
       snapIds.add(e.who); if(ok) out.push(effectEnd(c, e, "", `repeats the save, ${roll}: made`)); else out.push(`${t.label} repeats the save against ${e.name}, ${roll}: still ${e.cond}.`); }
   }
   if(!out.length) return;
@@ -16699,9 +16702,9 @@ function gripEscape(c, t){
   const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath;
   const adv = escapeAdvT(t, useAcr), mode = g.dis && !adv ? "dis" : adv && !g.dis ? "adv" : "", why = adv ? (strAdvT(t) && !useAcr ? strAdvWhy(t) : "Powerful Build") : "";     // a Goliath: Advantage to end Grappled; Rage, Large Form: on a Strength check
   const Q = pcD20(t, `${useAcr ? "a Dexterity (Acrobatics)" : "a Strength (Athletics)"} check against DC ${g.dc} to break free`, mode);
-  const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = mode==="dis" ? Math.min(r1, r2) : mode==="adv" ? Math.max(r1, r2) : r1, tot = d + b, ok = tot >= g.dc;
+  const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = mode==="dis" ? Math.min(r1, r2) : mode==="adv" ? Math.max(r1, r2) : r1, tot = useAcr ? d + b : mightTot(t, "str", d + b), ok = tot >= g.dc;     // Athletics: a Strength check (Indomitable Might)
   const snap = snapOf(c, [t.id]), gripsBefore = JSON.stringify(c.grips || {});
-  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${Q.typed ? `d20 ${d}${Q.w}` : mode ? `d20 ${r1} and ${r2}, ${mode==="dis" ? "Disadvantage" : `Advantage (${why})`}: ${d}` : `d20 ${d}${adv && g.dis ? ` (${why} cancels the Disadvantage)` : ""}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
+  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${Q.typed ? `d20 ${d}${Q.w}` : mode ? `d20 ${r1} and ${r2}, ${mode==="dis" ? "Disadvantage" : `Advantage (${why})`}: ${d}` : `d20 ${d}${adv && g.dis ? ` (${why} cancels the Disadvantage)` : ""}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${useAcr ? "" : mightW(t, "str", d + b)} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
   if(ok){ if(c.grips && c.grips[t.id]) gripEnd(c, t.id, ""); else { const cs = condsOfT(t); for(const k of [g.cond, ...(g.ends || [])]){ const i = cs.indexOf(k); if(i >= 0) cs.splice(i, 1); } } }
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, grips:gripsBefore }); gameLog("check", line); return line;
 }
@@ -16759,13 +16762,13 @@ function shovePlan(c, t, tg){
 }
 async function autoShove(c, t, tg, plan, said){
   const m = t.kind==="foe" ? foeById(t.x.foe) : null, str = m ? Math.floor(((+((m.ab || [])[0]) || 10) - 10) / 2) : abBonus(pcState(t.p), "str"), pb = m ? profOf({ cr:m.cr }) : profOf(pcState(t.p)), dc = 8 + str + pb;
-  const sb = saveBonusOf(tg, "Strength"), db = saveBonusOf(tg, "Dexterity"), ab = db > sb ? "Dexterity" : "Strength", b = Math.max(sb, db), Q = saveD(tg, ab, `a ${ab} save against DC ${dc} (${t.label} shoves them)`), d = Q.d, tot = d + b, made = tot >= dc;
+  const sb = saveBonusOf(tg, "Strength"), db = saveBonusOf(tg, "Dexterity"), ab = db > sb ? "Dexterity" : "Strength", b = Math.max(sb, db), Q = saveD(tg, ab, `a ${ab} save against DC ${dc} (${t.label} shoves them)`), d = Q.d, tot = mightTot(tg, ab, d + b), made = tot >= dc;
   await autoSay(`${t.label} tries to shove ${tg.label}${plan.kind==="push" ? " back" : " to the ground"}!`);
   const snap = snapOf(c, [tg.id]), from = { ...c.pos[tg.id] };
   let what = "";
   if(!made){ if(plan.kind==="push"){ c.pos[tg.id] = { ...c.pos[tg.id], x:plan.q.x, y:plan.q.y }; what = "pushed back 5 ft"; } else { const cs = condsOfT(tg); if(!cs.includes("Prone")) cs.push("Prone"); what = "knocked Prone"; } }
   const A = (c.acted = c.acted || {})[t.id] = (c.acted[t.id] || { n:0, more:0 }); A.n++;
-  const line = `${t.label} shoves ${tg.label}: ${ab} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made: it stays put" : what}.`;
+  const line = `${t.label} shoves ${tg.label}: ${ab} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(tg, ab, d + b)} vs DC ${dc}, ${made ? "made: it stays put" : what}.`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, shoved:{ who:tg.id, from } }); gameLog("fight", line); renderBattle(); await autoSay(line);
   if(!made && plan.kind==="push"){ zonesMoved(c); gripSweep(c); }
 }
@@ -16860,8 +16863,8 @@ function zoneHit(c, u, t, why, squares){
   if(Z.once){ const H = u.hit = u.hit || {}; if(H[t.id]===turnStamp(c)) return ""; H[t.id] = turnStamp(c); }
   const snap = snapOf(c, [t.id]), holdsBefore = JSON.stringify(c.holds || {}), bits = [];
   let made = false;
-  if(Z.save){ const dc = spellDcOfT(owner) || 10, b = saveBonusOf(t, Z.save), Q = saveD(t, Z.save, `a ${Z.save} save against DC ${dc} (${s.name})`), d = Q.d, tot = d + b; made = tot >= dc;
-    bits.push(`${Z.save} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made" : "failed"}`); }
+  if(Z.save){ const dc = spellDcOfT(owner) || 10, b = saveBonusOf(t, Z.save), Q = saveD(t, Z.save, `a ${Z.save} save against DC ${dc} (${s.name})`), d = Q.d, tot = mightTot(t, Z.save, d + b); made = tot >= dc;
+    bits.push(`${Z.save} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(t, Z.save, d + b)} vs DC ${dc}, ${made ? "made" : "failed"}`); }
   if(Z.cond){ if(!made && !condImmune(t, Z.cond)){ const cs = condsOfT(t); if(!cs.includes(Z.cond)) cs.push(Z.cond);
       (c.holds = c.holds || {})[t.id] = { by:owner.id, tier:"half", name:s.name, sp:s.id, cond:"", dmgEnds:"", once:false, turns:0, pts:0 }; bits.push(Z.cond); } }
   else { const sc = scaledSpell(s, u.lvl, owner.kind==="pc" && owner.p ? clampLv(pcState(owner.p).level) : 0), P = /\(if you are\b/i.test(s.desc || "") ? sc.parts.slice(0, 1) : sc.parts, dice = addDice(...P.map(p => p.dice)) || s.dmg;
@@ -17172,9 +17175,9 @@ function renderBattlePanelNow(){
       const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), SM = saveModeT(c, x, k), adv0 = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)) || (k==="dex" && dodging(c, x)) || SM.adv, dis = SM.dis && !adv0, adv = adv0 && !SM.dis, lk = !adv && !dis && !!(act.svLuck && act.svLuck[x.id]) && luckSpend(x), Q = pcD20(x, `a ${X.S.abil} save against DC ${X.dc}`, dis ? "dis" : adv || lk), r1 = Q.d, r2 = !Q.typed && (adv || lk || dis) ? 1 + Math.floor(Math.random()*20) : 0, d0 = dis ? Math.min(r1, r2) : Math.max(r1, r2), hl = Q.typed ? null : hLuck(x, d0), d = hl ? hl.d : d0; if(act.svLuck) delete act.svLuck[x.id];     // Lucky: Advantage; a halfling's 1 rerolled; Rage, Danger Sense: Advantage; a Staggering Blow: Disadvantage
       if(SM.stagger) staggerUsed(c, x);
       const cvr = k==="dex" ? coverOf(c, act.actor, x.id, aoeOrigin()) : { level:0, ac:0, word:"" }, cb = cvr.level===3 ? 0 : cvr.ac;     // cover: +2 or +5 to a Dexterity save
-      const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false) + cb, F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
+      const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false) + cb, F = fxRoll(h, "save"), tot = mightTot(x, k, d + bo + F.n), IMw = mightW(x, k, d + bo + F.n);     // Bless, Bane, Haste, Slow, Warding Bond; Indomitable Might
       const how = `${Q.typed ? `d20 ${d0} (rolled at the table${adv || lk ? ", Advantage" : dis ? ", Disadvantage" : ""}${SM.why ? `: ${SM.why}` : ""})` : adv || lk || dis ? `d20 ${r1} and ${r2}, ${dis ? "Disadvantage" : "Advantage"}${lk ? " (a Luck point)" : SM.why ? ` (${SM.why})` : ""}: ${d0}` : `d20 ${d0}`}${hl ? `${hl.said}: ${d})` : ""}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
-      (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` };
+      (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how}${IMw} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` };
       if(tot < X.dc){ const lr = legResist(c, x); if(lr){ act.saves[x.id].made = true; act.saves[x.id].said += ` — ${lr}`; } } }     // Legendary Resistance, when it matters
     svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
   el.querySelectorAll("[data-svtot]").forEach(i=>i.onchange = ()=>{ keep(); const X = svCtx(), x = all.find(y=>y.id===i.dataset.svtot); if(!X || !x) return; const v = i.value.trim();

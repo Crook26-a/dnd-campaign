@@ -88,6 +88,13 @@ step("Persistent Rage (level 15): his initiative going in offers all his Rages b
   p.conds = []; barbTurnEnd(c, "x"); p.conds.push("Unconscious"); barbTurnEnd(c, "x"); const uncon = !!p.rage; p.conds = []; delete p.rage; p.level = 5; restPc(p, "long");
   return `${first} || ${second} || not kept up: raging ${kept}; Stunned: raging ${stunned}; Unconscious: raging ${uncon} | after a Long Rest, Persistent Rage again ${!p.persistUsed}`;
 });
+step("Indomitable Might (level 18, Strength 18): an Athletics escape with a 2 typed counts as 18 and breaks a DC 15 grapple; not at level 17; not Acrobatics", async () => {
+  const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), p = pcState(K.p); p.level = 18;
+  const grip = () => { (c.grips = c.grips || {})[K.id] = { by: F.id, dc: 15, cond: "Grappled", what: "grip", ends: [], how: "Athletics" }; if (!p.conds.includes("Grappled")) p.conds.push("Grappled"); };
+  grip(); bbAsk(["2"]); const a = gripEscape(c, K); grip(); p.level = 17; bbAsk(["2"]); const b = gripEscape(c, K); p.level = 18;
+  const raw = mightTot(K, "Dexterity", 6); p.level = 5; p.conds = []; delete c.grips[K.id];
+  return `${a} || at 17: ${b} || a Dexterity total of 6 stays ${raw}`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
   pcState(K.p).res.find(x => x.name === "Rage").used = 0; if(!pcState(K.p).rage) await bbRage();
