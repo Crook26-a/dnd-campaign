@@ -20365,22 +20365,71 @@ function laneCard(id){
     <div class="pcrow"><div class="field" style="flex:1.4"><label>Its name</label><input type="text" data-lanef="name" value="${esc(l.name||"")}" placeholder="The Spice Road"></div>
       <div class="field" style="flex:1"><label>Traffic</label><select data-lanef="traffic">${LANE_TRAFFIC.map(t=>`<option value="${t}" ${trafficOf(l)===t?"selected":""}>${t[0].toUpperCase() + t.slice(1)}</option>`).join("")}</select></div></div>
     <p class="empty-note" style="font-size:11px;margin:0 0 4px">Traffic: how often word crosses it (dense weekly … quiet every three months) and how much ships favour it.</p>
+    ${(()=>{ const C = laneChain(l), S = C.stops, cand = laneStopCandidates(C);
+      return `<p class="grouplab" style="margin:4px 0 2px">Its stops <small>${S.length} port${S.length===1?"":"s"}${C.lanes.length > 1 ? `, ${Math.round(C.lanes.reduce((a, x)=>a + (+x.miles || 0), 0))} mi in all` : ""}</small></p>
+        <div class="sbl">${S.map((id, i)=>`${i ? " → " : ""}<b>${esc(repPlaceName(id))}</b>${i && i < S.length - 1 ? ` <button class="fdel" data-laneact="unstop" data-c="${id}" title="Sail past ${esc(repPlaceName(id))}: the lane runs straight on">×</button>` : ""}`).join("")}</div>
+        <div class="pcrow" style="align-items:center;margin:2px 0 4px"><select data-lanestop style="flex:1;min-width:0"><option value="">Add a stop…</option>${cand.map(c=>`<option value="${c.n.id}">${esc(c.n.name)} (${c.mi} mi off it)</option>`).join("")}</select><button class="btn small" data-laneact="stop" title="The lane calls there on the way: it's split in two, each half by water">Add</button></div>`; })()}
     <p class="grouplab" style="margin:4px 0 2px">On it now <small>${ships.length ? `${ships.length} ship${ships.length===1?"":"s"}` : "no ships"}</small></p>
     ${ships.map(x=>`<div class="sbl"><span class="libref" data-laneship="${x.s.id}">${esc(x.s.name)}</span> <small>${esc((FLEET_KINDS[x.s.kind]||FLEET_KINDS.merchant)[0].toLowerCase())}</small>: ${esc(x.how)}</div>`).join("")}
     <div class="pcrow"><button class="btn" data-laneact="del" title="Ships stop using it">Delete the lane</button><button class="btn" data-laneact="close">Close</button></div>`;
   pop.hidden = false; render();
 }
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.lanef) return; const l = (repOf().lanes||[]).find(x=>x.id===laneSel); if(!l) return;
-  if(t.dataset.lanef==="name"){ const v = t.value.trim(); if(v){ if(v!==l.name) bgLog("world", `The lane ${repPlaceName(l.from)} – ${repPlaceName(l.to)} is called ${v} now`); l.name = v; } else delete l.name; }
-  else if(t.dataset.lanef==="traffic") l.traffic = t.value;
-  l.auto = false;                                                        // yours now: working the lanes out again keeps it
+  const all = laneChain(l).lanes;                                        // a lane with stops: every leg of it together
+  if(t.dataset.lanef==="name"){ const v = t.value.trim(); if(v){ if(v!==l.name) bgLog("world", `The lane ${repPlaceName(l.from)} – ${repPlaceName(l.to)} is called ${v} now`); for(const x of all) x.name = v; } else for(const x of all) delete x.name; }
+  else if(t.dataset.lanef==="traffic") for(const x of all) x.traffic = t.value;
+  for(const x of all) x.auto = false;                                    // yours now: working the lanes out again keeps it
   saveParty(); render(); laneCard(l.id); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-laneship]"); if(!b) return; laneSel = null; fleetCard(b.dataset.laneship); render(); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-laneact]"); if(!b) return; const pop = $("#fleetPop"), R = repOf(), l = (R.lanes||[]).find(x=>x.id===laneSel);
+  if((b.dataset.laneact==="stop" || b.dataset.laneact==="unstop") && l){
+    const c = b.dataset.laneact==="stop" ? ((pop.querySelector("[data-lanestop]")||{}).value || "") : b.dataset.c; if(!c){ flash("Pick a port first."); return; }
+    const nl = b.dataset.laneact==="stop" ? laneAddStop(l, c) : laneDropStop(l, c); if(nl){ saveParty(); laneCard(nl.id); renderPane(true); } return; }
   if(b.dataset.laneact==="del" && l){ const rest = R.lanes.filter(x=>x!==l), cut = lanesApart(rest), was = lanesApart(R.lanes);
     const newly = cut.filter(p=>!was.includes(p)); if(newly.length && !confirm(`Without this lane ${newly.map(p=>p.name).join(", ")} ${newly.length===1 ? "is" : "are"} cut off from the rest: ships can't reach ${newly.length===1 ? "it" : "them"}. Delete it anyway?`)) return;
     R.lanes = rest; bgLog("world", `The lane ${l.name ? `${l.name} (${repPlaceName(l.from)} – ${repPlaceName(l.to)})` : `${repPlaceName(l.from)} – ${repPlaceName(l.to)}`} is gone from the chart`); saveParty(); flash("The lane is gone."); }
   laneSel = null; delete pop.dataset.card; pop.hidden = true; render(); renderPane(true); });
+/* ── a lane's stops (Joseph, 2026-11-06: "edit the sea lanes, like add ports they stop at"). A lane runs port to port;
+   a stop splits it in two, each half by water, both keeping its name and traffic and a chain id (l.chain) so they're
+   one route: its card shows every stop in order, and a stop can be taken out again (the two halves made one) ── */
+const laneBetween = (a, b) => (repOf().lanes||[]).find(l=>(l.from===a && l.to===b) || (l.from===b && l.to===a)) || null;
+function laneMake(a, b, like){
+  const had = laneBetween(a, b); if(had){ if(like){ if(!had.chain) had.adopted = true; if(like.chain) had.chain = like.chain; if(like.name && !had.name) had.name = like.name; had.auto = false; } return had; }     // a lane already there joins the route (and stays if the stop comes out)
+  const A = repNode(a), B = repNode(b); if(!A || !B || a===b) return null;
+  const lo = a < b ? A : B, hi = lo===A ? B : A, rt = seaRoute(lo, hi); if(!rt) return null;
+  const l = { id:uid("ln"), from:lo.id, to:hi.id, traffic:like ? trafficOf(like) : "normal", auto:false, pts:rt.pts, miles:rt.miles, ...(like && like.name ? { name:like.name } : {}), ...(like && like.chain ? { chain:like.chain } : {}) };
+  repOf().lanes = [...(repOf().lanes||[]), l]; return l;
+}
+/* the whole route a lane is part of: its legs and its ports in order, end to end */
+function laneChain(l){
+  const L = l.chain ? (repOf().lanes||[]).filter(x=>x.chain===l.chain) : [l]; if(L.length < 2) return { lanes:[l], stops:[l.from, l.to] };
+  const deg = {}; for(const x of L) for(const id of [x.from, x.to]) deg[id] = (deg[id] || 0) + 1;
+  let at = Object.keys(deg).find(id=>deg[id]===1) || l.from; const stops = [at], used = new Set();
+  for(let i = 0; i < L.length; i++){ const x = L.find(y=>!used.has(y) && (y.from===at || y.to===at)); if(!x) break; used.add(x); at = x.from===at ? x.to : x.from; stops.push(at); }
+  return { lanes:L, stops };
+}
+/* ports a lane could stop at: the ones nearest it (by how far they lie off its way), not already on it */
+function laneStopCandidates(C){
+  const on = new Set(C.stops), segs = C.lanes.flatMap(x=>{ const P = x.pts && x.pts.length > 1 ? x.pts : [repNode(x.from), repNode(x.to)].filter(Boolean); return P.slice(1).map((b, i)=>[P[i], b]); });
+  const off = n => Math.min(...segs.map(([a, b])=>{ const dx = b.x - a.x, dy = b.y - a.y, L = dx*dx + dy*dy || 1, t = Math.max(0, Math.min(1, ((n.x - a.x)*dx + (n.y - a.y)*dy) / L)); return Math.hypot(n.x - a.x - t*dx, n.y - a.y - t*dy); }));
+  return repPorts().filter(n=>!on.has(n.id) && !regionNoLanes(n)).map(n=>({ n, d:off(n) })).sort((p, q)=>p.d - q.d).slice(0, 25).map(x=>({ n:x.n, mi:Math.round(x.d / (root.ppm || 10)) }));
+}
+function laneAddStop(l, c){
+  const C = repNode(c); if(!C || c===l.from || c===l.to) return null;
+  const like = { ...l, chain:l.chain || l.id }, a = laneMake(l.from, c, like), b = laneMake(c, l.to, like);
+  if(!a || !b){ flash(`No way by water to ${C.name}.`); return null; }
+  repOf().lanes = repOf().lanes.filter(x=>x!==l);
+  bgLog("world", `The lane ${l.name ? `${l.name} ` : ""}(${repPlaceName(l.from)} – ${repPlaceName(l.to)}) calls at ${C.name} now`); flash(`It stops at ${C.name} now.`); return a;
+}
+function laneDropStop(l, c){
+  const C = laneChain(l), i = C.stops.indexOf(c); if(i <= 0 || i >= C.stops.length - 1) return null;
+  const p = C.stops[i - 1], q = C.stops[i + 1], x = laneBetween(p, c), y = laneBetween(c, q); if(!x || !y) return null;
+  const own = [x, y].filter(z=>!z.adopted), mine = [x, y].filter(z=>z.adopted);       // a lane that was there before the stop stays, just off the route
+  repOf().lanes = repOf().lanes.filter(z=>!own.includes(z)); const nl = laneMake(p, q, { ...x, chain:x.chain || x.id });
+  if(!nl){ repOf().lanes.push(...own); flash("No way by water past it."); return null; }
+  for(const z of mine){ delete z.chain; delete z.adopted; }
+  bgLog("world", `The lane ${x.name ? `${x.name} ` : ""}sails past ${repPlaceName(c)} now (${repPlaceName(p)} – ${repPlaceName(q)})`); flash(`It sails past ${repPlaceName(c)} now.`); return nl;
+}
 /* a lane drawn by hand between two ports, by water like the others */
 function laneDraw(a, b){
   const A = repNode(a), B = repNode(b); if(!A || !B || a===b){ flash("Pick two different ports."); return null; }
