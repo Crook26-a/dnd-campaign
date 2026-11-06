@@ -46,11 +46,22 @@ step("Danger Sense: Advantage on Korg's Dexterity saves, asked of his player as 
   const asked = bbAsked[0] || "not asked"; pcState(K.p).conds.push("Stunned"); const s = saveModeT(c, K, "dex"); pcState(K.p).conds = pcState(K.p).conds.filter(k => k !== "Stunned");
   return `Korg: ${JSON.stringify(a)} | rolled for him: d20 ${Q.d >= 1 && Q.d <= 20 ? "ok" : Q.d}${Q.w.replace(/\d+ and \d+/, "x and y")} | asked: ${asked} | Stunned: adv ${s.adv} | Wren: adv ${saveModeT(c, W, "dex").adv}`;
 });
+step("Instinctive Pounce: at level 7, raging gives Korg half his Speed more to move this turn (not at level 5); Undo takes it back", async () => {
+  const c = bbFight(), K = bbWho("Korg"), p = pcState(K.p); delete p.rage; p.res.find(x => x.name === "Rage").used = 0;
+  c.round++; await bbTurn(K); const a5 = moveAllow(c, K); await bbRage(); const r5 = moveAllow(c, K); delete p.rage;
+  p.level = 7; c.round++; await bbTurn(K); const a7 = moveAllow(c, K); const said = await bbRage(); const r7 = moveAllow(c, K); undoAction(c); await wait(20);
+  const back = moveAllow(c, K); p.level = 5; delete p.rage;
+  return `level 5: ${a5} → ${r5} ft | level 7: ${a7} → ${r7} ft ("${said.match(/Instinctive Pounce[^;—]*/)}") | undone: ${back} ft`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
+  pcState(K.p).res.find(x => x.name === "Rage").used = 0; if(!pcState(K.p).rage) await bbRage();
   c.round++; await bbTurn(K); turnEnds(c); const ended = `${pcState(K.p).rage ? "still raging" : "ended"}: ${bbLast()}`;
   await bbRage(); c.round++; await bbTurn(K); bbAxe(K, F); act.dmg = "10"; renderBattlePanel(); await wait(20); $("#ac-go").click(); await wait(30); const hit = bbLast(); turnEnds(c);
   const kept = `${pcState(K.p).rage ? "still raging" : "ended"}`;
   c.round++; await bbTurn(K); turnEnds(c); const u0 = used(); await bbRage(); const u1 = used(); undoAction(c); await wait(20);
-  return `${ended} || ${hit} | after the attack turn: ${kept} || raged again: uses used ${u0} → ${u1}; undone: ${used()}, raging ${!!pcState(K.p).rage}`;
+  const u2 = `${used()}, raging ${!!pcState(K.p).rage}`; c.round++; await bbTurn(K); turnEnds(c); pcState(K.p).res.find(x => x.name === "Rage").used = 3;
+  bbAsk([false]); const K2 = bbWho("Korg"); await bbTurn(K2); act.what = actionChoices(K2).flatMap(g => g.items).find(i => /^rage/i.test(i.label)).v; act.targets = []; renderBattlePanel(); await wait(20);
+  const n0 = c.log.length; $("#ac-go").click(); await wait(30);
+  return `${ended} || ${hit} | after the attack turn: ${kept} || raged again: uses used ${u0} → ${u1}; undone: ${u2} || none left: asked "${bbAsked[0] || "nothing"}", logged ${c.log.length !== n0}`;
 });

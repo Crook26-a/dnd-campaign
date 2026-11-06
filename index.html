@@ -16230,6 +16230,7 @@ function logAction(n, c){
   if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
   if(info.origin==="large" && actor.p && actor.p.big){ flash(`${actor.label} is Large already.`); return; }
   if(info.self) act.outcome = "none";     // on themselves: nothing hits or misses
+  if(info.origin && info.res && actor.p){ const r = pcState(actor.p).res.find(q => (q.id || q.name)===info.res); if(r && (+r.used || 0) >= (+r.max || 0) && !confirm(`${actor.label} has no ${r.name} left (${r.rest==="short" ? "back on a Short or Long Rest" : r.rest==="one" ? "one back on a Short Rest, all on a Long Rest" : "back on a Long Rest"}). Log it anyway?`)) return; }
   if(info.kind==="spell" && ragingT(actor) && !confirm(`${actor.label} is raging, and can't cast spells while the Rage lasts. Log it anyway?`)) return;
   /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
   { const CS = counterCheck(c, actor, info, part); if(CS && !CS.made){ const acted0 = JSON.stringify(c.acted || {}), bon0 = JSON.stringify(c.bonused || {});
