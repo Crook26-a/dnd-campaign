@@ -9573,6 +9573,7 @@ function cbIntoPc(pc, x){
   for(const k of ["name","player","species","cls","subcls","bg","align","ac","hpMax","speed","init","pp","dc","satk","saves","skills","senses","langs","looks","persona"]) if(x[k]!=null && x[k]!=="") pc[k] = x[k];
   for(const k of ["str","dex","con","int","wis","cha","hp","temp"]) if(x[k]!=null) pc[k] = x[k];
   pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
+  if(x.feats) pc.feats = x.feats; if(x.giant) pc.giant = x.giant;     // their features by name (Alert, Savage Attacker…), and a Goliath's giant (2026-11-06)
   if((+pc.xp || 0) < XP_LEVELS[pc.level]) pc.xp = XP_LEVELS[pc.level];     // the Character Book keeps no XP: a level it raised brings the XP up to that level's start (Joseph, 2026-11-03: "I updated Gnick, but it didn't update the xp")
   if(x.purse) pc.purse = { ...x.purse };
   if(x.death) pc.death = { s:+x.death.s||0, f:+x.death.f||0 };
@@ -9656,7 +9657,7 @@ function pcToCb(c){
     hpMax:numOr(c.hpMax,1), hp:numOr(c.hp, numOr(c.hpMax,1)), temp:numOr(c.temp,0), hd:{ die, max:hdRes ? +hdRes.max : clampLv(c.level), used:hdRes ? +hdRes.used||0 : 0 },
     death:{ ok:+((c.death||{}).s)||0, fail:+((c.death||{}).f)||0 }, conds:(c.conds||[]).slice(), exh:0, conc:null, effects:[],
     res:(c.res||[]).filter(r=>r && r.name && r!==hdRes).map(r=>({ id:r.id||uid("rs_"), name:r.name, max:+r.max||0, used:+r.used||0, rest:["short","long","one"].includes(r.rest) ? r.rest : "long" })),
-    slots, pact:c.cls==="Warlock", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
+    slots, pact:c.cls==="Warlock", giant:c.giant || "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
     purse:{ cp:0, sp:0, ep:0, gp:0, pp:0, ...(c.purse||{}) }, debtCp:0, marked:false, log:[], sessions:[], people:[],
     story:{ profs:[c.langs ? `Languages: ${c.langs}` : ""].filter(Boolean).join("\n"), traits:line("Trait") || (/^\w+:/m.test(persona) ? "" : persona), ideals:line("Ideal"), bonds:line("Bond"), flaws:line("Flaw"), looks:c.looks||"", backstory:"", more:"" },
     rolls:[], inspiration:false };
@@ -11438,8 +11439,92 @@ function pcState(c){
   const pl = palLevel(c); if(pl){ let r = c.res.find(q=>/lay on hands/i.test(q.name||""));
     if(!r) c.res.push(r = { id:uid("rs"), name:"Lay on Hands", max:0, used:0, rest:"long" });
     r.pool = true; r.max = 5 * pl; r.used = Math.min(r.max, +r.used || 0); }
+  originRes(c);
   return c;
 }
+/* origins (Joseph, 2026-11-06, the SRD's character origins): a Goliath's and an Orc's traits with uses, by the species on
+   the sheet: Giant Ancestry (Proficiency Bonus a Long Rest), Large Form (level 5, once a Long Rest), Adrenaline Rush
+   (Proficiency Bonus a Short Rest), Relentless Endurance (once a Long Rest), the same names the Character Book gives them.
+   The giant a Goliath descends from is c.giant: from the Character Book, "Goliath (Fire)", or picked on their card */
+const GIANTS = [["cloud","Cloud's Jaunt (Cloud Giant)"],["fire","Fire's Burn (Fire Giant)"],["frost","Frost's Chill (Frost Giant)"],["hill","Hill's Tumble (Hill Giant)"],["stone","Stone's Endurance (Stone Giant)"],["storm","Storm's Thunder (Storm Giant)"]];
+function goliathOf(c){ return /goliath/i.test(String((c && c.species) || "")); }     // (declarations: pcState can run before these lines do)
+function orcOf(c){ const s = String((c && c.species) || ""); return /\borc\b/i.test(s) && !/half/i.test(s); }
+function pbOfPc(c){ return 2 + Math.floor((clampLv(c.level) - 1) / 4); }
+const giantOf = c => !goliathOf(c) ? "" : c.giant || ((/\((cloud|fire|frost|hill|stone|storm)\b/i.exec(String(c.species || "")) || [])[1] || "").toLowerCase();
+const giantName = k => ((GIANTS.find(g => g[0]===k) || [])[1] || "").replace(/\s*\(.*$/, "");
+const featText = c => [c && c.feats, c && c.features, c && c.traits, c && c.notes].filter(Boolean).join(" ");
+function originRes(c){
+  const pb = pbOfPc(c), want = [];
+  if(goliathOf(c)){ want.push(["Giant Ancestry", pb, "long"]); if(clampLv(c.level) >= 5) want.push(["Large Form", 1, "long"]); }
+  if(orcOf(c)) want.push(["Adrenaline Rush", pb, "short"], ["Relentless Endurance", 1, "long"]);
+  for(const [name, max, rest] of want){ let r = c.res.find(q => String(q.name || "").trim().toLowerCase()===name.toLowerCase()); if(!r) c.res.push(r = { id:uid("rs"), name, max, used:0, rest });
+    r.max = max; r.used = Math.min(max, +r.used || 0); }
+}
+/* one of those uses, if there's one left */
+const originUse = (c, name) => { const r = ((c && c.res) || []).find(q => lc(q.name)===lc(name)); return r && (+r.used || 0) < (+r.max || 0) ? r : null; };
+/* Stone's Endurance: when they take damage, their Reaction: 1d12 + Constitution modifier off it (asked first) */
+function stoneEndurance(c, t, dm, turned){
+  const p = pcState(t.p); if(giantOf(p)!=="stone" || dm <= 0 || isDownT(t) || reactedThisRound(c, t.id)) return dm;
+  const r = originUse(p, "Giant Ancestry"); if(!r) return dm;
+  if(!confirm(`${t.label} takes ${dm} damage. Stone's Endurance (their Reaction; ${r.max - r.used} use${r.max - r.used===1 ? "" : "s"} left): roll 1d12 + their Constitution modifier and take that much less?`)) return dm;
+  const Q = pcDie(t, "Stone's Endurance's d12", 12), con = abBonus(p, "con"), cut = Math.max(0, Q.d + con);
+  r.used = (+r.used || 0) + 1; (c.reacted = c.reacted || {})[t.id] = c.round;
+  turned.push(`${t.label}: Stone's Endurance (Reaction), d12 ${Q.d}${Q.w}${con ? ` ${con < 0 ? "−" : "+"} ${Math.abs(con)}` : ""} = ${cut} less`);
+  return Math.max(0, dm - cut);
+}
+/* Storm's Thunder: damaged by a creature within 60 ft, their Reaction: 1d8 Thunder to it (asked first) */
+function stormThunder(c, t, by, turned){
+  const p = pcState(t.p); if(giantOf(p)!=="storm" || !by || by.id===t.id || isDownT(t) || reactedThisRound(c, t.id)) return;
+  const r = originUse(p, "Giant Ancestry"); if(!r) return;
+  const A = c.pos && c.pos[by.id], B = c.pos && c.pos[t.id]; if(A && B && chebSq(A, B) * 5 > 60) return;
+  if(!confirm(`${t.label} took damage from ${by.label}. Storm's Thunder (their Reaction; ${r.max - r.used} use${r.max - r.used===1 ? "" : "s"} left): 1d8 Thunder damage to ${by.label}?`)) return;
+  const Q = pcDie(t, "Storm's Thunder's d8", 8), how = dmgTakes(by, "thunder"), n = dmgAfter(Q.d, how);
+  r.used = (+r.used || 0) + 1; (c.reacted = c.reacted || {})[t.id] = c.round;
+  const ds = [], down = n > 0 ? (by.kind==="foe" ? damageFoe(by.x, n) : damagePc(by.p, n, false, ds)) : false;
+  turned.push(`${t.label}: Storm's Thunder (Reaction), d8 ${Q.d}${Q.w}: ${n} Thunder damage to ${by.label}${how ? ` (${how === "immune" ? "immune" : how === "resists" ? "resists it" : "vulnerable"})` : ""}${ds.length ? `, ${ds.join(", ")}` : ""}${down ? `; ${by.label} drops` : ""}`);
+}
+/* Fire's Burn, Frost's Chill, Hill's Tumble on a hit (the chip's dice already in the damage): one use, and what else it does */
+function giantHit(c, actor, t, GA, turned){
+  const p = pcState(actor.p), r = originUse(p, "Giant Ancestry");
+  if(r && !act.giantPaid){ r.used = (+r.used || 0) + 1; act.giantPaid = true; act.addons = (act.addons || []).filter(k => k!=="giant"); }     // one use for this hit; not carried to the next attack
+  if(GA.giant==="frost"){ (c.effects = c.effects || []).push({ id:uid("ef"), who:t.id, cond:"", by:actor.id, name:"Frost's Chill", at:turnStamp(c), round:c.round, end:"srcStart", repeat:null, sp:null, rounds:null, slow:10 });
+    turned.push(`${t.label}: Frost's Chill, Speed −10 ft until the start of ${actor.label}'s next turn`); }
+  if(GA.giant==="hill"){ if(footOf(t) > 2) turned.push(`${t.label}: too big for Hill's Tumble (Large or smaller only)`);
+    else if(!condImmune(t, "Prone")){ const cs = condsOfT(t); if(!cs.includes("Prone")) cs.push("Prone"); turned.push(`${t.label}: Hill's Tumble, Prone`); } }
+  if(GA.giant==="fire") turned.push(`${t.label}: Fire's Burn`);
+}
+/* the Bonus Action ones, logged from Resources (the use is spent with the rest): what each does */
+function originDo(c, t, info){
+  const p = pcState(t.p), pb = pbOfPc(p);
+  if(info.origin==="rush"){ const M = (c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }; M.dash = true;
+    const was = numOr(p.temp, 0); if(pb > was) p.temp = pb;
+    return [`${t.label} Dashes and has ${Math.max(pb, was)} temporary hit points${pb > was ? "" : " (as many as they had: they don't stack)"}`]; }
+  if(info.origin==="large"){ p.big = true; return [`${t.label} grows to Large for 10 minutes (any rest ends it, or their card's End button): Advantage on Strength checks, Speed +10 ft`]; }
+  if(info.origin==="jaunt"){ c.jaunt = { id:t.id, at:turnStamp(c) }; return [`${t.label} teleports up to 30 ft to a space they can see: move their token there (it isn't movement)`]; }
+  return [];
+}
+/* Alert (the Criminal's origin feat): right after initiative, swap with a willing ally; neither Incapacitated. Offered in
+   the first round, once each */
+function alertSwapHtml(c, all){
+  if((+c.round || 1) > 1) return "";
+  return all.filter(t => t.kind==="pc" && !t.npc && t.p && /\bAlert\b/.test(featText(t.p)) && t.init!=null && !(c.alertDone || {})[t.id]).map(t => {
+    const allies = all.filter(o => o.id!==t.id && o.side===t.side && o.init!=null && !o.shared); if(!allies.length) return "";
+    return `<div class="pcrow" style="align-items:center;margin:4px 0"><span style="flex:1;font-size:12px">${esc(t.label)} has Alert: swap initiative with</span><select data-alertwho="${esc(t.id)}" style="flex:1;min-width:0">${allies.map(o => `<option value="${esc(o.id)}">${esc(o.label)} (${o.init})</option>`).join("")}</select><button class="btn small" data-alertswap="${esc(t.id)}" title="Right after initiative, with a willing ally; not if either of them is Incapacitated">Swap</button></div>`; }).join("");
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-alertswap]"); if(!b || !battleOf) return; const c = aoeFight(); if(!c) return;
+  const id = b.dataset.alertswap, sel = document.querySelector(`[data-alertwho="${id}"]`), o = sel && sel.value, all = combatants(c), t = all.find(x => x.id===id), a = all.find(x => x.id===o); if(!t || !a) return;
+  if([t, a].some(x => condsOfT(x).some(k => ["Incapacitated", "Paralyzed", "Petrified", "Stunned", "Unconscious"].includes(k)))){ flash("Alert: no swap while either of them is Incapacitated."); return; }
+  const v = c.init[id]; c.init[id] = c.init[o]; c.init[o] = v; (c.alertDone = c.alertDone || {})[id] = true;
+  const line = `${t.label} swaps initiative with ${a.label} (Alert): ${t.label} ${c.init[id]}, ${a.label} ${c.init[o]}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("fight", line); flash(line); touch(); renderBattle(); renderBattlePanel(); });
+/* Magic Initiate (the Sage's origin feat): the Character Book's "<spell> (Magic Initiate, no slot)" use, for this spell */
+function miResOf(t, info){
+  if(!t || t.kind!=="pc" || !t.p || !info || info.kind!=="spell" || info.free || !info.spell || !(info.spell.lv > 0)) return null;
+  const nm = lc(info.spell.name); return (pcState(t.p).res || []).find(r => /magic initiate/i.test(r.name || "") && lc(r.name).startsWith(nm)) || null;
+}
+/* their Strength checks with Advantage (Large Form), and checks to end Grappled (a Goliath's Powerful Build) */
+const strAdvT = t => !!(t && t.kind!=="foe" && t.p && t.p.big);
+const escapeAdvT = t => strAdvT(t) || !!(t && t.kind!=="foe" && t.p && goliathOf(t.p));
 /* their paladin level: "Paladin 3, Cleric 2" says it; a plain "Paladin" is their level */
 function palLevel(c){ const s = String(c.cls||""), m = /paladin\s*(\d+)/i.exec(s); return m ? clampLv(+m[1]) : /paladin/i.test(s) ? clampLv(c.level) : 0; }
 /* a spell by id: the SRD's, or one of your own (the Library's Spells tab) — same fields, so it casts, scales and heals the same way */
@@ -11800,6 +11885,20 @@ function wildFormsEditor(c, i){
     <div class="pcrow" style="margin-top:4px"><select class="pc-wsadd" data-pci="${i}" style="flex:1;min-width:0"><option value="">Learn a form…</option>${beastsFor(clampLv(c.level)).filter(m=>!forms.includes(m.id)).map(m=>`<option value="${m.id}">${esc(m.name)}${String(m.id).startsWith("srd:")?"":" (your library)"} · CR ${crLabel(+m.cr||0)}</option>`).join("")}</select>
       <button class="btn" data-pa="wsadd" data-pci="${i}">Add</button></div>`;
 }
+/* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
+function originCardHtml(c){
+  if(!goliathOf(c)) return "";
+  const g = giantOf(c);
+  return `<div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1" title="Giant Ancestry: Proficiency Bonus uses a Long Rest">Giant ancestry</label><select data-giantpick="${esc(c.id)}" style="flex:2;min-width:0"><option value="">Pick one (the Character Book can too)</option>${GIANTS.map(([k, l]) => `<option value="${k}" ${g===k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+    ${c.big ? `<div class="fc-res"><span class="chip">Large Form: Large, Speed +10 ft, Advantage on Strength checks</span><button class="btn small" data-bigend="${esc(c.id)}" title="No action needed">End it</button></div>` : ""}`;
+}
+const pcById = id => [...partyRoster(), ...companions()].find(x => x && x.id===id);
+document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.giantpick==null) return; const p = pcById(t.dataset.giantpick); if(!p) return;
+  if(t.value) p.giant = t.value; else delete p.giant; saveParty(); touch(); flash(t.value ? `${p.name || "They"}: ${giantName(t.value)}.` : "No giant ancestry picked.");
+  try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} });
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-bigend]"); if(!b) return; const p = pcById(b.dataset.bigend); if(!p) return;
+  delete p.big; const line = `${p.name || "They"} end${p.name ? "s" : ""} Large Form`; gameLog("fight", line); const c = battleOf ? aoeFight() : null; if(c) (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." });
+  saveParty(); touch(); flash(line + "."); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} });
 function pcTracker(c, i){
   pcState(c);
   const hp = numOr(c.hp), max = numOr(c.hpMax), down = hp!==null && hp<=0;
@@ -11814,6 +11913,7 @@ function pcTracker(c, i){
     <div class="pc-mini"><button data-pa="temp" data-pci="${i}" title="Set temporary HP to the amount">Temp HP</button>${max==null?`<span class="empty-note">Set HP max below to track hit points.</span>`:""}</div>
     ${down?`<div class="fc-res"><span class="chip">Death saves ${pips(3, c.death.s, j=>`data-pa="ds" data-k="s" data-pci="${i}" data-j="${j}"`)}</span><span class="chip cond">Failures ${pips(3, c.death.f, j=>`data-pa="ds" data-k="f" data-pci="${i}" data-j="${j}"`)}</span></div>`:""}
     ${wildShapeBlock(c, i)}
+    ${originCardHtml(c)}
     ${slots||res?`<div class="fc-res">${slots}${res}</div>`:""}
     <div class="fc-cond">${c.conds.map(cn=>`<button class="chip cond" data-pa="uncond" data-pci="${i}" data-k="${esc(cn)}" title="Remove">${esc(cn)} ×</button>`).join("")}
       <select class="pc-addcond fc-addcond" data-pci="${i}"><option value="">+ condition</option>${CONDITIONS.filter(cn=>!c.conds.includes(cn)).map(cn=>`<option>${cn}</option>`).join("")}</select></div>
@@ -11835,6 +11935,7 @@ function restPc(c, kind){
   pcState(c);
   /* things they carry that come back after a rest (an item of your own set to "After a Long Rest", say) */
   try{ const got = rechargeItems([c], kind==="long" ? "long" : "short", 1); if(got.length) gameLog("item", `After the ${kind} rest: ${got.join(", ")} regained charges`); }catch(err){}
+  delete c.big;                                                  // Large Form lasts 10 minutes: any rest outlasts it
   if(kind==="short"){ for(const r of c.res){ if(r.rest==="short") r.used = 0; else if(r.rest==="one") r.used = Math.max(0, r.used-1); } return; }
   const max = numOr(c.hpMax); if(max!=null) c.hp = max;
   c.temp = 0; c.death = { s:0, f:0 }; c.conds = c.conds.filter(cn=>cn!=="Unconscious");
@@ -14050,6 +14151,7 @@ const chebSq = (a, b) => { const an = a.n || 1, bn = b.n || 1;
      or an Ooze); a locked one stops it. Statues, iron bars, windows and tree trunks block movement but not sight. ── */
 const DIFFICULT = "cxuTdknPBXlrtofIsaUL", MOVE_BLOCK = "@|wY";
 function footOf(t){
+  if(t && t.kind!=="foe" && t.p && t.p.big) return 2;     // a Goliath in Large Form
   const sb = !t ? null : t.kind==="foe" ? foeById(t.x.foe) : t.p ? (pcStatBlock(t.p) || pcState(t.p)) : null, s = String((sb && sb.size) || "");
   return /^\s*Gargantuan/i.test(s) ? 4 : /^\s*Huge/i.test(s) ? 3 : /^\s*Large/i.test(s) ? 2 : 1;
 }
@@ -15280,13 +15382,15 @@ const bonusUsed = (c, id) => !!(c.bonused && c.bonused[id]!=null);
 const playersRoll = () => root.playersRoll !== false;
 const baForAction = () => root.baForAction !== false;
 const playerRollsT = t => !!t && t.kind==="pc" && !t.person && !allyAuto(t) && playersRoll();
-function pcD20(t, what, adv){
-  const roll = () => ({ d:1 + Math.floor(Math.random() * 20), typed:false, w:"" });
+function pcD20(t, what, adv){ return pcDie(t, what, 20, adv); }
+/* any one die a player character rolls (a d12 for Stone's Endurance, too) */
+function pcDie(t, what, sides, adv){
+  const roll = () => ({ d:1 + Math.floor(Math.random() * sides), typed:false, w:"" });
   if(!playerRollsT(t)) return roll();
   for(let i = 0; i < 3; i++){
-    const v = prompt(`${t.label} rolls ${what}${adv === "dis" ? ", with Disadvantage (two d20s, keep the lower)" : adv ? ", with Advantage (two d20s, keep the higher)" : ""}.\n\nType the d20 the player rolled (1 to 20); the app adds the bonus. Leave it blank to roll it for them.`, "");
+    const v = prompt(`${t.label} rolls ${what}${adv === "dis" ? `, with Disadvantage (two d${sides}s, keep the lower)` : adv ? `, with Advantage (two d${sides}s, keep the higher)` : ""}.\n\nType the d${sides} the player rolled (1 to ${sides})${sides===20 ? "; the app adds the bonus" : ""}. Leave it blank to roll it for them.`, "");
     if(v==null || String(v).trim()==="") return roll();
-    const n = Math.round(+v); if(n >= 1 && n <= 20) return { d:n, typed:true, w:" (rolled at the table)" };
+    const n = Math.round(+v); if(n >= 1 && n <= sides) return { d:n, typed:true, w:" (rolled at the table)" };
   }
   return roll();
 }
@@ -15342,6 +15446,8 @@ function speedOf(t){
   let sp = t.kind==="foe" ? (first((foeById(t.x.foe)||{}).spd) ?? 30) : (first(t.p && pcState(t.p).speed) ?? first((pcStatBlock(t.p)||{}).spd) ?? 30);
   const h = hOfT(t), F = fxOf(h, false), conds = t.kind==="foe" ? (t.x.conds||[]) : ((t.p && pcState(t.p).conds) || []);
   const fl = /\bfly\s*(\d+)/i.exec(speedText(t)); if(fl) sp = Math.max(sp, +fl[1]); if(F.some(f=>f.sp==="spell:fly")) sp = Math.max(sp, 60);     // simple flight (item 9): it goes by its Fly Speed when that's faster
+  if(t.kind!=="foe" && t.p && t.p.big) sp += 10;     // Large Form: +10 ft
+  { const fc = aoeFight(); if(fc && (fc.effects || []).some(e => e.who===t.id && e.slow)) sp = Math.max(0, sp - (fc.effects.find(e => e.who===t.id && e.slow).slow)); }     // Frost's Chill: −10 ft until the start of the Goliath's next turn
   if(F.some(f=>f.sp==="spell:haste")) sp *= 2; if(F.some(f=>f.sp==="spell:slow")) sp = Math.floor(sp / 2);
   if(conds.some(k=>k==="Grappled" || k==="Restrained")) sp = 0;
   return sp;
@@ -15350,6 +15456,8 @@ const movedOf = (c, id) => (c.moved && c.moved[id]) || { ft:0, dash:false, moves
 const moveAllow = (c, t) => speedOf(t) * (movedOf(c, t.id).dash ? 2 : 1);
 function moveTrack(c, id, from){
   const to = c.pos && c.pos[id]; if(!c || calmOf(c) || c.turn!==id || !from || from.x==null || !to) return;
+  if(c.jaunt && c.jaunt.id===id && c.jaunt.at===turnStamp(c)){ delete c.jaunt; const sq = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));     // Cloud's Jaunt: the next move is the teleport, not movement
+    flash(sq * 5 > 30 ? `That's ${sq * 5} ft: Cloud's Jaunt goes up to 30 ft. Move them back if it's too far.` : `Teleported ${sq * 5} ft (Cloud's Jaunt): no movement used.`); return; }
   const who = combatants(c).find(x=>x.id===id), bn = bnode(), cheb = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
   const way = who && bn && c.layout!=="lineup" && cheb ? moveGrid(c, who, bn, from, cheb * 2 + 8).seen.get(`${to.x},${to.y}`) : null;     // the cheapest way there: difficult terrain costs double
   const ft = (way ? way.cost : cheb) * 5 * (who && dragsSlow(c, who) ? 2 : 1); if(!ft) return;     // dragging someone it grapples: every foot costs 2
@@ -15563,6 +15671,11 @@ function attackAddons(t){
     }
     { const r = (c.res||[]).find(x=>/superiority di/i.test(x.name||"")), d = r && (/d(\d+)/i.exec(r.name||"")||[])[1];     /* a Battle Master's die (Riposte, Trip Attack...): spent when logged */
       if(r && (+r.max||0) - (+r.used||0) > 0) out.push({ key:"sup", name:"Superiority die", dice:`1d${d||8}`, dtype:"", note:"a maneuver that adds it to the damage (Riposte, Trip Attack...): spends one", sup:true }); }
+    /* a Goliath's Giant Ancestry on a hit (2026-11-06): Fire's Burn 1d10 Fire, Frost's Chill 1d6 Cold and −10 ft, Hill's Tumble Prone; spends a use when it hits */
+    { const g = giantOf(c), r = originUse(c, "Giant Ancestry"), G = { fire:["1d10", "fire", "1d10 Fire"], frost:["1d6", "cold", "1d6 Cold, and its Speed −10 ft until the start of their next turn"], hill:["", "", "the target (Large or smaller) is knocked Prone"] }[g];
+      if(G && r) out.push({ key:"giant", name:giantName(g), dice:G[0], dtype:G[1], giant:g, note:`Giant Ancestry, on a hit with an attack roll: ${G[2]}. Spends a use (${r.max - r.used} left)` }); }
+    /* Savage Attacker (the Soldier's origin feat): once a turn, a weapon's damage dice rolled twice, either total used (the higher, here) */
+    if(/savage attacker/i.test(featText(c))) out.push({ key:"savage", name:"Savage Attacker", once:true, savage:true, note:"Once a turn, on a weapon hit: the damage dice rolled twice, the higher kept" });
   }
   if(t.kind==="pc") out.push(...itemExtras(pcState(t.p)));
   const sb = t.kind==="foe" ? foeById(t.x.foe) : pcStatBlock(t.p);
@@ -15770,6 +15883,12 @@ function actInfo(c, t){
   if(w.startsWith("res:")){ const r = (t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4)))||{}, nm = r.name||"a resource";
     const heal = /second wind/i.test(nm) ? ((/(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(nm)||[])[1] || `1d10+${clampLv(pcState(t.p).level)}`).replace(/\s+/g, "") : "";     // Second Wind heals (2026-10-30)
     if(/lay on hands/i.test(nm)) return { kind:"ability", name:"Lay on Hands", res:w.slice(4), loh:true, ba:true, healDice:"" };     // a Bonus Action (2024): a pool of hit points
+    /* origins (2026-11-06): Bonus Actions on themselves */
+    if(/^adrenaline rush$/i.test(nm)) return { kind:"ability", name:"Adrenaline Rush", res:w.slice(4), ba:true, origin:"rush", self:true, healDice:"" };
+    if(/^large form$/i.test(nm)) return { kind:"ability", name:"Large Form", res:w.slice(4), ba:true, origin:"large", self:true, healDice:"" };
+    if(/^giant ancestry$/i.test(nm) && giantOf(pcState(t.p))==="cloud") return { kind:"ability", name:"Cloud's Jaunt", res:w.slice(4), ba:true, origin:"jaunt", self:true, healDice:"" };
+    if(/^relentless endurance$/i.test(nm)) return { kind:"ability", name:"Relentless Endurance", res:w.slice(4), origin:"passive", healDice:"" };
+    if(/^giant ancestry$/i.test(nm)) return { kind:"ability", name:giantName(giantOf(pcState(t.p))) || "Giant Ancestry", res:w.slice(4), origin:"passive", healDice:"" };
     return { kind:"ability", name:nm, res:w.slice(4), healDice:heal }; }
   if(w.startsWith("wsa:")){
     const nm = w.slice(4), sb = pcStatBlock(t.p);
@@ -15805,7 +15924,7 @@ function actDice(c, t, info){
   const sc = info && info.spell ? scaledSpell(info.spell, act.lvl, t && t.kind==="pc" ? clampLv(t.p.level) : 0) : null;
   const part1 = sc && sc.parts[0] ? sc.parts[0] : (info && info.hint) || null, part2 = (sc && sc.parts[1]) || null;
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
-  const addons = t && (isAtk || part1) ? attackAddons(t) : [];     // on any damage, not just attacks (Joseph, 2026-10-30)
+  const addons = (t && (isAtk || part1) ? attackAddons(t) : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk));     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
   /* the modifier the rules add (Joseph, 2026-10-30: "a plus modifier for spiritual weapon and just in general"): a spell
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
@@ -15866,6 +15985,7 @@ function actionForm(c, all){
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
     ${info && info.spell && SPELL_FX[info.spell.id] && SPELL_FX[info.spell.id].skillDie && !info.free ? `<div class="field"><label>Skill <small>(its 1d4 goes on checks with it)</small></label><select id="ac-fxskill"><option value="">Any check</option>${TA_SKILLS.map(k=>`<option ${k===act.fxSkill?"selected":""}>${k}</option>`).join("")}</select></div>` : ""}
     ${lvls.length?`<div class="field"><label>Slot used</label><select id="ac-lvl">${lvls.map(L=>{ const s = pcState(t.p).slots[L]; return `<option value="${L}" ${L===act.lvl?"selected":""}>${ORD[L]} level (${s.max-s.used} left)</option>`; }).join("")}</select></div>`:""}
+    ${(r => r ? `<label class="check" style="margin:-4px 0 7px" title="Magic Initiate: this spell once without a slot, back on a Long Rest"><input type="checkbox" id="ac-mi" ${act.miFree?"checked":""} ${r.used >= r.max && !act.miFree ? "disabled" : ""}> Free: Magic Initiate, no slot <i class="rused">(${r.max - r.used} left until a Long Rest)</i></label>` : "")(miResOf(t, info))}
     ${info&&info.spell?`<p class="actspell">${esc(info.spell.name)} · ${info.spell.lv?ORD[info.spell.lv]+" level":"cantrip"} ${esc(info.spell.school.toLowerCase())} · ${esc(info.spell.range)}${info.spell.save?` · ${esc(info.spell.save)} save`:""}${info.spell.atk?" · spell attack":""}${info.spell.dmg?` · ${esc(info.spell.dmg)} ${esc(info.spell.dtype)}`:""}${info.spell.conc?" · concentration":""} <span class="libref" data-spellopen="${info.spell.id}">text</span></p>`:""}
     ${info&&info.hint&&!info.spell?`<p class="actspell">${esc(info.hint.dice)} ${esc(info.hint.dtype)}${info.save?" · saving throw":""}</p>`:""}
     ${D.sc && D.sc.up ? `<p class="actspell">${info.spell.lv ? `With a ${ORD[act.lvl]}-level slot` : `At character level ${clampLv(t.p.level)}`}: ${D.sc.parts.map(p=>`${esc(p.dice)} ${esc(p.dtype)}`).join(", then ")}${D.sc.heal?` · heals ${esc(D.sc.heal)}`:""}</p>` : ""}
@@ -15933,6 +16053,10 @@ function damagePc(p, v, crit, said){
   if(rest>0 && max && over >= max){ p.death.f = 3; if(said) said.push(`massive damage (${over} past 0, at least their ${max} hit point maximum): dead`); }
   else if(rest>0 && hp<=0){ const k = crit ? 2 : 1; if(p.death.s >= 3) p.death.s = 0; p.death.f = Math.min(3, p.death.f + k);     /* Stable no longer: death saves again */ if(said) said.push(`${k===2 ? "two death save failures (a critical hit)" : "a death save failure"}, ${p.death.f} of 3${p.death.f>=3 ? ": dead" : ""}`); }
   hp = Math.max(0, hp - rest); p.hp = hp;
+  /* Relentless Endurance (an Orc, 2026-11-06): reduced to 0 but not killed outright, they can drop to 1 instead, once a Long Rest */
+  if(was > 0 && hp <= 0 && p.death.f < 3 && orcOf(p)){ const r = originUse(p, "Relentless Endurance");
+    if(r && confirm(`${p.name || "They"} drop${p.name ? "s" : ""} to 0 hit points. Relentless Endurance (once a Long Rest): drop to 1 hit point instead?`)){
+      r.used = (+r.used || 0) + 1; hp = p.hp = 1; if(said) said.push("Relentless Endurance: 1 hit point instead of 0"); return false; } }
   if(hp<=0 && !p.conds.includes("Unconscious")) p.conds.push("Unconscious");
   if(was>0 && hp<=0) statsOf(p).downs += 1;      // dropped to 0 hp: counts against their value score
   if(hp<=0) delete p.shape;                                      // Wild Shape ends when they go down
@@ -15986,7 +16110,7 @@ function logAction(n, c){
   if(isAction && actionsLeft(c, actor.id) <= 0 && !confirm(`${actor.label} has already used ${actionUsed(c, actor.id) && (c.acted[actor.id].n > 1) ? "their actions" : "their action"} this turn. Log this one anyway?`)) return;
   if((isAction || isBonus) && c.turn===actor.id && haltedT(c, actor) && !confirm(`${actor.label} is under Command: “Halt!” They don't move and take no action or Bonus Action this turn. Log this anyway?`)) return;
   /* one spell slot a turn (the 2024 rules; Joseph's fight of 2026-11-06: Command, then Mass Healing Word, on one turn): asks first */
-  const slotSpell = actor.kind==="pc" && info.kind==="spell" && !info.free && !part && !act.reaction && !!(info.spell && info.spell.lv>0 && act.lvl);
+  const slotSpell = actor.kind==="pc" && info.kind==="spell" && !info.free && !part && !act.reaction && !act.miFree && !!(info.spell && info.spell.lv>0 && act.lvl);
   if(slotSpell && c.turn===actor.id && (c.log||[]).some(e=>e.by===actor.id && e.at===turnStamp(c) && e.slot)
     && !confirm(`${actor.label} has already cast a spell with a spell slot this turn. In the 2024 rules a character can expend only one spell slot to cast a spell on a turn. Log this one anyway?`)) return;
   /* Lay on Hands: what it takes from the pool (the healing, and 5 more to end Poisoned) has to be there */
@@ -15995,6 +16119,10 @@ function logAction(n, c){
     if(need > left){ flash(`Lay on Hands: that needs ${need} from the pool, and ${left} ${left===1 ? "is" : "are"} left.`); return; }
     const far = targets.filter(o=>o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) > 1);
     if(far.length && !confirm(`Lay on Hands is a touch: ${far.map(o=>o.label).join(", ")} ${far.length > 1 ? "aren't" : "isn't"} within 5 feet of ${actor.label}. Log it anyway?`)) return; }
+  /* origins (2026-11-06): the ones that happen by themselves aren't logged from Resources */
+  if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
+  if(info.origin==="large" && actor.p && actor.p.big){ flash(`${actor.label} is Large already.`); return; }
+  if(info.self) act.outcome = "none";     // on themselves: nothing hits or misses
   /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
   { const CS = counterCheck(c, actor, info, part); if(CS && !CS.made){ const acted0 = JSON.stringify(c.acted || {}), bon0 = JSON.stringify(c.bonused || {});
       if(isAction){ c.acted = c.acted || {}; const a = c.acted[actor.id] = c.acted[actor.id] || { n:0, more:0 }; a.n++; } if(isBonus){ (c.bonused = c.bonused || {})[actor.id] = c.round; }
@@ -16006,7 +16134,9 @@ function logAction(n, c){
   let slotTxt = "";
   if(actor.kind==="pc"){
     const p = pcState(actor.p), S = statsOf(p);
-    if(info.kind==="spell" && !info.free && !part && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
+    const miR = act.miFree && !part ? miResOf(actor, info) : null;     // Magic Initiate: its own use, no slot
+    if(miR){ miR.used = Math.min(miR.max, (+miR.used || 0) + 1); slotTxt = ` (Magic Initiate: no slot; ${miR.max - miR.used} left until a Long Rest)`; }
+    else if(info.kind==="spell" && !info.free && !part && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
     if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) : 1));     // a pool (Lay on Hands) spends what it gives
       if(r && info.loh) slotTxt = ` (${r.max - r.used} left in the pool)`; }
     if(info.kind==="item"){ const x = usableOf(p).find(y=>y.k===info.useK);                 /* using a carried thing spends a charge (or the thing) */
@@ -16039,6 +16169,8 @@ function logAction(n, c){
   /* each target's own save (2026-10-30): a made one takes half or none, as the text says, and no condition */
   const SV = act.saves ? saveOfAct(c, actor, info) : null, svOf = t => SV ? (act.saves[t.id] || null) : null;
   const effectsBefore = JSON.stringify(c.effects || []), gripsBefore = JSON.stringify(c.grips || {});
+  const reacted0 = JSON.stringify(c.reacted||{}), movedBefore = JSON.stringify(c.moved||{}), bigBefore = actor.kind==="pc" && actor.p ? !!actor.p.big : null;     // (Stone's Endurance and Storm's Thunder take reactions below)
+  if(info.origin && actor.kind==="pc") turned.push(...originDo(c, actor, info));     // Adrenaline Rush, Large Form, Cloud's Jaunt
   { const G0 = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null; if(G0 && (act.cond==="Grappled" || G0.also.includes(act.cond))) act.cond = ""; }     // a grapple puts on what comes with it itself (not on someone too big)     // how long what it puts on lasts (effectAdd), and grapples, for undo
   for(const t of targets){
     let dropped = false, got = 0, hl = 0, off = false;
@@ -16046,8 +16178,11 @@ function logAction(n, c){
     if(mp){ const r = 1 + Math.floor(Math.random()*100), why = String(pcState(t.p).hitsMissWhy||"").trim(); off = r <= mp;
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
     if(!off && isAttackAct(info) && ["hit","crit"].includes(act.outcome)){ const m = mirrorCheck(actor, t); if(m){ off = m.off; turned.push(m.said); } }     // Mirror Image
-    const dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
+    let dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
+    if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = stoneEndurance(c, t, dm, turned);     // a Goliath's Stone's Endurance: their Reaction, the damage cut
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
+    if(got && t.kind==="pc" && t.id!==actor.id) stormThunder(c, t, actor, turned);     // a Goliath's Storm's Thunder: their Reaction, 1d8 Thunder back
+    if(got && ["hit","crit"].includes(act.outcome) && isAttackAct(info)){ const GA = D.on.find(a => a.giant); if(GA) giantHit(c, actor, t, GA, turned); }     // Fire's Burn, Frost's Chill, Hill's Tumble
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
     else if(heal){ hl = healAny(t, heal); healed += hl; }
     if(info.loh && act.lohPoison){ const cs = condsOfT(t), k = cs.indexOf("Poisoned"); if(k >= 0){ cs.splice(k, 1); turned.push(`${t.label}: no longer Poisoned`); } }     // Lay on Hands' 5 points
@@ -16118,7 +16253,7 @@ function logAction(n, c){
     + biteWords
     + [...hits, ...hits2].filter((h,i,A)=>h.dropped && A.findIndex(x=>x.id===h.id && x.dropped)===i).map(h=>`. ${h.label} drops`).join("") + ".";
   c.log = c.log || [];
-  const reactedBefore = JSON.stringify(c.reacted||{}), bonusBefore = JSON.stringify(c.bonused||{}), actedBefore = JSON.stringify(c.acted||{});
+  const reactedBefore = reacted0, bonusBefore = JSON.stringify(c.bonused||{}), actedBefore = JSON.stringify(c.acted||{});
   if(act.reaction){ c.reacted = c.reacted || {}; c.reacted[actor.id] = c.round; }
   if(isBonus){ c.bonused = c.bonused || {}; c.bonused[actor.id] = c.round; }
   const surge = /action surge/i.test(info.name||"");     // one more action this turn
@@ -16157,7 +16292,8 @@ function logAction(n, c){
   const stealthBefore = JSON.stringify(c.stealth || {}), outed = isAttackAct(info) && act.toHit && c.stealth && c.stealth[actor.id] && c.stealth[actor.id].hide!=null;
   if(outed) delete c.stealth[actor.id].hide;
   if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell }); gripSweep(c);
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell && !act.miFree,
+    ...(info.origin==="rush" ? { moved:movedBefore } : {}), ...(info.origin==="large" ? { big:{ id:actor.id, v:bigBefore } } : {}), ...(info.origin==="jaunt" ? { jaunt:true } : {}) }); gripSweep(c);
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   /* a spell that adds to their weapon attacks while it lasts (Divine Favor): on from now, by itself (autoAddonKeys) */
   if(info.kind==="spell" && !part && info.spell && spellAddonAuto(info.spell) && attackAddons(actor).some(a => a.key==="spell:" + info.spell.id)){ const L = (c.lit = c.lit || {})[actor.id] = c.lit[actor.id] || {}; L["spell:" + info.spell.id] = c.round; }
@@ -16257,6 +16393,8 @@ function undoAction(c){
   if(e.ups!=null){ const B = JSON.parse(e.ups), keep = new Set(B.u.map(u=>u.id)); c.pos = c.pos || {};     // what was up, as it was (a token moved since stays where it is)
     for(const u of c.ups||[]) if(!keep.has(u.id)) delete c.pos[u.id]; c.ups = B.u; for(const [id, p] of Object.entries(B.p)) if(!c.pos[id]) c.pos[id] = p; }
   restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.moved!=null) c.moved = JSON.parse(e.moved); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
+  if(e.big){ const T = combatants(c).find(x => x.id===e.big.id); if(T && T.p){ if(e.big.v) T.p.big = true; else delete T.p.big; } }     // Large Form taken back
+  if(e.jaunt) delete c.jaunt;
   partySync();
   flash("Took back the last action.");
   touch(); renderBattle(); renderBattlePanel();
@@ -16308,7 +16446,7 @@ function effectEnd(c, e, why, extra){
   const t = combatants(c).find(x => x.id===e.who); c.effects = (c.effects || []).filter(x => x!==e); if(!t) return "";
   const cs = condsOfT(t), i = cs.indexOf(e.cond); if(i >= 0 && !(c.effects || []).some(x => x.who===e.who && x.cond===e.cond)) cs.splice(i, 1);
   const H = c.holds && c.holds[e.who]; if(H && (H.cond===e.cond || (e.sp && H.sp===e.sp) || H.name===e.name)) delete c.holds[e.who];
-  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
+  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
 }
 function effectsSweep(c, id, when){
   const all = combatants(c), now = turnStamp(c), out = [], before = JSON.stringify(c.effects || []), holdsBefore = JSON.stringify(c.holds || {}), snapIds = new Set();
@@ -16386,10 +16524,11 @@ function gripRowHtml(c, t){
 function gripEscape(c, t){
   const g = gripOf(c, t); if(!g) return "";
   const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath;
-  const Q = pcD20(t, `${useAcr ? "a Dexterity (Acrobatics)" : "a Strength (Athletics)"} check against DC ${g.dc} to break free`, g.dis ? "dis" : "");
-  const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = g.dis ? Math.min(r1, r2) : r1, tot = d + b, ok = tot >= g.dc;
+  const adv = escapeAdvT(t), mode = g.dis && !adv ? "dis" : adv && !g.dis ? "adv" : "", why = adv ? (t.p.big ? "Large Form" : "Powerful Build") : "";     // a Goliath: Advantage to end Grappled
+  const Q = pcD20(t, `${useAcr ? "a Dexterity (Acrobatics)" : "a Strength (Athletics)"} check against DC ${g.dc} to break free`, mode);
+  const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = mode==="dis" ? Math.min(r1, r2) : mode==="adv" ? Math.max(r1, r2) : r1, tot = d + b, ok = tot >= g.dc;
   const snap = snapOf(c, [t.id]), gripsBefore = JSON.stringify(c.grips || {});
-  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${Q.typed ? `d20 ${d}${Q.w}` : g.dis ? `d20 ${r1} and ${r2}, Disadvantage: ${d}` : `d20 ${d}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
+  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${Q.typed ? `d20 ${d}${Q.w}` : mode ? `d20 ${r1} and ${r2}, ${mode==="dis" ? "Disadvantage" : `Advantage (${why})`}: ${d}` : `d20 ${d}${adv && g.dis ? ` (${why} cancels the Disadvantage)` : ""}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
   if(ok){ if(c.grips && c.grips[t.id]) gripEnd(c, t.id, ""); else { const cs = condsOfT(t); for(const k of [g.cond, ...(g.ends || [])]){ const i = cs.indexOf(k); if(i >= 0) cs.splice(i, 1); } } }
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, grips:gripsBefore }); gameLog("check", line); return line;
 }
@@ -16746,6 +16885,7 @@ function renderBattlePanelNow(){
         <span class="ir-name" data-bsel="${t.id}">${esc(t.label)}${reactedThisRound(c,t.id)?` <small class="rused" title="Used their reaction this round">⚡ used</small>`:""}${t.id===c.turn && ((c.moved||{})[t.id]||{}).ft ? ` <small class="rused" title="Feet moved this turn, of their speed">↦ ${c.moved[t.id].ft}/${moveAllow(c,t)} ft</small>` : ""}${actionUsed(c,t.id) || ((c.acted||{})[t.id]||{}).more ? ` <small class="rused" title="Their action this turn (Action Surge gives one more)">${((c.acted||{})[t.id]||{}).swings > 0 ? `● ${c.acted[t.id].swings} attack${c.acted[t.id].swings>1?"s":""} left in it` : actionsLeft(c,t.id) > 0 ? `● ${actionsLeft(c,t.id)} action${actionsLeft(c,t.id)>1?"s":""} left` : "● action used"}</small>` : ""}${bonusUsed(c,t.id)?` <small class="rused" title="Used their bonus action this turn">◑ bonus used</small>`:""}</span><span class="mono">${hpText(t)}</span>
         <span class="ir-ctl"><button data-breact="${t.id}" title="Take a reaction (opportunity attack…)">⚡</button><button data-bturn="${t.id}" title="Their turn now">▶</button><button data-bmove="${k}" data-dir="-1" title="Move up" ${k?"":"disabled"}>▲</button><button data-bmove="${k}" data-dir="1" title="Move down" ${k<all.length-1?"":"disabled"}>▼</button></span></div>`).join("")}
     ${Array.isArray(c.order)&&c.order.length?`<button class="btn wide" data-ba="initorder" style="margin-top:4px">Back to initiative order</button>`:""}
+    ${alertSwapHtml(c, all)}
     ${selActs}
     <p class="grouplab bt-takehead" style="margin-top:10px">Take an action</p>
     ${actionForm(c, all)}
@@ -16835,6 +16975,7 @@ function renderBattlePanelNow(){
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
   const lv = $("#ac-lvl"); if(lv) lv.onchange = ()=>{ act.lvl = +lv.value; redraw(); };
+  { const mi = $("#ac-mi"); if(mi) mi.onchange = ()=>{ act.miFree = mi.checked; const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(act.miFree && info && info.spell) act.lvl = info.spell.lv; redraw(); }; }     // Magic Initiate: cast at its own level
   el.querySelectorAll("[data-actt]").forEach(b=>b.onclick = ()=>{ keep(); const id = b.dataset.actt; act.targets = act.targets.includes(id) ? act.targets.filter(x=>x!==id) : [...act.targets, id];
     /* a roll to hit was against one target's AC: another target, roll again (2026-10-31: a Specter's roll against Bennus was logged on the Specter itself) */
     if(act.toHit && act.toHit.tg!==act.targets[0]){ delete act.toHit; flash("The target changed: roll to hit again."); }
@@ -16933,8 +17074,12 @@ function renderBattlePanelNow(){
         if(why){ (act.addons = act.addons || []).push(SA.key); act.toHit.said += ` · Sneak Attack (${why})`; } }
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
-      D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const r = rollTerms(diceTerms(p.dice), crit);
-        P[p.dtype] = { v:r.total, said:diceWords(`${p.dice}${p.dtype ? ` ${p.dtype}` : ""}${crit ? " (crit: dice twice)" : ""}`, r.rolls, diceTerms(p.dice).filter(x=>!x.d).reduce((a, x)=>a + x.k, 0), r.total) }; });
+      const sav = D.on.some(a => a.savage);     // Savage Attacker: the weapon's part rolled twice, the higher kept
+      D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const k0 = diceTerms(p.dice).filter(x=>!x.d).reduce((a, x)=>a + x.k, 0), lab = `${p.dice}${p.dtype ? ` ${p.dtype}` : ""}${crit ? " (crit: dice twice)" : ""}`;
+        let r = rollTerms(diceTerms(p.dice), crit), said = diceWords(lab, r.rolls, k0, r.total);
+        if(sav && i===0){ const r2 = rollTerms(diceTerms(p.dice), crit), s2 = diceWords(lab, r2.rolls, k0, r2.total), keep2 = r2.total > r.total;
+          said = `Savage Attacker: ${said} and ${s2}, kept ${keep2 ? r2.total : r.total}`; if(keep2) r = r2; }
+        P[p.dtype] = { v:r.total, said }; });
       partsSum(D); flash(act.rolled.dmg.said); renderBattlePanel(); return; }
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
     const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
