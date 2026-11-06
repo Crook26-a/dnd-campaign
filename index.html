@@ -8446,11 +8446,55 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
   const snap = snapOf(c, [t.id]); let said;
   if(d===20){ p.hp = 1; p.conds = p.conds.filter(x => x!=="Unconscious"); p.death = { s:0, f:0 }; said = "a 20: they're back up with 1 hit point"; }
   else if(d===1){ p.death.f = Math.min(3, p.death.f + 2); said = `a 1: two failures (${p.death.f} of 3)`; }
-  else if(d >= 10){ p.death.s = Math.min(3, p.death.s + 1); said = `a success (${p.death.s} of 3)${p.death.s >= 3 ? ": Stable" : ""}`; }
+  else if(d >= 10){ p.death.s = Math.min(3, p.death.s + 1); if(p.death.s >= 3) p.death.f = 0; said =`a success (${p.death.s} of 3)${p.death.s >= 3 ? ": Stable" : ""}`; }
   else { p.death.f = Math.min(3, p.death.f + 1); said = `a failure (${p.death.f} of 3)`; }
   const line = `${t.label} makes a death save: d20 ${d}${typed ? " (rolled at the table)" : ""}, ${said}${deadP(p) ? `. ${t.label} dies.` : "."}`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap }); gameLog("down", line); flash(line);
-  partySync(); touch(); renderBattle(); renderBattlePanel(); });const deadT = o => !!o && o.kind!=="foe" && !!o.p && deadP(pcState(o.p));
+  partySync(); touch(); renderBattle(); renderBattlePanel(); });
+/* stabilizing (Joseph, 2026-11-06: "a medicine check so you can stabilize a downed ally"): on someone's turn, each of
+   their side beside them at 0 hit points (not dead, not Stable yet) gets a row. The Help action and a DC 10 Wisdom
+   (Medicine) check (the 2024 rules), or a use of a Healer's Kit they carry and no check (ten uses; e.uses counts down).
+   Stable: three successes, the failures cleared (damage starts the death saves again). It spends their action, and is a
+   line in the fight's log that Undo takes back. Spare the Dying does it as a spell ("becomes Stable", in logAction). */
+const stableP = p => ((p.death || {}).s || 0) >= 3;
+const healKitOf = p => (pcState(p).inv || []).find(e => e && /healers-kit/i.test(String(e.id || "")) && (e.uses==null || +e.uses > 0)) || null;
+const sameSideT = (a, b) => (a.side==="enemy") === (b.side==="enemy");
+function stabilizeHtml(c, t){
+  if(!t || !t.p || c.turn!==t.id || isDownT(t) || calmOf(c)) return "";
+  const P = c.pos || {}, me = P[t.id]; if(!me) return "";
+  const D = combatants(c).filter(o => o.id!==t.id && o.kind!=="foe" && o.p && sameSideT(o, t) && isDownT(o) && !deadT(o) && !stableP(pcState(o.p)) && P[o.id] && chebSq(me, P[o.id]) <= 1);
+  if(!D.length) return "";
+  const mod = skillMod(pcState(t.p), "Medicine"), kit = healKitOf(t.p), uses = kit ? (kit.uses==null ? 10 : +kit.uses) : 0;
+  return `<div class="tacbox" style="margin:0 0 6px;padding:4px 6px;border-left:3px solid var(--r3);background:var(--paper-lit);font-size:12px">
+    ${D.map(o => `<div class="pcrow" style="align-items:center;margin:2px 0;flex-wrap:wrap;gap:4px"><span style="flex:1;min-width:140px"><b>${esc(o.label)}</b> is dying beside ${esc(t.label)}. Stabilize (their action):</span>
+      <input class="mono" type="number" min="1" max="20" placeholder="d20" data-stabd="${esc(o.id)}" style="width:52px" title="Rolled at the table? Type the d20">
+      <button class="btn small" data-stab="${esc(o.id)}" title="The Help action: a DC 10 Wisdom (Medicine) check">Medicine ${mod < 0 ? "−" : "+"}${Math.abs(mod)}, DC 10</button>
+      ${kit ? `<button class="btn small" data-stabkit="${esc(o.id)}" title="A use of the kit: Stable, no check">Healer's Kit (${uses} left)</button>` : ""}</div>`).join("")}</div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-stab],[data-stabkit]"); if(!b) return;
+  const n = bnode(), c = n && n.site && n.site.combat; if(!c) return;
+  const all = combatants(c), t = all.find(x => x.id===c.turn), o = all.find(x => x.id===(b.dataset.stab || b.dataset.stabkit)); if(!t || !t.p || !o || !o.p) return;
+  if(actionsLeft(c, t.id) <= 0 && !confirm(`${t.label} has already used their action this turn. Stabilize anyway?`)) return;
+  const p = pcState(o.p), snap = snapOf(c, [o.id]), acted0 = JSON.stringify(c.acted || {}); let line, kit = null;
+  if(b.dataset.stabkit){ const k = healKitOf(t.p); if(!k) return; const inv = pcState(t.p).inv, was = k.uses==null ? 10 : +k.uses;
+    kit = { who:t.id, i:inv.indexOf(k), uses:k.uses ?? null }; k.uses = was - 1;
+    p.death = { s:3, f:0 }; line = `${t.label} uses a Healer's Kit on ${o.label} (${k.uses} use${k.uses===1 ? "" : "s"} left): ${o.label} is Stable.`; }
+  else { const box = document.querySelector(`[data-stabd="${o.id}"]`), typed = Math.round(+((box || {}).value || 0)), d = typed >= 1 && typed <= 20 ? typed : 1 + Math.floor(Math.random() * 20);
+    const mod = skillMod(pcState(t.p), "Medicine"), tot = d + mod, ok = tot >= 10; if(ok) p.death = { s:3, f:0 };
+    line = `${t.label} tries to stabilize ${o.label} (the Help action): Wisdom (Medicine) d20 ${d}${typed ? " (rolled at the table)" : ""} ${mod < 0 ? "−" : "+"} ${Math.abs(mod)} = ${tot} vs DC 10, ${ok ? `${o.label} is Stable.` : "not this time."}`; }
+  c.acted = c.acted || {}; const a = c.acted[t.id] = c.acted[t.id] || { n:0, more:0 }; a.n++;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, acted:acted0, kit }); gameLog("down", line); flash(line);
+  partySync(); touch(); renderBattle(); renderBattlePanel(); });
+/* commanded (Joseph's fight, 2026-11-06: Gawain, told "Halt!", still threw two javelins): on the turn of a character an
+   enemy's Command or Suggestion holds, what it makes them do, from the spell's own words; Log it asks first under Halt */
+function commandedHtml(c, t){
+  const H = autoHeld(c, t); if(!H || t.kind==="foe" || autoOn(t) || !(H.tier==="order" || H.tier==="turn")) return "";
+  const who = autoByName(c, H), W = H.word ? cmdWords(H).find(w => w.word.toLowerCase()===String(H.word).toLowerCase()) : null;
+  return `<div class="tacbox" style="margin:0 0 6px;padding:4px 6px;border-left:3px solid var(--r3);background:var(--paper-lit);font-size:12px">
+    <b>${esc(t.label)} is under ${esc(who)}'s ${esc(H.name)}${H.word ? `: “${esc(H.word)}!”` : ""}</b><br>${W ? esc(W.text) : `${esc(who)} says what ${esc(t.label)} does this turn.`}</div>`;
+}
+const haltedT = (c, t) => { const H = autoHeld(c, t); return !!(H && H.word && /^halt$/i.test(H.word)); };
+const deadT =o => !!o && o.kind!=="foe" && !!o.p && deadP(pcState(o.p));
 const tacEvil = (h, key) => /evil/i.test(String(String(key||"").startsWith("x:") ? ((foeById(h.foe)||{}).align || "") : (h.align || (h.statBlock||{}).align || ((h.fightsAs && h.fightsAs!=="self" && foeById(h.fightsAs)) || {}).align || "")));
 const TAC_COURAGE = [[1,"1 Cowardly: flees when first hurt or outnumbered"],[2,"2 Cautious: below half, or outnumbered 2 to 1"],[3,"3 Steady: below a quarter"],[4,"4 Brave: only when nearly dead"],[5,"5 Fearless: never flees"]];
 const TAC_STAND = { front:"into the thick of it, beside its target", skirm:"hits, then moves off; flanks; won't stay pinned", ranged:"at range behind cover, away from anyone in melee",
@@ -11380,8 +11424,14 @@ function pcState(c){
   if(!Array.isArray(c.conds)) c.conds = [];
   if(!c.death) c.death = { s:0, f:0 };
   c.temp = numOr(c.temp, 0);
+  /* a paladin's Lay on Hands (Joseph, 2026-11-06): a pool of 5 × their paladin level, back on a long rest */
+  const pl = palLevel(c); if(pl){ let r = c.res.find(q=>/lay on hands/i.test(q.name||""));
+    if(!r) c.res.push(r = { id:uid("rs"), name:"Lay on Hands", max:0, used:0, rest:"long" });
+    r.pool = true; r.max = 5 * pl; r.used = Math.min(r.max, +r.used || 0); }
   return c;
 }
+/* their paladin level: "Paladin 3, Cleric 2" says it; a plain "Paladin" is their level */
+function palLevel(c){ const s = String(c.cls||""), m = /paladin\s*(\d+)/i.exec(s); return m ? clampLv(+m[1]) : /paladin/i.test(s) ? clampLv(c.level) : 0; }
 /* a spell by id: the SRD's, or one of your own (the Library's Spells tab) — same fields, so it casts, scales and heals the same way */
 const ownSpells = () => (typeof root!=="undefined" && root && root.library && Array.isArray(root.library.spells)) ? root.library.spells : [];
 const spellOf = id => SPELL_BY.get(id) || ownSpells().find(s=>s.id===id) || null;
@@ -11745,7 +11795,7 @@ function pcTracker(c, i){
   const hp = numOr(c.hp), max = numOr(c.hpMax), down = hp!==null && hp<=0;
   const pct = (hp!==null && max) ? Math.max(0, Math.min(100, hp/max*100)) : 100;
   const slots = c.slots.map((s,L)=>L&&s&&s.max>0 ? `<span class="chip spell" title="${ORD[L]}-level spell slots">${ORD[L]} ${pips(s.max, s.used, j=>`data-pa="slot" data-pci="${i}" data-l="${L}" data-j="${j}"`)}</span>` : "").join("");
-  const res = c.res.map((r,ri)=>`<span class="chip" title="${r.rest==="short"?"All back on a short or long rest":r.rest==="one"?"One back on a short rest, all on a long rest":"Back on a long rest"}">${esc(r.name)} ${pips(r.max, r.used, j=>`data-pa="rpip" data-pci="${i}" data-r="${ri}" data-j="${j}"`)}<span class="x" data-pa="rdel" data-pci="${i}" data-r="${ri}" title="Remove">×</span></span>`).join("");
+  const res = c.res.map((r,ri)=>`<span class="chip" title="${r.rest==="short"?"All back on a short or long rest":r.rest==="one"?"One back on a short rest, all on a long rest":"Back on a long rest"}">${esc(r.name)} ${r.pool ? `<b class="mono">${r.max - r.used}</b>/${r.max}` : pips(r.max, r.used, j=>`data-pa="rpip" data-pci="${i}" data-r="${ri}" data-j="${j}"`)}<span class="x" data-pa="rdel" data-pci="${i}" data-r="${ri}" title="Remove">×</span></span>`).join("");
   return `<div class="pctrack${down?" down":""}">
     <div class="hpbar"><div style="width:${pct}%;background:${pct>50?"var(--r1)":pct>25?"var(--r3)":"var(--lead)"}"></div></div>
     <div class="fc-row"><span class="mono fc-hp">HP <b>${hp??"?"}</b>/${max??"?"}${c.temp?` <span class="temp">+${c.temp}</span>`:""}</span>
@@ -11779,6 +11829,7 @@ function restPc(c, kind){
   const max = numOr(c.hpMax); if(max!=null) c.hp = max;
   c.temp = 0; c.death = { s:0, f:0 }; c.conds = c.conds.filter(cn=>cn!=="Unconscious");
   delete c.shape;                                                // a long rest outlasts any Wild Shape
+  delete c.conc;                                                 // and any spell they were holding (Joseph's fight, 2026-11-06: Spiritual Weapon and Shield of Faith carried into the next fight)
   for(let L=1; L<=9; L++) c.slots[L].used = 0; for(const r of c.res) r.used = 0;
 }
 /* the whole party rests at once: one step to undo */
@@ -15691,6 +15742,7 @@ function actInfo(c, t){
       hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null }; }
   if(w.startsWith("res:")){ const r = (t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4)))||{}, nm = r.name||"a resource";
     const heal = /second wind/i.test(nm) ? ((/(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(nm)||[])[1] || `1d10+${clampLv(pcState(t.p).level)}`).replace(/\s+/g, "") : "";     // Second Wind heals (2026-10-30)
+    if(/lay on hands/i.test(nm)) return { kind:"ability", name:"Lay on Hands", res:w.slice(4), loh:true, ba:true, healDice:"" };     // a Bonus Action (2024): a pool of hit points
     return { kind:"ability", name:nm, res:w.slice(4), healDice:heal }; }
   if(w.startsWith("wsa:")){
     const nm = w.slice(4), sb = pcStatBlock(t.p);
@@ -15770,7 +15822,7 @@ function actionForm(c, all){
     <div class="pcrow">
       <div class="field" style="flex:1"><label>Who</label><select id="ac-actor">${all.map(x=>`<option value="${x.id}" ${x.id===act.actor?"selected":""}>${esc(x.label)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1.4"><label>Does</label><select id="ac-what"><option value="">Choose…</option>${choices.map(g=>`<optgroup label="${esc(g.group)}">${g.items.map(o=>`<option value="${esc(o.v)}" ${o.v===act.what?"selected":""}>${esc(o.label)}</option>`).join("")}</optgroup>`).join("")}</select></div></div>
-    ${legHtml(c)}${t ? deathSaveHtml(c, t) + gripRowHtml(c, t) + itemRowHtml(c, t) + gwmHtml(c, t) + tacticsHtml(c, t) : ""}
+    ${legHtml(c)}${t ? deathSaveHtml(c, t) + commandedHtml(c, t) + stabilizeHtml(c, t) + gripRowHtml(c, t) + itemRowHtml(c, t) + gwmHtml(c, t) + tacticsHtml(c, t) : ""}
     ${t && (t.kind==="foe" || t.p) ? `<p class="actspell">${esc(attacksWords(t))}</p>` : ""}
     ${act.queue ? (Q=>{ const n = Q.word==="ray" ? beamsOf(t, info && info.spell, act.lvl) || Q.items.length : Q.items.length;
       return `<div class="pcrow" style="align-items:center;margin:0 0 6px;padding:4px 6px;border:1.5px solid var(--lead);border-radius:3px"><p class="actspell" style="flex:1;margin:0"><b>${esc(Q.word[0].toUpperCase() + Q.word.slice(1))} ${Q.i + 1} of ${n}</b>${Q.word==="Multiattack" ? ` · ${esc(Q.items.map((w, k)=>(k===Q.i ? "▸ " : "") + w.replace(/^fa:/, "").replace(/\s*\(.*\)\s*$/, "")).join(", "))}` : ""}</p>
@@ -15806,6 +15858,8 @@ function actionForm(c, all){
       <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : D.temp ? "Temp HP" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
     ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
       <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
+    ${info && info.loh ? (r=>`<div class="pcrow" style="align-items:center"><p class="empty-note" style="flex:2;font-size:11px;margin:0">Lay on Hands, a Bonus Action and a touch: ${r ? r.max - r.used : 0} of ${r ? r.max : 0} hit points left in the pool. Pick who (themself too), and type how many it restores in Healing.</p>
+      <button class="chip${act.lohPoison ? " on" : ""}" data-lohpois title="5 from the pool ends the Poisoned condition (those 5 don't also heal)">End Poisoned (5)</button></div>`)(pcState(t.p).res.find(q=>(q.id||q.name)===info.res)) : ""}
     ${D.parts.length > 1 ? `<div class="pcrow">${D.parts.map((p, i)=>`<div class="field" style="flex:1;min-width:0"><label>${esc(p.dice)} ${esc(p.dtype)}</label><div style="display:flex;gap:4px"><input class="mono" type="number" min="0" data-acpart="${i}" value="${esc(String(((act.partV||{})[p.dtype]||{}).v ?? ""))}" placeholder="—" style="min-width:0;flex:1" title="Rolled at the table? Type it in"><button class="btn" data-acroll="part:${i}" title="Rolls just this part">Roll</button></div></div>`).join("")}</div>` : ""}
     ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice. Each type is rolled on its own, and a target that resists, is immune to or is vulnerable to one takes half, none or double of that part.">Roll ${D.parts.length > 1 ? "all: " : ""}${esc(D.dmgLabel)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll ${D.temp ? "temp HP" : "healing"} ${esc(D.healDice)}</button>`:""}</div>` : ""}
     ${D.part2 ? `<div class="actpart2"><label class="grouplab" style="margin-top:6px">Then: ${esc(D.part2.dtype)} damage (${esc(D.part2.dice)})</label>
@@ -15897,6 +15951,17 @@ function logAction(n, c){
   const swingLeft = (swing || part) && ((c.acted||{})[actor.id]||{}).swings > 0;     // the second swing of Extra Attack, the next attack of a Multiattack: the same action
   const isAction = isAction0 && !swingLeft;
   if(isAction && actionsLeft(c, actor.id) <= 0 && !confirm(`${actor.label} has already used ${actionUsed(c, actor.id) && (c.acted[actor.id].n > 1) ? "their actions" : "their action"} this turn. Log this one anyway?`)) return;
+  if((isAction || isBonus) && c.turn===actor.id && haltedT(c, actor) && !confirm(`${actor.label} is under Command: “Halt!” They don't move and take no action or Bonus Action this turn. Log this anyway?`)) return;
+  /* one spell slot a turn (the 2024 rules; Joseph's fight of 2026-11-06: Command, then Mass Healing Word, on one turn): asks first */
+  const slotSpell = actor.kind==="pc" && info.kind==="spell" && !info.free && !part && !act.reaction && !!(info.spell && info.spell.lv>0 && act.lvl);
+  if(slotSpell && c.turn===actor.id && (c.log||[]).some(e=>e.by===actor.id && e.at===turnStamp(c) && e.slot)
+    && !confirm(`${actor.label} has already cast a spell with a spell slot this turn. In the 2024 rules a character can expend only one spell slot to cast a spell on a turn. Log this one anyway?`)) return;
+  /* Lay on Hands: what it takes from the pool (the healing, and 5 more to end Poisoned) has to be there */
+  if(info.loh){ const r = pcState(actor.p).res.find(q=>(q.id||q.name)===info.res), left = r ? r.max - r.used : 0, need = Math.max(0, Math.round(+act.heal||0)) + (act.lohPoison ? 5 : 0);
+    if(!need){ flash("Lay on Hands: type how many hit points it restores (or tick ending Poisoned)."); return; }
+    if(need > left){ flash(`Lay on Hands: that needs ${need} from the pool, and ${left} ${left===1 ? "is" : "are"} left.`); return; }
+    const far = targets.filter(o=>o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) > 1);
+    if(far.length && !confirm(`Lay on Hands is a touch: ${far.map(o=>o.label).join(", ")} ${far.length > 1 ? "aren't" : "isn't"} within 5 feet of ${actor.label}. Log it anyway?`)) return; }
   /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
   { const CS = counterCheck(c, actor, info, part); if(CS && !CS.made){ const acted0 = JSON.stringify(c.acted || {}), bon0 = JSON.stringify(c.bonused || {});
       if(isAction){ c.acted = c.acted || {}; const a = c.acted[actor.id] = c.acted[actor.id] || { n:0, more:0 }; a.n++; } if(isBonus){ (c.bonused = c.bonused || {})[actor.id] = c.round; }
@@ -15909,7 +15974,8 @@ function logAction(n, c){
   if(actor.kind==="pc"){
     const p = pcState(actor.p), S = statsOf(p);
     if(info.kind==="spell" && !info.free && !part && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
-    if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used+1); }
+    if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) : 1));     // a pool (Lay on Hands) spends what it gives
+      if(r && info.loh) slotTxt = ` (${r.max - r.used} left in the pool)`; }
     if(info.kind==="item"){ const x = usableOf(p).find(y=>y.k===info.useK);                 /* using a carried thing spends a charge (or the thing) */
       if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } spendItem(p, x.k);
         slotTxt = x.u.charges ? ` (${p.inv.includes(x.e) ? `${x.e.ch}/${x.u.charges} charges left` : "used up"})` : (p.inv.includes(x.e) ? "" : " (the last one)");
@@ -15951,6 +16017,9 @@ function logAction(n, c){
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
     else if(heal){ hl = healAny(t, heal); healed += hl; }
+    if(info.loh && act.lohPoison){ const cs = condsOfT(t), k = cs.indexOf("Poisoned"); if(k >= 0){ cs.splice(k, 1); turned.push(`${t.label}: no longer Poisoned`); } }     // Lay on Hands' 5 points
+    /* "becomes Stable" (Spare the Dying): at 0 hit points and not dead, three successes, the failures cleared */
+    if(info.spell && /becomes Stable/i.test(info.spell.desc || "") && t.kind!=="foe" && t.p && isDownT(t) && !deadT(t)){ pcState(t.p).death = { s:3, f:0 }; turned.push(`${t.label} is Stable`); }
     /* an attack's save on a hit (the Ghoul's Claw: "Constitution Saving Throw: DC 10. Failure: ... Paralyzed"): rolled for each target it hits */
     let riderMade = false; act.riderMade = act.riderMade || {};
     if(act.cond && !off && isAttackAct(info) && !info.spell && ["hit","crit"].includes(act.outcome)){ const R = SAVE_WORD.exec(String(info.text || ""));
@@ -16047,7 +16116,7 @@ function logAction(n, c){
       if(t.side===actor.side || ["miss","save"].includes(act.outcome) || (sv && sv.made) || (act.riderMade || {})[t.id] || (act.cond && condImmune(t, act.cond)) || turned.some(w=>w.startsWith(t.label + ":") && /turns aside/.test(w))) continue;
       const cs = concSp && concSp.id;
       (c.holds = c.holds || {})[t.id] = { by:actor.id, tier, name:info.name, sp:cs || null, cond:cs ? "" : (act.cond || ""), dmgEnds:/you or your allies[^.]*damage/i.test(text) ? "theirs" : /\bends?\b[^.]*\b(takes?|taking) (any )?damage\b/i.test(text) ? "any" : "",
-        once:!cs && !act.cond, turns:0, pts:0 };
+        once:!cs && !act.cond, turns:0, pts:0, word:tier==="order" ? ((cmdWords({ name:info.name }).find(w=>new RegExp(`\\b${w.word}\\b`, "i").test(act.note || "")) || {}).word || "") : "" };     // Command's word (Halt, Flee…), from the Note
       held.push(t.label); } }
   const holdW = (held.length ? ` ${held.join(", ")} ${held.length > 1 ? "are" : "is"} ${CTRL_SAY[ctrlOf(info)]}.` : "") + (shaken.length ? ` The damage shakes ${shaken.join(", ")} out of it.` : "");
   /* an attack roll from hiding gives it away (the 2024 Hide action: it ends after an attack roll); undo hides them again */
@@ -16055,7 +16124,7 @@ function logAction(n, c){
   const stealthBefore = JSON.stringify(c.stealth || {}), outed = isAttackAct(info) && act.toHit && c.stealth && c.stealth[actor.id] && c.stealth[actor.id].hide!=null;
   if(outed) delete c.stealth[actor.id].hide;
   if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore }); gripSweep(c);
+  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell }); gripSweep(c);
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
   /* a spell that adds to their weapon attacks while it lasts (Divine Favor): on from now, by itself (autoAddonKeys) */
   if(info.kind==="spell" && !part && info.spell && spellAddonAuto(info.spell) && attackAddons(actor).some(a => a.key==="spell:" + info.spell.id)){ const L = (c.lit = c.lit || {})[actor.id] = c.lit[actor.id] || {}; L["spell:" + info.spell.id] = c.round; }
@@ -16136,14 +16205,16 @@ function holdsTurnStart(c, id){
   if(!holdLive(H, t, by)){ delete c.holds[id]; return; }
   if(H.at===turnStamp(c)) return;
   const pts = Math.round(ctrlDpr(t) * ctrlMult(H.tier) * 10) / 10, snap = by && by.kind==="pc" ? snapOf(c, [by.id]) : {}, before = JSON.stringify(c.holds);
-  H.at = turnStamp(c); H.turns = (H.turns||0) + 1; c.heldNow = { id, tier:H.tier, name:H.name, sp:H.sp, by:H.by, at:H.at }; H.pts = Math.round(((H.pts||0) + pts) * 10) / 10;     // heldNow: its turn is someone else's to call (the autopilot asks)
+  H.at = turnStamp(c); H.turns = (H.turns||0) + 1; c.heldNow = { id, tier:H.tier, name:H.name, sp:H.sp, by:H.by, at:H.at, word:H.word || "" }; H.pts = Math.round(((H.pts||0) + pts) * 10) / 10;     // heldNow: its turn is someone else's to call (the autopilot asks)
   if(by && by.kind==="pc" && pts){ const S = statsOf(by.p); S.ctrl = Math.round(((+S.ctrl||0) + pts) * 10) / 10; }
   if(H.once) delete c.holds[id];
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:`${t.label} is ${CTRL_SAY[H.tier]} by ${by ? by.label : "someone"}'s ${H.name} (${pts} control).`, snap, holds:before });
 }
 function undoAction(c){
   const e = (c.log||[]).pop(); if(!e) return;
-  if(e.item) itemUndo(c, e.item); if(e.shoved && c.pos) c.pos[e.shoved.who] = { ...e.shoved.from }; if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.effects!=null) c.effects = JSON.parse(e.effects); if(e.grips!=null) c.grips = JSON.parse(e.grips); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
+  if(e.item) itemUndo(c, e.item);
+  if(e.kit){ const w = combatants(c).find(x => x.id===e.kit.who), k = w && w.p && (pcState(w.p).inv || [])[e.kit.i]; if(k){ if(e.kit.uses==null) delete k.uses; else k.uses = e.kit.uses; } }     // the Healer's Kit use back
+  if(e.shoved && c.pos) c.pos[e.shoved.who] = { ...e.shoved.from }; if(e.holds!=null) c.holds = JSON.parse(e.holds); if(e.effects!=null) c.effects = JSON.parse(e.effects); if(e.grips!=null) c.grips = JSON.parse(e.grips); if(e.stealth!=null) c.stealth = JSON.parse(e.stealth); if(e.morale!=null) c.morale = JSON.parse(e.morale);
   if(e.arrival && c.scaled){ const A = e.arrival;               // an arrival (or Bring them in now) taken back: those enemies go, the share is held again
     c.list = c.list.filter(x=>!A.added.includes(x.id)); for(const id of A.added){ if(c.pos) delete c.pos[id]; if(c.init) delete c.init[id]; }
     const nowIds = new Set(A.before.who.map(w=>w.id)), back = c.scaled.who.filter(w=>!nowIds.has(w.id));
@@ -16779,6 +16850,7 @@ function renderBattlePanelNow(){
   { const cs = $("#ac-ctrl"); if(cs) cs.onchange = ()=>{ keep(); renderBattlePanel(); }; }
   el.querySelectorAll("[data-upend]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.upend); if(!u) return;     // ending a spell that's up, by hand
     upEnd(c, u, "ended"); if(String(act.what||"")===`again:${u.id}`) act = freshAct(act.actor); touch(); renderBattle(); renderBattlePanel(); });
+  el.querySelectorAll("[data-lohpois]").forEach(b=>b.onclick = ()=>{ keep(); act.lohPoison = !act.lohPoison; renderBattlePanel(); });
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];
     act.addons = A.includes(k) ? A.filter(x=>x!==k) : [...A, k];
     if(k.startsWith("inv:")){ const L = (c.lit = c.lit || {})[act.actor] = c.lit[act.actor] || {}; if(act.addons.includes(k)) L[k] = true; else delete L[k]; }     // lit stays lit
