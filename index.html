@@ -20292,6 +20292,7 @@ function fleetCatchUp(){
   if(Array.isArray(root.fleetQueue) && root.fleetQueue.length){ const Q = root.fleetQueue; delete root.fleetQueue; for(const o of Q) fleetAdd(o || {}); }
   for(const s of root.fleet) if(s.needCrew){ delete s.needCrew; if(!(s.crew||[]).length) fleetCrewRoll(s); if(s.kind==="pirate" && !Object.keys(s.cargo||{}).length) fleetPlunder(s); }
   fleetTiersUp();
+  for(const s of root.fleet) if(s.kind==="merchant" && !s.defended){ if((s.crew||[]).length) fleetCrewTopUp(s); }     // merchants crewed before their mages came in
   const now = campaignDay(); if(root.fday==null || now < root.fday){ root.fday = now; return null; } if(now===root.fday) return null;
   const moved = [], said = [];
   /* a day at a time (Joseph, 2026-11-06: pirates hunting, ships of feuding factions meeting and fighting): every ship
@@ -20909,6 +20910,27 @@ const FLEET_CREW = {
 const FLEET_HANDS = ["sailor","shipcook","lookout","shipwright","sailmaker","cabinhand","navigator","quartermaster"];
 const FLEET_CAPTAIN = ["Fighter","Barbarian","Paladin","Ranger"], FLEET_CASTER = ["Wizard","Sorcerer","Warlock","Bard","Druid"];
 const FLEET_CAPTAIN_BY = { packet:"Fighter" };
+/* a merchant's defences (Joseph, 2026-11-06: "more of a challenge for the pirates", never worse than a 30% chance
+   against a full pirate crew): a ship's mage on every merchant, her level rolled ship by ship (3 half the time, 4
+   three times in ten, 5 one in five), and on a large merchant two armed guards besides. Against a pirate's 1,200:
+   a level 3 mage 35%, level 4 40%, level 5 49% (and a large merchant more) */
+const FLEET_MAGE = ["Wizard","Sorcerer","Warlock"];
+/* a merchant crewed before her mage came in: the mage (and a large one's guards) added to the crew she has, once */
+function fleetCrewTopUp(s){
+  if(s.defended || !(s.crew||[]).length) return 0; s.defended = true;
+  if((s.crew||[]).some(id=>/ship's mage/.test((libNpcById(id)||{}).role || ""))) return 0;
+  const L = lib(), disp = FLEET_DISP[s.kind]; let n = 0;
+  for(const [k, c, lv] of fleetCrewExtra(s)){ const p = genPerson({ kind:k, cls:c==="mage" ? pickOne(FLEET_MAGE) : c, level:lv, ...(disp ? { disp } : {}) }).person;
+    if(c==="mage") p.role = `${String(p.role||"").replace(/ · .*$/, "")} · ship's mage`.replace(/^ · /, "");
+    p.crewOf = s.id; p.where = s.name; if(s.faction && factionById(s.faction)) p.faction = s.faction; L.npcs = [...(L.npcs||[]), p]; s.crew.push(p.id); n++; }
+  return n;
+}
+function fleetCrewExtra(s){
+  if(s.kind!=="merchant") return [];
+  const r = rollD(10), lv = r <= 5 ? 3 : r <= 8 ? 4 : 5, out = [["scholar","mage",lv]];
+  if(fleetSizeOf(s)==="large") out.push(["marine","Fighter",2], ["marine","Fighter",2]);
+  return out;
+}
 /* a passenger ship's passengers, by fare (Joseph, 2026-11-04): 10 low class in steerage, 5 middle and 4 first class in
    the cabins */
 const FLEET_PASS = { packet:[["low","passlow",10],["middle","passmid",5],["first","passfirst",4]] };
@@ -20926,14 +20948,15 @@ function fleetForget(s){
 /* a crew rolled: her kind's crew (n of them: the pattern again if more, cut short if fewer), and a captain */
 function fleetCrewRoll(s, n){
   const roles = FLEET_CREW[s.kind] || []; if(!roles.length) return 0;
-  const want = n!=null && n >= 0 ? Math.round(n) : roles.length, list = Array.from({ length:want }, (_, i)=>roles[i % roles.length]);
+  const want = n!=null && n >= 0 ? Math.round(n) : roles.length, list = [...Array.from({ length:want }, (_, i)=>roles[i % roles.length]), ...fleetCrewExtra(s)];
   fleetForget(s); const L = lib(), disp = FLEET_DISP[s.kind], ids = [], fam = s.kind==="fishing" ? pickOne(themeTables(rollTheme({})).family) : "";
-  const one = (kind, cls, level) => { const g = genPerson({ kind:kind==="*" ? pickOne(FLEET_HANDS) : kind, cls:cls==="caster" ? pickOne(FLEET_CASTER) : cls==="warrior" ? pickOne(FLEET_CAPTAIN) : cls, level, ...(disp ? { disp } : {}) }), p = g.person;
+  const one = (kind, cls, level) => { const g = genPerson({ kind:kind==="*" ? pickOne(FLEET_HANDS) : kind, cls:cls==="caster" ? pickOne(FLEET_CASTER) : cls==="mage" ? pickOne(FLEET_MAGE) : cls==="warrior" ? pickOne(FLEET_CAPTAIN) : cls, level, ...(disp ? { disp } : {}) }), p = g.person;
+    if(cls==="mage") p.role = `${String(p.role||"").replace(/ · .*$/, "")} · ship's mage`.replace(/^ · /, "");     // a scholar by kind, aboard to guard the cargo
     if(fam) p.name = p.name.replace(/ [^ ]+$/, " " + fam);               // a fishing boat's crew: one family
     p.crewOf = s.id; p.where = s.name; if(FLEET_HOST.has(kind)) p.aboard = "host"; L.npcs = [...(L.npcs||[]), p]; return p.id; };
   s.captain = one("shipcaptain", FLEET_CAPTAIN_BY[s.kind] || pickOne(FLEET_CAPTAIN), 3);
   for(const [k, c, lv] of list) ids.push(one(k, c, lv));
-  s.crew = ids;
+  s.crew = ids; if(s.kind==="merchant") s.defended = true;
   s.pass = []; for(const [fare, k, many] of fleetPassOf(s)) for(let i = 0; i < many; i++){ const pid = one(k, null, 1), p = libNpcById(pid); p.fare = fare; s.pass.push(pid); }
   if(s.faction && factionById(s.faction)) for(const id of [s.captain, ...ids]){ const p = libNpcById(id); if(p) p.faction = s.faction; }     // a faction's ship: her captain and crew are its people
   saveParty(); return ids.length + 1 + s.pass.length;

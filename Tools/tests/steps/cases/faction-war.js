@@ -41,6 +41,17 @@ step("ship against ship at the odds of their strength: a pirate and merchants; a
   for (const s of [P0, M0, R0, E0]) { root.fleet = root.fleet.filter(x => x !== s); fleetForget(s); }
   return `${powers} | 40 merchants: ${tally(() => fleetAdd({ kind: "merchant" }), 40)} | 30 rich passenger ships with escorts: ${tally(() => fleetAdd({ kind: "packet", tier: "rich" }), 30)} | page errors ${__KIT.errors.length}`;
 });
+step("merchants' defences: a ship's mage of level 3, 4 or 5, a large one's guards; never worse than 30% against a pirate; old crews topped up", async () => {
+  const P = fleetAdd({ kind: "pirate" }), pp = shipPower(P), lv = {}, odds = [];
+  for (let i = 0; i < 60; i++) { const m = fleetAdd({ kind: "merchant", size: i % 3 === 0 ? "large" : i % 3 === 1 ? "small" : "" });
+    const mage = m.crew.map(libNpcById).find(p => /ship's mage/.test(p.role || "")); lv[mage ? `${mage.cls} ${mage.level}`.replace(/^(\w+) /, "") : "none"] = (lv[mage ? mage.level : "none"] || 0) + 1;
+    odds.push(Math.round(shipPower(m) / (shipPower(m) + pp) * 100)); root.fleet = root.fleet.filter(x => x !== m); fleetForget(m); }
+  const old = fleetAdd({ kind: "merchant" }), mageId = old.crew.find(id => /ship's mage/.test(libNpcById(id).role || "")); old.crew = old.crew.filter(id => id !== mageId); delete old.defended;
+  const before = shipFighters(old).length; fleetCatchUp(); const after = old.crew.map(libNpcById).filter(p => /ship's mage/.test(p.role || "")).map(p => `${p.name} (${p.cls} ${p.level})`);
+  root.fleet = root.fleet.filter(x => x !== P && x !== old); fleetForget(P); fleetForget(old);
+  odds.sort((a, b) => a - b);
+  return `a pirate ${Math.round(pp)} | 60 merchants' mages by level: ${JSON.stringify(lv)} | a merchant's chance against her: lowest ${odds[0]}%, middle ${odds[30]}%, highest ${odds[59]}% | an old merchant with no mage: ${before} fighters, topped up with ${after.join(", ")} | page errors ${__KIT.errors.length}`;
+});
 step("hunting at −60, war at −80, extermination at −95: the share of voyages hunting; tempers cooling; ceilings", async () => {
   const trip = root.fleet.find(s => s.faction === "fw_t") || fleetAdd({ kind: "pirate", faction: "fw_t", home: repPorts().find(n => quadOf(n.x, n.y) === "NW").id });
   facRelAll()["fw_i|fw_t"].cap = 100; const out = [];
