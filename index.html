@@ -20114,7 +20114,8 @@ function fleetNext(s){
       const spot = (l, extra) => { const p = l && lanePt(l); return p ? { lurk:{ x:p.x, y:p.y, on:l.id }, wait:1 + rollD(4), ...(extra||{}) } : null; };
       /* hunting (Joseph, 2026-11-06): her faction at −60 or worse with another, a share of her voyages (a quarter, a half,
          all of them at −95) go after their ships, on the lanes off their nearest port */
-      if(F){ const foe = facRelPairs().filter(p=>p.ids.includes(F.id) && facState(p.e.s)).sort((x, y)=>x.e.s - y.e.s)[0];
+      const navyF = tradeNavy();     // pirates never go hunting the Admiralty (Joseph, 2026-11-06: "pirate ships try to avoid admiralty ships")
+      if(F){ const foe = facRelPairs().filter(p=>p.ids.includes(F.id) && facState(p.e.s) && !(navyF && p.ids.includes(navyF.id) && F.id!==navyF.id)).sort((x, y)=>x.e.s - y.e.s)[0];
         if(foe && Math.random() < (FAC_HUNT_SHARE[facState(foe.e.s)] || 0)){ const E = foe.ids[0]===F.id ? foe.ids[1] : foe.ids[0];
           const T = [...(root.nodes||[]).filter(n=>n.faction===E && repIsCoastal(n)), ...fleetOf().filter(x=>x.faction===E).map(x=>repNode(x.home)).filter(Boolean)];
           if(T.length && all.length){ const t = H ? T.slice().sort((p, q)=>Math.hypot(p.x - H.x, p.y - H.y) - Math.hypot(q.x - H.x, q.y - H.y))[0] : T[0];
@@ -20287,7 +20288,8 @@ function facClash(s1, s2, day, why){
 const PIRATE_NERVE = .25, PIRATE_RASH = 5;     // Joseph: sheers off at worse than one in four, but one time in five she misjudges it and goes in anyway
 function fleetAttack(p, v, day){
   const es = fleetEscortOf(v), D = [v, ...(es ? [es] : [])], near = repPlaceName(v.leg && v.leg.to || v.at || v.home), who = `${p.name}${p.faction && factionById(p.faction) ? ` (${factionById(p.faction).name})` : ""}`;
-  const pa = shipPower(p), pd = sidePower(D), odds = pa + pd ? pa / (pa + pd) : .5;
+  const pa = shipPower(p), pd = sidePower(D), odds = pa + pd ? pa / (pa + pd) : .5, navyF = tradeNavy();
+  if(es && navyF && es.faction===navyF.id && rollD(4) <= 3){ bgLog("world", `${who} saw ${v.name}'s escort, ${es.name} of ${facMid(navyF)}, and kept clear`, day); return "off"; }     // pirates keep clear of the Admiralty
   const rash = odds < PIRATE_NERVE && rollD(PIRATE_RASH)===1;
   if(odds < PIRATE_NERVE && !rash){ bgLog("world", `${who} sized up ${v.name}${es ? ` and her escort, ${es.name},` : ""} and sheered off: odds of ${Math.round(odds * 100)}%`, day); return "off"; }
   const r = shipFight([p], D, day, near), dP = r.deadA, dD = r.deadB, odd = Math.round(odds * 100);
@@ -20307,18 +20309,30 @@ function fleetAttack(p, v, day){
    fight at the odds of their strength, an escort fighting beside her charge) */
 function fleetMeetings(day){
   const F = fleetOf(), R = 10 * (root.ppm || 10), pos = new Map(F.map(s=>[s, fleetPos(s, day)])), far = (a, b) => { const p = pos.get(a), q = pos.get(b); return !p || !q || Math.hypot(p.x - q.x, p.y - q.y) > R; };
-  const armed = F.filter(s=>s.faction && factionById(s.faction));
+  const armed = F.filter(s=>s.faction && factionById(s.faction)), W = worldOf(), navyF = tradeNavy();
+  /* no more than one fight between factions a week, of any kind (Joseph, 2026-11-06) */
+  const canFight = () => W.lastClash==null || day - W.lastClash >= 7, fight = (a, b, why) => { W.lastClash = day; facClash(a, b, day, why); };
   for(let i = 0; i < armed.length; i++) for(let j = i + 1; j < armed.length; j++){ const a = armed[i], b = armed[j];
     if(a.faction===b.faction || !F.includes(a) || !F.includes(b) || far(a, b)) continue; const e = facRelAll()[facRelKey(a.faction, b.faction)]; if(!e) continue;
-    if(facState(e.s)){ facClash(a, b, day, (a.hunting===b.faction || b.hunting===a.faction) ? "hunting each other" : facStateLabel(e.s).toLowerCase()); continue; }
+    /* a pirate meeting an Admiralty ship tries to slip away: three times in four she does */
+    const navyPair = !!navyF && (a.faction===navyF.id || b.faction===navyF.id);     // the Admiralty and the pirates fight all they want: not counted in the week's one (Joseph)
+    const pir = a.kind==="pirate" && navyF && b.faction===navyF.id ? a : b.kind==="pirate" && navyF && a.faction===navyF.id ? b : null;
+    if(pir && (facState(e.s) || pir.stray) && rollD(4) <= 3){ if(!pir.slipped){ pir.slipped = true; bgLog("world", `${pir.name} sighted ${(pir===a ? b : a).name} of ${facMid(navyF)} and slipped away`, day); } continue; }
+    if(navyPair && facState(e.s)){ facClash(a, b, day, "the navy and the pirates"); continue; }
+    if(!canFight()) continue;
+    if(facState(e.s)){ fight(a, b, (a.hunting===b.faction || b.hunting===a.faction) ? "hunting each other" : facStateLabel(e.s).toLowerCase()); continue; }
     const st = a.stray===b.faction && !a.strayMet ? a : b.stray===a.faction && !b.strayMet ? b : null;
     if(st){ st.strayMet = true; const o = st===a ? b : a;
-      if(rollD(100) <= 70) facClash(a, b, day, `${st.name} having strayed into ${facMid(factionById(o.faction))}'s waters`);
+      if(rollD(100) <= 70) fight(a, b, `${st.name} having strayed into ${facMid(factionById(o.faction))}'s waters`);
       else bgLog("world", `${st.name} strayed into ${facMid(factionById(o.faction))}'s waters and met ${o.name}: they let her go with a warning`, day); } }
   for(const p of F.filter(s=>s.kind==="pirate" && !s.leg && s.pos && !s.hunting && !s.robbed)){
     for(const v of F){ if(v===p || v.kind==="pirate" || v.kind==="navy" || !v.leg || v.leg.lurk || !F.includes(v) || far(p, v)) continue;
       if(v.faction && v.faction===p.faction) continue;
-      if(rollD(100) <= 60){ fleetAttack(p, v, day); p.robbed = true; break; } } }     // she goes for her: a fight at the odds of their strength
+      const pk = p.faction && factionById(p.faction) ? p.faction : "ship:" + p.id, PA = W.pirAttack = W.pirAttack || {};     // one attack a week for each pirate faction (a ship of none: for her alone)
+      if(PA[pk]!=null && day - PA[pk] < 7) break;
+      if(rollD(100) <= 60){ const es = fleetEscortOf(v), facFight = !!p.faction && [v, es].some(x=>x && x.faction && x.faction!==p.faction && !(navyF && x.faction===navyF.id) && facRelAll()[facRelKey(x.faction, p.faction)]);
+        if(facFight && !canFight()){ p.robbed = true; break; }                                  // a fight between factions: the week's one already fought
+        const r = fleetAttack(p, v, day); if(r!=="off"){ PA[pk] = day; if(facFight) W.lastClash = day; } p.robbed = true; break; } } }     // she goes for her: a fight at the odds of their strength
 }
 /* the days since: every ship's departures and arrivals in turn */
 function fleetCatchUp(){
@@ -20348,12 +20362,13 @@ function fleetCatchUp(){
           const own = s.stray && factionById(s.stray);
           said.push(`${s.name} lies in wait on the lanes`); bgLog("ship", `${s.name} lies in wait on the lanes till day ${s.stay}${s.hunting ? `, hunting ships of ${facMid(factionById(s.hunting))}` : own ? `: she's strayed into ${facMid(own)}'s waters` : ""}`, L.arrive); continue; }
         s.at = L.to; delete s.pos; s.stay = L.arrive + (s.homely && L.to===s.home ? 9 + rollD(8) + rollD(8) : 1 + rollD(3));     // a ship that keeps to her own port (s.homely): 11–25 days at home, not 2–4 (Joseph: more at her city than sailing)
+        if(s.kind==="pirate") s.stay = Math.max(s.stay, L.arrive + 14);     // a pirate lies up in port two weeks at least (Joseph, 2026-11-06: "pirates are way too common")
         const port = repNode(s.at); bgLog("ship", `${s.name} comes into ${repPlaceName(s.at)}, staying till day ${s.stay}`, L.arrive);
         if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); if(port) tradeCall(s, port, L.arrive); continue; }
       if((s.stay || 0) > dd) break;
       const go = fleetNext(s); if(!go){ s.stay = dd + rollD(6); break; }
       const leg = fleetLeg(s, go, s.stay || dd); if(!leg){ s.stay = dd + rollD(6); break; }
-      s.leg = leg; delete s.lurkOn; delete s.hunting; delete s.stray; delete s.strayMet; delete s.robbed;
+      s.leg = leg; delete s.lurkOn; delete s.hunting; delete s.stray; delete s.strayMet; delete s.robbed; delete s.slipped;
       const line = `${s.name} sails${s.at ? ` from ${repPlaceName(s.at)}` : ""}${leg.to ? ` for ${repPlaceName(leg.to)}` : " to lie in wait on the lanes"} (${leg.miles} mi, arriving day ${leg.arrive})`;
       said.push(line); bgLog("ship", line, leg.left);
     } }
@@ -21456,7 +21471,7 @@ function facRelSet(a, b, s, why, day, approved){
   const A = factionById(a), B = factionById(b); if(!A || !B || a===b) return null;
   const R = facRelAll(), k = facRelKey(a, b), e = R[k] = R[k] || { s:0, log:[] }, from = e.s || 0;
   day = day==null ? campaignDay() : day;
-  let to = Math.max(-100, Math.min(facRelCap(e), Math.round(+s || 0)));
+  let to = Math.max(typeof e.floor==="number" ? e.floor : -100, Math.min(facRelCap(e), Math.round(+s || 0)));     // a floor too (Joseph: "admiralty should always stay at −60")
   const st0 = facState(from), st1 = facState(to);
   if(!approved && FAC_STATE_RANK[st1] > FAC_STATE_RANK[st0] && FAC_STATE_RANK[st1] > FAC_STATE_RANK[facState(facRelCap(e))]){     // a stage its ceiling already puts them in (the Admiralty and the pirates, −60) needs no asking
     const next = Object.keys(FAC_STATE_RANK).find(key=>FAC_STATE_RANK[key]===FAC_STATE_RANK[st0] + 1), edge = (FAC_STATES.find(([, key])=>key===next) || [])[0];     // held a point short of the next stage down
@@ -21535,7 +21550,8 @@ function facRelBlock(){
       return `<div class="facfx" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><span style="flex:1;min-width:0"><b>${esc(factionById(a).name)}</b> and <b>${esc(factionById(b).name)}</b></span>
           <button class="btn small" data-frel="-5" data-k="${esc(p.k)}" title="Worse by five (What happened, below, goes in the log)">−5</button><b class="mono" style="min-width:34px;text-align:center">${sgn(p.e.s)}</b><button class="btn small" data-frel="5" data-k="${esc(p.k)}" title="Better by five">+5</button><button class="btn small" data-frel="inc" data-k="${esc(p.k)}" title="Roll an incident between these two">Incident</button><button class="fdel" data-frel="del" data-k="${esc(p.k)}" title="No dealings: forget this pair">×</button></div>
         <div class="pcrow" style="align-items:center;margin:2px 0 0"><div style="flex:1">${standingMeter(Math.max(-10, Math.min(10, p.e.s / 10)))}</div><small>${st ? `<b style="color:var(--lead)">${esc(st)}</b>` : esc(T.label)}</small></div>
-        <div class="pcrow" style="align-items:center;margin:2px 0 0"><small style="flex:1">Never better than</small><input type="number" min="-100" max="100" step="5" data-frelcap="${esc(p.k)}" value="${cap < 100 ? cap : ""}" placeholder="no limit" style="width:5.5em" title="Tempers never cool past this"></div>
+        <div class="pcrow" style="align-items:center;margin:2px 0 0"><small style="flex:1">Never better than</small><input type="number" min="-100" max="100" step="5" data-frelcap="${esc(p.k)}" value="${cap < 100 ? cap : ""}" placeholder="no limit" style="width:5.5em" title="Tempers never cool past this">
+          <small>worse than</small><input type="number" min="-100" max="100" step="5" data-frelfloor="${esc(p.k)}" value="${typeof p.e.floor==="number" ? p.e.floor : ""}" placeholder="no limit" style="width:5.5em" title="Never sinks below this (the same as the ceiling: fixed there)"></div>
         ${last ? `<div class="sbl"><small class="mono">day ${last.day}</small> ${esc(last.why || `${sgn(last.from)} → ${sgn(last.to)}`)}</div>` : ""}</div>`; }).join("") || `<p class="empty-note">No two factions have dealings yet: record one below.</p>`}
     ${F.length >= 2 ? `<p class="grouplab" style="margin:8px 0 2px">Something happened between two factions</p>
     <div class="pcrow" style="align-items:flex-end"><div class="field" style="flex:1"><label>Between</label><select id="fr-a">${opts(F[0].id)}</select></div><div class="field" style="flex:1"><label>and</label><select id="fr-b">${opts(F[1].id)}</select></div></div>
@@ -21561,6 +21577,9 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t) return;
   if(t.id==="fr-centre"){ root.watersAt = t.value; saveParty(); renderNamedPane("background"); return; }
   if(t.dataset && t.dataset.frelcap){ const en = facRelAll()[t.dataset.frelcap]; if(!en) return; const v = t.value.trim();
     if(v==="" || !isFinite(+v)) delete en.cap; else { en.cap = Math.max(-100, Math.min(100, Math.round(+v))); if(en.s > en.cap){ const [x, y] = t.dataset.frelcap.split("|"); facRelSet(x, y, en.cap, "Held to its ceiling"); } }
+    saveParty(); renderNamedPane("background"); }
+  if(t.dataset && t.dataset.frelfloor){ const en = facRelAll()[t.dataset.frelfloor]; if(!en) return; const v = t.value.trim();
+    if(v==="" || !isFinite(+v)) delete en.floor; else { en.floor = Math.max(-100, Math.min(100, Math.round(+v))); if(en.s < en.floor){ en.s = en.floor; } }
     saveParty(); renderNamedPane("background"); } });
 /* ── waters (Joseph, 2026-11-06: "the islands of lost hope are only operating in their quadrant"): north, south, east
    and west of a centre port (Kalatecha to start); each faction may hold some of the four (f.waters) ── */
