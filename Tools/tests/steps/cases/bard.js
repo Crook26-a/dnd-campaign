@@ -67,6 +67,23 @@ step("Words of Creation (20): Power Word Heal on Bram and a second within 10 ft 
   const twenty = await cast(20); c.pos[F.id] = { ...c.pos[F.id], x: 8, y: 4 }; const far = await cast(20); c.pos[F.id] = { ...c.pos[F.id], x: 6, y: 4 }; const nineteen = await cast(19); p.level = 5;
   return `20, 5 ft apart: ${twenty} || 15 ft apart: ${far} || level 19: ${nineteen}`;
 });
+step("Cutting Words (Lore 3): the Fanatic hits Bram (13 + 4 = 17 vs AC 16); Lyra cuts 5 (typed): 12, a miss; next round its damage roll is cut too", async () => {
+  const c = bdFight(), L = bdWho("Lyra"), B = bdWho("Bram"), F = bdWho("Cultist"), p = pcState(L.p); biRes(p).used = 0; c.round++; delete (c.reacted || {})[L.id];
+  c.pos[L.id] = { ...c.pos[L.id], x: 3, y: 4 }; c.pos[B.id] = { ...c.pos[B.id], x: 5, y: 4 }; c.pos[F.id] = { ...c.pos[F.id], x: 6, y: 4 };
+  await bdTurn(F); act.what = actionChoices(F).flatMap(g => g.items).find(i => /^fa:/.test(i.v) && !/multiattack/i.test(i.v)).v; act.targets = [B.id]; act.d20 = "13"; renderBattlePanel(); await wait(20);
+  bdAsk([true, "5"]); document.querySelector('[data-acroll="hit"]').click(); await wait(20); const hit = `${((act.toHit || {}).said || "").replace(/^To hit: /, "")} → ${act.outcome}`;
+  const used = `uses ${biLeft(pcState(L.p))}, Reaction ${reactedThisRound(c, L.id)}`; c.round++; delete c.reacted[L.id]; await bdTurn(F);
+  act.what = actionChoices(F).flatMap(g => g.items).find(i => /^fa:/.test(i.v) && !/multiattack/i.test(i.v)).v; act.targets = [B.id]; act.outcome = "hit"; renderBattlePanel(); await wait(20);
+  bdAsk([true, "4"]); const r = Math.random; Math.random = () => 0.99; try { document.querySelector('[data-acroll="dmg"]').click(); } finally { Math.random = r; } await wait(20);
+  return `${hit} | ${used} || damage: ${act.dmg} (${(act.rolled && act.rolled.dmg || {}).said || ""})`;
+});
+step("Peerless Skill (Lore 14): Lyra's own miss (8 + 5 = 13 vs AC 15) gets her die (4 typed): 17, a hit, a use spent; one still short keeps the use", async () => {
+  const c = bdFight(), L = bdWho("Lyra"), F = bdWho("Cultist"), p = pcState(L.p); p.level = 14; pcState(p); biRes(p).used = 0; c.round++;
+  const swing = async (d20, die) => { await bdTurn(L); act.what = "pca:0"; act.targets = [F.id]; act.d20 = d20; renderBattlePanel(); await wait(20); bdAsk([true, die]); document.querySelector('[data-acroll="hit"]').click(); await wait(20);
+    return `${((act.toHit || {}).said || "").replace(/^To hit: /, "")} → ${act.outcome}, uses ${biLeft(pcState(L.p))}/${biRes(pcState(L.p)).max}`; };
+  const one = await swing("8", "4"), two = await swing("2", "3"); p.level = 5; pcState(p);
+  return `${one} || ${two}`;
+});
 step("Jack of All Trades: Lyra (Bard 5, PB 3) adds 1 to a skill not on her sheet; Bram (a Fighter) doesn't", async () => {
   const L = pcState(bdWho("Lyra").p), B = pcState(bdWho("Bram").p);
   return `Lyra: Stealth ${skillMod(L, "Stealth")} (Dex +2), Athletics ${skillMod(L, "Athletics")} (Str −1) | Bram: Stealth ${skillMod(B, "Stealth")} (Dex +1), Athletics ${skillMod(B, "Athletics")} (on his sheet)`;
