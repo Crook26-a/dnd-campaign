@@ -95,6 +95,28 @@ step("Indomitable Might (level 18, Strength 18): an Athletics escape with a 2 ty
   const raw = mightTot(K, "Dexterity", 6); p.level = 5; p.conds = []; delete c.grips[K.id];
   return `${a} || at 17: ${b} || a Dexterity total of 6 stays ${raw}`;
 });
+step("Berserker: Mindless Rage (Charmed and Frightened end and can't land), Frenzy's 3d6 at level 10 on the first Reckless hit only, Retaliation offered when hurt from 5 ft", async () => {
+  const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), p = pcState(K.p); p.level = 10; p.res.find(x => x.name === "Rage").used = 0; delete p.rage; p.conds = ["Frightened"];
+  c.pos[F.id] = { ...c.pos[F.id], x: 5, y: 4 }; c.pos[K.id] = { ...c.pos[K.id], x: 4, y: 4 }; c.round++; const rage = await bbRage();
+  const mind = `${rage.match(/Mindless Rage[^;—]*/)} | conds [${p.conds}] | immune to Frightened ${condImmune(K, "Frightened")}, to Poisoned ${condImmune(K, "Poisoned")}`;
+  F.x.hp = F.x.max; bbAxe(K, F); act.reck = true; act.addons = autoAddonKeys(c, K, actInfo(c, K), "slashing"); act.dmg = "20"; renderBattlePanel(); await wait(20); const d1 = actDice(c, K, actInfo(c, K)).dmgLabel; bbAsk([]); $("#ac-go").click(); await wait(30);
+  const first = bbLast().replace(/ \(to hit[^)]*\)/, "");
+  bbAxe(K, F); const k2 = act.addons.join(","), d2 = actDice(c, K, actInfo(c, K)).dmgLabel;
+  const pop = document.querySelector("#bt-pop"); pop.hidden = true; await bbTurn(F); act.what = actionChoices(F).flatMap(g => g.items).find(i => /^fa:/.test(i.v) && !/multiattack/i.test(i.v)).v; act.targets = [K.id]; act.outcome = "hit"; act.dmg = "6"; renderBattlePanel(); await wait(20);
+  bbAsk([]); $("#ac-go").click(); await wait(30); const offer = pop.hidden ? "no offer" : pop.textContent.replace(/\s+/g, " ").trim().slice(0, 110);
+  const yes = pop.querySelector('[data-retal="yes"]'); if (yes) yes.click(); await wait(20); const reacting = `reaction act for ${act.actor === K.id ? "Korg" : act.actor}, reaction ${!!act.reaction}`; act = freshAct(F.id); pop.hidden = true;
+  return `${mind} || first hit: ${d1} (${first}) | second: [${k2}] ${d2} || ${offer} | ${reacting}`;
+});
+step("Intimidating Presence (14): a Bonus Action, Wisdom save DC 17 (8 + Str 4 + PB 5), Frightened with a repeat save; used up, a Rage brings it back", async () => {
+  const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), p = pcState(K.p); p.level = 14; c.round++; await bbTurn(K);
+  const ch = actionChoices(K).flatMap(g => g.items).find(i => /intimidating/i.test(i.label)); act.what = ch.v; act.cond = actInfo(c, K).cond; act.targets = [F.id]; act.outcome = "fail"; renderBattlePanel(); await wait(20);
+  const rows = !!document.querySelector(`[data-svroll="${F.id}"]`), dc = saveOfAct(c, K, actInfo(c, K)); bbAsk([]); $("#ac-go").click(); await wait(30);
+  const one = `${bbLast()} | Frightened ${condsOfT(F).includes("Frightened")} | effect: ${JSON.stringify((c.effects || []).filter(e => e.who === F.id && e.cond === "Frightened").map(e => ({ rep: e.repeat, rounds: e.rounds })))}`;
+  const rg = p.res.find(x => x.name === "Rage"), ip = p.res.find(x => x.name === "Intimidating Presence"), r0 = rg.used; c.round++; await bbTurn(K); act.what = ch.v; act.targets = [F.id]; act.outcome = "fail"; renderBattlePanel(); await wait(20);
+  bbAsk([true]); $("#ac-go").click(); await wait(30); const two = `asked "${(bbAsked[0] || "").slice(0, 70)}" | Rage used ${r0} → ${rg.used}, Intimidating Presence ${ip.max - ip.used}/${ip.max}`;
+  p.level = 5; delete p.rage; p.conds = []; condsOfT(F).splice(0); c.effects = [];
+  return `save rows ${rows}, ${JSON.stringify(dc)} || ${one} || again: ${two}`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
   pcState(K.p).res.find(x => x.name === "Rage").used = 0; if(!pcState(K.p).rage) await bbRage();

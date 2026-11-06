@@ -11458,6 +11458,7 @@ function originRes(c){
   const pb = pbOfPc(c), want = [];
   if(goliathOf(c)){ want.push(["Giant Ancestry", pb, "long"]); if(clampLv(c.level) >= 5) want.push(["Large Form", 1, "long"]); }
   if(orcOf(c)) want.push(["Adrenaline Rush", pb, "short"], ["Relentless Endurance", 1, "long"]);
+  if(berserkerOf(c) && barbLevel(c) >= 14) want.push(["Intimidating Presence", 1, "long"]);     // a Berserker's (2026-11-06)
   for(const [name, max, rest] of want){ let r = c.res.find(q => String(q.name || "").trim().toLowerCase()===name.toLowerCase()); if(!r) c.res.push(r = { id:uid("rs"), name, max, used:0, rest });
     r.max = max; r.used = Math.min(max, +r.used || 0); }
 }
@@ -11640,6 +11641,25 @@ function brutalHit(c, actor, t, turned){
     if(k==="sundering"){ c.effects = (c.effects || []).filter(e => !(e.who===t.id && e.sunder)); add({ name:"Sundering Blow", sunder:5 }); turned.push(`${t.label}: Sundering Blow, the next attack roll on it by someone else gets +5`); }
   }
 }
+/* ── the Path of the Berserker ── Frenzy (3): raging and Reckless, on their turn, not yet hit anyone with it this turn */
+function frenzyCan(c, t, info){ return !!(c && t && t.kind==="pc" && t.p && t.p.rage && berserkerOf(t.p) && c.turn===t.id && reckWanted(c, t) && strAtkT(t, info) && !addonUsed(c, t.id, "frenzy")); }
+/* Retaliation (10): damaged by a creature within 5 ft, their Reaction: one melee attack back (offered like a Riposte) */
+function retalCan(c, t, by){
+  return !!(t && t.kind==="pc" && t.p && berserkerOf(t.p) && barbLevel(t.p) >= 10 && by && by.id!==t.id && by.side!==t.side && !isDownT(t) && !t.fled && !reactedThisRound(c, t.id) && !cantAct(t).length
+    && c.pos && c.pos[t.id] && c.pos[by.id] && chebSq(c.pos[t.id], c.pos[by.id]) <= 1);
+}
+function retalOffer(c, t, by){
+  const pop = $("#bt-pop"); if(!pop) return;
+  pop.innerHTML = `<p><b>${esc(by.label)}</b> hurt <b>${esc(t.label)}</b> from within 5 feet. <b>Retaliation?</b> ${esc(t.label)}'s Reaction: one melee attack against ${esc(by.label)}.</p>
+    <div class="pcrow"><button class="btn" data-retal="yes">Retaliate</button><button class="btn" data-retal="">No</button></div>`;
+  pop.hidden = false;
+  pop.querySelectorAll("[data-retal]").forEach(b => b.onclick = () => { pop.hidden = true; if(!b.dataset.retal) return;
+    reactResume = { act, turn:c.turn }; startReaction(c, t.id, by.id); renderBattle(); renderBattlePanel(); flash(`${t.label} retaliates: roll to hit, then the damage.`); });
+}
+/* Intimidating Presence (14): a Bonus Action, each creature of their choice within 30 ft makes a Wisdom save (DC 8 +
+   Strength modifier + Proficiency Bonus) or is Frightened for 1 minute, repeating the save at the end of each of its turns;
+   once a Long Rest, or a Rage spent to have it again */
+const ipDC = p => 8 + abBonus(p, "str") + pbOfPc(p);
 /* Indomitable Might (level 18): a Strength check or save whose total is under their Strength score counts as the score */
 function mightTot(t, abil, raw){ const k = String(abil || "").slice(0, 3).toLowerCase(), p = t && t.kind!=="foe" && t.p; if(!p || k!=="str" || barbLevel(p) < 18) return raw; const s = +pcState(p).str || 0; return raw < s ? s : raw; }
 const mightW = (t, abil, raw) => mightTot(t, abil, raw)!==raw ? ` (Indomitable Might: ${raw} counts as their Strength score)` : "";
@@ -15822,7 +15842,9 @@ function attackAddons(t){
     { const g = giantOf(c), r = originUse(c, "Giant Ancestry"), G = { fire:["1d10", "fire", "1d10 Fire"], frost:["1d6", "cold", "1d6 Cold, and its Speed −10 ft until the start of their next turn"], hill:["", "", "the target (Large or smaller) is knocked Prone"] }[g];
       if(G && r) out.push({ key:"giant", name:giantName(g), dice:G[0], dtype:G[1], giant:g, note:`Giant Ancestry, on a hit with an attack roll: ${G[2]}. Spends a use (${r.max - r.used} left)` }); }
     /* a raging Barbarian's Rage Damage on a Strength attack (ticked by itself) */
-    { const lv = barbLevel(c); if(lv && c.rage) out.push({ key:"rage", name:"Rage", dice:String(rageBonus(lv)), dtype:"", rage:true, note:`Rage Damage on a Strength attack: +${rageBonus(lv)}` }); }
+    { const lv = barbLevel(c); if(lv && c.rage) out.push({ key:"rage", name:"Rage", dice:String(rageBonus(lv)), dtype:"", rage:true, note:`Rage Damage on a Strength attack: +${rageBonus(lv)}` });
+      /* a Berserker's Frenzy: raging and Reckless, the first target they hit on their turn with a Strength attack takes (Rage Damage)d6 more */
+      if(lv && c.rage && berserkerOf(c)) out.push({ key:"frenzy", name:"Frenzy", dice:`${rageBonus(lv)}d6`, dtype:"", frenzy:true, note:"Raging and Reckless: the first target they hit on their turn with a Strength attack" }); }
     /* Savage Attacker (the Soldier's origin feat): once a turn, a weapon's damage dice rolled twice, either total used (the higher, here) */
     if(/savage attacker/i.test(featText(c))) out.push({ key:"savage", name:"Savage Attacker", once:true, savage:true, note:"Once a turn, on a weapon hit: the damage dice rolled twice, the higher kept" });
   }
@@ -15863,7 +15885,7 @@ function spellAddonUp(c, t, key, v){
 function autoAddonKeys(c, t, info, rowDt){
   if(!t || !info) return [];
   const lit = (c.lit || {})[t.id] || {}, dt = String(rowDt || ""), weaponHit = !info.spell;
-  const own = ragingT(t) && strAtkT(t, info) ? ["rage"] : [];     // Rage Damage: on by itself on a Strength attack
+  const own = [...(ragingT(t) && strAtkT(t, info) ? ["rage"] : []), ...(frenzyCan(c, t, info) ? ["frenzy"] : [])];     // Rage Damage, Frenzy: on by themselves
   return own.concat(attackAddons(t).filter(a => !new RegExp(`\\b${a.dtype}\\b`, "i").test(dt) && (
     (a.key.startsWith("inv:") && extraFits(a, act.what, info.name) && (!a.cond || lit[a.key])) ||
     (a.key.startsWith("spell:") && weaponHit && lit[a.key] && spellAddonUp(c, t, a.key, lit[a.key])))).map(a => a.key));
@@ -15940,6 +15962,7 @@ function rowSpell(p, row){
    Defenses (your Gentleman's warlock: Corvin's charms slide off her) */
 function condImmune(t, cond){
   const c = String(cond||"").toLowerCase(); if(!c) return false;
+  if(t.kind!=="foe" && t.p && t.p.rage && berserkerOf(t.p) && barbLevel(t.p) >= 6 && (c==="charmed" || c==="frightened")) return true;     // Mindless Rage
   const m = t.kind==="foe" ? foeById(t.x.foe) : null, p = t.kind==="foe" ? null : t.p;
   if(m && String(m.cimm||"").toLowerCase().split(/[,;]\s*|\s+and\s+/).map(s=>s.trim()).includes(c)) return true;
   const def = [p && p.defenses, m && (pairs(m.tr).find(([n])=>/^Defenses$/i.test(n))||[])[1]].filter(Boolean).join(" ; ").toLowerCase();
@@ -16035,6 +16058,9 @@ function actInfo(c, t){
   if(w.startsWith("res:")){ const r = (t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4)))||{}, nm = r.name||"a resource";
     const heal = /second wind/i.test(nm) ? ((/(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(nm)||[])[1] || `1d10+${clampLv(pcState(t.p).level)}`).replace(/\s+/g, "") : "";     // Second Wind heals (2026-10-30)
     if(/lay on hands/i.test(nm)) return { kind:"ability", name:"Lay on Hands", res:w.slice(4), loh:true, ba:true, healDice:"" };     // a Bonus Action (2024): a pool of hit points
+    if(/^intimidating presence$/i.test(nm)){ const dc = ipDC(pcState(t.p));     // a Berserker's, level 14: a Bonus Action, a Wisdom save or Frightened
+      return { kind:"ability", name:"Intimidating Presence", res:w.slice(4), ba:true, origin:"ip", save:true, cond:"Frightened", healDice:"",
+        text:`Wisdom Saving Throw: DC ${dc}. Failure: the creature has the Frightened condition for 1 minute. At the end of each of its turns, it repeats the save, ending the effect on itself on a success.` }; }
     /* a Barbarian's Rage (2026-11-06): a Bonus Action; while raging, the same choice keeps it up (no use spent) */
     if(/^rage$/i.test(nm) && barbLevel(pcState(t.p))) return t.p.rage ? { kind:"ability", name:"Rage (keep it up)", ba:true, origin:"rageExt", self:true, healDice:"" }
       : { kind:"ability", name:"Rage", res:w.slice(4), ba:true, origin:"rage", self:true, healDice:"" };
@@ -16079,7 +16105,7 @@ function actDice(c, t, info){
   const sc = info && info.spell ? scaledSpell(info.spell, act.lvl, t && t.kind==="pc" ? clampLv(t.p.level) : 0) : null;
   const part1 = sc && sc.parts[0] ? sc.parts[0] : (info && info.hint) || null, part2 = (sc && sc.parts[1]) || null;
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
-  const addons = (t && (isAtk || part1) ? attackAddons(t) : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)));     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
+  const addons = (t && (isAtk || part1) ? attackAddons(t) : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)));     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
   /* the modifier the rules add (Joseph, 2026-10-30: "a plus modifier for spiritual weapon and just in general"): a spell
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
@@ -16289,6 +16315,10 @@ function logAction(n, c){
   if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
   if(info.origin==="large" && actor.p && actor.p.big){ flash(`${actor.label} is Large already.`); return; }
   if(info.self) act.outcome = "none";     // on themselves: nothing hits or misses
+  if(info.origin==="ip"){ const far = targets.filter(o => c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 30);
+    if(far.length && !confirm(`Intimidating Presence reaches 30 feet: ${far.map(o => o.label).join(", ")} ${far.length > 1 ? "are" : "is"} farther. Log it anyway?`)) return;
+    const p = pcState(actor.p), r = p.res.find(q => (q.id || q.name)===info.res), rg = p.res.find(q => /^rage$/i.test(q.name || ""));
+    if(r && (+r.used || 0) >= (+r.max || 0) && rg && (+rg.used || 0) < (+rg.max || 0) && confirm(`${actor.label} has used Intimidating Presence. Spend a Rage (${rg.max - rg.used} left) to have it again?`)){ rg.used = (+rg.used || 0) + 1; r.used = Math.max(0, (+r.used || 0) - 1); } }
   if(info.origin && info.res && actor.p){ const r = pcState(actor.p).res.find(q => (q.id || q.name)===info.res); if(r && (+r.used || 0) >= (+r.max || 0) && !confirm(`${actor.label} has no ${r.name} left (${r.rest==="short" ? "back on a Short or Long Rest" : r.rest==="one" ? "one back on a Short Rest, all on a Long Rest" : "back on a Long Rest"}). Log it anyway?`)) return; }
   if(info.kind==="spell" && ragingT(actor) && !confirm(`${actor.label} is raging, and can't cast spells while the Rage lasts. Log it anyway?`)) return;
   /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
@@ -16337,6 +16367,7 @@ function logAction(n, c){
   /* each target's own save (2026-10-30): a made one takes half or none, as the text says, and no condition */
   const SV = act.saves ? saveOfAct(c, actor, info) : null, svOf = t => SV ? (act.saves[t.id] || null) : null;
   const effectsBefore = JSON.stringify(c.effects || []), gripsBefore = JSON.stringify(c.grips || {});
+  let retal = null;     // a Berserker hurt from within 5 ft (Retaliation)
   const reacted0 = JSON.stringify(c.reacted||{}), movedBefore = JSON.stringify(c.moved||{}), bigBefore = actor.kind==="pc" && actor.p ? !!actor.p.big : null;     // (Stone's Endurance and Storm's Thunder take reactions below)
   if(info.origin && actor.kind==="pc") turned.push(...originDo(c, actor, info));     // Adrenaline Rush, Large Form, Cloud's Jaunt
   { const G0 = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null; if(G0 && (act.cond==="Grappled" || G0.also.includes(act.cond))) act.cond = ""; }     // a grapple puts on what comes with it itself (not on someone too big)     // how long what it puts on lasts (effectAdd), and grapples, for undo
@@ -16352,6 +16383,8 @@ function logAction(n, c){
     if(got && t.kind==="pc" && t.id!==actor.id) stormThunder(c, t, actor, turned);     // a Goliath's Storm's Thunder: their Reaction, 1d8 Thunder back
     if(got && ["hit","crit"].includes(act.outcome) && isAttackAct(info)){ const GA = D.on.find(a => a.giant); if(GA) giantHit(c, actor, t, GA, turned); }     // Fire's Burn, Frost's Chill, Hill's Tumble
     if(["hit","crit"].includes(act.outcome) && !off && act.brutal && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 9 && isAttackAct(info)) brutalHit(c, actor, t, turned);     // Brutal Strike's effect
+    if(got && ["hit","crit"].includes(act.outcome) && D.on.some(a => a.frenzy)){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).frenzy = turnStamp(c); }     // Frenzy: the first target hit this turn
+    if(got && !retal && retalCan(c, t, actor)) retal = t;     // Retaliation, offered once this is logged
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
     else if(heal){ hl = healAny(t, heal); healed += hl; }
     if(info.loh && act.lohPoison){ const cs = condsOfT(t), k = cs.indexOf("Poisoned"); if(k >= 0){ cs.splice(k, 1); turned.push(`${t.label}: no longer Poisoned`); } }     // Lay on Hands' 5 points
@@ -16495,6 +16528,7 @@ function logAction(n, c){
       const ni = actInfo(c, actor); if(ni){ act.outcome = ni.save && !isAttackAct(ni) ? "fail" : "hit"; act.dtype = ni.hint && DAMAGE_TYPES.includes(ni.hint.dtype) ? ni.hint.dtype : ""; } } }
   /* Riposte: a melee miss on someone who has it, with their Reaction and a superiority die free */
   if(prev.outcome==="miss" && !prev.reaction && isAttackAct(info) && meleeAtk(info)){ const tg = targets.find(x=>riposteCan(c, x, actor)); if(tg) riposteOffer(c, tg, actor); }
+  if(retal && retalCan(c, retal, actor)) retalOffer(c, retal, actor);     // Retaliation
   /* Great Weapon Master: a crit or a creature dropped, with a melee weapon, on their turn: one more attack offered */
   if(c.turn===actor.id && !prev.reaction && !prev.bonus && isSwing(info, prev.what) && gwmMelee(info) && (prev.outcome==="crit" || kills > 0) && gwmHas(actor) && !bonusUsed(c, actor.id))
     c.gwm = { id:actor.id, at:turnStamp(c), what:prev.what, why:prev.outcome==="crit" ? "a critical hit" : `${hits.filter(h=>h.dropped).map(h=>h.label).join(" and ")} dropped` };
