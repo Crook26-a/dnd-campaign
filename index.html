@@ -19927,10 +19927,14 @@ function seaRoute(a, b, G){
   if(!isFinite(g[t])) return null;
   const cells = []; for(let v = t; v !== -1; v = from[v]) cells.unshift(v);
   const pt = v => ({ x:G.x0 + (v % W + .5) * G.cell, y:G.y0 + (Math.floor(v / W) + .5) * G.cell });
-  const clear = (p, q) => { const n = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / (G.cell / 2)); for(let i = 1; i < n; i++){ const x = p.x + (q.x - p.x) * i / n, y = p.y + (q.y - p.y) * i / n, c = Math.floor((x - G.x0) / G.cell), r = Math.floor((y - G.y0) / G.cell); if(G.land[r * W + c]) return false; } return true; };
-  const pts = [{ x:a.x, y:a.y }]; let i = 0; const P = cells.map(pt);
-  while(i < P.length - 1){ let j = P.length - 1; while(j > i + 1 && !clear(P[i], P[j])) j--; pts.push(P[j]); i = j; }      // the furthest square still in plain water: one straight run
-  pts.push({ x:b.x, y:b.y });
+  /* plain water between two points, a quarter-square at a time; the port's own bit of shore (a square and a half
+     round each port) doesn't count */
+  const shore = (x, y) => Math.hypot(x - a.x, y - a.y) < G.cell * 1.5 || Math.hypot(x - b.x, y - b.y) < G.cell * 1.5;
+  const clear = (p, q) => { const n = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / (G.cell / 4)); for(let i = 1; i < n; i++){ const x = p.x + (q.x - p.x) * i / n, y = p.y + (q.y - p.y) * i / n, c = Math.floor((x - G.x0) / G.cell), r = Math.floor((y - G.y0) / G.cell); if(G.land[r * W + c] && !shore(x, y)) return false; } return true; };
+  /* the furthest point still in plain water: one straight run. From the port itself, not just the square nearest it
+     (Joseph, 2026-11-06: "sea lanes going above the continent": the first and last runs cut across capes) */
+  const P = [{ x:a.x, y:a.y }, ...cells.map(pt), { x:b.x, y:b.y }], pts = [P[0]]; let i = 0;
+  while(i < P.length - 1){ let j = P.length - 1; while(j > i + 1 && !clear(P[i], P[j])) j--; pts.push(P[j]); i = j; }
   let px = 0; for(let k = 1; k < pts.length; k++) px += Math.hypot(pts[k].x - pts[k-1].x, pts[k].y - pts[k-1].y);
   return { pts, miles:Math.round(px / (root.ppm || 10)) };
 }
@@ -19948,10 +19952,14 @@ function repHub(P){
 }
 /* the lanes worked out from the map (auto ones replaced, your own kept): each port to its three nearest by water, the
    hub to the mainland coast (busy) and every island port to the hub, then joined up; every lane by water */
+/* a region whose ports have no sea lanes (Joseph, 2026-11-06: "the sea lanes shouldn't be going to the Islands of
+   Lost Hope"): ships that call there (pirates) sail straight there by water */
+const regionNoLanes = n => !!(n && ((root.regions||[]).find(r=>r.id===n.region)||{}).noLanes);
 function seaLanesFromMap(){
-  const P = repPorts(), R = repOf(), keep = (R.lanes||[]).filter(l=>!l.auto), have = new Set(keep.map(l=>[l.from, l.to].sort().join("|"))), out = [], G = seaGrid(), memo = new Map();
+  const P = repPorts().filter(n=>!regionNoLanes(n)), R = repOf(), keep = (R.lanes||[]).filter(l=>!l.auto), have = new Set(keep.map(l=>[l.from, l.to].sort().join("|"))), out = [], G = seaGrid(), memo = new Map();
   const route = (a, b) => { const lo = a.id < b.id ? a : b, hi = lo===a ? b : a, k = lo.id + "|" + hi.id;      // worked out one way, lo to hi, and turned round for the other
     if(!memo.has(k)) memo.set(k, seaRoute(lo, hi, G)); const r = memo.get(k); return r && a===lo ? r : r ? { pts:r.pts.slice().reverse(), miles:r.miles } : null; };
+  for(const l of keep){ const a = repNode(l.from), b = repNode(l.to), rt = a && b ? route(a, b) : null; if(rt){ l.pts = rt.pts; l.miles = rt.miles; } }     // your own lanes: kept, their way by water drawn again
   const big = n => n.kind==="city", small = n => n.kind==="village" || n.kind==="light", reef = n => /reef/i.test(((root.regions||[]).find(r=>r.id===n.region)||{}).name || "");
   const add = (a, b, force) => { const k = [a.id, b.id].sort().join("|"); if(a===b || have.has(k)) return false; const rt = route(a, b); if(!rt) return false; have.add(k);
     const traffic = force || (reef(a) || reef(b) ? "quiet" : big(a) && big(b) ? "busy" : small(a) || small(b) ? "light" : "normal");
@@ -19970,7 +19978,42 @@ function seaLanesFromMap(){
     let best = null; for(const a of P) for(const b of P) if(a.id < b.id && find(a.id)!==find(b.id) && !tried.has(a.id + "|" + b.id)){ const d = repMilesBetween(a, b); if(!best || d < best.d) best = { a, b, d }; }
     if(!best) break; tried.add(best.a.id + "|" + best.b.id); if(add(best.a, best.b)) par.set(find(best.a.id), find(best.b.id)); }
   const apart = P.filter(p=>find(p.id)!==find((hub || P[0]).id)).map(p=>p.name);
+  seaCoalesce([...keep, ...out], G);
   R.lanes = [...keep, ...out]; saveParty(); return { ports:P.length, lanes:out.length, hub:hub ? hub.name : "", apart };
+}
+/* plain water between two points by the grid, a quarter-square at a time; near the given ports their own shore
+   doesn't count */
+function seaClearLine(G, p, q, ends){
+  const n = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / (G.cell / 4));
+  for(let i = 1; i < n; i++){ const x = p.x + (q.x - p.x) * i / n, y = p.y + (q.y - p.y) * i / n, c = Math.floor((x - G.x0) / G.cell), r = Math.floor((y - G.y0) / G.cell);
+    if(r < 0 || c < 0 || r >= G.H || c >= G.W || !G.land[r * G.W + c]) continue; if((ends||[]).some(e=>Math.hypot(x - e.x, y - e.y) < G.cell * 1.5)) continue; return false; }
+  return true;
+}
+/* lanes that run within 30 miles of each other come together (Joseph, 2026-11-06: "if sea lanes overlap by 30 miles
+   either side, they need to just coalesce"). The busiest and longest go down first; each one after, point by point
+   every 5 miles, is drawn onto any lane already down within 30 miles of it, so long as that leaves it on water */
+const SEA_MERGE_MI = 30;
+function seaCoalesce(L, G){
+  const ppm = root.ppm || 10, R = SEA_MERGE_MI * ppm, rank = l => ({ dense:5, busy:4, normal:3, light:2, quiet:1 }[trafficOf(l)] || 3), trunk = [];
+  const near = (x, y) => { let best = null; for(const s of trunk){ const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y, LL = dx*dx + dy*dy || 1, t = Math.max(0, Math.min(1, ((x - s.a.x)*dx + (y - s.a.y)*dy) / LL)), qx = s.a.x + t*dx, qy = s.a.y + t*dy, d = Math.hypot(x - qx, y - qy);
+    if(d <= R && (!best || d < best.d)) best = { d, x:qx, y:qy }; } return best; };
+  for(const l of L.slice().sort((p, q)=>rank(q) - rank(p) || (+q.miles||0) - (+p.miles||0))){
+    const P = l.pts; if(!P || P.length < 2) continue; const A = P[0], Z = P[P.length - 1], ends = [A, Z];
+    /* every 5 miles along it, the ports kept where they are */
+    const D = [A]; for(let i = 0; i + 1 < P.length; i++){ const a = P[i], b = P[i+1], k = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / (5 * ppm))); for(let j = 1; j <= k; j++) D.push({ x:a.x + (b.x - a.x) * j / k, y:a.y + (b.y - a.y) * j / k }); }
+    const S = D.map((p, i)=>{ if(i===0 || i===D.length - 1 || !trunk.length) return p; const q = near(p.x, p.y); return q ? { x:q.x, y:q.y, snap:true } : p; });
+    for(let pass = 0; pass < 4; pass++){ let bad = false;                 // a run onto land: those points back where they were
+      for(let i = 0; i + 1 < S.length; i++) if(!seaClearLine(G, S[i], S[i+1], ends)){ for(const k of [i, i+1]) if(S[k].snap){ S[k] = D[k]; bad = true; } }
+      if(!bad) break; }
+    /* the straight bits made one run again: a point goes if the line past it stays within half a mile and on water */
+    const out = [S[0]]; let from = 0;
+    for(let i = 1; i < S.length - 1; i++){ const a = S[from], b = S[i + 1], dx = b.x - a.x, dy = b.y - a.y, LL = Math.hypot(dx, dy) || 1;
+      let ok = true; for(let k = from + 1; k <= i && ok; k++) if(Math.abs((S[k].x - a.x) * dy - (S[k].y - a.y) * dx) / LL > .5 * ppm) ok = false;     // every point it would skip
+      if(ok && seaClearLine(G, a, b, ends)) continue; out.push(S[i]); from = i; }
+    out.push(S[S.length - 1]);
+    l.pts = out.map(p=>({ x:Math.round(p.x), y:Math.round(p.y) })); let px = 0; for(let k = 1; k < l.pts.length; k++) px += Math.hypot(l.pts[k].x - l.pts[k-1].x, l.pts[k].y - l.pts[k-1].y); l.miles = Math.round(px / ppm);
+    for(let k = 0; k + 1 < l.pts.length; k++) trunk.push({ a:l.pts[k], b:l.pts[k+1] });
+  }
 }
 /* the lanes as a graph: the shortest way by miles from one port to another */
 function seaPath(fromId, toId){
@@ -20076,6 +20119,7 @@ function fleetPos(s, t){
   const L = s.leg; if(!L){ const n = repNode(s.at); return n ? { x:n.x, y:n.y } : s.pos || null; }
   if(!L.ok && L.pts && L.pts.length > 1){ L.ok = true; const A = L.from ? repNode(L.from) : null, B = L.to ? repNode(L.to) : null, d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);     // a voyage set out on a lane saved backwards: turned round, joined to her ports
     if(A && B && d(L.pts[0], A) + d(L.pts[L.pts.length - 1], B) > d(L.pts[L.pts.length - 1], A) + d(L.pts[0], B)) L.pts.reverse();
+    else if(!A && B && d(L.pts[0], B) < d(L.pts[L.pts.length - 1], B)) L.pts.reverse();     // from out at sea (after lying in wait): she ends at her port
     if(A && d(L.pts[0], A) > 1) L.pts.unshift({ x:A.x, y:A.y }); if(B && d(L.pts[L.pts.length - 1], B) > 1) L.pts.push({ x:B.x, y:B.y }); }
   const f = Math.max(0, Math.min(1, (t - L.left) / Math.max(1, L.arrive - L.left)));
   let tot = 0; const seg = []; for(let i = 1; i < L.pts.length; i++){ const d = Math.hypot(L.pts[i].x - L.pts[i-1].x, L.pts[i].y - L.pts[i-1].y); seg.push(d); tot += d; }
@@ -20152,6 +20196,8 @@ function fleetCatchUp(){
 const fleetT = () => campaignDay() + (+root.hour || 0) / 24;
 /* the party at sea: their ship, while they're aboard */
 const fleetParty = () => { const s = wxShip(); return s ? { x:s.x, y:s.y, ship:s } : null; };
+/* how strongly the lanes show on your chart (Joseph, 2026-11-06: "turn the sea lane opacity down"): 0 to 1, kept in the save */
+const laneAlpha = () => { const a = +(root && root.laneAlpha); return a >= 0 && a <= 1 ? a : 1; };
 /* the chart: the lanes (the DM's alone) and the ships (the players: within sight of the party) */
 function fleetLayer(forPlayers){
   if(doc!==root || !Array.isArray(root.fleet)) return "";
@@ -20159,9 +20205,9 @@ function fleetLayer(forPlayers){
   let s = "";
   if(!forPlayers) for(const l of repOf().lanes || []){ const a = repNode(l.from), b = repNode(l.to); if(!a || !b) continue;
     const P = l.pts && l.pts.length > 1 ? l.pts : [a, b], d = `M${P.map(p=>`${Math.round(p.x)} ${Math.round(p.y)}`).join(" L")}`;
-    s += `<path class="sealane" fill="none" d="${d}" stroke="#2c5a72" stroke-opacity="${laneSel===l.id ? ".9" : ".45"}" stroke-width="${({ dense:2.4, busy:2, normal:1.5, light:1.1, quiet:.8 }[trafficOf(l)] || 1.2) * inv * (laneSel===l.id ? 2 : 1)}" stroke-dasharray="${6*inv} ${5*inv}" pointer-events="none"/>`
+    s += `<path class="sealane" fill="none" d="${d}" stroke="#2c5a72" stroke-opacity="${laneSel===l.id ? ".9" : k1(.45 * laneAlpha())}" stroke-width="${({ dense:2.4, busy:2, normal:1.5, light:1.1, quiet:.8 }[trafficOf(l)] || 1.2) * inv * (laneSel===l.id ? 2 : 1)}" stroke-dasharray="${6*inv} ${5*inv}" pointer-events="none"/>`
       + `<path data-lane="${l.id}" fill="none" d="${d}" stroke="transparent" stroke-width="${10 * inv}" style="cursor:pointer" pointer-events="stroke"><title>${esc(l.name ? `${l.name}: ` : "")}${esc(a.name)} – ${esc(b.name)} (click for the lane)</title></path>`;
-    if(l.name){ const m = P[Math.floor(P.length / 2)]; s += `<text x="${Math.round(m.x)}" y="${Math.round(m.y)}" text-anchor="middle" font-size="${10 * inv}" font-style="italic" font-family="var(--serif)" fill="#2c5a72" stroke="#fff8e6" stroke-width="${2.5 * inv}" paint-order="stroke" pointer-events="none">${esc(l.name)}</text>`; } }
+    if(l.name){ const m = P[Math.floor(P.length / 2)]; s += `<text x="${Math.round(m.x)}" y="${Math.round(m.y)}" opacity="${Math.max(.3, laneAlpha())}" text-anchor="middle" font-size="${10 * inv}" font-style="italic" font-family="var(--serif)" fill="#2c5a72" stroke="#fff8e6" stroke-width="${2.5 * inv}" paint-order="stroke" pointer-events="none">${esc(l.name)}</text>`; } }
   for(const sh of root.fleet){ const p = fleetPos(sh, t); if(!p) continue;
     if(forPlayers && !(me && Math.hypot(p.x - me.x, p.y - me.y) <= FLEET_SIGHT * ppm)) continue;
     const pir = sh.kind==="pirate" && !forPlayers;
@@ -20852,6 +20898,7 @@ function fleetBlock(){
   return `<details class="partysec" data-invfor="party:fleet" ${openInv.has("party:fleet")?"open":""}><summary class="eyebrow">Ships at sea <small>${F.length} · ${P.length} ports on the water · ${(repOf().lanes||[]).length} sea lanes</small></summary>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Ships that aren't the party's, sailing between ports as the days pass, carrying word as they go. On your chart with the sea lanes; on the players' chart when one is within ${FLEET_SIGHT} miles of them, and then you're offered an encounter.</p>
     <div class="pcrow"><button class="btn" style="flex:1" data-fleetact="lanes" title="Each port on the water to its three nearest, then joined up so every port can reach every other. Your own lanes are kept">Work out the sea lanes from the map</button><button class="btn" style="flex:1" data-fleetact="roll" title="18 ships: six merchants, two navy patrols, three fishing boats, two explorers, two smugglers, two packets and one pirate">${F.length ? "Roll a new fleet" : "Roll a fleet"}</button></div>
+    <div class="pcrow" style="margin-top:4px;align-items:center"><label class="mini" style="margin:0;white-space:nowrap">Lanes on your chart</label><input type="range" id="ln-alpha" min="0" max="100" step="5" value="${Math.round(laneAlpha() * 100)}" style="flex:1" title="How strongly the sea lanes show on your chart (0: hidden)"><small class="mono" id="ln-alphav" style="min-width:3em;text-align:right">${Math.round(laneAlpha() * 100)}%</small></div>
     <div class="pcrow" style="margin-top:4px;align-items:flex-end"><div class="field" style="flex:1"><label>A new lane from</label><select id="ln-a">${portOpts("")}</select></div><div class="field" style="flex:1"><label>to</label><select id="ln-b">${portOpts("")}</select></div>
       <button class="btn" data-fleetact="lane" style="margin-bottom:11px" title="A lane between them by water, yours to keep; click a lane on your chart to name it, change its traffic or delete it">Draw it</button></div>
     ${F.some(s=>FLEET_CREW[s.kind] && !(s.crew||[]).length) ? `<button class="btn wide" data-fleetact="crews" style="margin-top:4px" title="Every ship with crew rules and no crew yet: a captain and her crew, each a person in the Library">Roll crews for every ship</button>` : ""}
@@ -21263,6 +21310,9 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
     if(s){ flash(`${s.name} put to sea: ${(FLEET_KINDS[s.kind])[0].toLowerCase()} out of ${repPlaceName(s.home)}${(s.crew||[]).length ? `, a captain and ${s.crew.length} crew` : ""}.${s.mode==="route" ? " Her route's open below to change." : ""}`);
       if(s.mode==="route") openInv.add("route:" + s.id); renderPane(true); render(); fleetShowEntry(s.id); return; } }
   renderPane(true); render(); });
+document.addEventListener("input", e=>{ const t = e.target; if(!t || t.id!=="ln-alpha") return; root.laneAlpha = Math.max(0, Math.min(1, (+t.value || 0) / 100));
+  const v = $("#ln-alphav"); if(v) v.textContent = Math.round(root.laneAlpha * 100) + "%"; render(); });
+document.addEventListener("change", e=>{ const t = e.target; if(!t || t.id!=="ln-alpha") return; saveParty(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset) return;
   if(t.dataset.fleetname){ const s = fleetOf().find(x=>x.id===t.dataset.fleetname); if(s){ s.name = t.value.trim() || s.name; saveParty(); render(); } }
   else if(t.dataset.fleethome){ const s = fleetOf().find(x=>x.id===t.dataset.fleethome); if(s){ s.home = t.value; saveParty(); } }
@@ -24001,7 +24051,8 @@ function renderRegions(){
     ${doc.regions.map((r,i)=>`<div class="regrow">
       <span class="swatch" style="background:${r.hex}"></span>
       <input class="nm" data-ri="${i}" data-f="name" type="text" value="${esc(r.name)}">
-      ${planOf ? `<select data-ri="${i}" data-f="density" title="How built up this district is"><option value="">As the town</option>${Object.entries(BUILT_DENSITY).map(([k, v])=>`<option value="${k}" ${r.density===k?"selected":""}>${v.label}</option>`).join("")}</select>` : ""}
+      ${planOf ? `<select data-ri="${i}" data-f="density" title="How built up this district is"><option value="">As the town</option>${Object.entries(BUILT_DENSITY).map(([k, v])=>`<option value="${k}" ${r.density===k?"selected":""}>${v.label}</option>`).join("")}</select>`
+        : `<label class="check" style="margin:0;white-space:nowrap" title="Its ports get no sea lanes when the lanes are worked out from the map (Background tab); ships that call there sail straight there by water"><input type="checkbox" data-rnolanes="${i}" ${r.noLanes ? "checked" : ""}> No sea lanes</label>`}
     </div>`).join("")}
     <p class="empty-note" style="margin-top:12px">Names for parts of the map; each place and road belongs to one. How often encounters come is set on the roads (quality and danger) and in the Library's Encounters.</p>
     <button class="btn wide" id="addRegion" style="margin-top:14px">Add a region</button>
@@ -24021,6 +24072,8 @@ function renderRegions(){
       touch();
     };
   });
+  $("#pane-regions").querySelectorAll("[data-rnolanes]").forEach(b=>b.onchange = ()=>{ const r = doc.regions[+b.dataset.rnolanes]; if(!r) return;
+    if(b.checked) r.noLanes = true; else delete r.noLanes; touch(); flash(`${r.name}: ${b.checked ? "no sea lanes" : "sea lanes allowed"}. Work the sea lanes out again (Background tab, Ships at sea) to see it.`); });
   $("#addRegion").onclick = ()=>{
     doc.regions.push({ id:uid("r"), name:"New region", threat:1, hex:REGION_HEX[doc.regions.length%REGION_HEX.length], notes:"" });
     touch(); renderRegions();
