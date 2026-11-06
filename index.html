@@ -20004,7 +20004,7 @@ function fleetRoll(){
   for(let i = 0; i < 3; i++){ const h = spread(i, honestP); out.push(mk("fishing", "wander", h)); }
   for(let i = 0; i < 2; i++) out.push(mk("explorer", "wander", spread(i, honestP)));
   for(let i = 0; i < 2; i++) out.push(mk("smuggler", "wander", spread(i, smugP.length ? smugP : P)));     // smugglers out of a smugglers' port, if there is one
-  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : honestP); out.push(mk("packet", "route", h, walk(h, 2))); }
+  for(let i = 0; i < 2; i++){ const h = spread(i, cities.length ? cities : honestP); out.push({ ...mk("packet", "route", h, walk(h, 2)), tier:i ? "poor" : "rich" }); }     // one rich, one poor
   /* the pirate's hideout: a port in the reefs if there is one (Kalatecha: Lantern Rock), else the one furthest from the rest */
   const lonely = pickOne(P.filter(p=>p.kind==="hideout").length ? P.filter(p=>p.kind==="hideout") : P.filter(p=>p.pirate).length ? P.filter(p=>p.pirate) : [null]) || P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
   out.push(mk("pirate", "pirate", lonely));
@@ -20013,6 +20013,7 @@ function fleetRoll(){
   root.fleet = [...out, ...kept]; root.fday = D;
   for(const s of out) fleetCrewRoll(s);                                   // and a crew for every ship that has rules for one
   for(const s of out) tradeCall(s, repNode(s.home), D);                   // and her first cargo, from her home port
+  fleetTiersUp();                                                         // the rich passenger ship's escort
   saveParty();
   bgLog("fleet", `A fleet of ${out.length} ships put to sea: ${out.map(s=>`${s.name} (${FLEET_KINDS[s.kind][0].toLowerCase()}, ${repPlaceName(s.home)})`).join(", ")}`);
   return out.length;
@@ -20023,7 +20024,7 @@ function fleetNext(s){
   const shunned = id => FLEET_HONEST.has(s.kind) && typeof troubleAt==="function" && ((troubleAt(id)||{}).kind==="plague" || (troubleAt(id)||{}).kind==="blockade");     // plague or a blockade: honest ships keep away
   if(s.mode==="route" && (s.route||[]).length > 1){ const i = s.route.indexOf(at), R = s.route; for(let j = 1; j < R.length; j++){ const to = R[(i + j) % R.length]; if(!shunned(to) || j===R.length - 1) return { to }; } }
   if(s.mode==="pirate"){
-    if(at===s.home || !at){ let busy = (repOf().lanes||[]).filter(l=>["dense","busy"].includes(trafficOf(l))), L = (busy.length ? busy : repOf().lanes||[]);
+    if(at===s.home || (!at && !s.pos)){ let busy     /* from home (or nowhere yet) out to lie in wait; after lying in wait (s.pos), home or off to sell */ = (repOf().lanes||[]).filter(l=>["dense","busy"].includes(trafficOf(l))), L = (busy.length ? busy : repOf().lanes||[]);
       /* a pirate with waters of her own (Joseph, 2026-11-06: the Lost Hope crews, "occasional incursions to the Kalatecha
          sea"): most voyages to the lanes nearest her home; now and then (s.raid.pct) a raid on a region's lanes */
       const H = repNode(s.home), all = repOf().lanes||[];
@@ -20071,6 +20072,7 @@ function fleetLeg(s, go, day){
 }
 /* where a ship is at a moment (day + the hour's share) */
 function fleetPos(s, t){
+  const ch = s.escortOf && fleetCharge(s); if(ch && ch!==s){ const p = fleetPos(ch, t); if(p){ const m = (root.ppm || 10); return { x:p.x + m * .8, y:p.y + m * .6 }; } }     // an escort: a mile off her charge
   const L = s.leg; if(!L){ const n = repNode(s.at); return n ? { x:n.x, y:n.y } : s.pos || null; }
   if(!L.ok && L.pts && L.pts.length > 1){ L.ok = true; const A = L.from ? repNode(L.from) : null, B = L.to ? repNode(L.to) : null, d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);     // a voyage set out on a lane saved backwards: turned round, joined to her ports
     if(A && B && d(L.pts[0], A) + d(L.pts[L.pts.length - 1], B) > d(L.pts[L.pts.length - 1], A) + d(L.pts[0], B)) L.pts.reverse();
@@ -20091,19 +20093,45 @@ function fleetPortCall(s, port, day, moved){
   const T = R.tables[key], told = T ? Object.keys(T.slots).filter(k=>(R.deeds.find(x=>x.id===T.slots[k].d)||{}).size!=="local") : [];     // a local story stays ashore
   if(told.length){ const e = T.slots[told[Math.floor(Math.random() * told.length)]]; s.carry.push({ ...e, from:port.id }); }
 }
+/* ── rich and poor passenger ships, and a rich one's Admiralty escort (Joseph, 2026-11-06: "an admiralty ship should
+   accompany high value passenger ships"). The escort is a navy ship of the navy's faction, with her own crew, that
+   sails when her charge sails and puts in where she puts in, a mile off her on the chart. If her charge is lost, she
+   goes back to patrolling ── */
+const fleetCharge = s => s && s.escortOf ? fleetOf().find(p=>p.id===s.escortOf) || null : null;
+const fleetEscortOf = p => p && p.escort ? fleetOf().find(e=>e.id===p.escort && e.escortOf===p.id) || null : null;
+function fleetEscorting(s){ if(!s.escortOf) return false; if(fleetCharge(s)) return true;
+  delete s.escortOf; s.mode = "wander"; bgLog("fleet", `${s.name} has no one to escort now: back on patrol`); return false; }
+function fleetEscortSync(e){ const p = fleetCharge(e); if(!p) return;
+  if(p.leg) e.leg = { ...p.leg, pts:p.leg.pts }; else delete e.leg; e.at = p.at; e.stay = p.stay;
+  if(p.pos) e.pos = { ...p.pos }; else delete e.pos; if(p.lurkOn) e.lurkOn = p.lurkOn; else delete e.lurkOn; }
+/* an escort for a rich passenger ship: a navy ship put to sea from her home port */
+function fleetEscortNew(p){
+  const navy = tradeNavy(), e = fleetAdd({ kind:"navy", home:p.home, mode:"wander", ...(navy ? { faction:navy.id } : {}) }); if(!e) return null;
+  e.escortOf = p.id; e.mode = "escort"; delete e.route; p.escort = e.id; fleetEscortSync(e);
+  bgLog("fleet", `${e.name} sails as escort to ${p.name}, a rich passenger ship`); return e;
+}
+/* every passenger ship rich or poor (the old ones, half and half), and every rich one escorted, once */
+function fleetTiersUp(){
+  let k = 0; for(const p of fleetOf()) if(p.kind==="packet" && !FLEET_TIERS[p.tier]){ p.tier = k++ % 2 ? "poor" : "rich"; }
+  for(const p of fleetOf().slice()) if(p.kind==="packet" && p.tier==="rich" && p.escort==null) fleetEscortNew(p);     // p.escort kept when you send one away: never put back unasked
+}
 /* the days since: every ship's departures and arrivals in turn */
 function fleetCatchUp(){
   if(typeof root==="undefined" || !root || !Array.isArray(root.fleet) || !root.fleet.length || location.hash==="#player") return null;
   /* a ship put in from a save with no crew yet (s.needCrew): her crew rolled, and a pirate's plunder */
+  /* ships asked for in a save (root.fleetQueue: fleetAdd's own choices, a kind, a home, a faction…): put to sea once */
+  if(Array.isArray(root.fleetQueue) && root.fleetQueue.length){ const Q = root.fleetQueue; delete root.fleetQueue; for(const o of Q) fleetAdd(o || {}); }
   for(const s of root.fleet) if(s.needCrew){ delete s.needCrew; if(!(s.crew||[]).length) fleetCrewRoll(s); if(s.kind==="pirate" && !Object.keys(s.cargo||{}).length) fleetPlunder(s); }
+  fleetTiersUp();
   const now = campaignDay(); if(root.fday==null || now < root.fday){ root.fday = now; return null; } if(now===root.fday) return null;
   const moved = [], said = [];
   for(const s of root.fleet){
+    if(fleetEscorting(s)) continue;                                      // an escort goes where her charge goes (below)
     for(let guard = 0; guard < 400; guard++){
       if(s.leg){ if(s.leg.arrive > now) break;
         const L = s.leg; delete s.leg;
         if(L.lurk){ s.at = null; s.pos = { x:L.lurk.x, y:L.lurk.y }; s.lurkOn = L.lurk.on; s.stay = L.arrive + L.wait; said.push(`${s.name} lies in wait on the lanes`); bgLog("ship", `${s.name} lies in wait on the lanes till day ${s.stay}`, L.arrive); continue; }
-        s.at = L.to; delete s.pos; s.stay = L.arrive + 1 + rollD(3);
+        s.at = L.to; delete s.pos; s.stay = L.arrive + (s.homely && L.to===s.home ? 9 + rollD(8) + rollD(8) : 1 + rollD(3));     // a ship that keeps to her own port (s.homely): 11–25 days at home, not 2–4 (Joseph: more at her city than sailing)
         const port = repNode(s.at); bgLog("ship", `${s.name} comes into ${repPlaceName(s.at)}, staying till day ${s.stay}`, L.arrive);
         if(port && root.rep) fleetPortCall(s, port, L.arrive, moved); if(port) tradeCall(s, port, L.arrive); continue; }
       if((s.stay || 0) > now) break;
@@ -20112,6 +20140,7 @@ function fleetCatchUp(){
       s.leg = leg; delete s.lurkOn; const line = `${s.name} sails${s.at ? ` from ${repPlaceName(s.at)}` : ""}${leg.to ? ` for ${repPlaceName(leg.to)}` : " to lie in wait on the lanes"} (${leg.miles} mi, arriving day ${leg.arrive})`;
       said.push(line); bgLog("ship", line, leg.left);
     } }
+  for(const s of root.fleet) fleetEscortSync(s);
   root.fday = now;                                                       // all of it in the Background tab's log, each on its day
   for(const m of moved) bgLog("gossip", `By ship: "${(repOf().deeds.find(x=>x.id===m.d)||{}).text || "a story"}" ${m.how}`, m.day);
   saveParty(); return { moved, said };
@@ -20164,7 +20193,11 @@ function seaReaction(s){
 const seaLastPort = s => (s.leg && s.leg.from) || s.at || s.home, seaNextPort = s => (s.leg && s.leg.to) || s.at || s.home;
 function seaMeetHtml(s, mi){
   const K = FLEET_KINDS[s.kind] || FLEET_KINDS.merchant, bound = s.leg ? (s.leg.to ? `bound for ${repPlaceName(s.leg.to)}` : "hove to on the lanes") : s.at ? `at ${repPlaceName(s.at)}` : "lying in wait", R = seaReaction(s);
-  return `<p style="margin:0 0 6px"><b>${esc(s.name)}</b>, a ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))}, ${esc(bound)}${mi!=null ? `: in sight, ${mi} mile${mi===1?"":"s"} off` : ""}.</p>
+  const esc1 = fleetEscortOf(s), ch = fleetCharge(s);
+  const what = `${s.kind==="packet" && s.tier ? `${s.tier} ` : ""}${K[0].toLowerCase()}`;
+  return `<p style="margin:0 0 6px"><b>${esc(s.name)}</b>, ${/^[aeiou]/.test(what) ? "an" : "a"} ${esc(what)} out of ${esc(repPlaceName(s.home))}, ${esc(bound)}${mi!=null ? `: in sight, ${mi} mile${mi===1?"":"s"} off` : ""}.</p>
+    ${esc1 ? `<p style="margin:0 0 6px"><b>Under escort:</b> ${esc(esc1.name)}, a navy ship${esc1.faction && factionById(esc1.faction) ? ` of ${esc(facMid(factionById(esc1.faction)))}` : ""}, sails a mile off her. Any trouble with her is trouble with both.</p>` : ""}
+    ${ch ? `<p style="margin:0 0 6px">She's escorting <b>${esc(ch.name)}</b>, a ${ch.tier ? `${ch.tier} ` : ""}passenger ship, a mile off.</p>` : ""}
     ${s.trouble ? `<p style="margin:0 0 6px;color:var(--lead)"><b>She's in trouble:</b> ${esc(s.trouble)}.</p>` : ""}
     <p class="empty-note" style="font-size:11px;margin:0 0 6px">If hailed, ${R.cap ? `Captain ${esc(R.cap.name)}` : "her captain"} is ${esc(R.word)}${R.why ? ` (${esc(R.why)})` : ""}${s.kind==="pirate" ? ": a toll, or your cargo" : ""}.</p>
     <div class="pcrow">${s.trouble ? `<button class="btn" data-fleet="help">Help her</button><button class="btn" data-fleet="leave">Leave her</button>` : `<button class="btn" data-fleet="hail">Hail her</button>`}
@@ -20316,7 +20349,7 @@ function fleetCard(id){
   const magic = [...(s.magic||[]).map(libLootById).filter(Boolean).map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)];
   delete pop.dataset.ship; pop.dataset.card = s.id; laneSel = null;
   pop.innerHTML = `<p style="margin:0 0 4px"><b>${esc(s.name)}</b>, ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))} <small>(${esc(FLEET_SIZES[fleetSizeOf(s)][0].toLowerCase())})</small></p>
-    <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${esc(where)}. ${s.mode==="route" ? `Her route: ${(s.route||[]).map(x=>esc(repPlaceName(x))).join(" → ")}.` : s.mode==="pirate" ? "She goes her own way." : "She goes where she likes."}</p>
+    <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${s.kind==="packet" && s.tier ? `A ${s.tier} passenger ship${fleetEscortOf(s) ? `, escorted by ${esc(fleetEscortOf(s).name)}` : ""}. ` : fleetCharge(s) ? `Escorting ${esc(fleetCharge(s).name)}. ` : ""}${esc(where)}. ${s.mode==="route" ? `Her route: ${(s.route||[]).map(x=>esc(repPlaceName(x))).join(" → ")}.` : s.mode==="pirate" ? "She goes her own way." : "She goes where she likes."}</p>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${cap ? `Captain ${esc(cap.name)}; ` : ""}${ppl.length ? `${ppl.length} aboard` : "no crew rolled"}${(s.pass||[]).length ? `, and ${s.pass.length} passengers` : ""}.${TRADE_SHIPS.has(s.kind) || s.kind==="pirate" ? ` Hold: ${hold || "empty"} (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads).` : ""}${magic.length ? ` Hidden aboard: ${magic.join(", ")}.` : ""}</p>
     <div class="pcrow"><button class="btn" data-fleetcard="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her decks for a fight">Go aboard</button><button class="btn" data-fleetcard="party" data-id="${s.id}" title="Her entry with the rest of the fleet: rename her, her home, a new crew">In the Background tab</button><button class="btn" data-fleetcard="close">Close</button></div>`;
   pop.hidden = false;
@@ -20412,7 +20445,7 @@ function tradeCall(s, port, day){
   let free = tradeCap(s) - tradeLoaded(C); const next = tradeNextPorts(s, id), lot = Math.max(3, Math.ceil(tradeCap(s) / 8));     // nothing smaller than a lot: an eighth of her hold
   for(let k = 0; k < 3 && free >= lot && next.length; k++){
     let best = null;
-    for(const g of Object.keys(TRADE_GOODS)){ if(C[g] || soldHere.has(g) || (s.kind==="packet" && TRADE_GOODS[g][2]!=="lux")) continue;     // a passenger ship carries only the best
+    for(const g of Object.keys(TRADE_GOODS)){ if(C[g] || soldHere.has(g) || (s.kind==="packet" && (s.tier==="poor" ? TRADE_GOODS[g][2]==="lux" : TRADE_GOODS[g][2]!=="lux"))) continue;     // a passenger ship carries only the best; a poor one, never
       for(let n = free; n >= lot; n = n > 8 ? Math.floor(n * 0.75) : n - 1){ const buy = tradeBuyAt(id, g, n, day), sell = Math.max(...next.map(t=>tradeSellAt(t, g, n, day)));
         if(sell >= buy * 1.08){ const profit = n * (sell - buy); if(!best || profit > best.profit) best = { g, n, profit }; break; } } }
     if(!best) break;
@@ -20519,6 +20552,11 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t || !t.id && !
    Caught selling or holding (a navy search): everything stolen confiscated, a fine of its value, worse standing ── */
 const FLEET_MAGIC = { packet:[["Rare",30],["Very Rare",20],["Legendary",5],["Artifact",1]],
   merchant:[["Rare",15],["Very Rare",5],["Artifact",0.4]], pirate:[["Rare",15],["Very Rare",5],["Artifact",0.4]] };
+/* passenger ships, rich and poor (Joseph, 2026-11-06): a rich one's hold a little better than the old odds, a poor
+   one's well below them; a rich one sails with an Admiralty escort */
+const FLEET_MAGIC_TIER = { rich:[["Rare",40],["Very Rare",25],["Legendary",7],["Artifact",1.5]], poor:[["Rare",10],["Very Rare",4],["Artifact",0.2]] };
+const fleetMagicOf = s => (s.kind==="packet" && FLEET_MAGIC_TIER[s.tier]) || FLEET_MAGIC[s.kind] || [];
+const FLEET_TIERS = { rich:"Rich", poor:"Poor" };
 const STOLEN_RULES = { sell:5, prize:60, suspect:15, search:50, smuggle:80, hideout:70, pirate:75 };
 /* at a smugglers' port, a pirate hideout or a pirate city or town, stolen cargo sells with no risk, for a cut: the
    share of the price paid */
@@ -20531,7 +20569,7 @@ const tradeOffice = id => { const T = tradeOf(); if(T.office && T.office[id]!=nu
   return fleetOf().some(s=>s.kind==="navy" && (s.home===id || (s.route||[]).includes(id))); };
 function fleetMagicRoll(s){
   s.magic = []; s.magicNote = []; s.magicSig = uid("mg");
-  for(const [tier, pct] of FLEET_MAGIC[s.kind] || []){ if(Math.random() * 100 >= pct) continue;
+  for(const [tier, pct] of fleetMagicOf(s)){ if(Math.random() * 100 >= pct) continue;
     const pool = [...(lib().loot||[]), ...SRD_LOOT].filter(x=>x.rarity===tier);
     if(pool.length) s.magic.push(pickOne(pool).id + "#" + uid("c")); else s.magicNote.push(`${tier==="Artifact" ? "an" : "a"} ${tier.toLowerCase()} magic item (none in your Library or the SRD: pick one)`); }
 }
@@ -20645,6 +20683,8 @@ const FLEET_CAPTAIN_BY = { packet:"Fighter" };
 /* a passenger ship's passengers, by fare (Joseph, 2026-11-04): 10 low class in steerage, 5 middle and 4 first class in
    the cabins */
 const FLEET_PASS = { packet:[["low","passlow",10],["middle","passmid",5],["first","passfirst",4]] };
+const FLEET_PASS_TIER = { rich:[["low","passlow",2],["middle","passmid",6],["first","passfirst",10]], poor:[["low","passlow",16],["middle","passmid",3]] };
+const fleetPassOf = s => (s.kind==="packet" && FLEET_PASS_TIER[s.tier]) || FLEET_PASS[s.kind] || [];
 const FLEET_FARES = { low:"low class", middle:"middle class", first:"first class" };
 const FLEET_HOST = new Set(["steward","purser","waiter"]);
 const FLEET_DISP = { pirate:"enemy", smuggler:"neutral", navy:"neutral" };
@@ -20665,7 +20705,7 @@ function fleetCrewRoll(s, n){
   s.captain = one("shipcaptain", FLEET_CAPTAIN_BY[s.kind] || pickOne(FLEET_CAPTAIN), 3);
   for(const [k, c, lv] of list) ids.push(one(k, c, lv));
   s.crew = ids;
-  s.pass = []; for(const [fare, k, many] of FLEET_PASS[s.kind] || []) for(let i = 0; i < many; i++){ const pid = one(k, null, 1), p = libNpcById(pid); p.fare = fare; s.pass.push(pid); }
+  s.pass = []; for(const [fare, k, many] of fleetPassOf(s)) for(let i = 0; i < many; i++){ const pid = one(k, null, 1), p = libNpcById(pid); p.fare = fare; s.pass.push(pid); }
   if(s.faction && factionById(s.faction)) for(const id of [s.captain, ...ids]){ const p = libNpcById(id); if(p) p.faction = s.faction; }     // a faction's ship: her captain and crew are its people
   saveParty(); return ids.length + 1 + s.pass.length;
 }
@@ -20791,10 +20831,13 @@ function fleetAdd(o){
     : kind==="smuggler" ? firstOf(P.filter(p=>p.kind==="smuggle"), P) : firstOf(P.filter(p=>!(FLEET_HONEST.has(kind) && (fleetReef(p.id) || shadyPort(p))))));
   const mode = kind==="pirate" ? "pirate" : o.mode==="route" || o.mode==="wander" ? o.mode : (["navy","packet"].includes(kind) || Math.random() < .4 ? "route" : "wander");
   const used = new Set(fleetOf().map(s=>s.name)), s = { id:uid("sh"), name:(o.name||"").trim() || fleetName(used), kind, mode, home:home.id, at:home.id, stay:campaignDay() + 1, carry:[], ...(FLEET_SIZES[o.size] ? { size:o.size } : {}) };
+  if(o.faction && factionById(o.faction)) s.faction = o.faction; if(o.raid && o.raid.region) s.raid = { region:o.raid.region, pct:+o.raid.pct || 20 }; if(o.homely) s.homely = true;
+  if(kind==="packet") s.tier = FLEET_TIERS[o.tier] ? o.tier : (Math.random() < .5 ? "rich" : "poor");      // rich or poor, before her passengers come aboard
   if(mode==="route") fleetRouteRoll(s);
   fleetOf().push(s); if(root.fday==null) root.fday = campaignDay();
   const crew = fleetCrewRoll(s, o.crew===""||o.crew==null ? null : +o.crew); tradeCall(s, home, campaignDay());
-  bgLog("fleet", `A ship put to sea: ${s.name}, a ${(FLEET_KINDS[kind])[0].toLowerCase()} out of ${home.name}${crew ? `, ${crew} aboard` : ""}`);
+  bgLog("fleet", `A ship put to sea: ${s.name}, a ${s.tier ? `${s.tier} ` : ""}${(FLEET_KINDS[kind])[0].toLowerCase()} out of ${home.name}${crew ? `, ${crew} aboard` : ""}`);
+  if(s.kind==="packet" && s.tier==="rich") fleetEscortNew(s);
   saveParty(); return s;
 }
 /* the Party tab's section: the lanes from the map, the fleet rolled, every ship and where she is */
@@ -20815,13 +20858,17 @@ function fleetBlock(){
         <div class="field" style="flex:1"><label>Sails</label><select id="fa-mode"><option value="">By her type</option><option value="route">A set route</option><option value="wander">Where she likes</option></select></div></div>
       <div class="pcrow"><div class="field" style="flex:1"><label>Home port</label><select id="fa-home"><option value="">Random</option>${portOpts("")}</select></div>
         <div class="field" style="flex:1"><label>Name</label><input id="fa-name" type="text" placeholder="rolled"></div></div>
+      <div class="field"><label>A passenger ship's passengers <small>rich ones sail with an Admiralty escort</small></label><select id="fa-tier"><option value="">Rich or poor, rolled</option>${Object.entries(FLEET_TIERS).map(([k, l])=>`<option value="${k}">${l}</option>`).join("")}</select></div>
       <button class="btn wide calmgo" data-fleetact="add">Put her to sea, crew and all</button>
       <p class="empty-note" style="font-size:11px;margin:4px 0 0">Crews by type: navy 7 fighters of level 2; merchant 4 hands and a fighter of level 2; fishing 3 hands, one family; smuggler 4 rogues of level 2; pirate 3 rogues, 2 fighters and a caster of level 3; passenger ship 5 stewards, waiters and a purser, 4 guards of level 4 and a chaplain (a cleric of level 5), and 19 passengers (10 low class in steerage, 5 middle and 4 first class in cabins). explorer a navigator, a cartographer, a naturalist, 4 hands and 2 marines of level 2. Every ship has a captain of level 3 (a passenger ship's, a fighter).</p></details>
     ${F.map(s=>`<div class="facfx${fleetFocus===s.id ? " fleetfocus" : ""}" id="fleetrow-${s.id}" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
-        <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
+        <small>${s.kind==="packet" && s.tier ? `${FLEET_TIERS[s.tier]} ` : ""}${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])}${s.kind==="packet" && s.tier ? "" : ""} · ${s.mode==="escort" && fleetCharge(s) ? `escorting ${esc(fleetCharge(s).name)}` : s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
       <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
-      <div class="sbl"><small>Sails for</small> <select data-fleetfac="${s.id}">${factionOptions(s.faction || "", "No faction")}</select>${s.mode==="pirate" ? ` · <small>raids</small> <select data-fleetraid="${s.id}"><option value="">nowhere in particular</option>${(root.regions||[]).map(r=>`<option value="${r.id}" ${s.raid && s.raid.region===r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select>${s.raid && s.raid.region ? ` <input type="number" min="0" max="100" data-fleetraidpct="${s.id}" value="${+s.raid.pct || 0}" style="width:3.6em" title="The chance each time she puts to sea"><small>% of voyages</small>${s.raiding && s.leg && s.leg.lurk ? " · <i>raiding now</i>" : ""}` : ""}` : ""}</div>
-      ${s.mode!=="pirate" ? `<div class="sbl"><small>Sails</small> <select data-fleetmode="${s.id}"><option value="route" ${s.mode==="route" ? "selected" : ""}>A set route</option><option value="wander" ${s.mode!=="route" ? "selected" : ""}>Where she likes</option></select></div>` : ""}
+      <div class="sbl"><small>Sails for</small> <select data-fleetfac="${s.id}">${factionOptions(s.faction || "", "No faction")}</select>${s.mode==="pirate" ? ` · <small>raids</small> <select data-fleetraid="${s.id}"><option value="">nowhere in particular</option>${(root.regions||[]).map(r=>`<option value="${r.id}" ${s.raid && s.raid.region===r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select>${s.raid && s.raid.region ? ` <input type="number" min="0" max="100" data-fleetraidpct="${s.id}" value="${+s.raid.pct || 0}" style="width:3.6em" title="The chance each time she puts to sea"><small>% of voyages</small>${s.raiding && s.leg && s.leg.lurk ? " · <i>raiding now</i>" : ""}` : ""}` : ""}
+        · <label class="check" style="display:inline-flex;margin:0" title="She stays 11–25 days in her home port between voyages, not 2–4"><input type="checkbox" data-fleethomely="${s.id}" ${s.homely ? "checked" : ""}> keeps to her home port</label></div>
+      ${s.kind==="packet" ? `<div class="sbl"><small>Passengers</small> <select data-fleettier="${s.id}" title="Rich: mostly first class, the best goods, better odds of magic, an Admiralty escort. Poor: mostly steerage, plain goods, poorer odds. Changing it rolls her passengers again">${Object.entries(FLEET_TIERS).map(([k, l])=>`<option value="${k}" ${s.tier===k ? "selected" : ""}>${l}</option>`).join("")}</select>${fleetEscortOf(s) ? ` · escorted by <span class="libref" data-laneship="${fleetEscortOf(s).id}">${esc(fleetEscortOf(s).name)}</span>` : s.tier==="rich" ? ` · <button class="btn small" data-fleetact="escort" data-id="${s.id}">Give her an escort</button>` : ""}</div>` : ""}
+      ${s.mode==="escort" ? `<div class="sbl"><button class="btn small" data-fleetact="unescort" data-id="${s.id}" title="She leaves her charge and patrols on her own">Send her back on patrol</button></div>` : ""}
+      ${s.mode!=="pirate" && s.mode!=="escort" ? `<div class="sbl"><small>Sails</small> <select data-fleetmode="${s.id}"><option value="route" ${s.mode==="route" ? "selected" : ""}>A set route</option><option value="wander" ${s.mode!=="route" ? "selected" : ""}>Where she likes</option></select></div>` : ""}
       ${s.mode==="route" ? fleetRouteEditor(s, portOpts) : ""}
       ${(s.carry||[]).length ? `<div class="sbl"><small>Her crew has heard:</small> ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</div>` : ""}
       <div class="sbl"><small>${esc(FLEET_SIZES[fleetSizeOf(s)][0])}. Aboard:</small> ${(()=>{ const ppl = [s.captain, ...(s.crew||[])].map(libNpcById).filter(Boolean);
@@ -21206,7 +21253,9 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   else if(a==="crews"){ let n = 0; for(const s of fleetOf()) if(FLEET_CREW[s.kind] && !(s.crew||[]).length) n += fleetCrewRoll(s); flash(`${n} people aboard, captains and crews: each in the Library.`); }
   else if(a==="crew"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s){ const n = fleetCrewRoll(s); flash(`${s.name}: a new crew of ${n}.`); } }
   else if(a==="aboard"){ const s = fleetOf().find(x=>x.id===b.dataset.id); if(s){ fleetGoAboard(s); return; } }
-  else if(a==="add"){ const v = id => ($(id)||{}).value || ""; const s = fleetAdd({ kind:v("#fa-kind"), size:v("#fa-size"), crew:v("#fa-crew"), mode:v("#fa-mode"), home:v("#fa-home"), name:v("#fa-name") });
+  else if(a==="escort"){ const p = fleetOf().find(x=>x.id===b.dataset.id); if(p){ const e = fleetEscortNew(p); if(e) flash(`${e.name} sails as ${p.name}'s escort.`); } }
+  else if(a==="unescort"){ const e = fleetOf().find(x=>x.id===b.dataset.id), p = fleetCharge(e); if(e){ delete e.escortOf; e.mode = "wander"; bgLog("fleet", `${e.name} leaves ${p ? p.name : "her charge"}: back on patrol`); saveParty(); } }
+  else if(a==="add"){ const v = id => ($(id)||{}).value || ""; const s = fleetAdd({ kind:v("#fa-kind"), size:v("#fa-size"), crew:v("#fa-crew"), mode:v("#fa-mode"), home:v("#fa-home"), name:v("#fa-name"), tier:v("#fa-tier") });
     if(s){ flash(`${s.name} put to sea: ${(FLEET_KINDS[s.kind])[0].toLowerCase()} out of ${repPlaceName(s.home)}${(s.crew||[]).length ? `, a captain and ${s.crew.length} crew` : ""}.${s.mode==="route" ? " Her route's open below to change." : ""}`);
       if(s.mode==="route") openInv.add("route:" + s.id); renderPane(true); render(); fleetShowEntry(s.id); return; } }
   renderPane(true); render(); });
@@ -21216,6 +21265,10 @@ document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset) retu
   else if(t.dataset.fleetfac){ const s = fleetOf().find(x=>x.id===t.dataset.fleetfac); if(s){ if(t.value) s.faction = t.value; else delete s.faction;
     for(const id of [s.captain, ...(s.crew||[])]){ const p = libNpcById(id); if(p){ if(s.faction) p.faction = s.faction; else if(p.faction) delete p.faction; } } saveParty(); renderNamedPane("background"); } }
   else if(t.dataset.fleetraid){ const s = fleetOf().find(x=>x.id===t.dataset.fleetraid); if(s){ if(t.value) s.raid = { region:t.value, pct:(s.raid && s.raid.pct) || 20 }; else delete s.raid; saveParty(); renderNamedPane("background"); } }
+  else if(t.dataset.fleettier){ const s = fleetOf().find(x=>x.id===t.dataset.fleettier); if(s && FLEET_TIERS[t.value] && t.value!==s.tier){ s.tier = t.value; fleetCrewRoll(s);
+      const e = fleetEscortOf(s); if(s.tier==="rich" && !e) fleetEscortNew(s); else if(s.tier==="poor" && e){ delete e.escortOf; e.mode = "wander"; bgLog("fleet", `${e.name} leaves ${s.name}, a poor passenger ship now: back on patrol`); }
+      bgLog("fleet", `${s.name} is a ${s.tier} passenger ship now`); saveParty(); renderNamedPane("background"); render(); } }
+  else if(t.dataset.fleethomely){ const s = fleetOf().find(x=>x.id===t.dataset.fleethomely); if(s){ if(t.checked) s.homely = true; else delete s.homely; saveParty(); } }
   else if(t.dataset.fleetraidpct){ const s = fleetOf().find(x=>x.id===t.dataset.fleetraidpct); if(s && s.raid){ s.raid.pct = Math.max(0, Math.min(100, Math.round(+t.value || 0))); saveParty(); } } });
 document.body.insertAdjacentHTML("beforeend", `<div id="fleetPop" hidden style="position:fixed;right:16px;bottom:16px;z-index:65;max-width:min(420px, 92vw);background:var(--paper-lit);border:1.5px solid var(--lead);border-radius:4px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.25)"></div>`);
 /* where a story is known: the places whose tables have it, and their regions */
