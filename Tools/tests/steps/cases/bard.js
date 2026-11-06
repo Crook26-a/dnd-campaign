@@ -45,6 +45,14 @@ step("Font of Inspiration (5): a Short Rest brings the uses back; Lyra's card sp
   p.level = 4; pcState(p); host.innerHTML = bardCardHtml(L.p); const four = `level 4: button ${!!host.querySelector("[data-bifont]")}, rest ${r().rest}`; p.level = 5; pcState(p); host.remove();
   return `after a Short Rest ${short} | ${label} → ${after} | ${four}`;
 });
+step("Countercharm (7): Bram fails a save against Charm Person (2 typed); Lyra's Reaction rerolls it with Advantage (15 typed), made; not at level 6", async () => {
+  const c = bdFight(), L = bdWho("Lyra"), B = bdWho("Bram"), F = bdWho("Cultist"), p = pcState(L.p); p.level = 7; delete B.p.bi;
+  const save = async (answers) => { await bdTurn(F); act.what = "sp:spell:charm-person"; act.lvl = 1; act.cond = "Charmed"; act.targets = [B.id]; act.saveDC = 13; renderBattlePanel(); await wait(20);
+    bdAsk(answers); document.querySelector(`[data-svroll="${B.id}"]`).click(); await wait(20); return (act.saves || {})[B.id] ? act.saves[B.id].said : "no save"; };
+  const seven = await save(["2", true, "15"]), asked = bdAsked.find(a => /Countercharm/.test(a)) || "not asked", reacted = reactedThisRound(c, L.id);
+  delete c.reacted[L.id]; p.level = 6; const six = await save(["2"]); p.level = 5;
+  return `${seven} | asked: "${asked.slice(0, 80)}" | Lyra's Reaction used ${reacted} || level 6: ${six}`;
+});
 step("Jack of All Trades: Lyra (Bard 5, PB 3) adds 1 to a skill not on her sheet; Bram (a Fighter) doesn't", async () => {
   const L = pcState(bdWho("Lyra").p), B = pcState(bdWho("Bram").p);
   return `Lyra: Stealth ${skillMod(L, "Stealth")} (Dex +2), Athletics ${skillMod(L, "Athletics")} (Str −1) | Bram: Stealth ${skillMod(B, "Stealth")} (Dex +1), Athletics ${skillMod(B, "Athletics")} (on his sheet)`;
