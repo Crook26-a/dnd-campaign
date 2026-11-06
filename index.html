@@ -20120,6 +20120,10 @@ function fleetCatchUp(){
   if(typeof root==="undefined" || !root || !Array.isArray(root.fleet) || !root.fleet.length || location.hash==="#player") return null;
   /* a ship put in from a save with no crew yet (s.needCrew): her crew rolled, and a pirate's plunder */
   /* ships asked for in a save (root.fleetQueue: fleetAdd's own choices, a kind, a home, a faction…): put to sea once */
+  /* the map's ports changed in a save (root.redoLanes, Joseph 2026-11-06: new islands, "we'll need to redo trade
+     routes"): the sea lanes worked out again (your own kept), and every set route rolled again on them */
+  if(root.redoLanes){ delete root.redoLanes; try{ const r = seaLanesFromMap(); let n = 0; for(const s of root.fleet) if(s.mode==="route"){ fleetRouteRoll(s); n++; }
+    bgLog("fleet", `The sea lanes worked out again from the map: ${r.lanes} lanes between ${r.ports} ports; ${n} set route${n===1?"":"s"} rolled again`); }catch(err){ console.error(err); } }
   if(Array.isArray(root.fleetQueue) && root.fleetQueue.length){ const Q = root.fleetQueue; delete root.fleetQueue; for(const o of Q) fleetAdd(o || {}); }
   for(const s of root.fleet) if(s.needCrew){ delete s.needCrew; if(!(s.crew||[]).length) fleetCrewRoll(s); if(s.kind==="pirate" && !Object.keys(s.cargo||{}).length) fleetPlunder(s); }
   fleetTiersUp();
