@@ -16200,6 +16200,14 @@ function damagePc(p, v, crit, said){
   if(rest>0 && max && over >= max){ p.death.f = 3; if(said) said.push(`massive damage (${over} past 0, at least their ${max} hit point maximum): dead`); }
   else if(rest>0 && hp<=0){ const k = crit ? 2 : 1; if(p.death.s >= 3) p.death.s = 0; p.death.f = Math.min(3, p.death.f + k);     /* Stable no longer: death saves again */ if(said) said.push(`${k===2 ? "two death save failures (a critical hit)" : "a death save failure"}, ${p.death.f} of 3${p.death.f>=3 ? ": dead" : ""}`); }
   hp = Math.max(0, hp - rest); p.hp = hp;
+  /* Relentless Rage (a Barbarian, level 11, 2026-11-06): at 0 while raging and not killed outright, a Constitution save, DC 10
+     and 5 more each time after (back to 10 on a Short or Long Rest): made, their hit points are twice their Barbarian level */
+  if(was > 0 && hp <= 0 && p.death.f < 3 && p.rage && barbLevel(p) >= 11){ const dc = +p.relDC || 10;
+    if(confirm(`${p.name || "They"} drop${p.name ? "s" : ""} to 0 hit points while raging. Relentless Rage: a Constitution save, DC ${dc}, to stay up with ${2 * barbLevel(p)} hit points?`)){
+      const t = { kind:"pc", p, label:p.name || "They" }, cb = conSaveOf(p), Q = saveD(t, "Constitution", `a Constitution save against DC ${dc} (Relentless Rage)`), tot = Q.d + cb, ok = tot >= dc;
+      p.relDC = dc + 5; const roll = `Relentless Rage, Constitution save d20 ${Q.d}${Q.w}${cb ? ` ${cb < 0 ? "−" : "+"} ${Math.abs(cb)}` : ""} = ${tot} vs DC ${dc}`;
+      if(ok){ hp = p.hp = 2 * barbLevel(p); if(said) said.push(`${roll}: made, ${hp} hit points`); return false; }
+      if(said) said.push(`${roll}: failed`); } }
   /* Relentless Endurance (an Orc, 2026-11-06): reduced to 0 but not killed outright, they can drop to 1 instead, once a Long Rest */
   if(was > 0 && hp <= 0 && p.death.f < 3 && orcOf(p)){ const r = originUse(p, "Relentless Endurance");
     if(r && confirm(`${p.name || "They"} drop${p.name ? "s" : ""} to 0 hit points. Relentless Endurance (once a Long Rest): drop to 1 hit point instead?`)){

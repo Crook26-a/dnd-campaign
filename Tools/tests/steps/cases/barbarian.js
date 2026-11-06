@@ -72,6 +72,14 @@ step("level 13 Staggering Blow (Disadvantage on its next save, no opportunity at
   const wren = ((act.toHit || {}).said || "").match(/\+ 5 \(Sundering Blow\)/) ? "+5 (Sundering Blow)" : "no +5"; p.level = 5;
   return `${stag} | after one save, still Disadvantage ${after} (${fs.w.replace(/\d+ and \d+/, "x and y")}) || ${d17} | ${both} | Fanatic's speed ${speedOf(F)} | Wren's roll: ${wren}`;
 });
+step("Relentless Rage (level 11, raging): dropped to 0, a DC 10 Con save (15 typed) leaves Korg at 22; next time DC 15 (3 typed) fails; a rest puts it back to 10", async () => {
+  const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), p = pcState(K.p); p.level = 11; p.rage = { since: c.round, ext: turnStamp(c) };
+  const hitK = async (d20) => { await bbTurn(F); act.what = actionChoices(F).flatMap(g => g.items).find(i => /^fa:/.test(i.v) && !/multiattack/i.test(i.v)).v; act.targets = [K.id]; act.outcome = "hit"; act.dmg = "10"; renderBattlePanel(); await wait(20);
+    bbAsk([true, d20]); $("#ac-go").click(); await wait(30); return `${bbLast().replace(/^.*?; /, "")} → ${p.hp} HP | asked: ${bbAsked[0].slice(0, 60)}…`; };
+  p.hp = 5; const one = await hitK("15"); p.rage = p.rage || { since: c.round, ext: turnStamp(c) }; p.hp = 5; const two = await hitK("3");
+  const dc = p.relDC; restPc(p, "short"); const reset = p.relDC || 10; p.level = 5; p.hp = 55; p.conds = []; p.death = { s: 0, f: 0 };
+  return `${one} || ${two} | DC then ${dc}, after a Short Rest ${reset}`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
   pcState(K.p).res.find(x => x.name === "Rage").used = 0; if(!pcState(K.p).rage) await bbRage();
