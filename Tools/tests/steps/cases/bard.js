@@ -38,6 +38,13 @@ step("Bram misses (5 + 5 = 10 vs AC 13), uses the d8 (6 typed): 16, a hit; the d
   bdAsk(["2", true, "7"]); document.querySelector(`[data-svroll="${B.id}"]`).click(); await wait(20);
   return `${hit} | asked: ${bdAsked.length ? "" : "nothing"}${held === "null" ? "die gone" : "die still " + held} || save: ${(act.saves || {})[B.id] ? act.saves[B.id].said : "none"} | die ${JSON.stringify(B.p.bi || null)}`;
 });
+step("Font of Inspiration (5): a Short Rest brings the uses back; Lyra's card spends her lowest slot for one; not at level 4", async () => {
+  const L = bdWho("Lyra"), p = pcState(L.p), r = () => biRes(pcState(L.p)), host = document.createElement("div"); document.body.appendChild(host);
+  r().used = 3; restPc(p, "short"); const short = `${r().max - r().used}/${r().max}`; r().used = 2; host.innerHTML = bardCardHtml(L.p); const btn = host.querySelector("[data-bifont]");
+  const label = btn ? btn.textContent : "no button"; btn.click(); await wait(20); const after = `uses ${r().max - r().used}, 1st-level slots used ${p.slots[1].used}`;
+  p.level = 4; pcState(p); host.innerHTML = bardCardHtml(L.p); const four = `level 4: button ${!!host.querySelector("[data-bifont]")}, rest ${r().rest}`; p.level = 5; pcState(p); host.remove();
+  return `after a Short Rest ${short} | ${label} → ${after} | ${four}`;
+});
 step("Jack of All Trades: Lyra (Bard 5, PB 3) adds 1 to a skill not on her sheet; Bram (a Fighter) doesn't", async () => {
   const L = pcState(bdWho("Lyra").p), B = pcState(bdWho("Bram").p);
   return `Lyra: Stealth ${skillMod(L, "Stealth")} (Dex +2), Athletics ${skillMod(L, "Athletics")} (Str −1) | Bram: Stealth ${skillMod(B, "Stealth")} (Dex +1), Athletics ${skillMod(B, "Athletics")} (on his sheet)`;
