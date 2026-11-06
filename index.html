@@ -11591,9 +11591,46 @@ function reckOn(c, t){
 const reckWanted = (c, t) => reckOn(c, t) || !!(act.reck && act.actor===t.id && c && c.turn===t.id);
 function reckRowHtml(c, t, info){
   if(!t || t.kind!=="pc" || !t.p || barbLevel(t.p) < 2 || c.turn!==t.id || !strAtkT(t, info)) return "";
-  if(reckOn(c, t)) return `<p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Reckless this turn: Advantage on their Strength attack rolls; attack rolls against them have Advantage until their next turn.</p>`;
+  if(reckOn(c, t)) return `<p class="empty-note" style="font-size:11px;margin:-2px 0 6px">Reckless this turn: Advantage on their Strength attack rolls; attack rolls against them have Advantage until their next turn.</p>${brutalHtml(c, t)}`;
   if(((c.attacked || {})[t.id]) === turnStamp(c)) return "";     // only on the first attack roll of the turn
-  return `<label class="check" style="margin:-2px 0 6px" title="Advantage on Strength attack rolls until the start of their next turn, but attack rolls against them have Advantage"><input type="checkbox" id="ac-reck" ${act.reck ? "checked" : ""}> Reckless Attack</label>`;
+  return `<label class="check" style="margin:-2px 0 6px" title="Advantage on Strength attack rolls until the start of their next turn, but attack rolls against them have Advantage"><input type="checkbox" id="ac-reck" ${act.reck ? "checked" : ""}> Reckless Attack</label>${act.reck ? brutalHtml(c, t) : ""}`;
+}
+/* Brutal Strike (level 9; 13 and 17 improve it): with Reckless Attack, once on their turn, one Strength attack roll gives up
+   any Advantage (and can't have Disadvantage); on a hit, +1d10 (2d10 at 17) of the weapon's type and an effect (two
+   different ones at 17): Forceful Blow, Hamstring Blow; Staggering Blow and Sundering Blow from 13 */
+const BRUTAL = [["forceful", "Forceful Blow: pushed 15 ft straight away (then they can move up to half their Speed toward it without opportunity attacks)", 9],
+  ["hamstring", "Hamstring Blow: its Speed −15 ft until the start of their next turn", 9],
+  ["staggering", "Staggering Blow: Disadvantage on its next save, and no opportunity attacks until the start of their next turn", 13],
+  ["sundering", "Sundering Blow: the next attack roll on it by someone else gets +5, before the start of their next turn", 13]];
+function brutalHtml(c, t){
+  const lv = barbLevel(t.p); if(lv < 9 || addonUsed(c, t.id, "brutal")) return "";
+  const opts = BRUTAL.filter(b => lv >= b[2]), fx = act.brutalFx || ["forceful", ""];
+  const sel = i => `<select data-brutalfx="${i}" style="flex:1;min-width:0">${i ? `<option value="">No second effect</option>` : ""}${opts.filter(b => !i || b[0]!==fx[0]).map(b => `<option value="${b[0]}" ${fx[i]===b[0] ? "selected" : ""}>${esc(b[1])}</option>`).join("")}</select>`;
+  return `<label class="check" style="margin:-2px 0 4px" title="Once on their turn, with Reckless Attack: this attack roll gives up any Advantage; on a hit, extra damage and an effect"><input type="checkbox" id="ac-brutal" ${act.brutal ? "checked" : ""}> Brutal Strike: no Advantage on this roll; on a hit +${lv >= 17 ? "2d10" : "1d10"} and</label>
+    ${act.brutal ? `<div class="pcrow" style="margin:0 0 6px">${sel(0)}${lv >= 17 ? sel(1) : ""}</div>` : ""}`;
+}
+/* a straight-line push away from someone: square by square, stopping at a wall, the map's edge, or someone in the way */
+function pushAway(c, from, t, squares){
+  const P = c.pos, a = P[from.id], b = P[t.id]; if(!a || !b) return 0;
+  const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y); if(!dx && !dy) return 0;
+  const n = bnode(), bm = n && bmapOf(n), st = (n && n.site) || {}; let moved = 0;
+  for(let i = 0; i < squares; i++){ const q = { x:P[t.id].x + dx, y:P[t.id].y + dy };
+    const free = q.x >= 0 && q.y >= 0 && q.x < BW && q.y < BH && !(bm && blocksMove(bm, st, q.x, q.y, false)) && !combatants(c).some(o => o.id!==t.id && P[o.id] && chebSq(P[o.id], q)===0);
+    if(!free) break; P[t.id] = { ...P[t.id], x:q.x, y:q.y }; moved++; }
+  return moved;
+}
+/* a Brutal Strike's effects on a hit */
+function brutalHit(c, actor, t, turned){
+  const lv = barbLevel(actor.p), fx = [...new Set((act.brutalFx || ["forceful"]).filter(Boolean))].slice(0, lv >= 17 ? 2 : 1);
+  const add = e => (c.effects = c.effects || []).push({ id:uid("ef"), who:t.id, cond:"", by:actor.id, at:turnStamp(c), round:c.round, end:"srcStart", repeat:null, sp:null, rounds:null, ...e });
+  for(const k of fx){
+    if(k==="forceful"){ const big = footOf(t) > 2, was = c.pos[t.id] ? { ...c.pos[t.id] } : null, sq = big ? 0 : pushAway(c, actor, t, 3); if(was && sq) (act.pushed = act.pushed || {})[t.id] = was;     // for undo
+      if(!big){ const M = (c.moved = c.moved || {})[actor.id] = c.moved[actor.id] || { ft:0, dash:false, moves:[] }, half = Math.floor(speedOf(actor) / 2); M.extra = (M.extra || 0) + half; c.forceful = { id:actor.id, at:turnStamp(c) }; }
+      turned.push(`${t.label}: Forceful Blow, pushed ${sq * 5} ft${sq < 3 ? " (something in the way)" : ""}; ${actor.label} can move up to half their Speed toward it without opportunity attacks`); }
+    if(k==="hamstring"){ c.effects = (c.effects || []).filter(e => !(e.who===t.id && e.name==="Hamstring Blow")); add({ name:"Hamstring Blow", slow:15 }); turned.push(`${t.label}: Hamstring Blow, Speed −15 ft until the start of ${actor.label}'s next turn`); }
+    if(k==="staggering"){ add({ name:"Staggering Blow", stagger:true, noOA:true }); turned.push(`${t.label}: Staggering Blow, Disadvantage on its next save and no opportunity attacks until the start of ${actor.label}'s next turn`); }
+    if(k==="sundering"){ c.effects = (c.effects || []).filter(e => !(e.who===t.id && e.sunder)); add({ name:"Sundering Blow", sunder:5 }); turned.push(`${t.label}: Sundering Blow, the next attack roll on it by someone else gets +5`); }
+  }
 }
 function dangerSenseT(t){ return !!(t && t.kind!=="foe" && t.p && barbLevel(t.p) >= 2 && !condsOfT(t).some(k => INCAP.includes(k))); }
 function staggerUsed(c, t){ if(c && c.effects) c.effects = c.effects.filter(e => !(e.who===t.id && e.stagger)); }
@@ -15316,7 +15353,8 @@ function askOpportunity(moverId, from){
   const all = combatants(c), mover = all.find(t=>t.id===moverId); if(!mover || mover.fled) return;
   const isDown = t => t.kind==="foe" ? (t.x.max!=null && t.x.hp<=0) : (numOr(t.p.hp)!==null && numOr(t.p.hp)<=0);
   const dist = (a,b) => chebSq(a, b);     // edge to edge, for the big
-  const can = all.filter(t=>t.side!==mover.side && !t.fled && !isDown(t) && !reactedThisRound(c,t.id) && c.pos[t.id] && !cantAct(t).length
+  if(c.forceful && c.forceful.id===moverId && c.forceful.at===turnStamp(c)){ delete c.forceful; return; }     // after a Forceful Blow: the move toward it draws no opportunity attacks
+  const can = all.filter(t=>t.side!==mover.side && !t.fled && !isDown(t) && !reactedThisRound(c,t.id) && c.pos[t.id] && !cantAct(t).length && !(c.effects || []).some(e => e.who===t.id && e.noOA)     /* a Staggering Blow: no opportunity attacks */
     && dist(c.pos[t.id], from) <= reachSq(t) && dist(c.pos[t.id], to) > reachSq(t));
   if(!can.length) return;
   /* the autopilot's enemies take theirs without asking (one after another, step by step); the rest are asked */
@@ -15544,7 +15582,8 @@ function speedOf(t){
   const h = hOfT(t), F = fxOf(h, false), conds = t.kind==="foe" ? (t.x.conds||[]) : ((t.p && pcState(t.p).conds) || []);
   const fl = /\bfly\s*(\d+)/i.exec(speedText(t)); if(fl) sp = Math.max(sp, +fl[1]); if(F.some(f=>f.sp==="spell:fly")) sp = Math.max(sp, 60);     // simple flight (item 9): it goes by its Fly Speed when that's faster
   if(t.kind!=="foe" && t.p && t.p.big) sp += 10;     // Large Form: +10 ft
-  { const fc = aoeFight(); if(fc && (fc.effects || []).some(e => e.who===t.id && e.slow)) sp = Math.max(0, sp - (fc.effects.find(e => e.who===t.id && e.slow).slow)); }     // Frost's Chill: −10 ft until the start of the Goliath's next turn
+  { const fc = aoeFight(), by = {}; for(const e of ((fc && fc.effects) || [])) if(e.who===t.id && e.slow) by[e.name] = Math.max(by[e.name] || 0, e.slow);     // Frost's Chill, Hamstring Blow, the Slow mastery: each its own, not more than it says
+    sp = Math.max(0, sp - Object.values(by).reduce((a, n) => a + n, 0)); }
   if(F.some(f=>f.sp==="spell:haste")) sp *= 2; if(F.some(f=>f.sp==="spell:slow")) sp = Math.floor(sp / 2);
   if(conds.some(k=>k==="Grappled" || k==="Restrained")) sp = 0;
   return sp;
@@ -16045,6 +16084,7 @@ function actDice(c, t, info){
   if(part1 && !tempOnly) put(part1.dice, baseType);
   if(!(info && info.spell)) ((info && info.hint && info.hint.more) || []).forEach(x=>{ if(!x.ifAdv || act.hadAdv) put(x.dice, x.dtype); });     // "if the attack roll had Advantage": only then
   on.filter(a=>a.dice).forEach(a=>put(a.dice, a.dtype));
+  if(act.brutal && isAtk && t && t.kind==="pc" && t.p && barbLevel(t.p) >= 9) put(barbLevel(t.p) >= 17 ? "2d10" : "1d10", baseType);     // Brutal Strike: the weapon's own type
   if(parts.length && dmgMod) parts[0].dice = addDice(parts[0].dice, String(dmgMod));
   const dmgDice = addDice(...parts.map(p=>p.dice));
   const dmgLabel = parts.length > 1 ? parts.map(p=>`${p.dice}${p.dtype ? ` ${p.dtype}` : ""}`).join(" + ") : dmgDice;
@@ -16292,6 +16332,7 @@ function logAction(n, c){
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(got && t.kind==="pc" && t.id!==actor.id) stormThunder(c, t, actor, turned);     // a Goliath's Storm's Thunder: their Reaction, 1d8 Thunder back
     if(got && ["hit","crit"].includes(act.outcome) && isAttackAct(info)){ const GA = D.on.find(a => a.giant); if(GA) giantHit(c, actor, t, GA, turned); }     // Fire's Burn, Frost's Chill, Hill's Tumble
+    if(["hit","crit"].includes(act.outcome) && !off && act.brutal && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 9 && isAttackAct(info)) brutalHit(c, actor, t, turned);     // Brutal Strike's effect
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
     else if(heal){ hl = healAny(t, heal); healed += hl; }
     if(info.loh && act.lohPoison){ const cs = condsOfT(t), k = cs.indexOf("Poisoned"); if(k >= 0){ cs.splice(k, 1); turned.push(`${t.label}: no longer Poisoned`); } }     // Lay on Hands' 5 points
@@ -16402,9 +16443,11 @@ function logAction(n, c){
   if(outed) delete c.stealth[actor.id].hide;
   if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
   c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell && !act.miFree,
-    ...(info.origin==="rush" || info.origin==="rage" ? { moved:movedBefore } : {}), ...(info.origin==="large" ? { big:{ id:actor.id, v:bigBefore } } : {}), ...(info.origin==="jaunt" ? { jaunt:true } : {}) }); gripSweep(c);
+    ...(info.origin==="rush" || info.origin==="rage" || act.brutal ? { moved:movedBefore } : {}), ...(act.pushed ? { pushed:act.pushed } : {}), ...(info.origin==="large" ? { big:{ id:actor.id, v:bigBefore } } : {}), ...(info.origin==="jaunt" ? { jaunt:true } : {}) }); gripSweep(c);
   /* their first attack roll this turn (Reckless Attack is decided on it), and Reckless Attack itself */
-  if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) }; }
+  if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
+    if(act.brutal){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).brutal = turnStamp(c); } }     // Brutal Strike: once on their turn
+  if(act.sunderId && isAttackAct(info)) c.effects = (c.effects || []).filter(e => e.id!==act.sunderId);     // a Sundering Blow's +5, used
   /* a Rage kept up this turn: an attack roll against an enemy, a save forced on one, or a Bonus Action */
   if(ragingT(actor) && c.turn===actor.id && (isBonus || ((isAttackAct(info) || (act.saves && Object.keys(act.saves).length)) && targets.some(o => o.side!==actor.side)))) actor.p.rage.ext = turnStamp(c);
   if(concSp) concBegin(concH, concSp, actor.kind==="foe" ? (actor.x.max!=null ? actor.x.hp : null) : numOr(actor.p.hp));
@@ -16508,6 +16551,7 @@ function undoAction(c){
   restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.moved!=null) c.moved = JSON.parse(e.moved); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   if(e.big){ const T = combatants(c).find(x => x.id===e.big.id); if(T && T.p){ if(e.big.v) T.p.big = true; else delete T.p.big; } }     // Large Form taken back
   if(e.jaunt) delete c.jaunt;
+  if(e.pushed && c.pos){ for(const [id, p] of Object.entries(e.pushed)) c.pos[id] = p; delete c.forceful; }     // a Forceful Blow's push taken back
   partySync();
   flash("Took back the last action.");
   touch(); renderBattle(); renderBattlePanel();
@@ -16559,7 +16603,7 @@ function effectEnd(c, e, why, extra){
   const t = combatants(c).find(x => x.id===e.who); c.effects = (c.effects || []).filter(x => x!==e); if(!t) return "";
   const cs = condsOfT(t), i = cs.indexOf(e.cond); if(i >= 0 && !(c.effects || []).some(x => x.who===e.who && x.cond===e.cond)) cs.splice(i, 1);
   const H = c.holds && c.holds[e.who]; if(H && (H.cond===e.cond || (e.sp && H.sp===e.sp) || H.name===e.name)) delete c.holds[e.who];
-  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
+  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.stagger || e.sunder || e.sap || e.vex ? "it" : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
 }
 function effectsSweep(c, id, when){
   const all = combatants(c), now = turnStamp(c), out = [], before = JSON.stringify(c.effects || []), holdsBefore = JSON.stringify(c.holds || {}), snapIds = new Set();
@@ -17088,7 +17132,9 @@ function renderBattlePanelNow(){
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
   const lv = $("#ac-lvl"); if(lv) lv.onchange = ()=>{ act.lvl = +lv.value; redraw(); };
-  { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; redraw(); }; }     // Reckless Attack
+  { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; if(!act.reck) act.brutal = false; redraw(); }; }     // Reckless Attack
+  { const bs = $("#ac-brutal"); if(bs) bs.onchange = ()=>{ act.brutal = bs.checked; if(act.brutal && !act.brutalFx) act.brutalFx = ["forceful", ""]; redraw(); }; }     // Brutal Strike
+  document.querySelectorAll("[data-brutalfx]").forEach(s => s.onchange = ()=>{ act.brutalFx = act.brutalFx || ["forceful", ""]; act.brutalFx[+s.dataset.brutalfx] = s.value; if(act.brutalFx[1]===act.brutalFx[0]) act.brutalFx[1] = ""; redraw(); });
   { const mi = $("#ac-mi"); if(mi) mi.onchange = ()=>{ act.miFree = mi.checked; const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); if(act.miFree && info && info.spell) act.lvl = info.spell.lv; redraw(); }; }     // Magic Initiate: cast at its own level
   el.querySelectorAll("[data-actt]").forEach(b=>b.onclick = ()=>{ keep(); const id = b.dataset.actt; act.targets = act.targets.includes(id) ? act.targets.filter(x=>x!==id) : [...act.targets, id];
     /* a roll to hit was against one target's AC: another target, roll again (2026-10-31: a Specter's roll against Bennus was logged on the Specter itself) */
@@ -17172,6 +17218,8 @@ function renderBattlePanelNow(){
       { const wn = String(act.what || "").replace(/^\w+:/, "").replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase(); if(t.kind==="foe" && t.x.dropped && t.x.dropped[wn]){ flash(`${t.label} dropped its ${itemName(baseId(t.x.dropped[wn]))}: it has to pick it up first (it's on the ground).`); return; } }
       const r1 = 1 + Math.floor(Math.random()*20), r2 = 1 + Math.floor(Math.random()*20), mine = typed >= 1 && typed <= 20;
       const CA = act.adv ? null : rollAdvOf(c, t, tg, info); let adv = act.adv || CA.v;     // conditions and Faerie Fire: Advantage or Disadvantage, unless set by hand
+      if(act.brutal){ if(adv==="dis"){ flash("Brutal Strike can't be used on an attack roll with Disadvantage: untick it, or roll as it is."); return; } adv = ""; }     // Brutal Strike gives up any Advantage
+      const SU = (c.effects || []).find(e => e.who===tg.id && e.sunder && e.by!==t.id); act.sunderId = SU ? SU.id : null;     // a Sundering Blow on the target: +5 for the next attacker
       // Lucky: a point ticked by the attacker (Advantage) or the one attacked (Disadvantage); any of each, they cancel
       const LK = []; if(!mine && (act.luckMe || act.luckVs)){ const me = act.luckMe && luckSpend(t), vs = act.luckVs && luckSpend(tg);
         if(me) LK.push(`${t.label}'s Luck point`); if(vs) LK.push(`${tg.label}'s Luck point`);
@@ -17182,9 +17230,9 @@ function renderBattlePanelNow(){
       const hl = !mine ? hLuck(t, d) : null; if(hl) d = hl.d;     // a halfling's 1, rerolled
       const how = (mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")})` : ""}: ${hl ? 1 : d}` : `d20 ${hl ? 1 : d}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")}: Advantage and Disadvantage cancel)` : ""}`) + (hl ? `${hl.said}: ${d})` : "");
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
-      const extra = Math.round(+act.hitMod) || 0, tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
+      const extra = (Math.round(+act.hitMod) || 0) + (SU ? 5 : 0), tot = d + bonus + extra + fN + F.n, out = d===20 ? "crit" : d===1 ? "miss" : tot >= ac ? "hit" : "miss";     // meets it, beats it
       const rx = out==="hit" ? autoDefend(c, t, tg, tot, ac, info) : null, sure = !rx && out==="hit" && CA && CA.crit, res = rx ? "miss" : sure ? "crit" : out;     // its Parry or Shield, if the autopilot runs it; Paralyzed or Unconscious within 5 ft: a crit
-      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (modifier)` : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
+      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (${SU ? `${extra===5 ? "" : "modifier and "}Sundering Blow` : "modifier"})` : ""}${act.brutal ? " (Brutal Strike: no Advantage)" : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
       { const SA = ["hit","crit"].includes(res) && attackAddons(t).find(a => /sneak attack/i.test(a.name)), why = SA && !(act.addons || []).includes(SA.key) && !addonUsed(c, t.id, SA.key) ? sneakWhy(c, t, tg, info, mine ? act.adv : adv) : "";     // Sneak Attack, when it applies (item 5)
         if(why){ (act.addons = act.addons || []).push(SA.key); act.toHit.said += ` · Sneak Attack (${why})`; } }
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }

@@ -53,6 +53,25 @@ step("Instinctive Pounce: at level 7, raging gives Korg half his Speed more to m
   const back = moveAllow(c, K); p.level = 5; delete p.rage;
   return `level 5: ${a5} → ${r5} ft | level 7: ${a7} → ${r7} ft ("${said.match(/Instinctive Pounce[^;—]*/)}") | undone: ${back} ft`;
 });
+step("Brutal Strike: level 9, Reckless: no Advantage, +1d10, Forceful Blow pushes the Fanatic 15 ft; once a turn; Undo puts it back", async () => {
+  const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), p = pcState(K.p); p.level = 9; c.pos[F.id] = { ...c.pos[F.id], x: 5, y: 4 }; c.pos[K.id] = { ...c.pos[K.id], x: 4, y: 4 };
+  c.round++; await bbTurn(K); bbAxe(K, F); act.reck = true; renderBattlePanel(); await wait(20);
+  document.querySelector("#ac-brutal").click(); await wait(20); const opts = [...document.querySelectorAll('[data-brutalfx="0"] option')].map(o => o.value).join("/");
+  const dice = actDice(c, K, actInfo(c, K)).dmgLabel; document.querySelector('[data-acroll="hit"]').click(); await wait(20); const said = ((act.toHit || {}).said || "").replace(/^To hit: /, "");
+  act.outcome = "hit"; act.dmg = "12"; renderBattlePanel(); await wait(20); bbAsk([]); $("#ac-go").click(); await wait(30); const line = bbLast(), at = `${c.pos[F.id].x},${c.pos[F.id].y}`;
+  bbAxe(K, F); renderBattlePanel(); await wait(20); const again = !!document.querySelector("#ac-brutal"); undoAction(c); await wait(20);
+  return `effects offered ${opts} | ${dice} | ${said.slice(0, 90)} || ${line} | Fanatic at ${at} | Brutal again this turn ${again} | undone: at ${c.pos[F.id].x},${c.pos[F.id].y}`;
+});
+step("level 13 Staggering Blow (Disadvantage on its next save, no opportunity attacks); level 17: Hamstring and Sundering together, 2d10", async () => {
+  const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), W = bbWho("Wren"), p = pcState(K.p); p.level = 13; c.round++; await bbTurn(K);
+  bbAxe(K, F); act.reck = true; act.brutal = true; act.brutalFx = ["staggering", ""]; act.dmg = "12"; renderBattlePanel(); await wait(20); bbAsk([]); $("#ac-go").click(); await wait(30);
+  const stag = `${bbLast().replace(/^.*?; /, "")} | its Dex save: ${JSON.stringify(saveModeT(c, F, "dex"))}`; const fs = saveD(F, "Dexterity", "x"), after = saveModeT(c, F, "dex").dis;
+  p.level = 17; c.round++; await bbTurn(K); bbAxe(K, F); act.reck = true; act.brutal = true; act.brutalFx = ["hamstring", "sundering"]; renderBattlePanel(); await wait(20);
+  const d17 = actDice(c, K, actInfo(c, K)).dmgLabel; act.dmg = "15"; bbAsk([]); $("#ac-go").click(); await wait(30); const both = bbLast().replace(/^.*?; /, "");
+  await bbTurn(W); act.what = "pca:0"; act.targets = [F.id]; renderBattlePanel(); await wait(20); document.querySelector('[data-acroll="hit"]').click(); await wait(20);
+  const wren = ((act.toHit || {}).said || "").match(/\+ 5 \(Sundering Blow\)/) ? "+5 (Sundering Blow)" : "no +5"; p.level = 5;
+  return `${stag} | after one save, still Disadvantage ${after} (${fs.w.replace(/\d+ and \d+/, "x and y")}) || ${d17} | ${both} | Fanatic's speed ${speedOf(F)} | Wren's roll: ${wren}`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
   pcState(K.p).res.find(x => x.name === "Rage").used = 0; if(!pcState(K.p).rage) await bbRage();
