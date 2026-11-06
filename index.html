@@ -11580,6 +11580,14 @@ function saveModeT(c, t, k){
   const stagger = !!(c && (c.effects || []).some(e => e.who===t.id && e.stagger)); if(stagger) D.push("Staggering Blow");
   return { adv:A.length > 0, dis:D.length > 0, why:[...A, ...D].join(", "), stagger };
 }
+/* Persistent Rage (level 15): when they roll Initiative, they can regain all their Rages, once a Long Rest (asked when
+   their initiative goes in); their Rage lasts 10 minutes without keeping it up (barbTurnEnd) */
+function persistentRage(c, id){
+  const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || barbLevel(p) < 15 || p.persistUsed) return;
+  const r = p.res.find(q => /^rage$/i.test(q.name || "")); if(!r || !(+r.used > 0)) return;
+  if(!confirm(`${t.label} rolls Initiative. Persistent Rage: regain all ${r.max} Rages (${r.max - r.used} left now)? Once a Long Rest.`)) return;
+  r.used = 0; p.persistUsed = true; const line = `${t.label} regains all their Rages (Persistent Rage)`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line); flash(line + ".");
+}
 /* Reckless Attack (level 2): decided on their first attack roll of their turn; Advantage on their Strength attack rolls,
    and attack rolls against them have Advantage, until the start of their next turn. p.reck = { at: the turn }; it lapses
    when their next turn comes round */
@@ -17096,7 +17104,7 @@ function renderBattlePanelNow(){
     [ids[k], ids[j]] = [ids[j], ids[k]]; c.order = ids;
     touch(); renderBattlePanel();
   });
-  el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; touch(); renderBattlePanel(); });
+  el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; if(v!==undefined) persistentRage(c, inp.dataset.bid); touch(); renderBattlePanel(); });
   /* the action form: keep what's typed, redraw only when a choice changes what's shown */
   const keep = () => { const g = id => { const e = $(id); return e ? e.value : undefined; };
     if(g("#ac-dmgmod")!==undefined) act.dmgMod = g("#ac-dmgmod"); if(g("#ac-hitmod")!==undefined) act.hitMod = g("#ac-hitmod"); if(g("#ac-hitbonus")!==undefined) act.hitBonus = g("#ac-hitbonus"); if(g("#ac-adv")!==undefined) act.adv = g("#ac-adv"); if(g("#ac-d20")!==undefined) act.d20 = g("#ac-d20");     // rolling to hit

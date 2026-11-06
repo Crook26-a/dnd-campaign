@@ -80,6 +80,14 @@ step("Relentless Rage (level 11, raging): dropped to 0, a DC 10 Con save (15 typ
   const dc = p.relDC; restPc(p, "short"); const reset = p.relDC || 10; p.level = 5; p.hp = 55; p.conds = []; p.death = { s: 0, f: 0 };
   return `${one} || ${two} | DC then ${dc}, after a Short Rest ${reset}`;
 });
+step("Persistent Rage (level 15): his initiative going in offers all his Rages back, once a Long Rest; his Rage isn't ended for not keeping it up, only by Unconscious", async () => {
+  const c = bbFight(), K = bbWho("Korg"), p = pcState(K.p), r = p.res.find(x => x.name === "Rage"); p.level = 15; r.used = 2; delete p.persistUsed; renderBattlePanel(); await wait(20);
+  const box = () => document.querySelector(`.init-in[data-bid="${K.id}"]`); bbAsk([true]); box().value = "14"; box().onchange(); await wait(20);
+  const first = `asked: ${(bbAsked[0] || "no").slice(0, 70)}… | used ${r.used}, ${bbLast()}`; r.used = 1; bbAsk([true]); box().value = "15"; box().onchange(); await wait(20); const second = `asked again ${bbAsked.length > 0}, used ${r.used}`;
+  p.rage = { since: c.round, ext: "old" }; c.turn = K.id; barbTurnEnd(c, K.id); const kept = !!p.rage; p.conds.push("Stunned"); barbTurnEnd(c, K.id); const stunned = !!p.rage;
+  p.conds = []; barbTurnEnd(c, "x"); p.conds.push("Unconscious"); barbTurnEnd(c, "x"); const uncon = !!p.rage; p.conds = []; delete p.rage; p.level = 5; restPc(p, "long");
+  return `${first} || ${second} || not kept up: raging ${kept}; Stunned: raging ${stunned}; Unconscious: raging ${uncon} | after a Long Rest, Persistent Rage again ${!p.persistUsed}`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
   pcState(K.p).res.find(x => x.name === "Rage").used = 0; if(!pcState(K.p).rage) await bbRage();
