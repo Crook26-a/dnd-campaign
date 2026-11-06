@@ -21,7 +21,7 @@ step("a stray met within 10 miles: 70% a fight; a fight: dead marked in the Libr
   const isle = root.fleet.find(s => s.faction === "fw_i"), trip = root.fleet.find(s => s.faction === "fw_t"), d = campaignDay();
   let fights = 0, lets = 0; const n0 = bgLogList().length;
   for (let i = 0; i < 40; i++) { for (const s of [isle, trip]) { delete s.leg; s.at = null; s.pos = { x: 1000, y: 1000 }; } isle.stray = "fw_t"; delete isle.strayMet; isle.captain = isle.captain || null;
-    const before = facRelOf("fw_i", "fw_t"); facRelAll()["fw_i|fw_t"].s = -40; delete worldOf().lastClash; fleetMeetings(d); if (facRelOf("fw_i", "fw_t") !== -40) fights++; else lets++;
+    const before = facRelOf("fw_i", "fw_t"); facRelAll()["fw_i|fw_t"].s = -40; delete worldOf().lastClash; worldOf().clashDays = []; fleetMeetings(d); if (facRelOf("fw_i", "fw_t") !== -40) fights++; else lets++;
     if (!root.fleet.includes(isle) || !root.fleet.includes(trip)) break; }
   const fightLines = bgLogList().slice(n0).filter(e => / beat /.test(e.text)), last = fightLines.slice(-1)[0], rel = facRelAll()["fw_i|fw_t"];
   const dead = lib().npcs.filter(p => p.dead).slice(0, 2).map(p => `${p.name}: ${p.where}`);
@@ -76,19 +76,23 @@ step("a pair sinking into a worse stage waits on the DM: the pop-up, held off, t
   return `asked: "${shown}" | held a point short: ${held1} | held off, then pushed again that week: ${afterHold} | a week on, asked again, two more fights while it waits: ${waiting}; approved: ${approved} | a ceiling of −60: ${capped} | page errors ${__KIT.errors.length}`;
 });
 step("one fight between factions a week; the navy and pirates fight freely, pirates slipping away; one attack a week a pirate faction; two weeks in port", async () => {
-  const d0 = campaignDay(), W = worldOf(); delete W.lastClash; W.pirAttack = {};
+  const d0 = campaignDay(), W = worldOf(); delete W.lastClash; W.clashDays = []; W.pirAttack = {};
   const L = lib(); if (!L.factions.some(f => f.id === "fw_n")) L.factions.push({ id: "fw_n", name: "The Admiralty", align: "Lawful Neutral", standing: 0, repDie: 12 });
   facRelSet("fw_i", "fw_t", -70, "set", d0, true); facRelSet("fw_n", "fw_i", -60, "set", d0, true); const en = facRelAll()[facRelKey("fw_n", "fw_i")]; en.cap = -60; en.floor = -60;
   const mk = (kind, fac) => { const s = fleetAdd({ kind, faction: fac }); delete s.leg; s.at = null; s.pos = { x: 2000, y: 2000 }; return s; };
   const i1 = mk("pirate", "fw_i"), t1 = mk("pirate", "fw_t"); let fights = 0;
   for (let k = 0; k < 14; k++) { for (const s of [i1, t1]) { if (!root.fleet.includes(s)) continue; delete s.leg; s.at = null; s.pos = { x: 2000, y: 2000 }; } const n0 = bgLogList().length; fleetMeetings(d0 + k); fights += bgLogList().slice(n0).filter(e => e.kind === "world" && / beat /.test(e.text) && e.text.includes(i1.name) && e.text.includes(t1.name)).length; if (!root.fleet.includes(i1) || !root.fleet.includes(t1)) break; }
+  for (const s of [i1, t1]) if (root.fleet.includes(s)) { root.fleet = root.fleet.filter(x => x !== s); fleetForget(s); }     // out of the way: the week's fights are shared by everyone
+  const atWar = []; for (const v of [-85, -97]) { facRelAll()["fw_i|fw_t"].s = v; W.clashDays = []; let n = 0; const a = mk("pirate", "fw_i"), b = mk("pirate", "fw_t");
+    for (let k = 0; k < 14; k++) { for (const s of [a, b]) { if (!root.fleet.includes(s)) continue; delete s.leg; s.at = null; s.pos = { x: 2000, y: 2000 }; if ((s.crew || []).length < 3) fleetCrewRoll(s); } const n0 = bgLogList().length; fleetMeetings(d0 + 20 + k); n += bgLogList().slice(n0).filter(e => e.kind === "world" && / beat /.test(e.text) && e.text.includes(a.name) && e.text.includes(b.name)).length; if (!root.fleet.includes(a) || !root.fleet.includes(b)) break; facRelAll()["fw_i|fw_t"].s = v; }
+    atWar.push(`${facStateLabel(v).toLowerCase()} ${n} in 14 days`); for (const s of [a, b]) if (root.fleet.includes(s)) { root.fleet = root.fleet.filter(x => x !== s); fleetForget(s); } }
   const navyNow = facRelOf("fw_n", "fw_i"); let slip = 0, navyFights = 0; const nv = mk("navy", "fw_n");
   for (let k = 0; k < 30; k++) { const p = mk("pirate", "fw_i"); nv.pos = { x: 2000, y: 2000 }; delete W.lastClash; W.lastClash = d0; const n0 = bgLogList().length; fleetMeetings(d0 + 1); const t = bgLogList().slice(n0).filter(e => e.kind === "world" && (e.text.includes(p.name) || e.text.includes(nv.name))).map(e => e.text).join(" "); if (/slipped away/.test(t)) slip++; if (/ beat /.test(t)) navyFights++; for (const s of [p]) if (root.fleet.includes(s)) { root.fleet = root.fleet.filter(x => x !== s); fleetForget(s); } if (!root.fleet.includes(nv)) break; }
   const pa = mk("pirate", "fw_j"); W.pirAttack = {}; let attacks = 0;
   for (let k = 0; k < 14; k++) { const v = fleetAdd({ kind: "merchant" }); v.leg = { pts: [{ x: 0, y: 0 }, { x: 4000, y: 0 }], from: v.home, to: v.home, left: d0 - 1, arrive: d0 + 30, miles: 400 }; const at = fleetPos(v, d0 + k); delete pa.leg; pa.at = null; pa.pos = { x: at.x + 30, y: at.y }; delete pa.robbed;
     const n0 = bgLogList().length; fleetMeetings(d0 + k); if (/ robbed | as a prize|beat off/.test(bgLogList().slice(n0).map(e => e.text).join(" "))) attacks++; if (root.fleet.includes(v)) { root.fleet = root.fleet.filter(x => x !== v); fleetForget(v); } if (!root.fleet.includes(pa)) break; }
   const port = repPorts()[0], pp = fleetAdd({ kind: "pirate" }); pp.leg = { pts: [{ x: port.x - 100, y: port.y }, { x: port.x, y: port.y }], from: null, to: port.id, left: d0 - 1, arrive: d0, miles: 10 }; root.fday = d0 - 1; fleetCatchUp();
-  return `isles–Tripolitania at −70, their ships side by side 14 days: ${fights} fight(s) | the navy at −60 fixed (now ${navyNow}); 30 pirates meeting a navy ship, a fight already this week: slipped away ${slip}, fought ${navyFights} | a pirate faction's attacks on merchants in 14 days: ${attacks} | a pirate into port on day ${d0} stays till day ${pp.stay} (${pp.leg ? "still at sea?" : "in port"}) | page errors ${__KIT.errors.length}`;
+  return `isles–Tripolitania at −70, their ships side by side 14 days: ${fights} fight(s); at ${atWar.join(", ")} | the navy at −60 fixed (now ${navyNow}); 30 pirates meeting a navy ship, a fight already this week: slipped away ${slip}, fought ${navyFights} | a pirate faction's attacks on merchants in 14 days: ${attacks} | a pirate into port on day ${d0} stays till day ${pp.stay} (${pp.leg ? "still at sea?" : "in port"}) | page errors ${__KIT.errors.length}`;
 });
 step("ninety days with it all running: what happened at sea", async () => {
   facRelAll()["fw_i|fw_t"].s = -65; worldOf().day = campaignDay(); root.fday = campaignDay(); const n0 = bgLogList().length;

@@ -20310,8 +20310,11 @@ function fleetAttack(p, v, day){
 function fleetMeetings(day){
   const F = fleetOf(), R = 10 * (root.ppm || 10), pos = new Map(F.map(s=>[s, fleetPos(s, day)])), far = (a, b) => { const p = pos.get(a), q = pos.get(b); return !p || !q || Math.hypot(p.x - q.x, p.y - q.y) > R; };
   const armed = F.filter(s=>s.faction && factionById(s.faction)), W = worldOf(), navyF = tradeNavy();
-  /* no more than one fight between factions a week, of any kind (Joseph, 2026-11-06) */
-  const canFight = () => W.lastClash==null || day - W.lastClash >= 7, fight = (a, b, why) => { W.lastClash = day; facClash(a, b, day, why); };
+  /* no more than one fight between factions a week, of any kind (Joseph, 2026-11-06); two a week for a pair at open
+     war, four for a war of extermination ("it doubles … extermination doubles that") */
+  W.clashDays = (W.clashDays || (W.lastClash!=null ? [W.lastClash] : [])).filter(x=>day - x < 7);
+  const FIGHTS_A_WEEK = { war:2, extermination:4 }, canFight = st => W.clashDays.length < (FIGHTS_A_WEEK[st] || 1);
+  const fight = (a, b, why) => { W.clashDays.push(day); W.lastClash = day; facClash(a, b, day, why); };
   for(let i = 0; i < armed.length; i++) for(let j = i + 1; j < armed.length; j++){ const a = armed[i], b = armed[j];
     if(a.faction===b.faction || !F.includes(a) || !F.includes(b) || far(a, b)) continue; const e = facRelAll()[facRelKey(a.faction, b.faction)]; if(!e) continue;
     /* a pirate meeting an Admiralty ship tries to slip away: three times in four she does */
@@ -20319,7 +20322,7 @@ function fleetMeetings(day){
     const pir = a.kind==="pirate" && navyF && b.faction===navyF.id ? a : b.kind==="pirate" && navyF && a.faction===navyF.id ? b : null;
     if(pir && (facState(e.s) || pir.stray) && rollD(4) <= 3){ if(!pir.slipped){ pir.slipped = true; bgLog("world", `${pir.name} sighted ${(pir===a ? b : a).name} of ${facMid(navyF)} and slipped away`, day); } continue; }
     if(navyPair && facState(e.s)){ facClash(a, b, day, "the navy and the pirates"); continue; }
-    if(!canFight()) continue;
+    if(!canFight(facState(e.s))) continue;
     if(facState(e.s)){ fight(a, b, (a.hunting===b.faction || b.hunting===a.faction) ? "hunting each other" : facStateLabel(e.s).toLowerCase()); continue; }
     const st = a.stray===b.faction && !a.strayMet ? a : b.stray===a.faction && !b.strayMet ? b : null;
     if(st){ st.strayMet = true; const o = st===a ? b : a;
@@ -20331,8 +20334,9 @@ function fleetMeetings(day){
       const pk = p.faction && factionById(p.faction) ? p.faction : "ship:" + p.id, PA = W.pirAttack = W.pirAttack || {};     // one attack a week for each pirate faction (a ship of none: for her alone)
       if(PA[pk]!=null && day - PA[pk] < 7) break;
       if(rollD(100) <= 60){ const es = fleetEscortOf(v), facFight = !!p.faction && [v, es].some(x=>x && x.faction && x.faction!==p.faction && !(navyF && x.faction===navyF.id) && facRelAll()[facRelKey(x.faction, p.faction)]);
-        if(facFight && !canFight()){ p.robbed = true; break; }                                  // a fight between factions: the week's one already fought
-        const r = fleetAttack(p, v, day); if(r!=="off"){ PA[pk] = day; if(facFight) W.lastClash = day; } p.robbed = true; break; } } }     // she goes for her: a fight at the odds of their strength
+        const fst = facFight ? facState(Math.min(...[v, es].filter(x=>x && x.faction && facRelAll()[facRelKey(x.faction, p.faction)]).map(x=>facRelOf(x.faction, p.faction)))) : "";
+        if(facFight && !canFight(fst)){ p.robbed = true; break; }                                  // a fight between factions: the week's already fought
+        const r = fleetAttack(p, v, day); if(r!=="off"){ PA[pk] = day; if(facFight){ W.clashDays.push(day); W.lastClash = day; } } p.robbed = true; break; } } }     // she goes for her: a fight at the odds of their strength
 }
 /* the days since: every ship's departures and arrivals in turn */
 function fleetCatchUp(){
