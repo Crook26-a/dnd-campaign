@@ -7711,6 +7711,14 @@ function leaderBlock(){
     ${leaderHtml(leaderScope, false)}
     <button class="btn wide" data-lb="${showing ? "tvoff" : "tv"}" style="margin-top:6px">${showing ? "Take it off the players' screen" : "Show it on the players' screen"}</button></details>`;
 }
+/* combat: your table rules (Joseph, 2026-11-06), both on unless unticked; stored on this campaign (root) */
+function fightRulesBlock(){
+  return `<details class="partysec" data-invfor="party:fightrules" ${openInv.has("party:fightrules")?"open":""}><summary class="eyebrow">Combat: your table rules</summary>
+    <label class="check" style="margin:2px 0 4px" title="A save against an enemy's spell or attack, a repeat save, a lingering area, a shove, breaking free of a grapple, a Counterspell: the app asks for the d20 the player rolled and adds the bonus. Leave the box blank and it rolls for them."><input type="checkbox" data-fightrule="playersRoll" ${playersRoll()?"checked":""}> The players roll their own checks and saves (the app asks for the d20)</label>
+    <label class="check" style="margin:2px 0 4px" title="Once they've used their Bonus Action, logging another asks to spend their action on it."><input type="checkbox" data-fightrule="baForAction" ${baForAction()?"checked":""}> A character can spend their action on a second Bonus Action</label></details>`;
+}
+document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset || !t.dataset.fightrule) return;
+  root[t.dataset.fightrule] = t.checked; touch(); saveParty(); flash(t.checked ? "That table rule is on." : "That table rule is off."); });
 function xpRulesBlock(){
   const R = xpRules(), C = R.checks, num = (k, v, w) => `<input class="mono" data-xpr="${k}" type="number" min="0" value="${v}" style="width:${w||54}px">`;
   return `<details class="partysec" data-invfor="party:xprules" ${openInv.has("party:xprules")?"open":""}><summary class="eyebrow">XP for how they play <small>your table rule</small></summary>
@@ -8852,6 +8860,7 @@ function renderParty(){
     ${awardsBlock()}
     ${xpRulesBlock()}
     ${warRulesBlock()}
+    ${fightRulesBlock()}
 
     <details class="partysec" data-invfor="party:xplog" ${openInv.has("party:xplog")?"open":""}><summary class="eyebrow">XP log${log.length?` <small>${log.length}</small>`:""}</summary>
     ${log.length ? `<div class="xplog">${log.map(e=>`<div class="stat"><span class="k">${esc(e.at)} · ${esc(e.note||"XP")}</span><span class="v">${e.per ? partyRoster().filter(c=>e.per[c.id]).map(c=>`${esc((c.name||"").split(" ")[0])} ${e.per[c.id] > 0 ? "+" : ""}${e.per[c.id].toLocaleString()}`).join(", ") : `+${(+e.each||0).toLocaleString()} each`}</span></div>`).join("")}</div>
@@ -15263,6 +15272,23 @@ const reactedThisRound = (c, id) => !!(c.reacted && c.reacted[id]!=null);
    when their turn starts. bonusActOf: is this action one? A bonus-action spell, an off-hand / "bonus action" attack row,
    a stat block's bonus action, an item used as one (its use, or an On a hit that takes it); the form's tick can say otherwise */
 const bonusUsed = (c, id) => !!(c.bonused && c.bonused[id]!=null);
+/* two table rules (Joseph, 2026-11-06), on unless unticked (Party tab, "Combat: your table rules"): the players roll their
+   own checks and saves (the app asks for the d20 a player character rolled instead of rolling it: a save against an enemy's
+   spell or attack, a repeat save, a lingering area, a shove, breaking free; blank or Cancel and the app rolls it), and a
+   character can spend their action on a second Bonus Action */
+const playersRoll = () => root.playersRoll !== false;
+const baForAction = () => root.baForAction !== false;
+const playerRollsT = t => !!t && t.kind==="pc" && !t.person && !allyAuto(t) && playersRoll();
+function pcD20(t, what, adv){
+  const roll = () => ({ d:1 + Math.floor(Math.random() * 20), typed:false, w:"" });
+  if(!playerRollsT(t)) return roll();
+  for(let i = 0; i < 3; i++){
+    const v = prompt(`${t.label} rolls ${what}${adv === "dis" ? ", with Disadvantage (two d20s, keep the lower)" : adv ? ", with Advantage (two d20s, keep the higher)" : ""}.\n\nType the d20 the player rolled (1 to 20); the app adds the bonus. Leave it blank to roll it for them.`, "");
+    if(v==null || String(v).trim()==="") return roll();
+    const n = Math.round(+v); if(n >= 1 && n <= 20) return { d:n, typed:true, w:" (rolled at the table)" };
+  }
+  return roll();
+}
 /* the action, tracked the same way (Joseph, 2026-10-30: "also need action surge"): c.acted[id] = { n (used), more (extra
    ones this turn) }, cleared when their turn starts. One a turn; Action Surge gives one more, and Haste's target has one
    more (the limited one). Not an action: a bonus action, a reaction, a legendary action, an opportunity attack, fleeing,
@@ -15873,7 +15899,7 @@ function actionForm(c, all){
     ${act.targets.length && info && (ctrlAuto(info) || act.ctrl!=null || info.save || act.cond) ? (A=>`<div class="field"><label title="Someone of the other side kept out of the fight: each of their turns while it lasts is worth their damage per round × this, to whoever did it (the value score, the XP card's control share)">Control</label>
       <select id="ac-ctrl"><option value="" ${act.ctrl==null?"selected":""}>By itself: ${A ? CTRL_SAY[A] : "none"}</option>${CTRL_TIERS.map(([v, l])=>`<option value="${v}" ${act.ctrl===v?"selected":""}>${l} (×${ctrlMult(v)})</option>`).join("")}<option value="none" ${act.ctrl==="none"?"selected":""}>None</option></select></div>`)(ctrlAuto(info)) : ""}
     <label class="check" style="margin:0 0 7px"><input type="checkbox" id="ac-react" ${act.reaction?"checked":""}> As a reaction${t&&reactedThisRound(c,t.id)?` <i class="rused">— already used one this round</i>`:""}</label>
-    <label class="check" style="margin:-4px 0 7px" title="Ticks itself for a bonus-action spell, attack, item or stat-block bonus action; untick or tick it to say otherwise"><input type="checkbox" id="ac-bonus" ${(act.bonus ?? bonusActOf(t, info, act.what))?"checked":""}> As a bonus action${t&&bonusUsed(c,t.id)?` <i class="rused">— already used one this turn</i>`:""}</label>
+    <label class="check" style="margin:-4px 0 7px" title="Ticks itself for a bonus-action spell, attack, item or stat-block bonus action; untick or tick it to say otherwise"><input type="checkbox" id="ac-bonus" ${(act.bonus ?? bonusActOf(t, info, act.what))?"checked":""}> As a bonus action${t&&bonusUsed(c,t.id)?` <i class="rused">— already used one this turn${baForAction() && c.turn===t.id && actionsLeft(c, t.id) > 0 ? "; your table rule: another one takes their action" : ""}</i>`:""}</label>
     ${t && (actionUsed(c, t.id) || ((c.acted||{})[t.id]||{}).more) ? `<p class="actspell" style="margin:-4px 0 7px">${((c.acted||{})[t.id]||{}).swings > 0 ? `${c.acted[t.id].swings} more attack${c.acted[t.id].swings > 1 ? "s" : ""} with this action (Extra Attack, Multiattack) · ` : ""}${actionsLeft(c, t.id) > 0 ? `${actionsLeft(c, t.id)} action${actionsLeft(c, t.id) > 1 ? "s" : ""} left this turn` : ((c.acted||{})[t.id]||{}).swings > 0 ? "no other action left" : `<i class="rused">Their action this turn is used</i>`}</p>` : ""}
     <button class="btn wide" id="ac-go" ${act.what?"":"disabled"}>Log it</button>
   </div>`;
@@ -15945,11 +15971,17 @@ function logAction(n, c){
   if(concSp && !concOK(concH, concSp, actor.label)) return;
   /* a bonus action: one a turn (asks first if they've had theirs) */
   const isBonus = !act.reaction && (act.bonus ?? bonusActOf(actor, info, act.what));
-  if(isBonus && bonusUsed(c, actor.id) && !confirm(`${actor.label} has already used a Bonus Action this turn. Log this one anyway?`)) return;
+  /* your table rule (Joseph, 2026-11-06): their action can be spent on a second Bonus Action, if it's still there */
+  let baByAction = false;
+  if(isBonus && bonusUsed(c, actor.id) && !part){
+    if(baForAction() && c.turn===actor.id && actionsLeft(c, actor.id) > 0){
+      if(!confirm(`${actor.label} has already used a Bonus Action this turn. Your table rule: they can spend their action on a second one. Use their action for this Bonus Action?`)) return;
+      baByAction = true; }
+    else if(!confirm(`${actor.label} has already used a Bonus Action${baForAction() ? " and their action (your table rule spends the action on a second one)" : ""} this turn. Log this one anyway?`)) return; }
   /* the action: one a turn, more with Action Surge (asks first past them) */
   const isAction0 = !part && isActionAct(actor, info, act.what, isBonus), swing = isAction0 && isSwing(info, act.what);
   const swingLeft = (swing || part) && ((c.acted||{})[actor.id]||{}).swings > 0;     // the second swing of Extra Attack, the next attack of a Multiattack: the same action
-  const isAction = isAction0 && !swingLeft;
+  const isAction = (isAction0 && !swingLeft) || baByAction;
   if(isAction && actionsLeft(c, actor.id) <= 0 && !confirm(`${actor.label} has already used ${actionUsed(c, actor.id) && (c.acted[actor.id].n > 1) ? "their actions" : "their action"} this turn. Log this one anyway?`)) return;
   if((isAction || isBonus) && c.turn===actor.id && haltedT(c, actor) && !confirm(`${actor.label} is under Command: “Halt!” They don't move and take no action or Bonus Action this turn. Log this anyway?`)) return;
   /* one spell slot a turn (the 2024 rules; Joseph's fight of 2026-11-06: Command, then Mass Healing Word, on one turn): asks first */
@@ -16023,8 +16055,8 @@ function logAction(n, c){
     /* an attack's save on a hit (the Ghoul's Claw: "Constitution Saving Throw: DC 10. Failure: ... Paralyzed"): rolled for each target it hits */
     let riderMade = false; act.riderMade = act.riderMade || {};
     if(act.cond && !off && isAttackAct(info) && !info.spell && ["hit","crit"].includes(act.outcome)){ const R = SAVE_WORD.exec(String(info.text || ""));
-      if(R){ const b = saveBonusOf(t, R[1]), d = 1 + Math.floor(Math.random() * 20), tot = d + b; riderMade = tot >= +R[2]; act.riderMade[t.id] = riderMade;     /* (a grapple's save too) */
-        turned.push(`${t.label}: ${R[1]} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${R[2]}, ${riderMade ? "made" : `failed: ${act.cond}`}`); } }
+      if(R){ const b = saveBonusOf(t, R[1]), Q = pcD20(t, `a ${R[1]} save against DC ${R[2]} (${info.name || "the attack"})`), d = Q.d, tot = d + b; riderMade = tot >= +R[2]; act.riderMade[t.id] = riderMade;     /* (a grapple's save too) */
+        turned.push(`${t.label}: ${R[1]} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${R[2]}, ${riderMade ? "made" : `failed: ${act.cond}`}`); } }
     /* a grapple (item 3): on a hit, or a failed save, if they're small enough: who holds them and the escape DC */
     { const GT = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null, landed = isAttackAct(info) ? ["hit","crit"].includes(act.outcome) : !["miss","save"].includes(act.outcome) && !(svOf(t) && svOf(t).made);
       if(GT && !off && landed && !riderMade && t.id!==actor.id && (GT.max==null || sizeRank(t) <= GT.max) && !condImmune(t, "Grappled")){ const cs = condsOfT(t);
@@ -16091,9 +16123,9 @@ function logAction(n, c){
   const surge = /action surge/i.test(info.name||"");     // one more action this turn
   if(isAction || surge || swingLeft){ c.acted = c.acted || {}; const a = c.acted[actor.id] = c.acted[actor.id] || { n:0, more:0 };
     if(swingLeft) a.swings--;                                                 // one more of this action's attacks
-    else if(isAction){ a.n++; a.swings = swing ? attacksPerAction(actor) - 1 : /^fa:Multiattack/i.test(act.what||"") ? attacksPerAction(actor) : 0; }
+    else if(isAction){ a.n++; a.swings = baByAction ? 0 : swing ? attacksPerAction(actor) - 1 : /^fa:Multiattack/i.test(act.what||"") ? attacksPerAction(actor) : 0; }
     if(surge) a.more++; }
-  const asWhat = (act.legendary ? " — as a legendary action." : act.reaction ? " — as a reaction." : isBonus && !/as a Bonus Action/.test(line) ? " — as a bonus action." : ".") + (surge ? " One more action this turn." : "");
+  const asWhat = (act.legendary ? " — as a legendary action." : act.reaction ? " — as a reaction." : baByAction ? " — as a second Bonus Action, using their action (your table rule)." : isBonus && !/as a Bonus Action/.test(line) ? " — as a bonus action." : ".") + (surge ? " One more action this turn." : "");
   /* a spell that stays up: its token on the map, free again while it lasts (casting it again replaces their old one) */
   const upsBefore = JSON.stringify({ u:c.ups || [], p:Object.fromEntries((c.ups||[]).filter(u=>c.pos && c.pos[u.id]).map(u=>[u.id, c.pos[u.id]])) });
   const U = info.kind==="spell" && !info.free && !part ? spellUp(info.spell) : null;
@@ -16287,7 +16319,7 @@ function effectsSweep(c, id, when){
     if(when!=="end" || e.who!==id || e.at===now) continue;
     if(e.end==="targetNext"){ snapIds.add(e.who); out.push(effectEnd(c, e, "the end of its turn")); continue; }
     if(e.rounds && c.round >= e.round + e.rounds){ snapIds.add(e.who); out.push(effectEnd(c, e, `${e.rounds / 10} minute`)); continue; }
-    if(e.repeat){ const b = saveBonusOf(t, e.repeat.abil), d = 1 + Math.floor(Math.random() * 20), tot = d + b, ok = tot >= e.repeat.dc, roll = `${e.repeat.abil} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${e.repeat.dc}`;
+    if(e.repeat){ const b = saveBonusOf(t, e.repeat.abil), Q = pcD20(t, `a ${e.repeat.abil} save against DC ${e.repeat.dc} to end ${e.name}`), d = Q.d, tot = d + b, ok = tot >= e.repeat.dc, roll = `${e.repeat.abil} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${e.repeat.dc}`;
       snapIds.add(e.who); if(ok) out.push(effectEnd(c, e, "", `repeats the save, ${roll}: made`)); else out.push(`${t.label} repeats the save against ${e.name}, ${roll}: still ${e.cond}.`); }
   }
   if(!out.length) return;
@@ -16353,9 +16385,10 @@ function gripRowHtml(c, t){
 function gripEscape(c, t){
   const g = gripOf(c, t); if(!g) return "";
   const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath;
-  const r1 = 1 + Math.floor(Math.random() * 20), r2 = 1 + Math.floor(Math.random() * 20), d = g.dis ? Math.min(r1, r2) : r1, tot = d + b, ok = tot >= g.dc;
+  const Q = pcD20(t, `${useAcr ? "a Dexterity (Acrobatics)" : "a Strength (Athletics)"} check against DC ${g.dc} to break free`, g.dis ? "dis" : "");
+  const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = g.dis ? Math.min(r1, r2) : r1, tot = d + b, ok = tot >= g.dc;
   const snap = snapOf(c, [t.id]), gripsBefore = JSON.stringify(c.grips || {});
-  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${g.dis ? `d20 ${r1} and ${r2}, Disadvantage: ${d}` : `d20 ${d}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
+  let line = `${t.label} tries to break free of ${g.what ? `${g.by.label}'s ${g.what}` : g.by.label}: ${useAcr ? "Dexterity (Acrobatics)" : "Strength (Athletics)"} ${Q.typed ? `d20 ${d}${Q.w}` : g.dis ? `d20 ${r1} and ${r2}, Disadvantage: ${d}` : `d20 ${d}`}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} against DC ${g.dc}: ${ok ? "free" : "still held"}.`;
   if(ok){ if(c.grips && c.grips[t.id]) gripEnd(c, t.id, ""); else { const cs = condsOfT(t); for(const k of [g.cond, ...(g.ends || [])]){ const i = cs.indexOf(k); if(i >= 0) cs.splice(i, 1); } } }
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, grips:gripsBefore }); gameLog("check", line); return line;
 }
@@ -16413,13 +16446,13 @@ function shovePlan(c, t, tg){
 }
 async function autoShove(c, t, tg, plan, said){
   const m = t.kind==="foe" ? foeById(t.x.foe) : null, str = m ? Math.floor(((+((m.ab || [])[0]) || 10) - 10) / 2) : abBonus(pcState(t.p), "str"), pb = m ? profOf({ cr:m.cr }) : profOf(pcState(t.p)), dc = 8 + str + pb;
-  const sb = saveBonusOf(tg, "Strength"), db = saveBonusOf(tg, "Dexterity"), ab = db > sb ? "Dexterity" : "Strength", b = Math.max(sb, db), d = 1 + Math.floor(Math.random() * 20), tot = d + b, made = tot >= dc;
+  const sb = saveBonusOf(tg, "Strength"), db = saveBonusOf(tg, "Dexterity"), ab = db > sb ? "Dexterity" : "Strength", b = Math.max(sb, db), Q = pcD20(tg, `a ${ab} save against DC ${dc} (${t.label} shoves them)`), d = Q.d, tot = d + b, made = tot >= dc;
   await autoSay(`${t.label} tries to shove ${tg.label}${plan.kind==="push" ? " back" : " to the ground"}!`);
   const snap = snapOf(c, [tg.id]), from = { ...c.pos[tg.id] };
   let what = "";
   if(!made){ if(plan.kind==="push"){ c.pos[tg.id] = { ...c.pos[tg.id], x:plan.q.x, y:plan.q.y }; what = "pushed back 5 ft"; } else { const cs = condsOfT(tg); if(!cs.includes("Prone")) cs.push("Prone"); what = "knocked Prone"; } }
   const A = (c.acted = c.acted || {})[t.id] = (c.acted[t.id] || { n:0, more:0 }); A.n++;
-  const line = `${t.label} shoves ${tg.label}: ${ab} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made: it stays put" : what}.`;
+  const line = `${t.label} shoves ${tg.label}: ${ab} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made: it stays put" : what}.`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, shoved:{ who:tg.id, from } }); gameLog("fight", line); renderBattle(); await autoSay(line);
   if(!made && plan.kind==="push"){ zonesMoved(c); gripSweep(c); }
 }
@@ -16455,10 +16488,10 @@ function counterCheck(c, caster, info, part){
     const m = foeById(t.x.foe), R = foeResources(m), rea = pairs(m && m.rea).find(([, tx]) => /\bCounterspell\b/.test(String(tx || ""))); if(!rea) continue;
     const base = String(rea[0]).replace(/\s*\(.*\)\s*$/, ""), lim = R.find(r => r.key===base), left = lim && lim.kind==="uses" ? lim.max - ((t.x.used || {})[base] || 0) : 9;
     if(left <= 0 || (left===1 && s.lv < 2) || chebSq(c.pos[t.id], c.pos[caster.id]) * 5 > 60 || autoSense(c, n, t, caster)!=="seen") continue;
-    const dc = spellDcOfT(t) || 13, b = saveBonusOf(caster, "Constitution"), d = 1 + Math.floor(Math.random() * 20), tot = d + b, made = tot >= dc;
+    const dc = spellDcOfT(t) || 13, b = saveBonusOf(caster, "Constitution"), Q = pcD20(caster, `a Constitution save against DC ${dc} (${t.label}'s Counterspell against ${s.name})`), d = Q.d, tot = d + b, made = tot >= dc;
     const snap = snapOf(c, [t.id]), reactedBefore = JSON.stringify(c.reacted || {});
     (c.reacted = c.reacted || {})[t.id] = c.round; if(lim && lim.kind==="uses") (t.x.used = t.x.used || {})[base] = ((t.x.used || {})[base] || 0) + 1;
-    const line = `${t.label} casts Counterspell (${base}) at ${caster.label}'s ${s.name}: ${caster.label}'s Constitution save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? `made: the ${s.name} goes ahead` : `failed: the ${s.name} fails; the action is spent, the spell slot isn't`}.`;
+    const line = `${t.label} casts Counterspell (${base}) at ${caster.label}'s ${s.name}: ${caster.label}'s Constitution save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? `made: the ${s.name} goes ahead` : `failed: the ${s.name} fails; the action is spent, the spell slot isn't`}.`;
     (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap, reacted:reactedBefore }); gameLog("spell", line);
     return { made, line };
   }
@@ -16514,8 +16547,8 @@ function zoneHit(c, u, t, why, squares){
   if(Z.once){ const H = u.hit = u.hit || {}; if(H[t.id]===turnStamp(c)) return ""; H[t.id] = turnStamp(c); }
   const snap = snapOf(c, [t.id]), holdsBefore = JSON.stringify(c.holds || {}), bits = [];
   let made = false;
-  if(Z.save){ const dc = spellDcOfT(owner) || 10, b = saveBonusOf(t, Z.save), d = 1 + Math.floor(Math.random() * 20), tot = d + b; made = tot >= dc;
-    bits.push(`${Z.save} save d20 ${d}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made" : "failed"}`); }
+  if(Z.save){ const dc = spellDcOfT(owner) || 10, b = saveBonusOf(t, Z.save), Q = pcD20(t, `a ${Z.save} save against DC ${dc} (${s.name})`), d = Q.d, tot = d + b; made = tot >= dc;
+    bits.push(`${Z.save} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${made ? "made" : "failed"}`); }
   if(Z.cond){ if(!made && !condImmune(t, Z.cond)){ const cs = condsOfT(t); if(!cs.includes(Z.cond)) cs.push(Z.cond);
       (c.holds = c.holds || {})[t.id] = { by:owner.id, tier:"half", name:s.name, sp:s.id, cond:"", dmgEnds:"", once:false, turns:0, pts:0 }; bits.push(Z.cond); } }
   else { const sc = scaledSpell(s, u.lvl, owner.kind==="pc" && owner.p ? clampLv(pcState(owner.p).level) : 0), P = /\(if you are\b/i.test(s.desc || "") ? sc.parts.slice(0, 1) : sc.parts, dice = addDice(...P.map(p => p.dice)) || s.dmg;
@@ -16818,10 +16851,10 @@ function renderBattlePanelNow(){
   el.querySelectorAll("#ac-luckme, #ac-luckvs").forEach(b=>b.onchange = ()=>{ act[b.id==="ac-luckme" ? "luckMe" : "luckVs"] = b.checked; });
   el.querySelectorAll("[data-svroll]").forEach(b=>b.onclick = ()=>{ keep(); const X = svCtx(); if(!X) return; if(!X.dc){ flash("Type in the DC first."); return; }
     for(const id of b.dataset.svroll==="all" ? act.targets : [b.dataset.svroll]){ const x = all.find(y=>y.id===id); if(!x) continue;
-      const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), adv = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)) || (k==="dex" && dodging(c, x)), lk = !adv && !!(act.svLuck && act.svLuck[x.id]) && luckSpend(x), r1 = 1 + Math.floor(Math.random()*20), r2 = adv || lk ? 1 + Math.floor(Math.random()*20) : 0, d0 = Math.max(r1, r2), hl = hLuck(x, d0), d = hl ? hl.d : d0; if(act.svLuck) delete act.svLuck[x.id];     // Lucky: Advantage; a halfling's 1 rerolled
+      const h = hOfT(x), k = String(X.S.abil).slice(0, 3).toLowerCase(), tA = all.find(y=>y.id===act.actor), adv = fxAdv(h, k) || fightAdv(c, tA, x, tA && actInfo(c, tA)) || (k==="dex" && dodging(c, x)), lk = !adv && !!(act.svLuck && act.svLuck[x.id]) && luckSpend(x), Q = pcD20(x, `a ${X.S.abil} save against DC ${X.dc}`, adv || lk), r1 = Q.d, r2 = !Q.typed && (adv || lk) ? 1 + Math.floor(Math.random()*20) : 0, d0 = Math.max(r1, r2), hl = Q.typed ? null : hLuck(x, d0), d = hl ? hl.d : d0; if(act.svLuck) delete act.svLuck[x.id];     // Lucky: Advantage; a halfling's 1 rerolled
       const cvr = k==="dex" ? coverOf(c, act.actor, x.id, aoeOrigin()) : { level:0, ac:0, word:"" }, cb = cvr.level===3 ? 0 : cvr.ac;     // cover: +2 or +5 to a Dexterity save
       const bo = saveBonusOf(x, X.S.abil) + fxNum(h, "save", k, false) + cb, F = fxRoll(h, "save"), tot = d + bo + F.n;     // Bless, Bane, Haste, Slow, Warding Bond
-      const how = `${adv || lk ? `d20 ${r1} and ${r2}, Advantage${lk ? " (a Luck point)" : ""}: ${d0}` : `d20 ${d0}`}${hl ? `${hl.said}: ${d})` : ""}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
+      const how = `${Q.typed ? `d20 ${d0} (rolled at the table${adv || lk ? ", Advantage" : ""})` : adv || lk ? `d20 ${r1} and ${r2}, Advantage${lk ? " (a Luck point)" : ""}: ${d0}` : `d20 ${d0}`}${hl ? `${hl.said}: ${d})` : ""}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
       (act.saves = act.saves || {})[x.id] = { tot, made:tot >= X.dc, said:`${x.label} ${how} vs DC ${X.dc}: ${tot >= X.dc ? "made" : "failed"}` };
       if(tot < X.dc){ const lr = legResist(c, x); if(lr){ act.saves[x.id].made = true; act.saves[x.id].said += ` — ${lr}`; } } }     // Legendary Resistance, when it matters
     svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
@@ -19908,6 +19941,9 @@ function seaGrid(){
   for(const s of isles) if(!s.mainland) fill(shapeRing(s), land, 1);
   const main = isles.find(s=>s.mainland);
   if(main){ const m = new Uint8Array(W * H), w = new Uint8Array(W * H); fill(shapeRing(main), m, 1); if(sea) fill(shapeRing(sea), w, 1); for(let i = 0; i < m.length; i++) if(m[i] && !w[i]) land[i] = 1; }
+  /* the sea's own outline is all the water there is (Joseph, 2026-11-06: a lane drawn on land): beyond it, the blank
+     parchment past the charted coast is land too, not open water to sail round the back of the map through */
+  if(sea){ const w = new Uint8Array(W * H); fill(shapeRing(sea), w, 1); for(let i = 0; i < w.length; i++) if(!w[i]) land[i] = 1; }
   return (seaGridCache = { key, x0, y0, cell, W, H, land });
 }
 /* the nearest water square to a spot (a port sits on the shore) */
