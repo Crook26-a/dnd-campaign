@@ -27,16 +27,19 @@ step("a stray met within 10 miles: 70% a fight; a fight: dead marked in the Libr
   const dead = lib().npcs.filter(p => p.dead).slice(0, 2).map(p => `${p.name}: ${p.where}`);
   return `of ${fights + lets} meetings: ${fights} fights, ${lets} let go | e.g. "${last && last.text}" | its change: ${(rel.log.slice(-2)).map(x => `${sgn(x.from)} → ${sgn(x.to)}: ${x.why}`).join(" ; ")} | the dead: ${dead.join(" / ")} | page errors ${__KIT.errors.length}`;
 });
-step("pirates rob ships sailing by: mostly robbed, a fifth taken; an escort scares them off", async () => {
-  const d = campaignDay(), pir = root.fleet.find(s => s.kind === "pirate" && !s.faction) || root.fleet.find(s => s.kind === "pirate");
-  let robbed = 0, taken = 0, scared = 0;
-  for (let i = 0; i < 60; i++) { const v = fleetAdd({ kind: "merchant" }); v.cargo = { wine: { n: 10, paid: 12, from: v.home } };
-    v.leg = { pts: [{ x: 0, y: 0 }, { x: 4000, y: 0 }], from: v.home, to: v.home, left: d - 1, arrive: d + 1, miles: 400 }; const at = fleetPos(v, d);
-    delete pir.leg; pir.at = null; pir.pos = { x: at.x + 30, y: at.y }; delete pir.hunting; delete pir.robbed; const n0 = bgLogList().length; fleetMeetings(d);
-    const t = bgLogList().slice(n0).map(e => e.text).join(" "); if (/as a prize/.test(t)) taken++; else if (/robbed/.test(t)) robbed++; if (root.fleet.includes(v)) { root.fleet = root.fleet.filter(x => x !== v); fleetForget(v); } }
-  const rich = fleetAdd({ kind: "packet", tier: "rich" }); rich.leg = { pts: [{ x: 0, y: 0 }, { x: 4000, y: 0 }], from: rich.home, to: rich.home, left: d - 1, arrive: d + 1, miles: 400 }; fleetEscortSync(fleetEscortOf(rich));
-  for (let i = 0; i < 40; i++) { const at = fleetPos(rich, d); delete pir.leg; pir.at = null; pir.pos = { x: at.x + 30, y: at.y }; delete pir.robbed; const n0 = bgLogList().length; fleetMeetings(d); if (/sheered off/.test(bgLogList().slice(n0).map(e => e.text).join(" "))) scared++; if (!root.fleet.includes(rich)) break; }
-  return `60 merchants passing ${pir.name}: ${robbed} robbed, ${taken} taken as prizes, ${60 - robbed - taken} slipped by | a rich passenger ship with her escort, 40 times: scared off ${scared} | replacements due ${worldOf().replace.length} | page errors ${__KIT.errors.length}`;
+step("ship against ship at the odds of their strength: a pirate and merchants; a rich passenger ship with guards and escort", async () => {
+  const d = campaignDay(), mkPir = () => { const p = fleetAdd({ kind: "pirate" }); delete p.leg; p.at = null; return p; };
+  const sail = v => { v.leg = { pts: [{ x: 0, y: 0 }, { x: 4000, y: 0 }], from: v.home, to: v.home, left: d - 1, arrive: d + 1, miles: 400 }; const e = fleetEscortOf(v); if (e) fleetEscortSync(e); return fleetPos(v, d); };
+  const tally = (mk, n) => { const c = { robbed: 0, prize: 0, beaten: 0, off: 0, slipped: 0, odds: [] };
+    for (let i = 0; i < n; i++) { const p = mkPir(), v = mk(), at = sail(v); p.pos = { x: at.x + 30, y: at.y }; const n0 = bgLogList().length; fleetMeetings(d);
+      const t = bgLogList().slice(n0).map(e => e.text).join(" "), o = t.match(/odds of (\d+)%/); if (o) c.odds.push(+o[1]);
+      if (/as a prize/.test(t)) c.prize++; else if (/ robbed /.test(t)) c.robbed++; else if (/beat off/.test(t)) c.beaten++; else if (/sheered off/.test(t)) c.off++; else c.slipped++;
+      for (const s of [p, v, fleetEscortOf(v)]) if (s && root.fleet.includes(s)) { root.fleet = root.fleet.filter(x => x !== s); fleetForget(s); } }
+    return `${c.robbed} robbed, ${c.prize} taken, ${c.beaten} beat her off, ${c.off} she sheered off, ${c.slipped} never tried (odds given: ${c.odds.slice(0, 6).join(", ")}%)`; };
+  const P0 = mkPir(), M0 = fleetAdd({ kind: "merchant" }), R0 = fleetAdd({ kind: "packet", tier: "rich" }), E0 = fleetEscortOf(R0);
+  const powers = `a pirate ${Math.round(shipPower(P0))} XP (${shipFighters(P0).length} fighting), a merchant ${Math.round(shipPower(M0))} (${shipFighters(M0).length}), a rich passenger ship ${Math.round(shipPower(R0))} (${shipFighters(R0).length}, her guards among them) and her escort ${Math.round(shipPower(E0))} (${shipFighters(E0).length})`;
+  for (const s of [P0, M0, R0, E0]) { root.fleet = root.fleet.filter(x => x !== s); fleetForget(s); }
+  return `${powers} | 40 merchants: ${tally(() => fleetAdd({ kind: "merchant" }), 40)} | 30 rich passenger ships with escorts: ${tally(() => fleetAdd({ kind: "packet", tier: "rich" }), 30)} | page errors ${__KIT.errors.length}`;
 });
 step("hunting at −60, war at −80, extermination at −95: the share of voyages hunting; tempers cooling; ceilings", async () => {
   const trip = root.fleet.find(s => s.faction === "fw_t") || fleetAdd({ kind: "pirate", faction: "fw_t", home: repPorts().find(n => quadOf(n.x, n.y) === "NW").id });

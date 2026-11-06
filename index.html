@@ -20199,40 +20199,69 @@ function fleetGone(s, day, keepPeople){
   if(!keepPeople) fleetForget(s); root.fleet = fleetOf().filter(x=>x!==s);
   worldOf().replace.push({ day:day + 14 + rollD(14), kind:s.kind, size:s.size || "", home:s.home, ...(s.faction ? { faction:s.faction } : {}), ...(s.homely ? { homely:true } : {}), ...(s.raid ? { raid:s.raid } : {}), ...(s.tier ? { tier:s.tier } : {}) });
 }
-/* two ships of feuding factions fight: a coin for who wins; each of her people dies on a roll (the loser's a
-   45% chance, the winner's 15%); −5 between the factions and −1 for every one of the dead; the winner takes the
-   loser's hold; a ship with nobody left is lost; sometimes the winner pays blood money (Lawful likelier) */
-function facClash(s1, s2, day, why){
-  const win = Math.random() < .5 ? s1 : s2, lose = win===s1 ? s2 : s1, A = factionById(win.faction), B = factionById(lose.faction); if(!A || !B) return;
-  const W0 = fleetPos(win, day) || repNode(win.home) || { x:0, y:0 }, near = repPlaceName((repPorts().slice().sort((p, q)=>Math.hypot(p.x - W0.x, p.y - W0.y) - Math.hypot(q.x - W0.x, q.y - W0.y))[0] || {}).id);
-  const kill = (s, pct, by) => { const ids = [s.captain, ...(s.crew||[])].filter(id=>id && libNpcById(id) && !libNpcById(id).dead), dead = ids.filter(()=>rollD(100) <= pct);
-    for(const id of dead) npcDies(id, `killed fighting ${by.name} near ${near}`, day);
+/* ── a fight between ships (Joseph, 2026-11-06: "a straight CR against CR chance based on the relative strength … same
+   with all ship against ship encounters"). A side is a ship and anyone fighting beside her (a rich passenger ship's
+   escort). Its strength: everyone aboard who can fight (captain and crew, her guards among them), each as the XP the
+   app's room-scaling already uses: by level, or a stat block's CR. Side A wins with the chance A ÷ (A + B). Then each
+   of them dies on a roll: the losing side's 45%, the winning side's 15%. The dead stay in the Library, marked dead;
+   a ship with nobody left is lost ── */
+const shipFighters = s => [s.captain, ...(s.crew||[])].filter(id=>{ const p = id && libNpcById(id); return p && !p.dead && p.aboard!=="host"; });     // the stewards, waiters and purser don't fight
+function personPower(p){
+  if(numOr(p.level)) return budgetFor([clampLv(p.level)]).mod;
+  const m = p.statBlock || (p.fightsAs && p.fightsAs!=="self" ? foeById(p.fightsAs) : null); return m ? crRowAt(crOfBlock(m).pos).xp : budgetFor([1]).mod;
+}
+const shipPower = s => shipFighters(s).reduce((a, id)=>a + personPower(libNpcById(id)), 0);
+const sidePower = S => S.reduce((a, s)=>a + shipPower(s), 0);
+function shipFight(A, B, day, near){
+  const pa = sidePower(A), pb = sidePower(B), odds = pa + pb ? pa / (pa + pb) : .5, aWins = Math.random() < odds;
+  const kill = (s, pct, foe) => { const dead = shipFighters(s).filter(()=>rollD(100) <= pct);
+    for(const id of dead) npcDies(id, `killed fighting ${foe} near ${near}`, day);
     s.crew = (s.crew||[]).filter(id=>!dead.includes(id)); if(dead.includes(s.captain)) s.captain = (s.crew||[]).shift() || null;     // the mate takes command
     return dead.length; };
-  const dW = kill(win, 15, lose), dL = kill(lose, 45, win), total = dW + dL;
-  let loot = 0; for(const [g, c] of Object.entries(lose.cargo||{})){ win.cargo = win.cargo || {}; const h = win.cargo[g] || { n:0, paid:0, from:"plunder" }; h.n += c.n; win.cargo[g] = h; loot += c.n; } lose.cargo = {};
-  const k = facRelKey(A.id, B.id), e = facRelAll()[k] = facRelAll()[k] || { s:0, log:[] };
+  const nameA = A.map(s=>s.name).join(" and "), nameB = B.map(s=>s.name).join(" and ");
+  const deadA = A.reduce((a, s)=>a + kill(s, aWins ? 15 : 45, nameB), 0), deadB = B.reduce((a, s)=>a + kill(s, aWins ? 45 : 15, nameA), 0);
+  const sunk = [...A, ...B].filter(s=>!s.captain && !(s.crew||[]).length);
+  return { aWins, odds, pa:Math.round(pa), pb:Math.round(pb), deadA, deadB, sunk };
+}
+const nearPortName = (s, day) => { const P = fleetPos(s, day) || repNode(s.home) || { x:0, y:0 }; return repPlaceName((repPorts().slice().sort((p, q)=>Math.hypot(p.x - P.x, p.y - P.y) - Math.hypot(q.x - P.x, q.y - P.y))[0] || {}).id); };
+const takeHold = (to, from) => { let n = 0; for(const [g, c] of Object.entries(from.cargo||{})){ to.cargo = to.cargo || {}; const h = to.cargo[g] || { n:0, paid:0, from:"plunder" }; h.n += c.n; to.cargo[g] = h; n += c.n; } from.cargo = {}; return n; };
+/* two ships of feuding factions fight, at the odds of their strength; −5 between the factions and −1 for every one
+   of the dead; the winner takes the loser's hold; sometimes the winner pays blood money (Lawful likelier) */
+function facClash(s1, s2, day, why){
+  const near = nearPortName(s1, day), r = shipFight([s1], [s2], day, near), win = r.aWins ? s1 : s2, lose = r.aWins ? s2 : s1, A = factionById(win.faction), B = factionById(lose.faction); if(!A || !B) return;
+  const dW = r.aWins ? r.deadA : r.deadB, dL = r.aWins ? r.deadB : r.deadA, total = dW + dL, odds = Math.round((r.aWins ? r.odds : 1 - r.odds) * 100);
+  const loot = takeHold(win, lose), k = facRelKey(A.id, B.id), e = facRelAll()[k] = facRelAll()[k] || { s:0, log:[] };
   e.clashes = [...(e.clashes||[]), { day, dead:{ [A.id]:dW, [B.id]:dL } }].slice(-20);
-  const sunk = !lose.captain && !(lose.crew||[]).length;
-  const line = `${win.name} (${A.name}) beat ${lose.name} (${facMid(B)}) near ${near}${why ? `, ${why}` : ""}: ${total} dead (${dL} of hers, ${dW} of theirs)${loot ? `, ${loot} loads taken` : ""}${sunk ? `; ${lose.name} lost with all hands` : ""}`;
-  bgLog("world", line, day);
+  const sunk = r.sunk.includes(lose);
+  bgLog("world", `${win.name} (${A.name}) beat ${lose.name} (${facMid(B)}) near ${near}${why ? `, ${why}` : ""}, at odds of ${odds}%: ${total} dead (${dL} of hers, ${dW} of theirs)${loot ? `, ${loot} loads taken` : ""}${sunk ? `; ${lose.name} lost with all hands` : ""}`, day);
   facRelSet(A.id, B.id, facRelOf(A.id, B.id) - 5 - total, `A fight at sea: ${win.name} beat ${lose.name}, ${total} dead`, day);
   const pay = /^Lawful/.test(A.align||"") ? 50 : /^Chaotic/.test(A.align||"") ? 10 : 25;
   if(total && rollD(100) <= pay) facRelSet(A.id, B.id, facRelOf(A.id, B.id) + 10, `${A.name} paid blood money for ${facMid(B)}'s dead`, day);
-  if(sunk) fleetGone(lose, day, true);
+  for(const s of r.sunk) fleetGone(s, day, true);
 }
-/* a pirate lying in wait catches a ship sailing by (Joseph: "mostly robbed"): four times in five her hold is emptied into
-   the pirate's and she sails on; once in five she's taken as a prize, and a new ship of her kind comes later */
-function fleetRob(p, v, day){
-  const taken = rollD(5)===1, near = repPlaceName(v.leg && v.leg.to || v.at || v.home); let n = 0;
-  for(const [g, c] of Object.entries(v.cargo||{})){ p.cargo = p.cargo || {}; const h = p.cargo[g] || { n:0, paid:0, from:"plunder" }; h.n += c.n; p.cargo[g] = h; n += c.n; } v.cargo = {};
-  if(taken){ bgLog("world", `${p.name}${p.faction && factionById(p.faction) ? ` (${factionById(p.faction).name})` : ""} took ${v.name} as a prize on her way to ${near}${n ? `, and ${n} loads with her` : ""}. Her crew and passengers with her`, day); fleetGone(v, day); }
-  else bgLog("world", `${p.name}${p.faction && factionById(p.faction) ? ` (${factionById(p.faction).name})` : ""} robbed ${v.name} on her way to ${near}: ${n ? `${n} loads taken` : "her hold was empty"}; she sails on`, day);
-  if(v.faction && p.faction && v.faction!==p.faction && facRelAll()[facRelKey(v.faction, p.faction)]) facRelSet(p.faction, v.faction, facRelOf(p.faction, v.faction) - 5, `${p.name} ${taken ? "took" : "robbed"} ${v.name}`, day);
+/* a pirate lying in wait goes for a ship sailing by: her escort (a rich passenger ship's) fights beside her, and the
+   fight goes at the odds of their strength. A pirate who sizes them up at worse than one in five sheers off. The
+   pirate wins: four times in five the hold is emptied into hers and the ship sails on, once in five she's taken as a
+   prize (a new ship of her kind comes later). The pirate loses: beaten off, her dead with her */
+const PIRATE_NERVE = .2;
+function fleetAttack(p, v, day){
+  const es = fleetEscortOf(v), D = [v, ...(es ? [es] : [])], near = repPlaceName(v.leg && v.leg.to || v.at || v.home), who = `${p.name}${p.faction && factionById(p.faction) ? ` (${factionById(p.faction).name})` : ""}`;
+  const pa = shipPower(p), pd = sidePower(D), odds = pa + pd ? pa / (pa + pd) : .5;
+  if(odds < PIRATE_NERVE){ bgLog("world", `${who} sized up ${v.name}${es ? ` and her escort, ${es.name},` : ""} and sheered off: odds of ${Math.round(odds * 100)}%`, day); return "off"; }
+  const r = shipFight([p], D, day, near), dP = r.deadA, dD = r.deadB, odd = Math.round(odds * 100);
+  let said;
+  if(r.aWins){ const taken = !r.sunk.includes(v) && rollD(5)===1, n = takeHold(p, v);
+    said = `${who} ${taken ? `took ${v.name} as a prize` : `robbed ${v.name}`}${es ? ` despite her escort, ${es.name},` : ""} on her way to ${near}, at odds of ${odd}%: ${n ? `${n} loads taken` : "her hold was empty"}; ${dP + dD} dead (${dD} of hers, ${dP} of the pirates')${taken ? ". Her crew and passengers with her" : r.sunk.includes(v) ? `; ${v.name} lost with all hands` : "; she sails on"}`;
+    if(taken) fleetGone(v, day); }
+  else said = `${v.name}${es ? ` and her escort, ${es.name},` : ""} beat off ${who} on the way to ${near}, at odds of ${100 - odd}%: ${dP + dD} dead (${dP} of the pirates', ${dD} of theirs)${r.sunk.includes(p) ? `; ${p.name} lost with all hands` : ""}`;
+  bgLog("world", said, day);
+  for(const s of D) if(s.faction && p.faction && s.faction!==p.faction && facRelAll()[facRelKey(s.faction, p.faction)]){ facRelSet(p.faction, s.faction, facRelOf(p.faction, s.faction) - 5 - dP - dD, `${p.name} went for ${v.name}: ${dP + dD} dead`, day); break; }
+  for(const s of r.sunk) if(fleetOf().includes(s)) fleetGone(s, day, true);
+  return r.aWins ? "won" : "lost";
 }
 /* who's met whom today, within 10 miles: feuding factions' ships (hunting or worse: a fight; a stray met by one of the
-   waters' owners: 70% a fight); a pirate lying in wait (not hunting) and a ship sailing by (60% she's caught; an
-   escort scares her off three times in four) */
+   waters' owners: 70% a fight); a pirate lying in wait (not hunting) and a ship sailing by (60% she goes for her: a
+   fight at the odds of their strength, an escort fighting beside her charge) */
 function fleetMeetings(day){
   const F = fleetOf(), R = 10 * (root.ppm || 10), pos = new Map(F.map(s=>[s, fleetPos(s, day)])), far = (a, b) => { const p = pos.get(a), q = pos.get(b); return !p || !q || Math.hypot(p.x - q.x, p.y - q.y) > R; };
   const armed = F.filter(s=>s.faction && factionById(s.faction));
@@ -20246,8 +20275,7 @@ function fleetMeetings(day){
   for(const p of F.filter(s=>s.kind==="pirate" && !s.leg && s.pos && !s.hunting && !s.robbed)){
     for(const v of F){ if(v===p || v.kind==="pirate" || v.kind==="navy" || !v.leg || v.leg.lurk || !F.includes(v) || far(p, v)) continue;
       if(v.faction && v.faction===p.faction) continue;
-      const es = fleetEscortOf(v); if(es && rollD(100) <= 75){ bgLog("world", `${p.name} sighted ${v.name} but sheered off from her escort, ${es.name}`, day); p.robbed = true; break; }
-      if(rollD(100) <= 60){ fleetRob(p, v, day); p.robbed = true; break; } } }
+      if(rollD(100) <= 60){ fleetAttack(p, v, day); p.robbed = true; break; } } }     // she goes for her: a fight at the odds of their strength
 }
 /* the days since: every ship's departures and arrivals in turn */
 function fleetCatchUp(){
