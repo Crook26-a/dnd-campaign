@@ -21452,10 +21452,10 @@ function facRelSet(a, b, s, why, day, approved){
   let to = Math.max(-100, Math.min(facRelCap(e), Math.round(+s || 0)));
   const st0 = facState(from), st1 = facState(to);
   if(!approved && FAC_STATE_RANK[st1] > FAC_STATE_RANK[st0] && FAC_STATE_RANK[st1] > FAC_STATE_RANK[facState(facRelCap(e))]){     // a stage its ceiling already puts them in (the Admiralty and the pirates, −60) needs no asking
-    const edge = (FAC_STATES.find(([, key])=>key===st1) || [])[0];     // held a point short of the stage
+    const next = Object.keys(FAC_STATE_RANK).find(key=>FAC_STATE_RANK[key]===FAC_STATE_RANK[st0] + 1), edge = (FAC_STATES.find(([, key])=>key===next) || [])[0];     // held a point short of the next stage down
     const Q = facStateAsks(), had = Q.find(q=>q.k===k), held = e.held && day - e.held < 7;
-    if(!held){ if(had){ had.to = Math.min(had.to, to); had.why = why || had.why; had.day = day; had.state = facState(had.to); } else Q.push({ k, a, b, to, state:st1, why:why || "", day, from }); }
-    to = Math.max(to, edge + 1); if(!held && !had) bgLog("factions", `${A.name} and ${facMid(B)} would sink to ${facStateLabel(edge).toLowerCase()} (${sgn(Math.round(+s || 0))}): waiting on your say${why ? `. ${why}` : ""}`, day);
+    if(!held && !had) Q.push({ k, a, b, to, state:st1, why:why || "", day, from });     // while it waits (or is held off), more ill will doesn't pile up (Joseph: no sudden jump when approved): the ask keeps the step that raised it
+    to = had || held ? Math.max(to, from) : Math.max(to, edge + 1); if(!held && !had) bgLog("factions", `${A.name} and ${facMid(B)} would sink to ${facStateLabel(edge).toLowerCase()} (${sgn(Math.round(+s || 0))}): waiting on your say${why ? `. ${why}` : ""}`, day);
     setTimeout(facStateAskShow, 0); }
   e.s = to;
   if(e.s!==from){ e.log = [...(e.log||[]), { day, from, to:e.s, why:why || "" }].slice(-30);
