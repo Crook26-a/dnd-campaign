@@ -19482,6 +19482,16 @@ function repRecord(o){
   else if(o.standout){ deed.also = r <= need ? o.standout : null; deed.pull = `d100 ${r} vs ${need}: ${deed.also ? `${repWho(o.standout)} named` : "no name on it"}`; }
   /* who knows (Joseph: "someone seeing the deed or the players telling the tale needs to be how stuff is added"):
      from the form (o.gate), seen by someone, told by the party, or spread anyway on the DM's say; nobody: it waits */
+  /* the faction it hurt or helped (Joseph, 2026-11-06: the party's deeds move how factions feel); they hear of it */
+  for(const k of ["against","helped"]) if(o[k] && factionById(o[k])){ deed[k] = o[k]; if(!deed.factions.includes(o[k])) deed.factions.push(o[k]); }
+  /* pinned on another faction (Joseph: "you can try and pin things on other factions"): their Deception total against a
+     DC by the deed's size (blank: a plain d20). It sticks: the stories are that faction's, never the party's, and the one
+     it hurt blames them. It doesn't: the deed is the party's as usual, and the faction they tried to frame knows it */
+  if(o.blame && factionById(o.blame) && o.blame!==deed.against){
+    const dc = DEED_FRAME_DC[deed.size] || 12, raw = String(o.blameRoll ?? "").trim(), auto = raw==="" || !isFinite(+raw), roll = auto ? rollD(20) : Math.round(+raw);
+    deed.blame = o.blame; deed.frame = { dc, roll, auto, stuck:roll >= dc };
+    if(deed.frame.stuck){ deed.framed = true; deed.factions = deed.factions.filter(id=>id!==o.blame); deed.seenBy = (o.seenBy || []).filter(s=>s && (s.id || s.name)); R.deeds.push(deed); facFramed(deed); saveParty(); return { deed, said:[] }; }
+  }
   const seen = (o.seenBy || []).filter(s=>s && (s.id || s.name));
   deed.seenBy = seen; if(o.told) deed.told = true; if(o.force) deed.forced = true;
   for(const s of seen){ const p = s.id && libNpcById(s.id); if(p && p.faction && !deed.factions.includes(p.faction)) deed.factions.push(p.faction); }     // a witness's own people hear it from them
@@ -19491,6 +19501,42 @@ function repRecord(o){
   if(o.gate && !seen.length && !o.told && !o.force){ deed.quiet = true;
     gameLog("rep", `Reputation: ${repDeedWords(deed)}. Nobody saw it and the party hasn't told it: it goes nowhere until they do (or you spread it)`); saveParty(); return { deed, said:[] }; }
   return repSpread(deed, R);
+}
+/* ── what a deed does to the factions (Joseph, 2026-11-06), once it's known. Its weight: local or minor 1, notable 2,
+   legendary 3.
+   - The one it hurt: the party's standing with them down by the weight. The one it helped: up by it.
+   - Notable or bigger, the others take sides: the hurt one's enemies (−2 or worse with them) warm to the party by 1,
+     its friends (+2 or better) cool by 1; the reverse round the one it helped.
+   - Between the factions: if it helped one at the other's cost, those two by 1 worse; notable or bigger, the hurt one
+     also blames the party's backers (anyone the party is trusted by), by 1.
+   - A frame that failed: the faction they tried to pin it on, down by the weight too.
+   - A frame that stuck: the party's standing doesn't move; the hurt one blames the framed one, by the weight, and the
+     one it helped thanks them, by 1. ── */
+const DEED_FRAME_DC = { local:10, minor:12, notable:15, legendary:20 };
+const deedWeight = d => ({ local:1, minor:1, notable:2, legendary:3 })[d.size] || 1;
+const deedWhy = d => d.text.length > 60 ? d.text.slice(0, 57) + "…" : d.text;
+function facDeedEffects(d){
+  const w = deedWeight(d), V = d.against && factionById(d.against), H = d.helped && factionById(d.helped), F = lib().factions || [], said = [];
+  const move = (f, by, why) => { if(!f || !by) return; setStanding(f, standingOf(f) + by, why); said.push(`${f.name} ${sgn(by)}`); };
+  if(V){ move(V, -w, `The party: ${deedWhy(d)}`);
+    if(w >= 2) for(const f of F){ if(f===V || f===H) continue; const r = facRelOf(V.id, f.id);
+      if(r <= -2) move(f, 1, `The party hurt ${facMid(V)}, their enemies`); else if(r >= 2) move(f, -1, `The party hurt ${facMid(V)}, their friends`); } }
+  if(H){ move(H, w, `The party: ${deedWhy(d)}`);
+    if(w >= 2) for(const f of F){ if(f===H || f===V) continue; const r = facRelOf(H.id, f.id);
+      if(r <= -2) move(f, -1, `The party helped ${facMid(H)}, their enemies`); else if(r >= 2) move(f, 1, `The party helped ${facMid(H)}, their friends`); } }
+  if(V && H) facRelSet(V.id, H.id, facRelOf(V.id, H.id) - 1, `The party helped ${facMid(H)} at their cost: ${deedWhy(d)}`);
+  if(V && w >= 2) for(const f of F) if(f!==V && f!==H && standingOf(f) >= 5) facRelSet(V.id, f.id, facRelOf(V.id, f.id) - 1, `They blame the party's friends, ${facMid(f)}, for it: ${deedWhy(d)}`);
+  const B = d.frame && !d.frame.stuck && factionById(d.blame);
+  if(B){ move(B, -w, `The party tried to pin it on them: ${deedWhy(d)}`); gameLog("rep", `Pinning it on ${facMid(B)} failed (Deception ${d.frame.roll}${d.frame.auto ? ", a plain d20" : ""} vs DC ${d.frame.dc}): it's the party's, and ${facMid(B)} know they tried`); }
+  return said;
+}
+function facFramed(d){
+  const w = deedWeight(d), V = d.against && factionById(d.against), H = d.helped && factionById(d.helped), B = factionById(d.blame);
+  const roll = `Deception ${d.frame.roll}${d.frame.auto ? ", a plain d20" : ""} vs DC ${d.frame.dc}`;
+  if(V) facRelSet(V.id, B.id, facRelOf(V.id, B.id) - w, `${V.name} blame ${facMid(B)}: ${deedWhy(d)} (the party's doing, pinned on them)`);
+  if(H) facRelSet(H.id, B.id, facRelOf(H.id, B.id) + 1, `${H.name} thank ${facMid(B)}: ${deedWhy(d)} (the party's doing, pinned on them)`);
+  gameLog("rep", `Pinned on ${facMid(B)} (${roll}): it stuck. ${d.text}: the stories are theirs, not the party's${V ? `, and ${facMid(V)} blame them` : ""}`);
+  flash(`It stuck: ${B.name} get the blame.`);
 }
 /* a deed into the tables: its place's, the factions it touched (and its witnesses'), the world's if legendary */
 function repSpread(deed, R){
@@ -19503,6 +19549,7 @@ function repSpread(deed, R){
   for(const fid of deed.factions){ const f = factionById(fid); if(f) put(s=>deed.size==="local" && deed.place ? `fac:${f.id}@${deed.place}` : repFacKey(f, s, deed.place), repFacDie(f), repTableLabel); }   // a local deed: only the branch in its town, never the faction's shared slots
   if(n===3) put(()=>"world", 100, repTableLabel);
   deed.writes = [...(deed.writes||[]), ...writes];
+  if(!deed.fx){ deed.fx = true; facDeedEffects(deed); }                    // known now: the factions' feelings move, once
   const how = deed.forced ? "spread on your say" : deed.told ? "the party told it" : (deed.seenBy||[]).length ? `seen by ${deed.seenBy.map(s=>s.name).join(", ")}` : "";
   gameLog("rep", `Reputation: ${repDeedWords(deed)}${deed.pull ? ` [${deed.pull}]` : ""}${how ? ` (${how})` : ""}. Written in: ${said.join("; ") || "nowhere (no place or faction picked)"}`);
   saveParty(); return { deed, said };
@@ -19559,7 +19606,11 @@ function repBlock(){
     <div class="pcrow"><div class="field" style="flex:1"><label>Fame or infamy</label><select id="rep-fame"><option value="fame">Fame</option><option value="infamy">Infamy</option></select></div>
       <div class="field" style="flex:1"><label>How big</label><select id="rep-size">${REP_SIZES.map(([k, l, w])=>`<option value="${k}" ${k==="minor"?"selected":""}>${l} (${w}×${w===3 ? ", the world too" : ""}; the other side ${REP_PULL[w]}%)</option>`).join("")}</select></div></div>
     <div class="field"><label>Where</label><select id="rep-place">${placeOpts(now)}</select></div>
-    ${F.length ? `<div class="field"><label>Factions it touched</label><div class="acttargets">${F.map(f=>`<label class="check" style="margin:0 8px 0 0"><input type="checkbox" class="rep-fac" value="${f.id}"> ${esc(f.name||"Faction")} <small>d${repFacDie(f)}</small></label>`).join("")}</div></div>` : ""}
+    ${F.length ? `<div class="field"><label>Factions it touched</label><div class="acttargets">${F.map(f=>`<label class="check" style="margin:0 8px 0 0"><input type="checkbox" class="rep-fac" value="${f.id}"> ${esc(f.name||"Faction")} <small>d${repFacDie(f)}</small></label>`).join("")}</div></div>
+    <div class="pcrow"><div class="field" style="flex:1" title="Their standing with the party drops by the deed's weight (1, 2 or 3), and their friends and enemies take sides"><label>It hurt</label><select id="rep-against">${factionOptions("", "No faction")}</select></div>
+      <div class="field" style="flex:1" title="Their standing with the party rises by the deed's weight"><label>It helped</label><select id="rep-helped">${factionOptions("", "No faction")}</select></div></div>
+    <div class="pcrow"><div class="field" style="flex:1" title="Make it look like another faction's doing"><label>Pin it on</label><select id="rep-blame">${factionOptions("", "Nobody: it's the party's")}</select></div>
+      <div class="field" style="flex:1" title="Against a DC by its size: local 10, minor 12, notable 15, legendary 20"><label>Their Deception total <small>blank: a plain d20</small></label><input id="rep-blameroll" type="number" min="1" max="40"></div></div>` : ""}
     ${(()=>{ const W = R.lastWitness && R.lastWitness.day===campaignDay() ? R.lastWitness : null, ppl = [...new Set([...repPeopleAt(now), ...((W && W.seen) || []).map(s=>s.id)])].map(libNpcById).filter(Boolean), pre = new Set(((W && W.seen) || []).map(s=>s.id));
       return `<div class="field"><label>Who knows <small>nobody saw it and nobody's told it: it goes nowhere yet</small></label>
         ${ppl.length ? `<div class="acttargets">${ppl.map(p=>`<label class="check" style="margin:0 8px 0 0"><input type="checkbox" class="rep-seen" value="${p.id}" ${pre.has(p.id)?"checked":""}> ${esc(p.name||"Someone")} saw it</label>`).join("")}</div>` : ""}
@@ -19610,7 +19661,8 @@ document.addEventListener("click", e=>{
     const seenBy = [...[...document.querySelectorAll(".rep-seen:checked")].map(x=>libNpcById(x.value)).filter(Boolean).map(p=>({ id:p.id, name:p.name })),
       ...v("#rep-others").split(/,\s*/).map(s=>s.trim()).filter(Boolean).map(name=>({ name }))];
     const r = repRecord({ text, who:v("#rep-who"), standout:v("#rep-out"), fame:v("#rep-fame"), size:v("#rep-size"), place:v("#rep-place"), factions:[...document.querySelectorAll(".rep-fac:checked")].map(x=>x.value),
-      seenBy, told:!!($("#rep-told")||{}).checked, force:!!($("#rep-force")||{}).checked, gate:true });
+      seenBy, told:!!($("#rep-told")||{}).checked, force:!!($("#rep-force")||{}).checked, gate:true, against:v("#rep-against"), helped:v("#rep-helped"), blame:v("#rep-blame"), blameRoll:v("#rep-blameroll") });
+    if(r.deed.framed){ renderPane(true); return; }
     flash(r.deed.quiet ? "Nobody knows yet: it's under Nobody knows yet until they tell it, or you spread it." : `Written in: ${r.said.join("; ") || "nowhere: pick a place or a faction"}${r.deed.pull ? ` (${r.deed.pull})` : ""}.`); }
   else if(a==="tell" || a==="force"){ const d = repOf().deeds.find(x=>x.id===b.dataset.d); if(d && d.quiet){ if(a==="tell") d.told = true; else d.forced = true; const r = repSpread(d); flash(`Written in: ${r.said.join("; ") || "nowhere"}.`); } }
   else if(a==="undo"){ const d = repUndo(); if(d){ gameLog("rep", `Reputation taken back: ${repDeedWords(d)}`); flash(`Taken back: ${d.text}`); } }
@@ -19884,8 +19936,9 @@ function fleetRoll(){
   /* the pirate's hideout: a port in the reefs if there is one (Kalatecha: Lantern Rock), else the one furthest from the rest */
   const lonely = pickOne(P.filter(p=>p.kind==="hideout").length ? P.filter(p=>p.kind==="hideout") : P.filter(p=>p.pirate).length ? P.filter(p=>p.pirate) : [null]) || P.find(p=>fleetReef(p.id)) || P.slice().sort((a, b)=>P.reduce((s, q)=>s + repMilesBetween(b, q), 0) - P.reduce((s, q)=>s + repMilesBetween(a, q), 0))[0];
   out.push(mk("pirate", "pirate", lonely));
-  for(const s of fleetOf()) fleetForget(s);                               // the old fleet's crews out of the Library
-  root.fleet = out; root.fday = D;
+  const kept = fleetOf().filter(s=>s.faction && factionById(s.faction));     // a faction's own ships stay: they're yours, not the roll's
+  for(const s of fleetOf()) if(!kept.includes(s)) fleetForget(s);          // the old fleet's crews out of the Library
+  root.fleet = [...out, ...kept]; root.fday = D;
   for(const s of out) fleetCrewRoll(s);                                   // and a crew for every ship that has rules for one
   for(const s of out) tradeCall(s, repNode(s.home), D);                   // and her first cargo, from her home port
   saveParty();
@@ -19898,7 +19951,13 @@ function fleetNext(s){
   const shunned = id => FLEET_HONEST.has(s.kind) && typeof troubleAt==="function" && ((troubleAt(id)||{}).kind==="plague" || (troubleAt(id)||{}).kind==="blockade");     // plague or a blockade: honest ships keep away
   if(s.mode==="route" && (s.route||[]).length > 1){ const i = s.route.indexOf(at), R = s.route; for(let j = 1; j < R.length; j++){ const to = R[(i + j) % R.length]; if(!shunned(to) || j===R.length - 1) return { to }; } }
   if(s.mode==="pirate"){
-    if(at===s.home || !at){ const busy = (repOf().lanes||[]).filter(l=>["dense","busy"].includes(trafficOf(l))), L = (busy.length ? busy : repOf().lanes||[]);
+    if(at===s.home || !at){ let busy = (repOf().lanes||[]).filter(l=>["dense","busy"].includes(trafficOf(l))), L = (busy.length ? busy : repOf().lanes||[]);
+      /* a pirate with waters of her own (Joseph, 2026-11-06: the Lost Hope crews, "occasional incursions to the Kalatecha
+         sea"): most voyages to the lanes nearest her home; now and then (s.raid.pct) a raid on a region's lanes */
+      const H = repNode(s.home), all = repOf().lanes||[];
+      if(s.raid && s.raid.region && rollD(100) <= (+s.raid.pct || 0)){ const R = all.filter(l=>[l.from, l.to].some(id=>(repNode(id)||{}).region===s.raid.region)); if(R.length){ L = R; s.raiding = true; } }
+      else if(s.faction && H && all.length){ s.raiding = false; const mid = l => { const a = repNode(l.from), b = repNode(l.to); return a && b ? Math.hypot((a.x + b.x)/2 - H.x, (a.y + b.y)/2 - H.y) : 1e12; };
+        L = all.slice().sort((p, q)=>mid(p) - mid(q)).slice(0, Math.max(4, Math.round(all.length / 8))); }
       if(!L.length) return null; const l = L[rollD(L.length) - 1], a = repNode(l.from), b = repNode(l.to); if(!a || !b) return null;
       const way = l.pts && l.pts.length > 2 ? l.pts : [a, b], mid = way[Math.floor(way.length / 2)], pre = way[Math.floor(way.length / 2) - 1] || mid;      // a spot on the lane itself, at sea
       return { lurk:{ x:(mid.x + pre.x) / 2, y:(mid.y + pre.y) / 2, on:l.id }, wait:1 + rollD(4) }; }
@@ -19963,6 +20022,8 @@ function fleetPortCall(s, port, day, moved){
 /* the days since: every ship's departures and arrivals in turn */
 function fleetCatchUp(){
   if(typeof root==="undefined" || !root || !Array.isArray(root.fleet) || !root.fleet.length || location.hash==="#player") return null;
+  /* a ship put in from a save with no crew yet (s.needCrew): her crew rolled, and a pirate's plunder */
+  for(const s of root.fleet) if(s.needCrew){ delete s.needCrew; if(!(s.crew||[]).length) fleetCrewRoll(s); if(s.kind==="pirate" && !Object.keys(s.cargo||{}).length) fleetPlunder(s); }
   const now = campaignDay(); if(root.fday==null || now < root.fday){ root.fday = now; return null; } if(now===root.fday) return null;
   const moved = [], said = [];
   for(const s of root.fleet){
@@ -20422,6 +20483,8 @@ function cargoHere(n){
     ${Object.keys(C).length ? Object.entries(C).map(([g, c])=>`<div class="pcrow" style="align-items:center;margin:2px 0"><span style="flex:1">${c.n} ${esc(tradeGoodName(g).toLowerCase())} <small>(about ${Math.round(c.n * tradeBase(g))} gp)</small></span>
       <input type="number" min="1" max="${c.n}" value="${Math.max(1, Math.min(c.n, room))}" data-seizeqty="${g}" style="width:3.5em"><button class="btn small" data-seize="${g}" data-ship="${s.id}" title="Into the party's hold, as stolen goods">Seize</button></div>`).join("") : `<p class="empty-note">Her hold is empty.</p>`}
     ${items.length || (s.magicNote||[]).length ? `<p class="empty-note" style="font-size:11px;margin:4px 0">Hidden in her hold (Search, DC 15), ${fleetSizeOf(s)==="large" ? "in the cargo hold off steerage" : "under the hatch"}: ${[...items.map(x=>`${esc(x.name)} <small>(${esc(x.rarity)})</small>`), ...(s.magicNote||[]).map(esc)].join(", ")}. Found and taken like anything else.</p>` : ""}
+    ${(PIRACY_VICTIM(s) || s.faction) && (lib().factions||[]).length && s.piracyAt!==(s.met || campaignDay()) ? `<div class="pcrow" style="align-items:flex-end;margin:4px 0 0"><div class="field" style="flex:1" title="Fly false colours: make it look like another faction's doing"><label>Pin it on</label><select data-seizepin="${s.id}">${factionOptions("", "Nobody: it's the party's")}</select></div>
+      <div class="field" style="flex:1" title="A notable deed: DC 15"><label>Their Deception total <small>blank: a plain d20</small></label><input type="number" data-seizeroll="${s.id}" min="1" max="40"></div></div>` : ""}
     <p class="empty-note" style="font-size:11px;margin:0">The party's hold has room for ${room} more load${room===1?"":"s"}.${s.kind==="pirate" ? ` A pirate's plunder: the navy's prize office pays ${stolenRules().prize}% for it.` : " Taking it is piracy: risky to sell, and to be caught holding."}
       ${PIRACY_VICTIM(s) ? (s.piracyAt===(s.met || campaignDay()) ? " Piracy recorded for this encounter." : (S=>` Left to tell of it if they take it: ${S.seen.length ? `${S.seen.length} (${S.fought ? "after the fight" : "nobody's fought, so everyone aboard"})` : "nobody"}: ${S.seen.length ? "a notable deed of piracy" : "no deed"}.`)(piracySurvivors(s, repPlaceOf(n)))) : ""}</p>`;
 }
@@ -20432,7 +20495,8 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   const how = s.kind==="pirate" ? "pirate" : "piracy", k = g + "|" + how + "|" + s.id, h = T.hold[k] || { g, n:0, paid:0, stolen:how, from:s.name };
   h.n += n; T.hold[k] = h; c.n -= n; if(c.n <= 0) delete s.cargo[g];
   gameLog("note", `Cargo seized from ${s.name}: ${n} ${tradeGoodName(g).toLowerCase()}${how==="pirate" ? " (a pirate's plunder: the navy's prize office pays for it)" : " (stolen: risky to sell, and to be caught holding)"}`);
-  if(PIRACY_VICTIM(s)) piracyDeed(s, repPlaceOf(sel && sel.kind==="node" ? nodeById(sel.id) : null) || "fv_" + s.id);
+  if(PIRACY_VICTIM(s) || (s.faction && factionById(s.faction))) piracyDeed(s, repPlaceOf(sel && sel.kind==="node" ? nodeById(sel.id) : null) || "fv_" + s.id,
+    { blame:(document.querySelector(`[data-seizepin="${s.id}"]`) || {}).value || "", roll:(document.querySelector(`[data-seizeroll="${s.id}"]`) || {}).value || "" });
   saveParty(); renderPane(true); flash(`${n} ${tradeGoodName(g).toLowerCase()} into the party's hold.`); });
 /* piracy (Joseph, 2026-11-04): seizing an honest ship's cargo is a deed if they leave survivors. Who's left to tell:
    after a fight aboard her, its survivors and witnesses and anyone on her other decks who wasn't in it; with no fight,
@@ -20445,12 +20509,15 @@ function piracySurvivors(s, key){
     return { fought:true, seen:[...W.seen, ...others.map(id=>({ id, name:name(id) })), ...(W.names||[]).map(nm=>({ name:nm }))] }; }
   return { fought:false, seen:[s.captain, ...(s.crew||[]), ...(s.pass||[])].filter(id=>id && libNpcById(id)).map(id=>({ id, name:name(id) })) };
 }
-function piracyDeed(s, key){
+function piracyDeed(s, key, pin){
   const enc = s.met || campaignDay(); if(s.piracyAt===enc) return; s.piracyAt = enc;
-  const S = piracySurvivors(s, key), f = tradeNavy(), port = s.leg ? s.leg.to : s.at || s.home;
-  if(!S.seen.length){ gameLog("rep", `Piracy: the party took ${s.name}'s cargo and left no survivors. Nobody will tell of it unless the party does.`); return; }
-  repRecord({ text:`Piracy: seized the cargo of ${s.name}`, who:"party", fame:"infamy", size:"notable", place:port || null, factions:f ? [f.id] : [], seenBy:S.seen, force:true });
-  flash(`Piracy recorded: ${S.seen.length} left alive to tell of it.`);
+  const S = piracySurvivors(s, key), f = tradeNavy(), port = s.leg ? s.leg.to : s.at || s.home, fac = s.faction && factionById(s.faction) ? s.faction : "", honest = PIRACY_VICTIM(s);
+  if(!S.seen.length){ gameLog("rep", `${honest ? "Piracy: the" : "The"} party took ${s.name}'s cargo and left no survivors. Nobody will tell of it unless the party does.`); return; }
+  const blame = pin && pin.blame && pin.blame!==fac ? pin.blame : "";
+  /* an honest ship's cargo: piracy, the navy hears of it; a faction's own ship (a pirate's, say): a blow against that faction */
+  const r = honest ? repRecord({ text:`Piracy: seized the cargo of ${s.name}`, who:"party", fame:"infamy", size:"notable", place:port || null, factions:f ? [f.id] : [], seenBy:S.seen, force:true, against:fac, blame, blameRoll:pin && pin.roll })
+    : repRecord({ text:`Took the plunder of ${s.name}, a ship of ${facMid(factionById(fac))}`, who:"party", fame:"fame", size:"notable", place:port || null, factions:[], seenBy:S.seen, force:true, against:fac, blame, blameRoll:pin && pin.roll });
+  if(!r.deed.framed) flash(`${honest ? "Piracy recorded" : "Recorded"}: ${S.seen.length} left alive to tell of it.`);
 }
 /* caught: everything named confiscated, a fine of its value from whoever pays, −3 with the navy, a notable deed */
 function tradeCaught(place, keys, doing, roll){
@@ -20527,6 +20594,7 @@ function fleetCrewRoll(s, n){
   for(const [k, c, lv] of list) ids.push(one(k, c, lv));
   s.crew = ids;
   s.pass = []; for(const [fare, k, many] of FLEET_PASS[s.kind] || []) for(let i = 0; i < many; i++){ const pid = one(k, null, 1), p = libNpcById(pid); p.fare = fare; s.pass.push(pid); }
+  if(s.faction && factionById(s.faction)) for(const id of [s.captain, ...ids]){ const p = libNpcById(id); if(p) p.faction = s.faction; }     // a faction's ship: her captain and crew are its people
   saveParty(); return ids.length + 1 + s.pass.length;
 }
 /* a ship's decks, each its own room in her plan, joined like Ashgrave's rooms (Joseph, 2026-11-05: "drag a player on
@@ -20680,6 +20748,7 @@ function fleetBlock(){
     ${F.map(s=>`<div class="facfx${fleetFocus===s.id ? " fleetfocus" : ""}" id="fleetrow-${s.id}" style="margin:4px 0"><div class="pcrow" style="align-items:center;margin:0"><input type="text" data-fleetname="${s.id}" value="${esc(s.name)}" style="flex:1;min-width:0">
         <small>${esc((FLEET_KINDS[s.kind]||FLEET_KINDS.merchant)[0])} · ${s.mode==="route" ? "set route" : s.mode==="pirate" ? "her own" : "goes where she likes"}</small><button class="fdel" data-fleetact="del" data-id="${s.id}" title="Gone">×</button></div>
       <div class="sbl"><small>Home</small> <select data-fleethome="${s.id}">${portOpts(s.home)}</select> · ${esc(where(s))}${s.met ? ` · <i>met the party on day ${s.met}</i>` : ""}</div>
+      <div class="sbl"><small>Sails for</small> <select data-fleetfac="${s.id}">${factionOptions(s.faction || "", "No faction")}</select>${s.mode==="pirate" ? ` · <small>raids</small> <select data-fleetraid="${s.id}"><option value="">nowhere in particular</option>${(root.regions||[]).map(r=>`<option value="${r.id}" ${s.raid && s.raid.region===r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select>${s.raid && s.raid.region ? ` <input type="number" min="0" max="100" data-fleetraidpct="${s.id}" value="${+s.raid.pct || 0}" style="width:3.6em" title="The chance each time she puts to sea"><small>% of voyages</small>${s.raiding && s.leg && s.leg.lurk ? " · <i>raiding now</i>" : ""}` : ""}` : ""}</div>
       ${s.mode!=="pirate" ? `<div class="sbl"><small>Sails</small> <select data-fleetmode="${s.id}"><option value="route" ${s.mode==="route" ? "selected" : ""}>A set route</option><option value="wander" ${s.mode!=="route" ? "selected" : ""}>Where she likes</option></select></div>` : ""}
       ${s.mode==="route" ? fleetRouteEditor(s, portOpts) : ""}
       ${(s.carry||[]).length ? `<div class="sbl"><small>Her crew has heard:</small> ${(s.carry||[]).map(e=>esc(repEntryWords(e, repOf().deeds.find(x=>x.id===e.d)))).join(" · ")}</div>` : ""}
@@ -21071,7 +21140,11 @@ document.addEventListener("click", e=>{ const b = e.target.closest && e.target.c
   renderPane(true); render(); });
 document.addEventListener("change", e=>{ const t = e.target; if(!t.dataset) return;
   if(t.dataset.fleetname){ const s = fleetOf().find(x=>x.id===t.dataset.fleetname); if(s){ s.name = t.value.trim() || s.name; saveParty(); render(); } }
-  else if(t.dataset.fleethome){ const s = fleetOf().find(x=>x.id===t.dataset.fleethome); if(s){ s.home = t.value; saveParty(); } } });
+  else if(t.dataset.fleethome){ const s = fleetOf().find(x=>x.id===t.dataset.fleethome); if(s){ s.home = t.value; saveParty(); } }
+  else if(t.dataset.fleetfac){ const s = fleetOf().find(x=>x.id===t.dataset.fleetfac); if(s){ if(t.value) s.faction = t.value; else delete s.faction;
+    for(const id of [s.captain, ...(s.crew||[])]){ const p = libNpcById(id); if(p){ if(s.faction) p.faction = s.faction; else if(p.faction) delete p.faction; } } saveParty(); renderNamedPane("background"); } }
+  else if(t.dataset.fleetraid){ const s = fleetOf().find(x=>x.id===t.dataset.fleetraid); if(s){ if(t.value) s.raid = { region:t.value, pct:(s.raid && s.raid.pct) || 20 }; else delete s.raid; saveParty(); renderNamedPane("background"); } }
+  else if(t.dataset.fleetraidpct){ const s = fleetOf().find(x=>x.id===t.dataset.fleetraidpct); if(s && s.raid){ s.raid.pct = Math.max(0, Math.min(100, Math.round(+t.value || 0))); saveParty(); } } });
 document.body.insertAdjacentHTML("beforeend", `<div id="fleetPop" hidden style="position:fixed;right:16px;bottom:16px;z-index:65;max-width:min(420px, 92vw);background:var(--paper-lit);border:1.5px solid var(--lead);border-radius:4px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.25)"></div>`);
 /* where a story is known: the places whose tables have it, and their regions */
 function repKnownIn(did){
