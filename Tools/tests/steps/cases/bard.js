@@ -53,6 +53,12 @@ step("Countercharm (7): Bram fails a save against Charm Person (2 typed); Lyra's
   delete c.reacted[L.id]; p.level = 6; const six = await save(["2"]); p.level = 5;
   return `${seven} | asked: "${asked.slice(0, 80)}" | Lyra's Reaction used ${reacted} || level 6: ${six}`;
 });
+step("Superior Inspiration (18): her initiative going in brings Bardic Inspiration back up to two (from 0); not when she has two; not at level 17", async () => {
+  const c = bdFight(), L = bdWho("Lyra"), p = pcState(L.p), box = () => document.querySelector(`.init-in[data-bid="${L.id}"]`);
+  const go = async (lv, used, v) => { p.level = lv; pcState(p); biRes(p).used = used; renderBattlePanel(); await wait(20); box().value = v; box().onchange(); await wait(20); return `${biLeft(pcState(L.p))} of ${biRes(pcState(L.p)).max}`; };
+  bdAsk([]); const a = await go(18, 3, "12"), line = bdLast(), b = await go(18, 1, "13"), d = await go(17, 3, "14"); p.level = 5; pcState(p);
+  return `from 0: ${a} ("${line}") | from 2: ${b} | level 17 from 0: ${d}`;
+});
 step("Jack of All Trades: Lyra (Bard 5, PB 3) adds 1 to a skill not on her sheet; Bram (a Fighter) doesn't", async () => {
   const L = pcState(bdWho("Lyra").p), B = pcState(bdWho("Bram").p);
   return `Lyra: Stealth ${skillMod(L, "Stealth")} (Dex +2), Athletics ${skillMod(L, "Athletics")} (Str −1) | Bram: Stealth ${skillMod(B, "Stealth")} (Dex +1), Athletics ${skillMod(B, "Athletics")} (on his sheet)`;
