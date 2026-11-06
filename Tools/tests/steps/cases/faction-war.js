@@ -62,6 +62,18 @@ step("hunting at −60, war at −80, extermination at −95: the share of voyag
   facRelSet("fw_i", "fw_j", -45, "set"); facRelAll()["fw_i|fw_j"].cap = -40; facRelSet("fw_i", "fw_j", 10, "a gift"); const capped = facRelOf("fw_i", "fw_j");
   return `${out.join(", ")} | twelve weeks from −70 with 12 of the isles' dead: now ${sgn(facRelOf("fw_i", "fw_t"))}: ${cools.join(" || ")} | isles pair, ceiling −40, a +55 gift: ${capped} | page errors ${__KIT.errors.length}`;
 });
+step("a pair sinking into a worse stage waits on the DM: the pop-up, held off, then approved; a ceiling's own stage unasked", async () => {
+  const e = facRelAll()["fw_i|fw_t"]; e.cap = 100; e.s = -55; delete e.held; worldOf().stateAsk = []; const d = campaignDay();
+  facRelSet("fw_i", "fw_t", -66, "A fight at sea", d); await wait(20);
+  const el = document.getElementById("stateAsk"), shown = el && !el.hidden ? el.innerText.replace(/\s+/g, " ").slice(0, 170) : "not shown", held1 = facRelOf("fw_i", "fw_t");
+  el.querySelector('[data-stateask="no"]').click(); await wait(20);
+  facRelSet("fw_i", "fw_t", -70, "Another fight", d); const afterHold = `${facRelOf("fw_i", "fw_t")}, asks ${facStateAsks().length}, pop-up ${el.hidden ? "gone" : "up"}`;
+  delete e.held; facRelSet("fw_i", "fw_t", -72, "A third fight", d + 8); await wait(20); el.querySelector('[data-stateask="yes"]').click(); await wait(20);
+  const approved = `${facRelOf("fw_i", "fw_t")} (${facStateLabel(facRelOf("fw_i", "fw_t"))})`;
+  facRelSet("fw_i", "fw_j", -50, "set", d); facRelAll()["fw_i|fw_j"].cap = -60; facRelSet("fw_i", "fw_j", -60, "The navy's line", d); const capped = `${facRelOf("fw_i", "fw_j")}, asks ${facStateAsks().length}`;
+  facRelAll()["fw_i|fw_j"].cap = -40; facRelAll()["fw_i|fw_j"].s = -45;
+  return `asked: "${shown}" | held a point short: ${held1} | held off, then pushed again that week: ${afterHold} | a week on, approved: ${approved} | a ceiling of −60: ${capped} | page errors ${__KIT.errors.length}`;
+});
 step("ninety days with it all running: what happened at sea", async () => {
   facRelAll()["fw_i|fw_t"].s = -65; worldOf().day = campaignDay(); root.fday = campaignDay(); const n0 = bgLogList().length;
   const dn = document.getElementById("dayNum"); dn.value = String(campaignDay() + 90); dn.dispatchEvent(new Event("change")); await wait(80);

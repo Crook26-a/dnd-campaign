@@ -3332,6 +3332,7 @@ function syncTimeBar(){ if(typeof root!=="undefined" && root && typeof dawnRecha
   if(typeof syncWeather==="function") try{ syncWeather(); }catch(err){}
   /* the ships catch up, and the chart and the panel show where they are now (Joseph: "I don't see that happening") */
   if(typeof worldCatchUp==="function") try{ worldCatchUp(); }catch(err){}          // world news, troubles, the guilds' weekly boards (before the ships sail, so they see the troubles)
+  if(typeof facStateAskShow==="function" && root && root.world && (root.world.stateAsk||[]).length) setTimeout(()=>{ try{ facStateAskShow(); }catch(err){} }, 0);     // a stage between factions waiting on the DM
   if(typeof fleetCatchUp==="function") try{ const r = fleetCatchUp(), t = Array.isArray(root.fleet) && root.fleet.length ? fleetT() : null;
     if(t!=null && t!==fleetDrawnAt){ fleetDrawnAt = t;
       setTimeout(()=>{ if(!battleOf) render(); renderPane(true);
@@ -21440,15 +21441,46 @@ const facRelOf = (a, b) => (facRelAll()[facRelKey(a, b)] || {}).s || 0;
 const facRelCap = e => e && typeof e.cap==="number" ? e.cap : 100;
 const facMid = f => String((f && f.name) || "a faction").replace(/^The /, "the ");      // "the Scarlet Fleet", mid-sentence
 const facRelPairs = () => Object.entries(facRelAll()).map(([k, e])=>({ k, e, ids:k.split("|") })).filter(p=>p.ids.length===2 && p.ids.every(id=>factionById(id)));
-function facRelSet(a, b, s, why, day){
+/* a pair sinking into a worse stage waits on the DM (Joseph, 2026-11-06: "asked to approve a shift in states between
+   factions before they move into those stages … a little pop up"): held just short of it, and asked */
+const FAC_STATE_RANK = { "":0, hunt:1, war:2, extermination:3 };
+const facStateAsks = () => { const W = worldOf(); W.stateAsk = Array.isArray(W.stateAsk) ? W.stateAsk : []; return W.stateAsk; };
+function facRelSet(a, b, s, why, day, approved){
   const A = factionById(a), B = factionById(b); if(!A || !B || a===b) return null;
-  const R = facRelAll(), k = facRelKey(a, b), e = R[k] = R[k] || { s:0, log:[] }, from = e.s || 0; e.s = Math.max(-100, Math.min(facRelCap(e), Math.round(+s || 0)));
+  const R = facRelAll(), k = facRelKey(a, b), e = R[k] = R[k] || { s:0, log:[] }, from = e.s || 0;
   day = day==null ? campaignDay() : day;
+  let to = Math.max(-100, Math.min(facRelCap(e), Math.round(+s || 0)));
+  const st0 = facState(from), st1 = facState(to);
+  if(!approved && FAC_STATE_RANK[st1] > FAC_STATE_RANK[st0] && FAC_STATE_RANK[st1] > FAC_STATE_RANK[facState(facRelCap(e))]){     // a stage its ceiling already puts them in (the Admiralty and the pirates, −60) needs no asking
+    const edge = (FAC_STATES.find(([, key])=>key===st1) || [])[0];     // held a point short of the stage
+    const Q = facStateAsks(), had = Q.find(q=>q.k===k), held = e.held && day - e.held < 7;
+    if(!held){ if(had){ had.to = Math.min(had.to, to); had.why = why || had.why; had.day = day; had.state = facState(had.to); } else Q.push({ k, a, b, to, state:st1, why:why || "", day, from }); }
+    to = Math.max(to, edge + 1); if(!held && !had) bgLog("factions", `${A.name} and ${facMid(B)} would sink to ${facStateLabel(edge).toLowerCase()} (${sgn(Math.round(+s || 0))}): waiting on your say${why ? `. ${why}` : ""}`, day);
+    setTimeout(facStateAskShow, 0); }
+  e.s = to;
   if(e.s!==from){ e.log = [...(e.log||[]), { day, from, to:e.s, why:why || "" }].slice(-30);
     const t0 = facTier(from), t1 = facTier(e.s), s0 = facState(from), s1 = facState(e.s);
     bgLog("factions", `${A.name} and ${facMid(B)}: ${sgn(from)} → ${sgn(e.s)}${s0!==s1 ? `: ${s1 ? facStateLabel(e.s).toLowerCase() + " now" : "the fighting is over"}` : t0!==t1 ? `, ${t1.label.toLowerCase()} now` : ""}${why ? `. ${why}` : ""}`, day); }
   saveParty(); return e;
 }
+/* the little pop-up: the first stage waiting on you, approve it or hold them off (a week before it can ask again) */
+function facStateAskShow(){
+  if(typeof root==="undefined" || !root || location.hash==="#player") return;
+  let el = document.getElementById("stateAsk");
+  if(!el){ document.body.insertAdjacentHTML("beforeend", `<div id="stateAsk" hidden style="position:fixed;left:16px;bottom:16px;z-index:66;max-width:min(380px, 92vw);background:var(--paper-lit);border:1.5px solid var(--lead);border-radius:4px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.25)"></div>`); el = document.getElementById("stateAsk"); }
+  const Q = facStateAsks().filter(q=>factionById(q.a) && factionById(q.b)), q = Q[0]; if(!q){ el.hidden = true; return; }
+  const A = factionById(q.a), B = factionById(q.b), e = facRelAll()[q.k] || {};
+  el.innerHTML = `<p class="eyebrow" style="margin:0 0 4px">Between the factions <small>${Q.length > 1 ? `${Q.length} waiting on you` : "waiting on you"}</small></p>
+    <p style="margin:0 0 4px"><b>${esc(A.name)}</b> and <b>${esc(facMid(B))}</b> would go to <b style="color:var(--lead)">${esc(facStateLabel(q.to))}</b>: ${sgn(e.s || 0)} → ${sgn(q.to)}.</p>
+    ${q.why ? `<p class="empty-note" style="font-size:11.5px;margin:0 0 6px">Day ${q.day}: ${esc(q.why)}</p>` : ""}
+    <p class="empty-note" style="font-size:11px;margin:0 0 6px">${q.state==="hunt" ? "Hunting: a quarter of their pirates' voyages go after each other, and any meeting is a fight." : q.state==="war" ? "Open war: half their pirates' voyages go after each other." : "Extermination: their pirates go after nothing else."}</p>
+    <div class="pcrow"><button class="btn" data-stateask="yes" style="flex:1">Approve</button><button class="btn" data-stateask="no" style="flex:1" title="They stay just short of it; not asked again for a week">Hold them off</button></div>`;
+  el.hidden = false;
+}
+document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-stateask]"); if(!b) return; const Q = facStateAsks(), q = Q.shift(); if(!q){ facStateAskShow(); return; }
+  if(b.dataset.stateask==="yes") facRelSet(q.a, q.b, q.to, `${q.why ? q.why + ". " : ""}Approved by you`, campaignDay(), true);
+  else { const en = facRelAll()[q.k]; if(en) en.held = campaignDay(); bgLog("factions", `${factionById(q.a).name} and ${facMid(factionById(q.b))} held short of ${facStateLabel(q.to).toLowerCase()}, on your say`); }
+  saveParty(); facStateAskShow(); if(document.getElementById("pane-background")) renderNamedPane("background"); });
 const FAC_INCIDENTS = [
   [-5, "{A} took a prize {B} had claimed"], [-5, "{A} called in a debt {B} couldn't pay"], [-10, "blood was spilled between {A} and {B} at {P}"],
   [-5, "{A} insulted the leaders of {B} in front of everyone"], [-10, "{A} were caught spying on {B}"], [-5, "{A} poached crews from {B} with better shares"],
