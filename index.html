@@ -16465,7 +16465,7 @@ function logAction(n, c){
   /* Power Word Heal and Power Word Kill: one target; a level 20 Bard (Words of Creation) a second within 10 ft of the first */
   if(info.spell && /^power word (heal|kill)$/i.test(info.spell.name || "") && targets.length > 1){
     const wc = actor.kind==="pc" && actor.p && bardLevel(actor.p) >= 20, [a, b2] = targets, near = c.pos && c.pos[a.id] && c.pos[b2.id] ? chebSq(c.pos[a.id], c.pos[b2.id]) * 5 <= 10 : true;
-    const why = !wc ? `${info.spell.name} has one target (a level 20 Bard's Words of Creation adds a second)` : targets.length > 2 ? "Words of Creation adds only one more target" : !near ? `the second target has to be within 10 feet of ${a.label}` : "";
+    const why = !wc ? `${info.spell.name} has one target (a level 20 Bard's Words of Creation adds a second)` : targets.length > 2 ? "Words of Creation adds only one more target" : !near ? `The second target has to be within 10 feet of ${a.label}` : "";
     if(why && !confirm(`${why}. Log it anyway?`)) return; }
   /* Cleave's extra attack: at a second creature within 5 feet of the first */
   if(act.cleaveOf){ const first = combatants(c).find(x => x.id===act.cleaveOf), bad = targets.filter(o => o.id===act.cleaveOf || (first && c.pos && c.pos[o.id] && c.pos[first.id] && chebSq(c.pos[o.id], c.pos[first.id]) > 1));

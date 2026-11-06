@@ -59,6 +59,14 @@ step("Superior Inspiration (18): her initiative going in brings Bardic Inspirati
   bdAsk([]); const a = await go(18, 3, "12"), line = bdLast(), b = await go(18, 1, "13"), d = await go(17, 3, "14"); p.level = 5; pcState(p);
   return `from 0: ${a} ("${line}") | from 2: ${b} | level 17 from 0: ${d}`;
 });
+step("Words of Creation (20): Power Word Heal on Bram and a second within 10 ft logs without asking; at level 19, or 15 ft apart, it asks", async () => {
+  const c = bdFight(), L = bdWho("Lyra"), B = bdWho("Bram"), F = bdWho("Cultist"), p = pcState(L.p); p.slots[9] = { max: 1, used: 0 };
+  c.pos[B.id] = { ...c.pos[B.id], x: 5, y: 4 }; c.pos[F.id] = { ...c.pos[F.id], x: 6, y: 4 };
+  const cast = async (lv) => { p.level = lv; c.round++; await bdTurn(L); act.what = "sp:spell:power-word-heal"; act.lvl = 9; act.targets = [B.id, F.id]; act.outcome = "none"; act.heal = "1"; renderBattlePanel(); await wait(20);
+    bdAsk([false]); const n0 = c.log.length; $("#ac-go").click(); await wait(30); return `logged ${c.log.length !== n0}${bdAsked[0] ? `, asked "${bdAsked[0].slice(0, 90)}"` : ""}`; };
+  const twenty = await cast(20); c.pos[F.id] = { ...c.pos[F.id], x: 8, y: 4 }; const far = await cast(20); c.pos[F.id] = { ...c.pos[F.id], x: 6, y: 4 }; const nineteen = await cast(19); p.level = 5;
+  return `20, 5 ft apart: ${twenty} || 15 ft apart: ${far} || level 19: ${nineteen}`;
+});
 step("Jack of All Trades: Lyra (Bard 5, PB 3) adds 1 to a skill not on her sheet; Bram (a Fighter) doesn't", async () => {
   const L = pcState(bdWho("Lyra").p), B = pcState(bdWho("Bram").p);
   return `Lyra: Stealth ${skillMod(L, "Stealth")} (Dex +2), Athletics ${skillMod(L, "Athletics")} (Str −1) | Bram: Stealth ${skillMod(B, "Stealth")} (Dex +1), Athletics ${skillMod(B, "Athletics")} (on his sheet)`;
