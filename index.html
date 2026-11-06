@@ -20996,8 +20996,12 @@ var bgFilter = "", bgShow = 150, bgFirst = true;
 function bgLogBlock(){
   const L = bgLogList().map((e, i)=>({ ...e, i })).filter(e=>!bgFilter || e.kind===bgFilter).sort((a, b)=>b.day - a.day || b.i - a.i), shown = L.slice(0, bgShow);
   let day = null, rows = "";
+  /* a ship's name, wherever it comes up, opens her card over the log (Joseph, 2026-11-06: "without kicking me out of the log") */
+  const ships = fleetOf().filter(s=>s.name), byName = new Map(ships.map(s=>[esc(s.name), s.id]));
+  const shipRe = ships.length ? new RegExp([...byName.keys()].sort((a, b)=>b.length - a.length).map(n=>n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g") : null;
+  const linked = t => shipRe ? esc(t).replace(shipRe, m=>`<span class="libref" data-laneship="${byName.get(m)}" title="Her card">${m}</span>`) : esc(t);
   for(const e of shown){ if(e.day!==day){ day = e.day; rows += `<div class="glsess">Day ${e.day}</div>`; }
-    rows += `<div class="glrow"><span class="glk">${esc(BGLOG_KIND[e.kind] || e.kind)}</span><span class="gltx">${esc(e.text)}</span></div>`; }
+    rows += `<div class="glrow"><span class="glk">${esc(BGLOG_KIND[e.kind] || e.kind)}</span><span class="gltx">${linked(e.text)}</span></div>`; }
   return `<details class="partysec" data-invfor="bg:log" ${openInv.has("bg:log") ? "open" : ""}><summary class="eyebrow">The log <small>${bgLogList().length} entr${bgLogList().length===1?"y":"ies"} · only you see this</small></summary>
     <div class="pcrow" style="align-items:center"><select id="bg-filter" style="flex:1"><option value="">Everything</option>${Object.entries(BGLOG_KIND).map(([k, l])=>`<option value="${k}" ${bgFilter===k?"selected":""}>${l}</option>`).join("")}</select></div>
     ${rows || `<p class="empty-note" style="font-size:11px;margin:4px 0">Nothing yet. It fills in as the days go by: ships sailing and trading, gossip on the roads and the seas.</p>`}

@@ -1,0 +1,1 @@
+1. a ship's name in the log: her card opens, the log stays: 54 ship names linked in the log; e.g. "SHIPS The Merry Albatross sails from Lantern Rock to lie in wait on the lanes (127 mi, arr" | clicked: "The Merry Albatross, pirate out of Lantern Rock (medium (a ship)) heading out to" | still on the log: true
