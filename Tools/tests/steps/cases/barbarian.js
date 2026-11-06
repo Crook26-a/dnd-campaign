@@ -41,6 +41,11 @@ step("Reckless Attack: the tick on Korg's first Greataxe attack gives Advantage;
   c.round++; await bbTurn(K); const lapsed = reckOn(c, K);
   return `tick ${tick} | ${said.replace(/^To hit: /, "").slice(0, 120)} | ${second} | Fanatic on Korg: ${vs} | Wren's tick ${wren} | next turn reckless ${lapsed}`;
 });
+step("Danger Sense: Advantage on Korg's Dexterity saves, asked of his player as one d20 with Advantage; none while Stunned; Wren none", async () => {
+  const c = bbFight(), K = bbWho("Korg"), W = bbWho("Wren"); const a = saveModeT(c, K, "dex"); bbAsk([""]); const Q = saveD(K, "Dexterity", "a Dexterity save against DC 13");
+  const asked = bbAsked[0] || "not asked"; pcState(K.p).conds.push("Stunned"); const s = saveModeT(c, K, "dex"); pcState(K.p).conds = pcState(K.p).conds.filter(k => k !== "Stunned");
+  return `Korg: ${JSON.stringify(a)} | rolled for him: d20 ${Q.d >= 1 && Q.d <= 20 ? "ok" : Q.d}${Q.w.replace(/\d+ and \d+/, "x and y")} | asked: ${asked} | Stunned: adv ${s.adv} | Wren: adv ${saveModeT(c, W, "dex").adv}`;
+});
 step("Rage ends at the end of Korg's turn when he didn't keep it up; an attack keeps it; Undo of the Rage takes it back", async () => {
   const c = bbFight(), K = bbWho("Korg"), F = bbWho("Cultist"), used = () => pcState(K.p).res.find(x => x.name === "Rage").used;
   c.round++; await bbTurn(K); turnEnds(c); const ended = `${pcState(K.p).rage ? "still raging" : "ended"}: ${bbLast()}`;
