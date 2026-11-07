@@ -157,7 +157,7 @@ A lonely island whose lighthouse has shone every night for as long as anyone rem
 ### Scenes
 
 - **The false light.** Night falls as the ship nears the reef, and the lighthouse blazes to life. The navigator must trust the stars over the light; following it runs the ship onto the rocks. Failure means a scraped hull and a rough landing, not disaster.
-- **The ship graveyard.** A lagoon full of wrecks to search for loot and clues. A giant octopus lives in the biggest one. A young stowaway who survived a wreck is hiding here and tells the crew about the wreckers.
+- **The ship graveyard.** A lagoon full of wrecks to search for loot and clues. Three of the queen's wreckers are stripping the biggest one. A young stowaway who survived a wreck is hiding here and tells the crew about the wreckers.
 - **Wreckers' Cove.** The pirates' camp sits in sea caves below the cliffs, with sailors from the lost ships held for ransom. The crew can sneak in, bluff, or fight.
 - **The lighthouse.** A spiral stair climbs the cliff tower. At the top, Raven Heartgrove and the rival are haggling over the caged firebird. Big swashbuckling fight on the stairs and in the lantern room: swinging from the great lamp's chains and knocking pirates off the gallery into the sea.
 - **The choice.** The firebird can be freed or sold. The Guild would pay a fortune for it. Freed, it bursts into the sky, lights a safe path through the reef, and leaves the crew a feather that never stops glowing.
@@ -171,7 +171,7 @@ Lantern Rock is a jagged, barren island about 240 yards across: bare stone and s
 
 | Place | What happens there | Fight (level 3) |
 | [[place:klantern/lland|The Shingle Landing]] | The one safe place to come ashore, on the east side. The cliff path climbs from here to the lighthouse. | None |
-| [[place:klantern/ltern|Wreck of the Silver Tern]] | The biggest wreck, broken on the reef at the lagoon's mouth. The giant octopus waits in her flooded hold. Salvage is still aboard. | 1 giant octopus |
+| [[place:klantern/ltern|Wreck of the Silver Tern]] | The biggest wreck, broken on the reef at the lagoon's mouth. Three of the queen's wreckers are stripping her by lantern light; one who gets away runs for the Sentry's Perch and the bell. Salvage is still aboard. | 1 wrecker bruiser, 2 wreckers |
 | [[place:klantern/lheron|Wreck of the Heron]] | The young stowaway hides in her hold. | None |
 | [[place:klantern/lmarigold|Wreck of the Marigold]] | Stripped bare. Her cargo is in the Undaunted's hold. | None |
 | [[place:klantern/lsentry|Sentry's Perch]] (hidden) | A wrecker watches the reef. If he rings his bell, the cove is warned. | 1 wrecker |
@@ -190,7 +190,7 @@ The Wreckers' Stair, a hidden way cut in the rock from the lighthouse crag down 
 | Quartermaster | Sorts out what's valuable in the wrecks, or bluffs the wreckers into a deal |
 | Master-at-arms | Leads the charge up the lighthouse stairs and duels Raven Heartgrove |
 
-For monsters, look for giant octopus, pirate or bandit, and bandit captain stat blocks in the rules. The firebird doesn't need stats; it's a prize, not a fight.
+For monsters, look for pirate or bandit, and bandit captain stat blocks in the rules. The firebird doesn't need stats; it's a prize, not a fight.
 
 ## Materials checklist
 
