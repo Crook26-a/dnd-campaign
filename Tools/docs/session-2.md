@@ -133,7 +133,15 @@ A sheltered lagoon full of wrecks: three lost this year, older hulks under them,
 
 > The lagoon is still and smells of salt and rot. Three ships lie in it, newer than the weed-black ribs around them: a broad merchantman broken across the reef at the mouth, her middle stove in; a smaller ship beached on her side at the head of the lagoon; and a third, picked clean, lying low in the shallows. The lighthouse beam passes over all of them and never lands on any.
 
-**The Sentry's Perch (hidden).** On the west arm of the lagoon, under a scrap of sailcloth, a wrecker sits with a brass bell on a spar, watching the reef. If he rings it, Wreckers' Cove is warned for Session 3: the wreckers are ready, and the captured sailors are moved deeper in. Each character who comes near makes a Dexterity (Stealth) check against his passive Perception (it's on his sheet in the app). If they're spotted, he reaches for the bell: anyone within reach can stop him first. Ethal can silence him without a sound. A captured sentry is a fine source of information if he's treated decently. In the app, **un-hide** [[place:klantern/lsentry|Sentry's Perch]] when they find it. If he rings the bell, tick **The sentry rang the bell** in the Session tab's story flags.
+**The watch on the west arm (the Sentry's Perch, hidden).** On the west arm of the lagoon, under a scrap of sailcloth, a wrecker sits with a brass bell on a spar, watching the reef. From there he can see the whole lagoon, so play him first: everything else in the graveyard happens under his eye until he's dealt with. If he rings the bell, Wreckers' Cove is warned for Session 3: the wreckers are ready, and the captured sailors are moved deeper in.
+
+- **First, lights.** As they come round the rock into the lagoon, ask who is carrying a light. Ander needs one; the drow and the elves don't. (Your call: the sentry's sheet gives him no darkvision, so a light is what he'd see.)
+- **Do they spot him?** His hiding is DC 10 in the app, and everyone's passive Perception beats it (Xuna 15, Rin 14, Ethal 13, Ander 12). Anyone who looks across the lagoon sees the sailcloth and the bell, no roll. In the app, **un-hide** [[place:klantern/lsentry|Sentry's Perch]].
+- **Does he spot them?** Anyone who crosses the open lagoon (to a wreck, or toward him) makes a Dexterity (Stealth) check against his passive Perception, 10: Ethal +7, Rin +4, Xuna +2, Ander +1. Log it in the Action box with DC 10. Anyone carrying a light is seen, whatever they roll.
+- **If he spots someone:** he reaches for the bell. Anyone within reach can stop him first; if it's tense, roll initiative. If the bell rings, tick **The sentry rang the bell** in the Session tab's story flags.
+- **If they reach him unseen:** Ethal can silence him without a sound (11 hit points, AC 12). A captured sentry is a fine source of information if he's treated decently.
+
+**Noise carries.** If he's still at his post when the fight in the Silver Tern starts, he hears it and goes for the bell unless someone stops him. Dealing with the watch first is the smart play; let the players work that out.
 
 **The Silver Tern and the salvagers.** The biggest wreck, broken-backed on the reef, her hold half-flooded. Three of the queen's wreckers are stripping her by a shuttered lantern: a [[foe:lf_bruiser|wrecker bruiser]] and two [[foe:lf_wrecker|wreckers]], prying brass fittings loose and hauling them up to the tilted deck. Use [[place:klantern/ltern|the Wreck of the Silver Tern]] in the app: its battle map shows the tilted deck, the broken mainmast, and the flooded hold. Enter it calm (they're busy and noisy: Dexterity (Stealth) against their passive Perception to get close unseen), and **Start the battle** when it comes to blows. It's a quick fight, 150 XP under the 2024 rules. The real danger is one of them getting away.
 
@@ -211,7 +219,8 @@ End the session there.
 | Steering by the stars | Wisdom (Survival) | 15 |
 | Calling out breakers | Wisdom (Perception), +2 to the navigator each | 12 |
 | Thrown about on the reef | Dexterity saving throw, 1d6 bludgeoning | 12 |
-| Sneaking past the sentry | Dexterity (Stealth) against his passive Perception | — |
+| Spotting the sentry | Passive Perception (everyone beats it) | 10 |
+| Sneaking past the sentry | Dexterity (Stealth) against his passive Perception; a light gives you away | 10 |
 | The mainmast bridge | Dexterity (Acrobatics) | 10 |
 | Finding the salvage | Wisdom (Perception) | 10 |
 | The Marigold's stencil | Intelligence (Investigation) | 12 |
