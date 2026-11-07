@@ -4454,6 +4454,7 @@ function voyageBarHtml(){
     <span class="vb-nav" title="The navigator's check (your rule: a natural 20 halves the time; a total under 10 adds half a day for each point below 10)">Nav <input data-vb="navtotal" type="number" value="${nav.total??""}" placeholder="–"><label><input type="checkbox" data-vb="nat20" ${nav.nat20?"checked":""}>nat 20</label></span>
     <button data-vb="play" class="vb-go">▶ Sail</button><select data-vb="mps" title="How fast she moves on the screen">${COURSE_PACES.map(v=>`<option value="${v}" ${(c.mps||2)===v?"selected":""}>${v} mi/s</option>`).join("")}</select>
     <select data-vb="every" title="She pauses by herself after this much time at sea, so you can play out what happens">${STOP_EVERY.map(([h,l])=>`<option value="${h}" ${(+s.stopEvery||0)===h?"selected":""}>${l}</option>`).join("")}</select>
+    <label class="vb-nav" title="No other ships are sighted or shown to the players on this voyage; it ends when she arrives"><input type="checkbox" data-vb="quiet" ${c.quiet?"checked":""}>Quiet crossing</label>
     <button data-vb="shape" ${courseEdit===s.id?`class="on"`:""}>${courseEdit===s.id?"Done shaping":"Shape"}</button><button data-vb="clear" title="Drop the course">×</button>`;
 }
 function renderVoyageBar(){
@@ -4483,6 +4484,7 @@ function wireVoyageBar(el){
     if(a==="to"){ const d = nodeById(t.value); if(d) setCourseTo(s, d); }
     else if(a==="mps" && s.course) s.course.mps = s.pace = +t.value || 2;
     else if(a==="every"){ if(+t.value) s.stopEvery = +t.value; else delete s.stopEvery; }
+    else if(a==="quiet" && s.course){ if(t.checked) s.course.quiet = true; else delete s.course.quiet; fleetSight(); }
     else if((a==="navtotal" || a==="nat20") && s.course){ const nav = s.course.nav = s.course.nav || { total:"", nat20:false };
       if(a==="navtotal") nav.total = t.value==="" ? "" : Math.round(+t.value); else nav.nat20 = t.checked;
       delete s.course.rate; if(navWord(nav)) flash(`Navigator's check: ${navWord(nav)}.`); }
@@ -20932,6 +20934,10 @@ function fleetCatchUp(){
 const fleetT = () => campaignDay() + (+root.hour || 0) / 24;
 /* the party at sea: their ship, while they're aboard */
 const fleetParty = () => { const s = wxShip(); return s ? { x:s.x, y:s.y, ship:s } : null; };
+/* a quiet crossing (Joseph, 2026-11-07, Session 2's sail to Lantern Rock: "Nothing at sea"): ticked on the voyage bar,
+   kept on the course, so it ends when she arrives; no ship is sighted or shown to the players while it's on. A ship
+   can also be kept from the players for good (s.hidden, on her card): the Lucky Otter in Wreckers' Cove */
+const seaQuiet = () => { const p = fleetParty(); return !!(p && p.ship.course && p.ship.course.quiet); };
 /* how strongly the lanes show on your chart (Joseph, 2026-11-06: "turn the sea lane opacity down"): 0 to 1, kept in the save */
 const laneAlpha = () => { const a = +(root && root.laneAlpha); return a >= 0 && a <= 1 ? a : 1; };
 /* the chart: the lanes (the DM's alone) and the ships (the players: within sight of the party) */
@@ -20945,7 +20951,7 @@ function fleetLayer(forPlayers){
       + `<path data-lane="${l.id}" fill="none" d="${d}" stroke="transparent" stroke-width="${10 * inv}" style="cursor:pointer" pointer-events="stroke"><title>${esc(l.name ? `${l.name}: ` : "")}${esc(a.name)} – ${esc(b.name)} (click for the lane)</title></path>`;
     if(l.name){ const m = P[Math.floor(P.length / 2)]; s += `<text x="${Math.round(m.x)}" y="${Math.round(m.y)}" opacity="${Math.max(.3, laneAlpha())}" text-anchor="middle" font-size="${10 * inv}" font-style="italic" font-family="var(--serif)" fill="#2c5a72" stroke="#fff8e6" stroke-width="${2.5 * inv}" paint-order="stroke" pointer-events="none">${esc(l.name)}</text>`; } }
   for(const sh of root.fleet){ const p = fleetPos(sh, t); if(!p) continue;
-    if(forPlayers && !(me && Math.hypot(p.x - me.x, p.y - me.y) <= FLEET_SIGHT * ppm)) continue;
+    if(forPlayers && (sh.hidden || seaQuiet() || !(me && Math.hypot(p.x - me.x, p.y - me.y) <= FLEET_SIGHT * ppm))) continue;
     const pir = sh.kind==="pirate" && !forPlayers;
     s += `<g ${forPlayers ? `pointer-events="none"` : `data-fleetship="${sh.id}" style="cursor:pointer"`} transform="translate(${Math.round(p.x)} ${Math.round(p.y)}) scale(${inv})">${forPlayers ? "" : `<title>${esc(sh.name)}: click for her card</title><circle r="11" fill="transparent"/>`}<path d="M-7 2 L7 2 L4 6 L-4 6 Z M0 2 L0 -8 L6 0 Z" fill="${pir ? "#3a1a1a" : "#f3ead2"}" stroke="#2b2b2b" stroke-width="1"/>
       ${forPlayers ? "" : `<text y="16" text-anchor="middle" font-size="9" font-family="var(--serif)" fill="#1f3442" stroke="#fff8e6" stroke-width="2.5" paint-order="stroke">${esc(sh.name)}</text>`}</g>`; }
@@ -20955,9 +20961,9 @@ function fleetLayer(forPlayers){
 function fleetSight(){
   if(planOf || !Array.isArray(root.fleet) || !root.fleet.length || location.hash==="#player") return;
   if(typeof dayPlaying!=="undefined" && dayPlaying) return;              // the play button: the days go by without encounters
-  const me = fleetParty(), pop = $("#fleetPop"); if(!pop) return; if(!me){ if(!pop.dataset.card) pop.hidden = true; return; }
+  const me = fleetParty(), pop = $("#fleetPop"); if(!pop) return; if(!me || seaQuiet()){ if(!pop.dataset.card) pop.hidden = true; return; }
   const ppm = root.ppm || 10, t = fleetT(), d = campaignDay();
-  const near = root.fleet.map(s=>({ s, p:fleetPos(s, t) })).filter(x=>x.p && x.s.asked!==d && Math.hypot(x.p.x - me.x, x.p.y - me.y) <= FLEET_SIGHT * ppm);
+  const near = root.fleet.map(s=>({ s, p:fleetPos(s, t) })).filter(x=>x.p && !x.s.hidden && x.s.asked!==d && Math.hypot(x.p.x - me.x, x.p.y - me.y) <= FLEET_SIGHT * ppm);
   if((pop.dataset.card || pop.dataset.view==="parley") && !pop.hidden) return;   // a card you opened, or a parley going: the sighting waits
   if(!near.length){ if(!pop.dataset.ship) pop.hidden = true; return; }
   delete pop.dataset.card;
@@ -21186,9 +21192,13 @@ function fleetCard(id){
   pop.innerHTML = `<p style="margin:0 0 4px"><b>${esc(s.name)}</b>, ${esc(K[0].toLowerCase())} out of ${esc(repPlaceName(s.home))} <small>(${esc(FLEET_SIZES[fleetSizeOf(s)][0].toLowerCase())})</small></p>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${s.kind==="packet" && s.tier ? `A ${s.tier} passenger ship${fleetEscortOf(s) ? `, escorted by ${esc(fleetEscortOf(s).name)}` : ""}. ` : fleetCharge(s) ? `Escorting ${esc(fleetCharge(s).name)}. ` : ""}${esc(where)}. ${s.mode==="route" ? `Her route: ${(s.route||[]).map(x=>esc(repPlaceName(x))).join(" → ")}.` : s.mode==="pirate" ? "She goes her own way." : "She goes where she likes."}</p>
     <p class="empty-note" style="font-size:11.5px;margin:0 0 4px">${cap ? `Captain ${esc(cap.name)}; ` : ""}${ppl.length ? `${ppl.length} aboard` : "no crew rolled"}${(s.pass||[]).length ? `, and ${s.pass.length} passengers` : ""}.${TRADE_SHIPS.has(s.kind) || s.kind==="pirate" ? ` Hold: ${hold || "empty"} (${tradeLoaded(s.cargo)} of ${tradeCap(s)} loads).` : ""}${magic.length ? ` Hidden aboard: ${magic.join(", ")}.` : ""}</p>
+    <label class="empty-note" style="font-size:11.5px;display:block;margin:0 0 6px" title="Never sighted at sea or shown on the players' chart until you untick it"><input type="checkbox" data-fleethide="${s.id}" ${s.hidden?"checked":""}> Hidden from the players</label>
     <div class="pcrow"><button class="btn" data-fleetcard="aboard" data-id="${s.id}" title="Her place on the chart (hidden from the players): her crew to meet, her decks for a fight">Go aboard</button><button class="btn" data-fleetcard="party" data-id="${s.id}" title="Her entry with the rest of the fleet: rename her, her home, a new crew">In the Background tab</button><button class="btn" data-fleetcard="close">Close</button></div>`;
   pop.hidden = false;
 }
+document.addEventListener("change", e=>{ const t = e.target.closest && e.target.closest("[data-fleethide]"); if(!t) return;
+  const s = fleetOf().find(x=>x.id===t.dataset.fleethide); if(!s) return;
+  if(t.checked) s.hidden = true; else delete s.hidden; touch(); render(); sendPlayers(true); });
 document.addEventListener("click", e=>{ const b = e.target.closest && e.target.closest("[data-fleetcard]"); if(!b) return;
   const pop = $("#fleetPop"), a = b.dataset.fleetcard, s = fleetOf().find(x=>x.id===b.dataset.id); delete pop.dataset.card; pop.hidden = true;
   if(a==="aboard" && s) fleetGoAboard(s);

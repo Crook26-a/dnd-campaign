@@ -6,16 +6,17 @@ Tick each part as you finish it. The 📍 beside a part shows its place on the m
 
 ## Before the players arrive
 
-- [ ] Check the app has the campaign as it should be: Session 1's XP, and the party aboard the Sallowmay at Kalatecha, night of day 1. If it doesn't, ☰ More → Data → **Load a survey.json** and pick the newest save in the Saves folder.
+- [ ] Open the app (DnD\Ordinate Survey\index.html) on **Kalatecha** and check the campaign is as it should be: Session 1's XP, and the party aboard the Sallowmay at Kalatecha, night of day 1. The app keeps Current save.json in Kalatecha's campaign folder up to date by itself. If something's off, ☰ More → Data → **Load a survey.json** and pick the newest save in Kalatecha's Saves folder (DnD\Ordinate Survey\Campaigns\Kalatecha\Saves).
 - [ ] The game log on the left: click **Start session 2**. Missed checks can only cost XP earned after this, and "This session" on the leaderboards counts from here.
-- [ ] Sea chart, the Sallowmay's voyage bar: **Sail to** Lantern Rock, **Nav** 25 (Xuna's roll as they cast off at the end of Session 1: the plain sailing time, about 2 days and 3 hours, so they reach the reef in the small hours of day 4), **Stop every** ½ day (she'll stop at 10 in the morning and 10 at night). Press **▶ Sail** when the Opening is done.
+- [ ] Sea chart, the Sallowmay's voyage bar: **Sail to** Lantern Rock, **Nav** 25 (Xuna's roll as they cast off at the end of Session 1: the plain sailing time, about 2 days and 3 hours, so they reach the reef in the small hours of day 4), **Stop every** ½ day (she'll stop at 10 in the morning and 10 at night), and tick **Quiet crossing**: no other ships are sighted on this voyage (the merrow and the Undaunted are its events), and it ends by itself when she arrives. Press **▶ Sail** when the Opening is done.
 - [ ] Sea chart, click the Undaunted: in her panel, **Sail to** Lantern Rock and **sets off in** ½ day (she leaves at dawn, as Hargrove-Vance boasted). Give her navigator a total of 12.
-- [ ] Lantern Rock: check that the Sentry's Perch and Wreckers' Cove are still hidden, and that the octopus is in the Silver Tern.
-- [ ] Decide the young stowaway's name. A suggestion: **Tamsin Pike**, ship's girl of the Heron, about twelve. Change it in the Library (People → The Young Stowaway).
+- [ ] Lantern Rock: check that the Sentry's Perch and Wreckers' Cove are still hidden, and that the wreckers are in the Silver Tern. Raven's ship, the Lucky Otter, lies hidden in Wreckers' Cove until Session 3: her card on the sea chart has **Hidden from the players** ticked, so the TV never shows her.
+- [x] The young stowaway's name: **Tamsin Pike**, ship's girl of the Heron, about twelve (in the Library under People).
+- [ ] Fights: you run the enemies (the autopilot stays off), and the players roll their own checks and saves (your table rules, Party tab → Combat: your table rules).
 - [ ] The crew's map from Session 1, for Rebekah to draw the reef on.
 - [ ] Snacks within reach.
 
-**A reminder about XP.** Every check you log in the Action box with a DC now earns XP (3 × level a point over the DC) or costs a little (half that, never below where they started the session). A natural 20 that makes the DC is at least 50 × level, so tick **nat 20** when a player rolls one at the table. Healing outside a fight earns the healer XP. After each fight (the merrow, the octopus), **End the fight** opens the XP card.
+**A reminder about XP.** Every check you log in the Action box with a DC now earns XP (3 × level a point over the DC) or costs a little (half that, never below where they started the session). A natural 20 that makes the DC is at least 50 × level, so tick **nat 20** when a player rolls one at the table. Healing outside a fight earns the healer XP. After each fight (the merrow, the wreckers in the Silver Tern), **End the fight** opens the XP card.
 
 ## Opening {10 min} {place: kship/sdeck}
 
@@ -59,14 +60,14 @@ The captain doesn't move from the wheel. Read:
 
 He doesn't fight: boarders aren't guests, but he leaves the fighting to his crew. Thimble shouts advice from the rigging, most of it rude, some of it useful.
 
-**In the app.** First bring everyone up on deck: ☰ More → Where → **All together**, then put the party on the Main deck (anyone below decks climbs up the ladder on their first turn). Enter the Sallowmay and open the [[place:kship/sdeck|Main deck]] (Enter this place); it opens calm. In the battle panel, **Bring someone in**: two [[foe:lf_redcap|red-capped merrow]] (in the Library under Foes), against the party. Put them at the port rail, one amidships and one by the stern. Then **Start the battle**. Light: dusk, so everything on deck is in Dim Light. Two merrow are 900 XP, a Moderate fight for four level-3 characters under the 2024 rules: harder than the docks, and they have a long rest that night to recover, so let them spend everything.
+**In the app.** First bring everyone up on deck: ☰ More → Where → **All together** (anyone below decks climbs up the ladder on their first turn). Then **▶ Set the scene** under this heading: it opens the [[place:kship/sdeck|Main deck]] at dusk with two [[foe:lf_redcap|red-capped merrow]] already at the port rail, one amidships and one by the stern. Then **Start the battle**. The Main deck is set to **Nobody flees** (your call for this fight), so the tactics box never suggests running; untick it in the room's setup after Session 2 if you want fights on deck to allow fleeing again. Light: dusk, so everything on deck is in Dim Light. Two merrow are 900 XP, a Moderate fight for four level-3 characters under the 2024 rules: harder than the docks, and they have a long rest that night to recover, so let them spend everything.
 
 **What the merrow do (SRD 5.2, plus the red caps).**
 
 - Two attacks a turn, any mix of Bite, Claw and Harpoon. A bite leaves the target Poisoned until the end of the merrow's next turn.
 - **The harpoon** hits from the water at up to 60 feet, and pulls a Large or smaller target up to 15 feet straight toward the merrow. A merrow at the rail can drag a character across the deck and over the side.
 - **The red caps** let them come aboard and fight on deck at 30 feet (they swim 40). Knock or snatch a cap off with Dexterity (Sleight of Hand), or a Strength (Athletics) shove, against DC 13, and that merrow is back to the SRD's 10 feet on land: it lurches for the rail and the sea. That's the clever way to win this fight, so reward anyone who tries it. Ethal's quick hands are made for it.
-- When one goes down, the other dives and is gone. They're hunters, not heroes.
+- Neither one runs. When one falls, the other fights on to the end.
 
 **Over the side.** A character pulled into the sea is in Deep water: swimming costs each foot of movement 1 extra foot. Climbing back up the hull is a Strength (Athletics) check, DC 10, or no check at all if a crewmate throws them a rope (an action). In the water, a merrow gets the swimmer to itself, so the crew will want to be quick.
 
@@ -78,7 +79,7 @@ He doesn't fight: boarders aren't guests, but he leaves the fighting to his crew
 | Drop a spar or a water barrel on a climbing merrow | Strength (Athletics), DC 12 | It falls back into the sea and loses its next turn climbing |
 | Fire the iron crossbows from the stern | — | Heavy crossbows from the docks, if they kept them |
 
-**Afterward.** Press **End the fight** for the XP card. Any cap left behind is [[loot:ll_redcap|a merrow's red cap]]: damp however long it's out of the water, and whoever wears it can breathe underwater (your table rule; it's in the Library). Very handy in the flooded hold of the Silver Tern. In the merrow's net, tangled with weed, is a tin locket on a broken chain, engraved T.P., with a tiny painting of a girl inside. Hold on to it: the stowaway on the Heron knows it (it's their father's; he's one of the sailors held in Wreckers' Cove). (A suggestion: change the initials if you rename the stowaway.)
+**Afterward.** If anything in the fight looked off, press **Download the fight log** in the battle panel first. Then **End the fight** for the XP card. Any cap left behind is [[loot:ll_redcap|a merrow's red cap]]: damp however long it's out of the water, and whoever wears it can breathe underwater (your table rule; it's in the Library). Very handy in the flooded hold of the Silver Tern. In the merrow's net, tangled with weed, is a tin locket on a broken chain, engraved T.P., with a tiny painting of a girl inside. Hold on to it: the stowaway on the Heron knows it (it's their father's; he's one of the sailors held in Wreckers' Cove). When they take it, tick **The crew has the T.P. locket** in the Session tab's story flags.
 
 ## Night 2 and day 3 {10 min} {place: kship}
 
@@ -132,13 +133,12 @@ A sheltered lagoon full of wrecks: three lost this year, older hulks under them,
 
 > The lagoon is still and smells of salt and rot. Three ships lie in it, newer than the weed-black ribs around them: a broad merchantman broken across the reef at the mouth, her middle stove in; a smaller ship beached on her side at the head of the lagoon; and a third, picked clean, lying low in the shallows. The lighthouse beam passes over all of them and never lands on any.
 
-**The Sentry's Perch (hidden).** On the west arm of the lagoon, under a scrap of sailcloth, a wrecker sits with a brass bell on a spar, watching the reef. If he rings it, Wreckers' Cove is warned for Session 3: the wreckers are ready, and the captured sailors are moved deeper in. Each character who comes near makes a Dexterity (Stealth) check against his passive Perception (it's on his sheet in the app). If they're spotted, he reaches for the bell: anyone within reach can stop him first. Ethal can silence him without a sound. A captured sentry is a fine source of information if he's treated decently. In the app, **un-hide** [[place:klantern/lsentry|Sentry's Perch]] when they find it.
+**The Sentry's Perch (hidden).** On the west arm of the lagoon, under a scrap of sailcloth, a wrecker sits with a brass bell on a spar, watching the reef. If he rings it, Wreckers' Cove is warned for Session 3: the wreckers are ready, and the captured sailors are moved deeper in. Each character who comes near makes a Dexterity (Stealth) check against his passive Perception (it's on his sheet in the app). If they're spotted, he reaches for the bell: anyone within reach can stop him first. Ethal can silence him without a sound. A captured sentry is a fine source of information if he's treated decently. In the app, **un-hide** [[place:klantern/lsentry|Sentry's Perch]] when they find it. If he rings the bell, tick **The sentry rang the bell** in the Session tab's story flags.
 
-**The Silver Tern and the octopus.** The biggest wreck, broken-backed on the reef, her hold half-flooded. Salvage is still aboard, and a [[foe:srd:giant-octopus|giant octopus]] lives in the hold. Use [[place:klantern/ltern|the Wreck of the Silver Tern]] in the app: its battle map shows the tilted deck, the broken mainmast, and the flooded hold where the octopus waits. Enter it calm, and **Start the battle** when it grabs someone. For four level-3 characters this is a Low fight under the 2024 rules: one big monster, lots of reach, and a chance to be clever.
+**The Silver Tern and the salvagers.** The biggest wreck, broken-backed on the reef, her hold half-flooded. Three of the queen's wreckers are stripping her by a shuttered lantern: a [[foe:lf_bruiser|wrecker bruiser]] and two [[foe:lf_wrecker|wreckers]], prying brass fittings loose and hauling them up to the tilted deck. Use [[place:klantern/ltern|the Wreck of the Silver Tern]] in the app: its battle map shows the tilted deck, the broken mainmast, and the flooded hold. Enter it calm (they're busy and noisy: Dexterity (Stealth) against their passive Perception to get close unseen), and **Start the battle** when it comes to blows. It's a quick fight, 150 XP under the 2024 rules. The real danger is one of them getting away.
 
-- **What it does (SRD 5.2):** its tentacles reach 10 feet, and a Medium or smaller creature they hit is Grappled (escape DC 13) and Restrained while it's held. Once a day, when it takes damage underwater, it can fill the water around it with ink and swim off (Ink Cloud).
-- **Good moves to reward:** breaking a grabbed friend free; fighting from the deck rather than wading into the flooded hold; using the broken mainmast as a bridge (Dexterity (Acrobatics), DC 10).
-- **When it's badly hurt,** let it use its ink and jet out to sea through the broken hull rather than fight to the death. It's an animal, not a villain.
+- **What they do:** the wreckers fight with scimitars and light crossbows, the bruiser with a mace and a heavy crossbow. They fight while it goes their way. One who drops below a quarter of their hit points, or whose nerve breaks when half of them are down, runs for the Sentry's Perch (the tactics box says "Would flee"). If one gets there, the bell rings: tick **The sentry rang the bell**.
+- **Good moves to reward:** catching them unaware; cutting off the way to the west arm of the lagoon; using the broken mainmast as a bridge (Dexterity (Acrobatics), DC 10). Wading into the flooded hold is slow going.
 - **Afterward:** press **End the fight** for the XP card. Then the salvage: Wisdom (Perception), DC 10, finds [[loot:ll_salvage|the salvage]] (brass fittings, a ship's bell, a waterlogged chest of cloth) and the coin.
 
 **The Marigold.** Stripped bare. Gouges in her hull show where crates were pried loose. A character who makes an Intelligence (Investigation) check, DC 12, finds a scrap of stenciled board: MARIGOLD. (A clue for later: the same crates are down in the Undaunted's hold.)
@@ -156,6 +156,8 @@ They're terrified, half-starved, and sure everyone is a wrecker. Winning their t
 - "A man comes in a ship with a gold figurehead. He has a glass in one eye. He buys what they take." (Hargrove-Vance.)
 - "There's a bird in the light. I hear it at night. It sings like it's crying."
 - What they want most: to get off this island. Taking them to the Sallowmay is safe; the ship's law covers guests, and the stowaway is one.
+
+**In the app.** [[npc:ln_stowaway|Tamsin]]'s card starts at her "Hiding in the Heron" stage. Press **Talked** on her card when they talk with her, so she remembers the crew. Log the trust check in the Action box **With** her. When she trusts them, tick **The stowaway is rescued** in the story flags: her card switches to "Rescued: trusts the crew", with everything above in what she knows. When she gives her name, tick **The party knows their name** on her card, and it shows under her token on the TV.
 
 ## Cliffhanger {10 min} {place: klantern/llight}
 
@@ -178,7 +180,8 @@ End the session there.
 - [ ] Note whether the cove was warned (the sentry's bell), and what the crew learned from the stowaway.
 - [ ] Note the reef chart: did they find the safe channel, or limp in?
 - [ ] Hannah wanted to see the cathedral in Kalatecha: save it for the homecoming.
-- [ ] ☰ More → Data: **Save to the Saves folder now**.
+- [ ] ☰ More → Data: **Save a dated copy in its Saves folder** (Current save.json is already up to date; this is a backup).
+- [ ] The **Review** tab: **Read the log for everyone**, then mark what people remember from tonight (Tamsin, the captain, any wrecker who got away).
 - [ ] The game log on the left (or ☰ More → Notes) → **Download session 2**, and give the file to Claude for a summary.
 - [ ] Party & XP: show **Who is where** and the **Leaderboards** on the players' screen at the end of the night, if they'd enjoy it.
 
