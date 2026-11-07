@@ -133,12 +133,12 @@ A sheltered lagoon full of wrecks: three lost this year, older hulks under them,
 
 > The lagoon is still and smells of salt and rot. Three ships lie in it, newer than the weed-black ribs around them: a broad merchantman broken across the reef at the mouth, her middle stove in; a smaller ship beached on her side at the head of the lagoon; and a third, picked clean, lying low in the shallows. The lighthouse beam passes over all of them and never lands on any.
 
-**In the app.** **▶ Set the scene** opens [[place:klantern/lgraveyard|the Ship Graveyard]]'s own battle map: the whole lagoon, calm, with the party coming in from the landing along the east arm, the three wrecks, and the sentry hidden under his sailcloth on the west arm (only you see his token). A shuttered lantern glows on the Silver Tern's stern. Each wreck has its own map for what happens inside it: enter the [[place:klantern/ltern|Silver Tern]] or the [[place:klantern/lheron|Heron]] from the Lantern Rock map when they go aboard.
+**In the app.** **▶ Set the scene** opens [[place:klantern/lgraveyard|the Ship Graveyard]]'s own battle map: the whole lagoon, calm, with the party coming in from the landing along the east arm, the three wrecks, and the sentry hidden under his sailcloth on the west arm, his bell beside him (only you see them till he's spotted). A shuttered lantern glows on the Silver Tern's stern. A shingle beach runs along the head of the lagoon from arm to arm, so they can reach the west arm without going near a wreck. **Going aboard:** drag a token onto a wreck's way in (the gap in the Heron's rail, the Marigold's deck, the Silver Tern's bow or stern, where the reef's shallows meet her) and it opens that wreck's own map; her way out brings them back to the lagoon beside her.
 
 **The watch on the west arm (the Sentry's Perch, hidden).** On the west arm of the lagoon, under a scrap of sailcloth, a wrecker sits with a brass bell on a spar, watching the reef. From there he can see the whole lagoon, so play him first: everything else in the graveyard happens under his eye until he's dealt with. If he rings the bell, Wreckers' Cove is warned for Session 3: the wreckers are ready, and the captured sailors are moved deeper in.
 
 - **First, lights.** As they come round the rock into the lagoon, ask who is carrying a light. Ander needs one; the drow and the elves don't. (Your call: the sentry's sheet gives him no darkvision, so a light is what he'd see.)
-- **Do they spot him?** His hiding is DC 10 in the app, and everyone's passive Perception beats it (Xuna 15, Rin 14, Ethal 13, Ander 12). Anyone who looks across the lagoon sees the sailcloth and the bell, no roll. On the lagoon's battle map, pick him in the battle panel and press **Hidden, DC 10 — found them** so the players see his token, and on the Lantern Rock map **un-hide** [[place:klantern/lsentry|Sentry's Perch]].
+- **Do they spot him?** He's well hidden: DC 16, more than anyone's passive Perception, so it takes a roll. The first time each character's token has him in sight on the lagoon's map, the app pops up and asks for their Wisdom (Perception) roll (type the d20 they rolled; the app adds their bonus: Xuna +5, Rin +4, Ethal +3, Ander +2). Meet 16 and they spot him: his token, the sailcloth and the bell show on the TV. Miss and he stays hidden from them. On the Lantern Rock map, **un-hide** [[place:klantern/lsentry|Sentry's Perch]] once he's found.
 - **Does he spot them?** Anyone who crosses the open lagoon (to a wreck, or toward him) makes a Dexterity (Stealth) check against his passive Perception, 10: Ethal +7, Rin +4, Xuna +2, Ander +1. Log it in the Action box with DC 10. Anyone carrying a light is seen, whatever they roll.
 - **If he spots someone:** he reaches for the bell. Anyone within reach can stop him first; if it's tense, roll initiative. If the bell rings, tick **The sentry rang the bell** in the Session tab's story flags.
 - **If they reach him unseen:** Ethal can silence him without a sound (11 hit points, AC 12). A captured sentry is a fine source of information if he's treated decently.
@@ -221,7 +221,7 @@ End the session there.
 | Steering by the stars | Wisdom (Survival) | 15 |
 | Calling out breakers | Wisdom (Perception), +2 to the navigator each | 12 |
 | Thrown about on the reef | Dexterity saving throw, 1d6 bludgeoning | 12 |
-| Spotting the sentry | Passive Perception (everyone beats it) | 10 |
+| Spotting the sentry | Wisdom (Perception), asked by the app when he's in sight | 16 |
 | Sneaking past the sentry | Dexterity (Stealth) against his passive Perception; a light gives you away | 10 |
 | The mainmast bridge | Dexterity (Acrobatics) | 10 |
 | Finding the salvage | Wisdom (Perception) | 10 |

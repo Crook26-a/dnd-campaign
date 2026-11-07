@@ -12449,6 +12449,7 @@ const BTILES = {
   "l": { name:"Low wall", fill:"#dccfaa", lowwall:true, note:"Waist high: good for cover." },
   "p": { name:"Campfire", fill:"#d6c29a", fire:true, note:"Lit: bright light 20 ft, dim 20 ft more (no rule gives a campfire's light, so a Torch's). Click it on the map to put it out or light it." },
   "E": { name:"Tent", fill:"#cfc39d", tent:true, note:"Canvas: blocks sight." },
+  "!": { name:"Bell", fill:"#dccfaa", bell:true, note:"A brass bell on a post or spar. Rung, it's heard a long way off." },     // Joseph, 2026-11-07: the sentry's bell
   "s": { name:"Sand", fill:"#e6d3a0", sand:true },
   "I": { name:"Snow", fill:"#eef1f2", snow:true },
   "m": { name:"Rock or boulder", fill:"#cfc39d", rock:true, note:"Blocks movement and sight." },
@@ -12699,7 +12700,7 @@ const BMAPS = {
 };
 const BMAP_ORDER = ["blank","docks","cove","boat","ship","liner","linerupper","linerlower","cabin","hold","hut","shop","stall","tent","warehouse","tower"];
 /* the paint tool's palette, in sets */
-const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiVy@BkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR"], ["Ship", "rMWHLb"]];
+const BTILE_GROUPS = [["Ground and water", ".=:~gYsmaI"], ["Paths", "jvez"], ["Walls and doors", "#DwlO|"], ["Inside a building", "TdntiVy@BkSFGUAPQZhq"], ["Containers", "XcxCuJo"], ["Camp and outdoors", "pEfKNR!"], ["Ship", "rMWHLb"]];
 /* inside a town, a building with no layout of its own gets its kind's default */
 const KIND_INTERIOR = { house:"hut", ruinlet:"hut", store:"shop", provision:"shop", apothecary:"shop", smith:"shop", healer:"shop",
   fence:"shop", office:"shop", trainer:"shop", archive:"shop", stall:"stall", tent:"tent", warehouse:"warehouse", tower:"tower", light:"tower", ship:"ship", stable:"shop_stables", coachhouse:"shop_stables" };
@@ -13119,7 +13120,8 @@ function bmapSvg(m, st, players){                    // st: the place — which 
       g += [0,1,2,3,4,5,6,7].map(k=>{ const a = k*Math.PI/4; return `<circle cx="${c+Math.cos(a)*13}" cy="${cy+Math.sin(a)*13}" r="4" fill="#9a9488" stroke="#5e5a50"/>`; }).join("")
         + `<path d="M${c-8} ${cy+5} L${c+8} ${cy-3} M${c-8} ${cy-3} L${c+8} ${cy+5}" stroke="#6b4a2a" stroke-width="4" stroke-linecap="round"/>`
         + (lit ? `<circle cx="${c}" cy="${cy}" r="${BS*.5}" fill="#ffd36b" opacity=".35"/><path d="M${c} ${cy-11} C${c+8} ${cy-2} ${c+6} ${cy+5} ${c} ${cy+5} C${c-6} ${cy+5} ${c-8} ${cy-2} ${c} ${cy-11}" fill="#ff8a1e" stroke="#c4551a"/><path d="M${c} ${cy-4} C${c+3} ${cy} ${c+2} ${cy+4} ${c} ${cy+4} C${c-2} ${cy+4} ${c-3} ${cy} ${c} ${cy-4}" fill="#ffe08a"/>` : `<circle cx="${c}" cy="${cy+1}" r="5" fill="#4a4540" opacity=".7"/>`); }
-    else if(t.tent) g += `<path d="M${X+3} ${Y+BS-4} L${c} ${Y+3} L${X+BS-3} ${Y+BS-4} Z" fill="#c8b48a" stroke="#6b5a3a" stroke-width="1.5"/><path d="M${c} ${Y+3} L${c} ${Y+BS-4}" stroke="#6b5a3a" stroke-width="1.2"/><path d="M${c-4} ${Y+BS-4} L${c} ${Y+BS-14} L${c+4} ${Y+BS-4}" fill="#5e4b35"/>`;
+    else if(t.bell) g += `<path d="M${X+5} ${Y+5} H${X+BS-5} M${X+7} ${Y+5} V${Y+BS-3}" stroke="#6b5a3a" stroke-width="2" fill="none"/><path d="M${c-6} ${Y+BS-10} Q${c-6} ${Y+9} ${c} ${Y+9} Q${c+6} ${Y+9} ${c+6} ${Y+BS-10} Z" fill="#c9a24a" stroke="#5e4b35" stroke-width="1.3"/><path d="M${c} ${Y+5} V${Y+9}" stroke="#5e4b35" stroke-width="1.2"/><circle cx="${c}" cy="${Y+BS-8}" r="1.8" fill="#5e4b35"/>`;
+    else if(t.tent) g +=`<path d="M${X+3} ${Y+BS-4} L${c} ${Y+3} L${X+BS-3} ${Y+BS-4} Z" fill="#c8b48a" stroke="#6b5a3a" stroke-width="1.5"/><path d="M${c} ${Y+3} L${c} ${Y+BS-4}" stroke="#6b5a3a" stroke-width="1.2"/><path d="M${c-4} ${Y+BS-4} L${c} ${Y+BS-14} L${c+4} ${Y+BS-4}" fill="#5e4b35"/>`;
     else if(t.snow) g += (x*5+y*3)%3===0 ? `<path d="M${X+9} ${Y+13} l3 2 M${X+23} ${Y+27} l3 2 M${X+27} ${Y+10} l2 -2" stroke="#b9c6ca" fill="none" stroke-width="1"/>` : "";
     else if(t.sand) g += (x*5+y*3)%3===0 ? `<path d="M${X+8} ${Y+14} q4 -3 8 0 M${X+22} ${Y+28} q4 -3 8 0" stroke="#c9b37a" fill="none" stroke-width="1"/>` : "";
     /* paths: each square's own scatter (from its x,y) so a long path doesn't look stamped */
@@ -14793,9 +14795,26 @@ function hideSweep(c){
   const n = bnode(); if(!n || !c || !c.pos || c.layout==="lineup" || !c.stealth) return [];
   const bm = bmapOf(n), st = n.site || {}, all = combatants(c), out = []; let L = null; const grids = {};
   for(const h of all){ const S = c.stealth[h.id], p = c.pos[h.id]; if(!S || S.hide==null || !p || h.fled || condsOfT(h).includes("Invisible")) continue;     // the Invisible condition (a spell), not just hiding
-    const by = all.find(o => o.id!==h.id && o.side!==h.side && o.side!=="neutral" && !o.fled && !isDownT(o) && !cantAct(o).length && c.pos[o.id]
+    const sees = o => o.id!==h.id && o.side!==h.side && o.side!=="neutral" && !o.fled && !isDownT(o) && !cantAct(o).length && c.pos[o.id]
       && losClear(bm, st, c.pos[o.id].x, c.pos[o.id].y, p.x, p.y) && coverOf(c, o.id, h.id).level < 2
-      && ((grids[o.id] = grids[o.id] || viewGrid(bm, st, c, L = L || lightGrid(bm, st, c), o))[p.y * BW + p.x] >= 1));
+      && ((grids[o.id] = grids[o.id] || viewGrid(bm, st, c, L = L || lightGrid(bm, st, c), o))[p.y * BW + p.x] >= 1);
+    /* a hidden enemy in a player character's sight (Joseph, 2026-11-07: "make it a pop up so that when they enter it I
+       have them roll"): not found by being looked at; each of them who first has it in sight rolls Wisdom (Perception)
+       against its DC (the player's own d20, or the app's), once each; meeting it finds it */
+    if(h.kind==="foe"){
+      const asked = S.asked = S.asked || {};
+      for(const o of all.filter(o => o.kind!=="foe" && o.p && !asked[o.id] && sees(o))){
+        asked[o.id] = true;
+        const mod = skillMod(pcState(o.p), "Perception"), R = pcD20(o, `Wisdom (Perception): something may be hiding in sight (DC ${S.hide})`), tot = R.d + mod;
+        const line = `${o.label} looks: Wisdom (Perception) d20 ${R.d}${mod ? ` ${mod > 0 ? "+" : "−"} ${Math.abs(mod)}` : ""} = ${tot}${R.w} against DC ${S.hide}`;
+        if(tot >= S.hide){ delete S.hide; out.push(`${line}: spots ${h.label}`);
+          for(const k of Object.keys(st.pieceDc || {})){ const [kx, ky] = k.split(",").map(Number); if(Math.max(Math.abs(kx - p.x), Math.abs(ky - p.y)) <= 1) (st.pieceFound = st.pieceFound || {})[k] = true; }     // what they hide beside (the sentry's sailcloth and bell) shows with them
+          break; }
+        gameLog("check", `${line}: sees nothing`); flash(`${line}: sees nothing.`);
+      }
+      continue;
+    }
+    const by = all.find(sees);
     if(by){ delete S.hide; out.push(`${h.label} is no longer hidden: ${by.label} can see them`); } }
   if(out.length){ const line = out.join("; ") + "."; gameLog("check", line); flash(line); }
   return out;
