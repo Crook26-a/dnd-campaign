@@ -127,16 +127,18 @@ The captain stays aboard, as always. Read:
 
 **Where they can go.** Show them the island from the landing: the cliff path up to the lighthouse; the lagoon of wrecks to the west. Let them choose. If they head straight for the lighthouse, the wreckers on the stair are the start of Session 3: let them reach the tower door and end the night there instead.
 
-## The ship graveyard {35 min} {place: klantern/ltern}
+## The ship graveyard {35 min} {place: klantern/lgraveyard}
 
 A sheltered lagoon full of wrecks: three lost this year, older hulks under them, green with weed. Read:
 
 > The lagoon is still and smells of salt and rot. Three ships lie in it, newer than the weed-black ribs around them: a broad merchantman broken across the reef at the mouth, her middle stove in; a smaller ship beached on her side at the head of the lagoon; and a third, picked clean, lying low in the shallows. The lighthouse beam passes over all of them and never lands on any.
 
+**In the app.** **▶ Set the scene** opens [[place:klantern/lgraveyard|the Ship Graveyard]]'s own battle map: the whole lagoon, calm, with the party coming in from the landing along the east arm, the three wrecks, and the sentry hidden under his sailcloth on the west arm (only you see his token). A shuttered lantern glows on the Silver Tern's stern. Each wreck has its own map for what happens inside it: enter the [[place:klantern/ltern|Silver Tern]] or the [[place:klantern/lheron|Heron]] from the Lantern Rock map when they go aboard.
+
 **The watch on the west arm (the Sentry's Perch, hidden).** On the west arm of the lagoon, under a scrap of sailcloth, a wrecker sits with a brass bell on a spar, watching the reef. From there he can see the whole lagoon, so play him first: everything else in the graveyard happens under his eye until he's dealt with. If he rings the bell, Wreckers' Cove is warned for Session 3: the wreckers are ready, and the captured sailors are moved deeper in.
 
 - **First, lights.** As they come round the rock into the lagoon, ask who is carrying a light. Ander needs one; the drow and the elves don't. (Your call: the sentry's sheet gives him no darkvision, so a light is what he'd see.)
-- **Do they spot him?** His hiding is DC 10 in the app, and everyone's passive Perception beats it (Xuna 15, Rin 14, Ethal 13, Ander 12). Anyone who looks across the lagoon sees the sailcloth and the bell, no roll. In the app, **un-hide** [[place:klantern/lsentry|Sentry's Perch]].
+- **Do they spot him?** His hiding is DC 10 in the app, and everyone's passive Perception beats it (Xuna 15, Rin 14, Ethal 13, Ander 12). Anyone who looks across the lagoon sees the sailcloth and the bell, no roll. On the lagoon's battle map, pick him in the battle panel and press **Hidden, DC 10 — found them** so the players see his token, and on the Lantern Rock map **un-hide** [[place:klantern/lsentry|Sentry's Perch]].
 - **Does he spot them?** Anyone who crosses the open lagoon (to a wreck, or toward him) makes a Dexterity (Stealth) check against his passive Perception, 10: Ethal +7, Rin +4, Xuna +2, Ander +1. Log it in the Action box with DC 10. Anyone carrying a light is seen, whatever they roll.
 - **If he spots someone:** he reaches for the bell. Anyone within reach can stop him first; if it's tense, roll initiative. If the bell rings, tick **The sentry rang the bell** in the Session tab's story flags.
 - **If they reach him unseen:** Ethal can silence him without a sound (11 hit points, AC 12). A captured sentry is a fine source of information if he's treated decently.
