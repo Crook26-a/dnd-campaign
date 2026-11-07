@@ -33,7 +33,7 @@ step("the uses come from the species: Goliaths (Large Form at level 5), the Orc;
   loadJSONNow(JSON.stringify(OR)); await wait(300); setDmMode(true); await wait(60); root.autoEnemies = false;
   enterPlan("h"); await wait(40); openBattle(orHall()); await wait(150); beginBattle(orHall().site); await wait(60);
   const card = originCardHtml(orWho("Pell").p).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 80);
-  return `Grom: ${orRes("Grom")} | Pell (${giantOf(orWho("Pell").p)}): ${orRes("Pell")} | Skye: ${orRes("Skye")} | Ursa: ${orRes("Ursa")} | Pell's card: ${card} | Quill's card: "${originCardHtml(orWho("Quill").p)}"`;
+  return `Grom: ${orRes("Grom")} | Pell (${giantOf(orWho("Pell").p)}): ${orRes("Pell")} | Skye: ${orRes("Skye")} | Ursa: ${orRes("Ursa")} | Pell's card: ${card} | Quill's card: "${originCardHtml(orWho("Quill").p).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80)}"`;     // one line: Weapon Mastery's card has several
 });
 step("Fire's Burn: a chip on Grom's hit, its 1d10 Fire in the damage, a use spent; Frost's Chill takes 10 ft off the Fanatic", async () => {
   const G = orWho("Grom"), F = orWho("Cultist"); await orTurn(G); act.what = "pca:0"; act.targets = [F.id]; act.outcome = "hit"; renderBattlePanel(); await wait(20);

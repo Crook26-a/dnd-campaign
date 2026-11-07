@@ -1584,6 +1584,10 @@ for(const s of SRD_SPELLS) if(!s.atk && /\bmakes?\s+(?:a|an|one)\s+(?:melee|rang
    picks (Chromatic Orb, Sorcerous Burst, Dragon's Breath) stay */
 const NOT_DAMAGE = new Set(["spell:guidance", "spell:resistance", "spell:bless", "spell:bane", "spell:alter-self", "spell:blink", "spell:confusion", "spell:reincarnate", "spell:teleport", "spell:control-weather", "spell:time-stop"]);
 for(const s of SRD_SPELLS){ if(s.atk && !/spell attack/i.test(s.desc||"")) s.atk = false; if(NOT_DAMAGE.has(s.id)) s.dmg = ""; }
+/* Moonbeam's first paragraph was missing from the data (no size, no light, no move), so it had no area (Joseph,
+   2026-11-07): put back from Xuna's sheet, which prints the whole spell */
+{ const mb = SRD_SPELLS.find(s=>s.id==="spell:moonbeam");
+  if(mb && !/5-foot-radius/i.test(mb.desc||"")) mb.desc = "A silvery beam of pale light shines down in a 5-foot-radius, 40-foot-high Cylinder centered on a point within range. Until the spell ends, Dim Light fills the Cylinder, and you can take a Magic action on later turns to move the Cylinder up to 60 feet.\n\n" + mb.desc; }
 /* a spell with no damage type that restores Hit Points is a healing spell */
 for(const s of SRD_SPELLS) s.heal = !s.dtype && /regains?\b[^.]*Hit Points/i.test(s.desc||"");
 /* the generator hands back a lone action as a bare pair and none as {}; one shape for the reader */
@@ -2020,7 +2024,7 @@ function charCR(c, mode, opts){
     return { name:a.name, atk, dc, avg, sp, eb, ba:/bonus action|off-hand/i.test(a.name||"") || !!(sp && /bonus/i.test(sp.time||"")), half:!!(sp && /half as much/i.test(sp.desc||"")) }; })
     .filter(l=>l.avg > 0 && (l.atk!=null || l.dc!=null));
   const spellIds = new Set(lines.filter(l=>l.sp).map(l=>l.sp.id));
-  const known = (c.spells||[]).map(id=>spellOf(id)).filter(s=>s && !spellIds.has(s.id));
+  const known = (c.spells||[]).map(id=>spellFor(c, id)).filter(s=>s && !spellIds.has(s.id));
   const paladin = lvIn(/paladin/i) >= 2 && !known.some(s=>/divine smite/i.test(s.name)) && !spellIds.has("spell:divine-smite") ? spellOf("spell:divine-smite") : null;
   if(!(hpMax > 0) || (!lines.length && !known.some(s=>s.dmg || s.heal))){
     return { pos:budgetPos, cr:crNear(budgetPos), xp:PARTY_BUDGET[lv][1], tough:budgetPos, hits:budgetPos, dpr:0, fallback:true, why:`no full sheet: rated by level ${lv}` };
@@ -7849,7 +7853,7 @@ const spellMeta = s => [String(s.time||"").replace(/-/g," "), s.range, s.conc?"c
   s.dmg ? `${s.heal?"heals ":""}${s.dmg}${s.dtype?` ${s.dtype}`:""}` : ""].filter(Boolean).join(" · ");
 function pcSpellsBlock(c, i){
   const byLv = {};
-  for(const s of (c.spells||[]).map(spellOf).filter(Boolean)) (byLv[s.lv] = byLv[s.lv] || []).push(s);
+  for(const s of (c.spells||[]).map(id=>spellFor(c, id)).filter(Boolean)) (byLv[s.lv] = byLv[s.lv] || []).push(s);
   const lvls = Object.keys(byLv).map(Number).sort((a,b)=>a-b);
   const slotPips = L => { const sl = c.slots && c.slots[L]; return sl && sl.max>0 ? pips(sl.max, sl.used, j=>`data-pa="slot" data-pci="${i}" data-l="${L}" data-j="${j}"`) : ""; };
   return `<div class="spellbook">
@@ -8709,7 +8713,8 @@ function pcCard(c, i, npc){
       <div class="pcrow">${f("player","Player",1,"Who plays them")}${roleSel}</div>
       <div class="pcrow">${f("species","Species",1)}${f("cls","Class",1.2)}</div>
       <div class="pcrow">${f("subcls","Subclass",1.3)}${f("bg","Background",1)}</div>
-      <div class="pcrow"><div class="field" style="flex:1"><label>Alignment</label><select data-pc="${i}" data-f="align">${alignOptions(c.align)}</select></div></div>
+      <div class="pcrow"><div class="field" style="flex:1"><label>Alignment</label><select data-pc="${i}" data-f="align">${alignOptions(c.align)}</select></div>
+        <div class="field" style="flex:1" title="2014: their spells read as their 2014 sheet prints them where the editions differ, and no Weapon Mastery. Everything else stays on the app's 2024 rules"><label>Rules</label><select data-pc="${i}" data-f="rules"><option value="" ${rules2014(c)?"":"selected"}>2024 (the app's)</option><option value="2014" ${rules2014(c)?"selected":""}>2014 (their sheet)</option></select></div></div>
       <div class="pcrow">${nf("level","Level",1,1,20)}${nf("xp","XP",1.5,0,400000)}${f("ac","AC",.8)}</div>
       <div class="pcrow">${f("hp","HP now",1)}${f("hpMax","HP max",1)}${f("speed","Speed",1)}${f("init","Init",.9,"+0")}</div>
       <div class="pcrow">${f("pp","Passive Perception",1.5)}${f("dc","Spell save DC",1.2)}${f("satk","Spell attack",1,"+5")}</div>`,
@@ -8912,6 +8917,7 @@ function renderParty(){
   if(x && (k==="xp"||k==="level")){ const nx = nextLevelXP(c); x.textContent = `${(+c.xp||0).toLocaleString()} XP${nx!=null?` · next level at ${nx.toLocaleString()}`:" · top level"}`; }
   saveParty();
   if(k==="name") tokensChanged();
+  if(k==="rules") renderPane(true);
 }));
 /* token select on the TV (Joseph, 2026-10-28): the eight colours big, each one free or whose it is (their letters on
    it), and who still has to choose. The players call out a colour; the DM gives it to them in the Players' screen
@@ -11534,11 +11540,14 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
   const v = c.init[id]; c.init[id] = c.init[o]; c.init[o] = v; (c.alertDone = c.alertDone || {})[id] = true;
   const line = `${t.label} swaps initiative with ${a.label} (Alert): ${t.label} ${c.init[id]}, ${a.label} ${c.init[o]}.`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line }); gameLog("fight", line); flash(line); touch(); renderBattle(); renderBattlePanel(); });
-/* Magic Initiate (the Sage's origin feat): the Character Book's "<spell> (Magic Initiate, no slot)" use, for this spell */
+/* a free cast of this spell, no slot: Magic Initiate (the Character Book's "<spell> (Magic Initiate, no slot)" use), and
+   now any use named for the spell and "free" (Joseph, 2026-11-07: Xuna's "Guiding Bolt, free (Star Map)", "Faerie Fire,
+   free (Drow)", "Shield, free (Magic Initiate)") */
 function miResOf(t, info){
   if(!t || t.kind!=="pc" || !t.p || !info || info.kind!=="spell" || info.free || !info.spell || !(info.spell.lv > 0)) return null;
-  const nm = lc(info.spell.name); return (pcState(t.p).res || []).find(r => /magic initiate/i.test(r.name || "") && lc(r.name).startsWith(nm)) || null;
+  const nm = lc(info.spell.name); return (pcState(t.p).res || []).find(r => /magic initiate|\bfree\b|no slot/i.test(r.name || "") && lc(r.name).startsWith(nm)) || null;
 }
+const freeFrom = r => (/\(([^)]+)\)/.exec(String(r.name||"").replace(/,?\s*no slot/i, "")) || [])[1] || (/magic initiate/i.test(r.name||"") ? "Magic Initiate" : "free");
 /* their Strength checks with Advantage (Large Form), and checks to end Grappled (a Goliath's Powerful Build) */
 const strAdvT = t => !!(t && t.kind!=="foe" && t.p && (t.p.big || t.p.rage));
 const strAdvWhy = t => t && t.p ? (t.p.rage ? "Rage" : t.p.big ? "Large Form" : "") : "";
@@ -11571,7 +11580,7 @@ const MASTERY_TEXT = {
   Cleave:"If you hit a creature with a melee attack roll using this weapon, you can make a melee attack roll with the weapon against a second creature within 5 feet of the first that is also within your reach. On a hit, the second creature takes the weapon's damage, but don't add your ability modifier to that damage unless that modifier is negative. You can make this extra attack only once per turn.",
   Push:"If you hit a creature with this weapon, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller." };
 function masteryMax(p){
-  if(!p) return 0; let n = 0;
+  if(!p || rules2014(p)) return 0; let n = 0;     // Weapon Mastery is a 2024 feature: none on a 2014 sheet (Joseph, 2026-11-07)
   for(const k of crClasses(p)){ const c = String(k.cls), lv = +k.lv || 1;
     if(/barbarian/i.test(c)) n = Math.max(n, lv >= 10 ? 4 : lv >= 4 ? 3 : 2);
     else if(/fighter/i.test(c)) n = Math.max(n, lv >= 16 ? 6 : lv >= 10 ? 5 : lv >= 4 ? 4 : 3);
@@ -11791,6 +11800,22 @@ function palLevel(c){ const s = String(c.cls||""), m = /paladin\s*(\d+)/i.exec(s
 /* a spell by id: the SRD's, or one of your own (the Library's Spells tab) — same fields, so it casts, scales and heals the same way */
 const ownSpells = () => (typeof root!=="undefined" && root && root.library && Array.isArray(root.library.spells)) ? root.library.spells : [];
 const spellOf = id => SPELL_BY.get(id) || ownSpells().find(s=>s.id===id) || null;
+/* a character on the 2014 rules (Joseph, 2026-11-07: "since they are doing 2014 rules anything on their sheet that is
+   2014 will be governed by that ... but the app at large will still be 2024"): c.rules "2014", set on the sheet. Their
+   spells read as their own sheets print them where the 2014 text differs; everyone else, and the app, stay on SRD 5.2.
+   The texts are from the players' sheets (Rin's Cure Wounds, Ander's Acid Splash) and the 2014 Moonbeam Joseph sent */
+const rules2014 = p => !!p && String(p.rules||"")==="2014";
+const SPELL_2014 = {
+  "spell:cure-wounds": { dmg:"1d8", desc:"A creature you touch regains a number of hit points equal to 1d8 + your spellcasting ability modifier. This spell has no effect on undead or constructs.", hi:"When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d8 for each slot level above 1st." },
+  "spell:acid-splash": { desc:"You hurl a bubble of acid. Choose one creature within range, or choose two creatures within range that are within 5 feet of each other. A target must succeed on a Dexterity saving throw or take 1d6 Acid damage." },
+  "spell:moonbeam": { comp:"V, S, M (several seeds of any moonseed plant and a piece of opalescent feldspar)", desc:"A silvery beam of pale light shines down in a 5-foot-radius, 40-foot-high cylinder centered on a point within range. Until the spell ends, dim light fills the cylinder.\n\nWhen a creature enters the spell's area for the first time on a turn or starts its turn there, it is engulfed in ghostly flames that cause searing pain, and it must make a Constitution saving throw. It takes 2d10 Radiant damage on a failed save, or half as much damage on a successful one.\n\nA shapechanger makes its saving throw with disadvantage. If it fails, it also instantly reverts to its original form and can't assume a different form until it leaves the spell's light.\n\nOn each of your turns after you cast this spell, you can use an action to move the beam up to 60 feet in any direction.", hi:"When you cast this spell using a spell slot of 3rd level or higher, the damage increases by 1d10 for each slot level above 2nd." }
+};
+const SPELL_2014_MADE = new Map();
+function spellFor(p, id){
+  const s = spellOf(id); if(!s || !rules2014(p) || !SPELL_2014[s.id]) return s;
+  if(!SPELL_2014_MADE.has(s.id)) SPELL_2014_MADE.set(s.id, Object.assign({}, s, SPELL_2014[s.id], { ed:"2014" }));
+  return SPELL_2014_MADE.get(s.id);
+}
 const allSpells = () => [...SRD_SPELLS, ...ownSpells()];
 const spellByName = nm => { const n = String(nm||"").trim().replace(/\.$/,"").toLowerCase(); return ownSpells().find(s=>String(s.name).toLowerCase()===n) || SRD_SPELLS.find(s=>s.name.toLowerCase()===n) || null; };
 /* the list of spell names to pick from, kept up to date as you make your own */
@@ -12113,6 +12138,11 @@ const shapeForm = c => c && c.shape && c.shape.form ? foeById(c.shape.form) : nu
 const pcStatBlock = p => shapeForm(p) || (p && p.fightsAs && p.fightsAs!=="self" && isCompanion(p.id) ? foeById(p.fightsAs) : null);
 const shapeName = c => !c || !c.shape ? "" : c.shape.starry ? `Starry Form: ${c.shape.starry}` : `${(shapeForm(c)||{}).name||"Beast"} form`;
 const wildShapeRes = c => (c.res||[]).find(r=>/wild shape/i.test(r.name||""));
+/* Wild Shape picked in a fight's Action box (Joseph, 2026-11-07: it spent a use without changing her): the form to take,
+   the same list as the card's, and logging it shape-shifts them (shapeShift spends the use) */
+const wsActOf = (t, info) => !!(t && t.kind==="pc" && t.p && info && info.res && (r=>r && (r.id||r.name)===info.res)(wildShapeRes(t.p)));
+const wsOptions = c => (c.forms||[]).map(id=>foeById(id)).filter(Boolean).map(f=>[f.id, f.name])
+  .concat(isStarDruid(c) ? Object.keys(STARRY).map(k=>[`star:${k}`, `Starry Form: ${k}`]) : []);
 function shapeShift(c, pick){
   const r = wildShapeRes(c);
   if(r && r.used >= r.max){ flash("No Wild Shape uses left."); return false; }
@@ -15689,6 +15719,9 @@ const reactedThisRound = (c, id) => !!(c.reacted && c.reacted[id]!=null);
    when their turn starts. bonusActOf: is this action one? A bonus-action spell, an off-hand / "bonus action" attack row,
    a stat block's bonus action, an item used as one (its use, or an On a hit that takes it); the form's tick can say otherwise */
 const bonusUsed = (c, id) => !!(c.bonused && c.bonused[id]!=null);
+/* Disengaged this turn; a rogue of level 2 or more has Cunning Action (Dash, Disengage or Hide as a Bonus Action) */
+const disOn = (c, id) => !!(c.disengaged && c.disengaged[id]===turnStamp(c));
+const cunningOf = t => !!(t && t.kind!=="foe" && t.p && crClasses(t.p).some(k=>/rogue/i.test(k.cls) && k.lv >= 2));
 /* two table rules (Joseph, 2026-11-06), on unless unticked (Party tab, "Combat: your table rules"): the players roll their
    own checks and saves (the app asks for the d20 a player character rolled instead of rolling it: a save against an enemy's
    spell or attack, a repeat save, a lingering area, a shove, breaking free; blank or Cancel and the app rolls it), and a
@@ -16102,7 +16135,7 @@ const addonUsed = (c, actorId, key) => !!(c.onceUsed && c.onceUsed[actorId] && c
 function rowSpell(p, row){
   if(!row || !row.name) return null;
   const nm = row.name.replace(/\s*\(.*\)\s*$/,"").trim().toLowerCase();
-  return (pcState(p).spells||[]).map(spellOf).filter(Boolean).find(s=>s.name.toLowerCase()===nm) || null;
+  return knownSpells(pcState(p)).find(s=>s.name.toLowerCase()===nm) || null;
 }
 
 /* damage type and dice hinted by an action's text: "(1d6 + 3) Slashing damage" */
@@ -16196,7 +16229,7 @@ function actInfo(c, t){
   if(w.startsWith("fsp:")){ const key = w.slice(4), s = allSpells().find(x=>`spell:${x.name}`===key) || null;
     return { kind:"spell", name:key.slice(6), spell:s, save:!!(s&&s.save), hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null }; }
   if(w.startsWith("sp:") || w==="anyspell"){
-    const s = w==="anyspell" ? spellByName(a.spellText) : spellOf(w.slice(3));
+    const s = w==="anyspell" ? spellByName(a.spellText) : spellFor(t && t.p, w.slice(3));
     return { kind:"spell", name:s?s.name:(a.spellText||"a spell"), spell:s, save:!!(s&&s.save), atk:!!(s&&s.atk), heal:!!(s&&s.heal),
       hint:s&&s.dmg?{ dice:s.dmg, dtype:(s.dtype||"").split(",")[0] }:null };
   }
@@ -16237,7 +16270,7 @@ function actInfo(c, t){
     const up = s && ((c && c.ups) || []).find(u=>u.owner===t.id && u.sp===s.id && u.again);
     if(up) return { kind:"spell", name:s.name, spell:s, row:a, free:up.id, upLvl:up.lvl, ba:up.ba, save:!!s.save, atk:!!s.atk, heal:!!s.heal, hint };
     if(s) return { kind:"spell", name:s.name, spell:s, row:a, save:!!s.save || /DC|[A-Z]{3} \d+/.test(a.hit||""), atk:!!s.atk, heal:!!s.heal, hint };
-    return { kind:"attack", name:a.name||"an attack", save:/DC/i.test(a.hit||""), hint };
+    return { kind:"attack", name:a.name||"an attack", save:/DC|\b(STR|DEX|CON|INT|WIS|CHA)\b\s*\d+/i.test(a.hit||""), hint };     // "DEX 12" is a save too, like a spell row's (Joseph, 2026-11-07: Xuna's Oil flask was rolling +12 to hit)
   }
   if(w.startsWith("bite:")){ const k = +w.slice(5), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* On a hit: its own roll, after the hit */
     return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:"", bite:x ? x.u : null, ba:!!(x && x.u.onHitBa), hint:x ? { dice:abilDice(x.u.onHit, o), dtype:x.u.onHitType } : null, cond:"", save:false }; }
@@ -16308,6 +16341,8 @@ function actionForm(c, all){
     ${t && !calmOf(c) ? (M=>{ const lim = moveAllow(c, t), over = M.ft > lim;
       return `<div class="pcrow" style="align-items:center;margin:0 0 6px"><span class="actspell" style="flex:1;margin:0">Moved <input id="ac-moved" class="mono" type="number" min="0" step="5" value="${M.ft}" style="width:52px" title="Feet moved this turn: change it if you like"> of ${lim} ft${M.dash ? " (Dash)" : ""}${over ? ` <i class="rused">— ${M.ft - lim} ft over</i>` : ""}</span>
         <button class="btn small" data-mv="dash" ${M.dash ? "disabled" : ""} title="The Dash action: their speed again (it takes their action)">${M.dash ? "Dashed" : "Dash"}</button>
+        <button class="btn small" data-mv="dis" ${disOn(c, t.id) ? "disabled" : ""} title="The Disengage action: no opportunity attacks against them for the rest of this turn (it takes their action)">${disOn(c, t.id) ? "Disengaged" : "Disengage"}</button>
+        ${cunningOf(t) && !M.dash ? `<button class="btn small" data-mv="cdash" title="Cunning Action: Dash as a Bonus Action">Dash (bonus)</button>` : ""}${cunningOf(t) && !disOn(c, t.id) ? `<button class="btn small" data-mv="cdis" title="Cunning Action: Disengage as a Bonus Action">Disengage (bonus)</button>` : ""}
         <button class="btn small" data-mv="undo" ${M.moves.length ? "" : "disabled"} title="Put their token back where it was before the last move">Undo last move</button></div>`; })(movedOf(c, t.id)) : ""}
     ${(c.ups||[]).length ? `<p class="actspell">Up now: ${c.ups.map(u=>{ const o = all.find(x=>x.id===u.owner); return `${esc(u.name)}${o ? ` (${esc(o.label)})` : ""}${u.left!=null ? `, ${esc(concLeftWords(u.left))}` : ""}${u.thing && c.pos && c.pos[u.id] ? "" : ` <button class="btn small" data-uptok="${u.id}" title="Put a token for it on the battle map, next to its caster">Token</button>`} <button class="btn small" data-upend="${u.id}" title="End it now: its token goes">End</button>`; }).join(" · ")}</p>` : ""}
     ${Object.keys(c.holds||{}).length ? `<p class="actspell">Held now: ${Object.entries(c.holds).map(([id, H])=>{ const x = all.find(y=>y.id===id), b = all.find(y=>y.id===H.by);
@@ -16317,7 +16352,9 @@ function actionForm(c, all){
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
     ${info && info.spell && SPELL_FX[info.spell.id] && SPELL_FX[info.spell.id].skillDie && !info.free ? `<div class="field"><label>Skill <small>(its 1d4 goes on checks with it)</small></label><select id="ac-fxskill"><option value="">Any check</option>${TA_SKILLS.map(k=>`<option ${k===act.fxSkill?"selected":""}>${k}</option>`).join("")}</select></div>` : ""}
     ${lvls.length?`<div class="field"><label>Slot used</label><select id="ac-lvl">${lvls.map(L=>{ const s = pcState(t.p).slots[L]; return `<option value="${L}" ${L===act.lvl?"selected":""}>${ORD[L]} level (${s.max-s.used} left)</option>`; }).join("")}</select></div>`:""}
-    ${(r => r ? `<label class="check" style="margin:-4px 0 7px" title="Magic Initiate: this spell once without a slot, back on a Long Rest"><input type="checkbox" id="ac-mi" ${act.miFree?"checked":""} ${r.used >= r.max && !act.miFree ? "disabled" : ""}> Free: Magic Initiate, no slot <i class="rused">(${r.max - r.used} left until a Long Rest)</i></label>` : "")(miResOf(t, info))}
+    ${wsActOf(t, info) ? (O=>{ if(!O.some(o=>o[0]===act.wsForm)) act.wsForm = O.length ? O[0][0] : "";
+      return O.length ? `<div class="field"><label>Into</label><select id="ac-wsform">${O.map(([v, nm])=>`<option value="${esc(v)}" ${v===act.wsForm?"selected":""}>${esc(nm)}</option>`).join("")}</select></div>` : `<p class="actspell">No forms learned yet: learn them on their card (Spells, slots and resources).</p>`; })(wsOptions(t.p)) : ""}
+    ${(r => r ? `<label class="check" style="margin:-4px 0 7px" title="${esc(freeFrom(r))}: this spell without a slot, back on a Long Rest"><input type="checkbox" id="ac-mi" ${act.miFree?"checked":""} ${r.used >= r.max && !act.miFree ? "disabled" : ""}> Free: ${esc(freeFrom(r))}, no slot <i class="rused">(${r.max - r.used} left until a Long Rest)</i></label>` : "")(miResOf(t, info))}
     ${info&&info.spell?`<p class="actspell">${esc(info.spell.name)} · ${info.spell.lv?ORD[info.spell.lv]+" level":"cantrip"} ${esc(info.spell.school.toLowerCase())} · ${esc(info.spell.range)}${info.spell.save?` · ${esc(info.spell.save)} save`:""}${info.spell.atk?" · spell attack":""}${info.spell.dmg?` · ${esc(info.spell.dmg)} ${esc(info.spell.dtype)}`:""}${info.spell.conc?" · concentration":""} <span class="libref" data-spellopen="${info.spell.id}">text</span></p>`:""}
     ${info&&info.hint&&!info.spell?`<p class="actspell">${esc(info.hint.dice)} ${esc(info.hint.dtype)}${info.save?" · saving throw":""}</p>`:""}
     ${D.sc && D.sc.up ? `<p class="actspell">${info.spell.lv ? `With a ${ORD[act.lvl]}-level slot` : `At character level ${clampLv(t.p.level)}`}: ${D.sc.parts.map(p=>`${esc(p.dice)} ${esc(p.dtype)}`).join(", then ")}${D.sc.heal?` · heals ${esc(D.sc.heal)}`:""}</p>` : ""}
@@ -16365,7 +16402,7 @@ function snapOf(c, ids){
     if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, temp:x.temp||0, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null, fx:x.fx||null, bi:x.bi||null })) };
     const p = partyRoster().find(y=>y.id===id);
     if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null, fx:p.fx||null,
-      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
+      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
   }
   return s;
 }
@@ -16373,7 +16410,7 @@ function restoreSnap(c, s){
   for(const id in s){
     if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; if(!x.fx) delete x.fx; if(!x.bi) delete x.bi; } }     // concentration and spell effects come back with the rest
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; if(!p.fx) delete p.fx;
-      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi"]) if(p[k]==null) delete p[k]; } }
+      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape"]) if(p[k]==null) delete p[k]; } }
   }
 }
 const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk","ctrl"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
@@ -16501,9 +16538,10 @@ function logAction(n, c){
   if(actor.kind==="pc"){
     const p = pcState(actor.p), S = statsOf(p);
     const miR = act.miFree && !part ? miResOf(actor, info) : null;     // Magic Initiate: its own use, no slot
-    if(miR){ miR.used = Math.min(miR.max, (+miR.used || 0) + 1); slotTxt = ` (Magic Initiate: no slot; ${miR.max - miR.used} left until a Long Rest)`; }
+    if(miR){ miR.used = Math.min(miR.max, (+miR.used || 0) + 1); slotTxt = ` (${freeFrom(miR)}: no slot; ${miR.max - miR.used} left until a Long Rest)`; }
     else if(info.kind==="spell" && !info.free && !part && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
-    if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) : 1));     // a pool (Lay on Hands) spends what it gives
+    if(info.res && wsActOf(actor, info) && act.wsForm){ if(shapeShift(p, act.wsForm)) slotTxt = ` (into ${shapeName(p)})`; }
+    else if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) : 1));     // a pool (Lay on Hands) spends what it gives
       if(r && info.loh) slotTxt = ` (${r.max - r.used} left in the pool)`; }
     if(info.kind==="item"){ const x = usableOf(p).find(y=>y.k===info.useK);                 /* using a carried thing spends a charge (or the thing) */
       if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } spendItem(p, x.k);
@@ -16783,7 +16821,7 @@ function undoAction(c){
     flash("Took back the arrival."); touch(); renderBattle(); renderBattlePanel(); return; }
   if(e.ups!=null){ const B = JSON.parse(e.ups), keep = new Set(B.u.map(u=>u.id)); c.pos = c.pos || {};     // what was up, as it was (a token moved since stays where it is)
     for(const u of c.ups||[]) if(!keep.has(u.id)) delete c.pos[u.id]; c.ups = B.u; for(const [id, p] of Object.entries(B.p)) if(!c.pos[id]) c.pos[id] = p; }
-  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.moved!=null) c.moved = JSON.parse(e.moved); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
+  restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.moved!=null) c.moved = JSON.parse(e.moved); if(e.dis!=null) c.disengaged = JSON.parse(e.dis); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   if(e.big){ const T = combatants(c).find(x => x.id===e.big.id); if(T && T.p){ if(e.big.v) T.p.big = true; else delete T.p.big; } }     // Large Form taken back
   if(e.jaunt) delete c.jaunt;
   if(e.pushed && c.pos){ for(const [id, p] of Object.entries(e.pushed)) c.pos[id] = p; delete c.forceful; }     // a Forceful Blow's push taken back
@@ -17075,7 +17113,7 @@ function zoneHurts(c, u, t){
   return !(u.zone.choose && t.side===owner.side);
 }
 function zoneHit(c, u, t, why, squares){
-  const Z = u.zone, s = SPELL_BY.get(u.sp) || spellByName(u.name), owner = combatants(c).find(o => o.id===u.owner); if(!s || !owner || !zoneHurts(c, u, t)) return "";
+  const Z = u.zone, owner = combatants(c).find(o => o.id===u.owner), s = spellFor(owner && owner.p, u.sp) || SPELL_BY.get(u.sp) || spellByName(u.name); if(!s || !owner || !zoneHurts(c, u, t)) return "";
   if(Z.once){ const H = u.hit = u.hit || {}; if(H[t.id]===turnStamp(c)) return ""; H[t.id] = turnStamp(c); }
   const snap = snapOf(c, [t.id]), holdsBefore = JSON.stringify(c.holds || {}), bits = [];
   let made = false;
@@ -17413,12 +17451,21 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-mv]").forEach(b=>b.onclick = ()=>{ keep(); const t = all.find(x=>x.id===act.actor); if(!t) return;
     const M = (c.moved = c.moved || {})[t.id] = movedOf(c, t.id);
     if(b.dataset.mv==="undo"){ const m = M.moves.pop(); if(!m) return; M.ft = Math.max(0, M.ft - m.ft); c.pos[t.id] = { ...m.from }; flash(`${t.label} back where they were (${m.ft} ft taken off).`); }
-    else if(b.dataset.mv==="dash"){ if(actionsLeft(c, t.id) <= 0 && !confirm(`${t.label} has already used their action this turn. Dash anyway?`)) return;
-      const actedBefore = JSON.stringify(c.acted||{}), movedBefore = JSON.stringify(c.moved||{});
-      M.dash = true; const a = (c.acted = c.acted || {})[t.id] = c.acted[t.id] || { n:0, more:0 }; a.n++; a.swings = 0;
-      const line = `${t.label} takes the Dash action (${moveAllow(c, t)} ft this turn).`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap:{}, acted:actedBefore, moved:movedBefore }); flash(line); }
+    else if(["dash","dis","cdash","cdis"].includes(b.dataset.mv)){
+      /* Dash and Disengage (Joseph, 2026-11-07: Disengage for the players too), with their action, or a rogue's Cunning
+         Action as a Bonus Action; Undo takes either back */
+      const mv = b.dataset.mv, bonus = mv[0]==="c", dash = /dash/.test(mv), word = dash ? "Dash" : "Disengage";
+      if(bonus ? bonusUsed(c, t.id) && !confirm(`${t.label} has already used their Bonus Action this turn. ${word} anyway?`)
+               : actionsLeft(c, t.id) <= 0 && !confirm(`${t.label} has already used their action this turn. ${word} anyway?`)) return;
+      const actedBefore = JSON.stringify(c.acted||{}), movedBefore = JSON.stringify(c.moved||{}), bonusBefore = JSON.stringify(c.bonused||{}), disBefore = JSON.stringify(c.disengaged||{});
+      if(dash) M.dash = true; else (c.disengaged = c.disengaged || {})[t.id] = turnStamp(c);
+      if(bonus) (c.bonused = c.bonused || {})[t.id] = c.round;
+      else { const a = (c.acted = c.acted || {})[t.id] = c.acted[t.id] || { n:0, more:0 }; a.n++; a.swings = 0; }
+      const line = `${t.label} ${bonus ? "uses Cunning Action to " : "takes the "}${word}${bonus ? " (Bonus Action)" : " action"}${dash ? ` (${moveAllow(c, t)} ft this turn)` : ": no opportunity attacks against them this turn"}.`;
+      (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap:{}, acted:actedBefore, moved:movedBefore, bonused:bonusBefore, dis:disBefore }); flash(line); }
     touch(); renderBattle(); renderBattlePanel(); });
   { const fs = $("#ac-fxskill"); if(fs) fs.onchange = ()=>{ act.fxSkill = fs.value; }; }     // Guidance's skill
+  { const wf = $("#ac-wsform"); if(wf) wf.onchange = ()=>{ act.wsForm = wf.value; }; }     // Wild Shape's form
   el.querySelectorAll("[data-qdone]").forEach(b=>b.onclick = ()=>{ const a = (c.acted||{})[act.actor]; if(a) a.swings = 0; act = freshAct(act.actor); renderBattlePanel(); });     // the rest of a Multiattack (or Extra Attack) not made
   el.querySelectorAll("[data-holdend]").forEach(b=>b.onclick = ()=>{ if(c.holds) delete c.holds[b.dataset.holdend]; touch(); renderBattlePanel(); });     // a hold over, by hand
   { const cs = $("#ac-ctrl"); if(cs) cs.onchange = ()=>{ keep(); renderBattlePanel(); }; }
@@ -26709,7 +26756,7 @@ function skillMod(o, skill){
   return abBonus(o, SKILL_AB[skill] || "dex") + fx + worn + (bardLevel(o) >= 2 ? Math.floor(profOf(o) / 2) : 0);     // a Bard's Jack of All Trades: half their Proficiency Bonus on a skill they lack
 }
 const spellModOf = o => { const s = parseInt(String(o.satk||"").replace("+","")); return isFinite(s) ? s - profOf(o) : 0; };
-const knownSpells = o => (o.spells||[]).map(spellOf).filter(Boolean);
+const knownSpells = o => (o.spells||[]).map(id=>spellFor(o, id)).filter(Boolean);
 function healSources(o){
   const out = knownSpells(o).filter(s=>s.heal).map(s=>({ k:"spell:"+s.id, s, label:s.name }));
   for(const x of usableOf(o)) if(x.u.heal) out.push({ k:"item:"+x.k, label:usableLabel(x), x });     /* a potion, a healing stone… */
