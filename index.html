@@ -4328,9 +4328,17 @@ function courseOverlay(inv){
 }
 /* sail it: the ship moves along the course at the chosen pace; the chart clears around her and the world
    clock runs at her speed (24 hours a day under sail, or as set), until she arrives or is paused */
+/* stops at a set time on a set day (Joseph, 2026-11-07: "it's set to pause day 2 dawn, then day 2 dusk"): s.stopAt
+   [{ day, at }], kept on the ship; she pauses when the clock reaches each one, and it's crossed off. Each time of day is
+   the hour it begins (phaseAt: dim from 5 am, day from 7, dusk at 7 pm, night from 9) */
+const STOP_TIMES = [["dawn","Dawn",5],["morning","Morning",7],["noon","Noon",12],["dusk","Dusk",19],["night","Night",21],["midnight","Midnight",24]];
+const stopHour = x => (+x.day - 1) * 24 + ((STOP_TIMES.find(t=>t[0]===x.at) || STOP_TIMES[0])[2]);
+const stopWord = x => `day ${x.day} at ${((STOP_TIMES.find(t=>t[0]===x.at) || STOP_TIMES[0])[1]).toLowerCase()}`;
+const stopsOf = s => (s.stopAt || []).slice().sort((a, b) => stopHour(a) - stopHour(b));
 function playCourse(s){
   if(!s.course || !s.course.pts.length || planOf) return;
   courseEdit = null;
+  if(s.stopAt){ s.stopAt = s.stopAt.filter(x => stopHour(x) > worldHours()); if(!s.stopAt.length) delete s.stopAt; }     // stops already past
   /* the time the whole voyage takes, the navigator's check included, set once when she first sails; spread over every mile */
   if(!s.course.m0) s.course.m0 = courseMiles(s);          // the voyage's length when she set off: the navigator's check is spread over it
   s.course.rate = rateToday(s);
@@ -4378,6 +4386,10 @@ function stepCourse(t){
   if(vp.owed >= .25){ passHours(vp.owed, true); vp.owed = 0; }          // the clock ticks along as she goes (saved when she stops)
   /* a stop every so often (half a day, a day…), to play out what happens at sea */
   if(s.stopEvery && vp.since >= s.stopEvery && s.course.pts.length){ const w = (STOP_EVERY.find(([h])=>h===s.stopEvery)||[0,"",""])[2]; render(); stopCourse(false, w); return; }
+  /* ...or at a set time on a set day */
+  { const due = s.course.pts.length && stopsOf(s).find(x => worldHours() + vp.owed >= stopHour(x));
+    if(due){ s.stopAt = s.stopAt.filter(x => x!==due); if(!s.stopAt.length) delete s.stopAt;
+      const w = stopWord(due); render(); stopCourse(false, w[0].toUpperCase() + w.slice(1)); return; } }
   /* the view follows her (and the players' screen with it) */
   const r = svg.getBoundingClientRect(); view.tx = r.width/2 - s.x*view.k; view.ty = r.height/2 - s.y*view.k; applyTransform();
   if(!s.course.pts.length){ s.x = Math.round(s.x); s.y = Math.round(s.y); render(); stopCourse(true); return; }
@@ -4446,7 +4458,7 @@ function voyageBarHtml(){
   if(planOf || battleOf) return "";
   const s = barShip(); if(!s) return "";
   const c = s.course, to = c && c.to && nodeById(c.to), nm = esc(s.name||"The ship");
-  if(voyagePlay) return `<span class="vb-ship">⛵ <b>${nm}</b> → ${esc(to ? to.name||"her destination" : "her course")}</span><span class="vb-left"></span>${s.stopEvery ? `<span class="vb-eta">· ${esc((STOP_EVERY.find(([h])=>h===s.stopEvery)||[0,""])[1].toLowerCase())}</span>` : ""}<button data-vb="pause" class="vb-go">⏸ Pause</button>`;
+  if(voyagePlay) return `<span class="vb-ship">⛵ <b>${nm}</b> → ${esc(to ? to.name||"her destination" : "her course")}</span><span class="vb-left"></span>${s.stopEvery ? `<span class="vb-eta">· ${esc((STOP_EVERY.find(([h])=>h===s.stopEvery)||[0,""])[1].toLowerCase())}</span>` : ""}${stopsOf(s)[0] ? `<span class="vb-eta">· next stop ${esc(stopWord(stopsOf(s)[0]))}</span>` : ""}<button data-vb="pause" class="vb-go">⏸ Pause</button>`;
   const ports = root.nodes.filter(x=>x!==s && isPort(x)), known = ports.filter(x=>x.route);
   const opt = x => `<option value="${x.id}" ${to&&to.id===x.id?"selected":""}>${esc(x.name||"A place")}${x.hidden?" (not found yet)":""}</option>`;
   const sel = `<select data-vb="to" title="Where to">${c ? "" : `<option value="">Sail to…</option>`}${c && !to ? `<option value="" selected>(a point at sea)</option>` : ""}${known.length ? `<optgroup label="Known routes">${known.map(opt).join("")}</optgroup>` : ""}<optgroup label="${known.length?"Elsewhere":"Ports of call"}">${ports.filter(x=>!x.route).map(opt).join("")}</optgroup></select>`;
@@ -4459,6 +4471,7 @@ function voyageBarHtml(){
     <button data-vb="play" class="vb-go">▶ Sail</button><select data-vb="mps" title="How fast she moves on the screen">${COURSE_PACES.map(v=>`<option value="${v}" ${(c.mps||2)===v?"selected":""}>${v} mi/s</option>`).join("")}</select>
     <select data-vb="every" title="She pauses by herself after this much time at sea, so you can play out what happens">${STOP_EVERY.map(([h,l])=>`<option value="${h}" ${(+s.stopEvery||0)===h?"selected":""}>${l}</option>`).join("")}</select>
     <label class="vb-nav" title="No other ships are sighted or shown to the players on this voyage; it ends when she arrives"><input type="checkbox" data-vb="quiet" ${c.quiet?"checked":""}>Quiet crossing</label>
+    <span class="vb-nav" title="She pauses when the clock reaches each of these (crossed off as it's reached)">Stop on day <input data-vb="sday" type="number" min="1" value="${campaignDay()}" style="width:44px"><select data-vb="stime">${STOP_TIMES.map(([k, l, h])=>`<option value="${k}">${l} (${hourWord(h % 24)})</option>`).join("")}</select><button data-vb="sadd" title="Add this stop">+</button>${stopsOf(s).map(x=>`<span class="chip" style="margin-left:3px">${esc(stopWord(x))}<span class="x" data-vb="sdel" data-k="${x.day}|${x.at}" title="Take this stop off">×</span></span>`).join("")}</span>
     <button data-vb="shape" ${courseEdit===s.id?`class="on"`:""}>${courseEdit===s.id?"Done shaping":"Shape"}</button><button data-vb="clear" title="Drop the course">×</button>`;
 }
 function renderVoyageBar(){
@@ -4471,8 +4484,15 @@ function renderVoyageBar(){
 }
 function wireVoyageBar(el){
   el.addEventListener("click", e=>{
+    const del = e.target.closest("[data-vb='sdel']");
+    if(del){ const s = barShip(); if(!s) return; s.stopAt = (s.stopAt||[]).filter(x => `${x.day}|${x.at}` !== del.dataset.k); if(!s.stopAt.length) delete s.stopAt; touch(); renderVoyageBar(); return; }
     const b = e.target.closest("button[data-vb]"); if(!b) return;
     const s = barShip(); if(!s) return; const a = b.dataset.vb;
+    if(a==="sadd"){ const day = Math.round(+el.querySelector("[data-vb='sday']").value), at = el.querySelector("[data-vb='stime']").value, x = { day, at };
+      if(!(day >= 1)){ flash("Which day?"); return; }
+      if(stopHour(x) <= worldHours()){ flash(`${stopWord(x)[0].toUpperCase() + stopWord(x).slice(1)} has already passed (it's day ${campaignDay()}, ${hourWord(clockHour())}).`); return; }
+      if(!(s.stopAt||[]).some(y => y.day===day && y.at===at)) (s.stopAt = s.stopAt || []).push(x);
+      touch(); renderVoyageBar(); flash(`She'll pause on ${stopWord(x)}.`); return; }
     if(a==="play") playCourse(s);
     else if(a==="pause") stopCourse(false);
     else if(a==="shape"){ courseEdit = courseEdit===s.id ? null : s.id; render(); renderPane(true); }
@@ -4485,6 +4505,7 @@ function wireVoyageBar(el){
   el.addEventListener("change", e=>{
     const t = e.target.closest("[data-vb]"); if(!t) return;
     const s = barShip(); if(!s) return; const a = t.dataset.vb;
+    if(a==="sday" || a==="stime") return;                 // picked, not added till +
     if(a==="to"){ const d = nodeById(t.value); if(d) setCourseTo(s, d); }
     else if(a==="mps" && s.course) s.course.mps = s.pace = +t.value || 2;
     else if(a==="every"){ if(+t.value) s.stopEvery = +t.value; else delete s.stopEvery; }

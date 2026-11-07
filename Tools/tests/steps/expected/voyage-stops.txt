@@ -1,0 +1,5 @@
+1. a ship with a course, at night on day 1: day 1, 10 pm (night)
+2. add day 2 dawn and day 2 dusk on the bar: day 2 at dawn, day 2 at dusk
+3. sail: she pauses at dawn on day 2: day 2, 5 am (dim) · left: day 2 at dusk
+4. sail again: she pauses at dusk on day 2: day 2, 7 pm (dim) · left: none
+5. no page errors: ok
