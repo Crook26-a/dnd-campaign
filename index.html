@@ -7593,7 +7593,7 @@ function xpRules(){
   if(!isFinite(+r.bonus)) r.bonus = XP_RULES_DEFAULT.bonus; if(!isFinite(+r.crit)) r.crit = XP_RULES_DEFAULT.crit; if(!isFinite(+r.heal)) r.heal = XP_RULES_DEFAULT.heal; delete r.penalty;     // there was a penalty for damage taken; Joseph dropped it
   return r;
 }
-const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk","ctrl"];
+const STAT_KEYS = ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk","ctrl","ones"];     // ones: natural 1s (2026-11-08)
 /* where every party member's tallies stand now (spells as one count) */
 function statSnap(){
   const out = {};
@@ -7682,7 +7682,7 @@ function checkXp(who, dc, natOf, what, tots){     // tots: the totals by key, wh
   return Object.keys(per).length ? awardXPPer(per, `${what}: ${why.join(", ")}`) : "";
 }
 /* correcting a character's tallies by hand (something logged wrong): logged, and the party's Undo takes it back */
-const STAT_FIX = [["dealt","Damage dealt"],["taken","Damage taken"],["healed","Healing given"],["kills","Foes brought down"],["attacks","Attacks made"],["hits","Attacks that hit"],["crits","Critical hits"],["greats","Great checks"],["loot","Loot found (gp)"],["downs","Times dropped to 0 hp"]];
+const STAT_FIX = [["dealt","Damage dealt"],["taken","Damage taken"],["healed","Healing given"],["kills","Foes brought down"],["attacks","Attacks made"],["hits","Attacks that hit"],["crits","Critical hits"],["greats","Great checks"],["loot","Loot found (gp)"],["downs","Times dropped to 0 hp"],["ones","Natural 1s"]];
 document.addEventListener("change", e=>{
   const t = e.target.closest("[data-statfix]"); if(!t) return;
   const c = [...partyRoster(), ...companions()].find(x=>x.id===t.dataset.pcid); if(!c) return;
@@ -7705,7 +7705,9 @@ const LEADER_BOARDS = [
   ["ctrl", "Kept the most out of the fight", r=>r.ctrl, v=>Math.round(v).toLocaleString()],      // control points (2026-10-31)
   ["potS", "Player of the session", r=>r.potS, v=>`${v}×`],
   ["potB", "Player of the battle", r=>r.potB, v=>`${v}×`],
-  ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()]
+  ["xp", "Most experience", r=>r.xp, v=>v.toLocaleString()],
+  /* natural 1s on checks, saves and attack rolls (Joseph, 2026-11-08: "I keep it in the dm screen, but it doesn't go on the tv") */
+  ["ones", "Natural 1s", r=>r.ones, v=>`${v}`, null, false, true]
 ];
 function leaderRows(scope){
   const now = statSnap(), base = scope==="session" && root.statMarks ? root.statMarks.stats || {} : null;
@@ -7713,13 +7715,15 @@ function leaderRows(scope){
   return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
     const d = k => (a[k]||0) - (base ? (b[k]||0) : 0), keep = (k, x) => k==="chk" ? x : Math.max(0, x);
     const inF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d("f_"+k))])), outF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d(k) - d("f_"+k))]));
-    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), ctrl:v("ctrl"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, inF:statRow(c, inF), outF:statRow(c, outF), xp:+c.xp||0 }; });
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), ctrl:v("ctrl"), ones:v("ones"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, inF:statRow(c, inF), outF:statRow(c, outF), xp:+c.xp||0 }; });
 }
 function leaderHtml(scope, tv){
   const rows = warRows(leaderRows(scope)), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
   { const f = warRows(rows.map(r=>r.inF)), o = warRows(rows.map(r=>r.outF)); rows.forEach((r, i)=>{ r.warF = f[i].war; r.ptsF = f[i].pts; r.warO = o[i].war; r.ptsO = o[i].pts; }); }
-  const boards = LEADER_BOARDS.map(([k, title, get, fmt, sub, neg])=>{
-    const list = rows.map(r=>({ r, v:get(r) })).filter(x=>x.v!=null && (neg ? true : x.v > 0)).sort((a, b)=>b.v - a.v);
+  const boards = LEADER_BOARDS.map(([k, title, get, fmt, sub, neg, dmOnly])=>{
+    if(dmOnly && tv) return "";                                                 // the DM's alone: never on the TV
+    if(dmOnly) title = `${title} <small>only you see this</small>`;
+    const list =rows.map(r=>({ r, v:get(r) })).filter(x=>x.v!=null && (neg ? true : x.v > 0)).sort((a, b)=>b.v - a.v);
     if(!list.length && !tv) return `<div class="lb-card"><div class="lb-t">${title}</div><p class="lb-none">Nobody yet</p></div>`;
     if(!list.length) return "";
     return `<div class="lb-card"><div class="lb-t">${title}</div>${list.map((x, i)=>`<div class="lb-row${i===0 ? " top" : ""}"><span class="lb-p">${i===0 ? "★" : i+1}</span><span class="lb-n">${esc(x.r.c.name || "Someone")}</span><span class="lb-v">${fmt ? fmt(x.v) : x.v.toLocaleString()}${sub ? `<small>${sub(x.r)}</small>` : ""}</span></div>`).join("")}</div>`;
@@ -7737,7 +7741,8 @@ function leaderBlock(){
   return `<details class="partysec" data-invfor="party:leaders" ${openInv.has("party:leaders")?"open":""}><summary class="eyebrow">Leaderboards</summary>
     <div class="pcrow" style="margin:2px 0 8px"><button class="btn ${leaderScope==="session"?"on":""}" style="flex:1" data-lb="session">This session</button><button class="btn ${leaderScope==="all"?"on":""}" style="flex:1" data-lb="all">The whole campaign</button></div>
     ${leaderHtml(leaderScope, false)}
-    <button class="btn wide" data-lb="${showing ? "tvoff" : "tv"}" style="margin-top:6px">${showing ? "Take it off the players' screen" : "Show it on the players' screen"}</button></details>`;
+    <button class="btn wide" data-lb="${showing ? "tvoff" : "tv"}" style="margin-top:6px">${showing ? "Take it off the players' screen" : "Show it on the players' screen"}</button>
+    <button class="btn wide" data-cardopen="leaders:${leaderScope}" style="margin-top:6px" title="A card of these boards, like an item's: save or copy the picture to send, or show it on the TV">Share it as a card</button></details>`;
 }
 /* combat: your table rules (Joseph, 2026-11-06), both on unless unticked; stored on this campaign (root) */
 function fightRulesBlock(){
@@ -7796,7 +7801,7 @@ const warWord = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2)
    it ends) and over the session. The DM can change either, then declares them on the players' screen at the end. ══ */
 const awardsOf = () => (root.awards = root.awards || { battles:[], sessions:[] });
 const sessKey = () => root.statMarks ? (root.statMarks.t || root.statMarks.label || "session") : null;
-const statRow = (c, o) => ({ c, kills:0, dealt:0, taken:0, healed:0, attacks:0, hits:0, loot:0, downs:0, chk:0, ctrl:0, ...o });
+const statRow = (c, o) => ({ c, kills:0, dealt:0, taken:0, healed:0, attacks:0, hits:0, loot:0, downs:0, chk:0, ctrl:0, ones:0, ...o });
 function battleAward(place, delta, hp){
   const rows = partyRoster().filter(c=>delta[c.id]).map(c=>statRow(c, delta[c.id]));
   if(!rows.length || !hp) return; warRows(rows, hp); if(!rows.some(r=>r.pts > 0)) return;
@@ -9735,7 +9740,7 @@ const CARD_CATS = ["loot","spells","npcs","foes","factions"];
 const CARD_RARITY = { common:"#5d6168", uncommon:"#2f7d36", rare:"#1f5ba6", "very rare":"#6b3f9c", legendary:"#b4630a", artifact:"#a0231d" };
 const CARD_SCHOOL = { Abjuration:"#2f6f9a", Conjuration:"#a8740f", Divination:"#4f7585", Enchantment:"#a8417a", Evocation:"#ac3d1d", Illusion:"#67479c", Necromancy:"#3e4b3a", Transmutation:"#7a661c" };
 /* what each card leaves off, said under it */
-const CARD_HIDES = { loot:"your notes and where it's sold stay off", spells:"your notes stay off", npcs:"what they want, know and hide stays off", foes:"the stat block stays off", factions:"how they work, and your notes, stay off" };
+const CARD_HIDES = { loot:"your notes and where it's sold stay off", spells:"your notes stay off", npcs:"what they want, know and hide stays off", foes:"the stat block stays off", factions:"how they work, and your notes, stay off", leaders:"your own boards (Natural 1s, value added) stay off" };
 /* a description's lines; an SRD table ("| Potion | Hit Points |") read as cells, its rule rows dropped */
 const cardText = t => String(t||"").split(/\n+/).map(l=>l.trim()).filter(l=>l && !/^\|?[\s:|-]+\|?$/.test(l))
   .map(l=>/^\|/.test(l) ? l.replace(/^\||\|$/g, "").split("|").map(s=>s.trim()).filter(Boolean).join(" · ") : l);
@@ -9761,6 +9766,13 @@ function cardOf(cat, x){
     sub:"", rows:[], body:[P(x.look)].filter(Boolean), foot:x.where || "" };
   if(cat==="foes") return { colour:"#5b2a22", band:[x.size, x.type].filter(Boolean).join(" ") || "A creature", title:x.name || "A creature",
     sub:"", rows:[], body:[P(x.look)].filter(Boolean), foot:"" };
+  /* the leaderboards as a card to share (Joseph, 2026-11-08: "share the leaderboard like I do with item cards"): each board
+     the players may see, its top three; the DM's own boards stay off */
+  if(cat==="leaders"){ const R = warRows(leaderRows(x.scope)), first = r => String(r.c.name || "Someone").split(" ")[0];
+    const rows = LEADER_BOARDS.filter(b => !b[6]).map(([k, title, get, fmt, sub, neg]) => { const L = R.map(r => ({ r, v:get(r) })).filter(o => o.v!=null && (neg ? true : o.v > 0)).sort((a, b) => b.v - a.v).slice(0, 3);
+      return [title, L.map(o => `${first(o.r)} ${fmt ? fmt(o.v) : Math.round(o.v * 10) / 10}`).join(" · ")]; }).filter(r => r[1]);
+    return { colour:"#6b4f1d", band:x.scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far") : "The whole campaign",
+      title:"Leaderboards", sub:campName(), rows, body:rows.length ? [] : [P("Nothing yet: it fills in as fights and checks are logged.")].filter(Boolean), foot:`Day ${campaignDay()}` }; }
   if(cat==="factions"){ let st = ""; try{ st = factionEffects(x).tier.label; }catch(err){}
     return { colour:"#2d4a5a", band:"Faction", title:x.name || "A faction", sub:st ? `Your standing: ${st}` : "", rows:[],
       body:[P(x.wants, "What they want.")].filter(Boolean), foot:x.align || "" }; }
@@ -9821,7 +9833,7 @@ function cardBlob(cat, x){
 const cardFileName = x => `${String((x && x.name) || "card").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "card"}-card.png`;
 /* the survey's side: find the thing, show the card over the screen, and what can be done with it */
 const cardFind = (cat, id) => cat==="loot" ? libLootById(id) : cat==="spells" ? spellOf(id) : cat==="npcs" ? libNpcById(id) : cat==="foes" ? foeById(id)
-  : cat==="factions" ? (lib().factions||[]).find(f=>f.id===id) || null : null;
+  : cat==="factions" ? (lib().factions||[]).find(f=>f.id===id) || null : cat==="leaders" ? { id, scope:id, name:"Leaderboards" } : null;
 const cardBtn = (cat, id, label) => `<button class="btn small" data-cardopen="${cat}:${esc(String(id))}" title="A card for the players: show it on the TV, save or copy the picture${cat==="loot" || cat==="spells" ? ", or give it to someone" : ""}">${label || "Card"}</button>`;
 var cardKey = null, cardUrl = null, cardBlobNow = null;
 document.body.insertAdjacentHTML("beforeend", `<div id="cardview" hidden><div class="cv-box" role="dialog" aria-modal="true" aria-label="A card for the players"></div></div>`);
@@ -15804,6 +15816,11 @@ const playerRollsT = t => !!t && t.kind==="pc" && !t.person && !allyAuto(t) && p
 function pcD20(t, what, adv){ return pcDie(t, what, 20, adv); }
 /* any one die a player character rolls (a d12 for Stone's Endurance, too) */
 function pcDie(t, what, sides, adv){
+  const R = pcDieRaw(t, what, sides, adv);
+  if(sides===20 && R.d===1 && t && t.p){ const S = statsOf(t.p); S.ones = (+S.ones || 0) + 1; }     // a natural 1, for the DM's board (2026-11-08)
+  return R;
+}
+function pcDieRaw(t, what, sides, adv){
   const roll = () => ({ d:1 + Math.floor(Math.random() * sides), typed:false, w:"" });
   if(!playerRollsT(t)) return roll();
   for(let i = 0; i < 3; i++){
@@ -16492,7 +16509,7 @@ function restoreSnap(c, s){
       for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape"]) if(p[k]==null) delete p[k]; } }
   }
 }
-const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of ["kills","dealt","taken","healed","attacks","hits","crits","greats","flops","loot","downs","chk","ctrl"]) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
+const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of STAT_KEYS) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
 function damageFoe(x, v){ if(x.max==null) return false; const soak = Math.min(+x.temp || 0, v); if(soak){ x.temp -= soak; v -= soak; }     /* temporary hit points go first */
   const was = x.hp; x.hp = Math.max(0, x.hp - v); if(x.hp<=0 && !x.conds.includes("Unconscious")) x.conds.push("Unconscious"); return was>0 && x.hp<=0; }
 /* at 0 hit points (item 10, the 2024 rules): damage is a failed death save, two from a critical hit; damage left over
@@ -16541,6 +16558,7 @@ function logFightCheck(c, actor){
     : dis && !playerRollsT(actor) ? (r => ({ d:Math.min(...r), w:` (Disadvantage, Poisoned: ${r[0]} and ${r[1]})` }))([1 + Math.floor(Math.random() * 20), 1 + Math.floor(Math.random() * 20)])
     : (Q => dis ? { ...Q, w:`${Q.w || ""} (Disadvantage: Poisoned)` } : Q)(pcD20(actor, `a ${chkLabel(k)} check (DC ${dc})`, dis ? "dis" : ""));
   const tot = R.d + b, ok = tot >= dc;
+  if(R.d===1 && (typed===1 || (dis && !playerRollsT(actor)))){ const S = statsOf(p); S.ones = (+S.ones || 0) + 1; }     // a natural 1 that didn't come through pcDie
   const actedBefore = JSON.stringify(c.acted || {}), snap = snapOf(c, [actor.id]);
   const a = (c.acted = c.acted || {})[actor.id] = c.acted[actor.id] || { n:0, more:0 }; a.n++;
   const line = `${actor.label} makes a ${chkLabel(k)} check: d20 ${R.d}${R.w || ""}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${ok ? "succeeds" : "fails"}${act.note ? ` (${act.note})` : ""}.`;
@@ -16665,6 +16683,7 @@ function logAction(n, c){
     else if(info.kind==="attack"){ S.attacks++; if(act.outcome==="hit"||act.outcome==="crit") S.hits++; }
     else S.abilities[info.name] = (S.abilities[info.name]||0)+1;
     if(act.outcome==="crit") S.crits = (S.crits||0) + 1;          // a critical hit, weapon or spell: XP on the fight's card (your table rule)
+    if(act.rolledOne && act.outcome==="miss") S.ones = (+S.ones || 0) + 1;     // a natural 1 on the attack roll (the DM's board)
   } else {
     const x = actor.x, r = foeResources(foeById(x.foe));
     const key = act.what.startsWith("fsp:") ? act.what.slice(4) : act.what.slice(3).replace(/^(Bonus|Reaction|Legendary): /,"").replace(/\s*\(.*\)\s*$/,"");
@@ -17496,7 +17515,7 @@ function renderBattlePanelNow(){
   $("#ac-actor").onchange = e=>{ act = freshAct(e.target.value); renderBattlePanel(); };
   { const bo = $("#ac-bonus"); if(bo) bo.onchange = ()=>{ act.bonus = bo.checked; }; }     // said by hand: kept till the action changes
   $("#ac-what").onchange = e=>{
-    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.saves; delete act.saveDC; delete act.bonus; delete act.hitBonus; delete act.toHit; delete act.ctrl; act.d20 = "";
+    keep(); act.what = e.target.value; act.lvl = null; act.addons = []; act.p2 = null; delete act.partV; delete act.rolledOne; delete act.saves; delete act.saveDC; delete act.bonus; delete act.hitBonus; delete act.toHit; delete act.ctrl; act.d20 = "";
     /* Opportunity attack picked by hand: made with their melee weapon, as a reaction, as when the map offers one */
     if(act.what==="atk:Opportunity attack"){ const T = act.targets; startReaction(c, act.actor, null); act.targets = T; if(act.what!=="atk:Opportunity attack"){ renderBattlePanel(); return; } }
     /* Multiattack: its attacks in a row, the first one now (2026-10-30); Eldritch Blast's beams and Scorching Ray's rays the same.
@@ -17636,7 +17655,7 @@ function renderBattlePanelNow(){
         if(me || vs){ const A = adv==="adv" || me, Dd = adv==="dis" || vs; adv = A && Dd ? "" : A ? "adv" : "dis"; } }
       if(mine && (act.luckMe || act.luckVs)) flash("A d20 typed in: roll the Luck point's d20 at the table too, and type the one that counts (no point was spent here).");
       act.luckMe = act.luckVs = false;
-      let d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1; act.hadAdv = adv==="adv";
+      let d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1; act.hadAdv = adv==="adv"; act.rolledOne = d===1;     // a natural 1, counted when it's logged
       const hl = !mine ? hLuck(t, d) : null; if(hl) d = hl.d;     // a halfling's 1, rerolled
       const how = (mine ? `d20 ${d} (rolled at the table${adv ? `, with ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? `: ${CA.why}` : ""}` : ""})` :adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")})` : ""}: ${hl ? 1 : d}` : `d20 ${hl ? 1 : d}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")}: Advantage and Disadvantage cancel)` : ""}`) + (hl ? `${hl.said}: ${d})` : "");
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
@@ -26938,7 +26957,7 @@ function renderActionBox(force){
       ${MOOD_SKILLS.has(ta.skill) ? (()=>{ const ppl = peopleAtHand(), w = ppl.find(p=>p.id===ta.with);
         return `<div class="afr"><label>With</label><select data-ta="with" title="Who they're talking to or reading: how that person feels about each of them (their memories and their faction's standing, added) changes the roll"><option value="">Nobody in particular</option>${ppl.map(p=>opt(p.id, p.name, ta.with||"")).join("")}</select></div>
           ${w ? `<label class="check" style="margin:0 0 4px"><input type="checkbox" data-ta="moodOn" ${ta.moodOn===false ? "" : "checked"}> ${esc(w.name.split(" ")[0])}'s feelings count on the roll</label>` : ""}`; })() : ""}
-      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill), M = taMood(x); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small>${M && M.check ? ` <small class="mono" title="${esc(`${M.label}: ${M.why}`)}">${esc(moodShort(M))}</small>` : ""}</label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><label class="check tanat" title="A natural 20 on the die"><input type="checkbox" data-tanat="${x.key}" ${(ta.nat||{})[x.key]===20 ? "checked" : ""}> nat 20</label><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>${taBardBtns(x, P)}`; }).join("")}</div>
+      <div class="pchecks">${who.map(x=>{ const m = skillMod(x.o, ta.skill), M = taMood(x); return `<div class="afr"><label>${esc(x.name.split(" ")[0])} <small class="mono">${m>=0?"+":""}${m}</small>${M && M.check ? ` <small class="mono" title="${esc(`${M.label}: ${M.why}`)}">${esc(moodShort(M))}</small>` : ""}</label><input data-tatot="${x.key}" type="number" value="${esc(ta.tot[x.key]??"")}" placeholder="total"><label class="check tanat" title="A natural 20 on the die"><input type="checkbox" data-tanat="${x.key}" ${(ta.nat||{})[x.key]===20 ? "checked" : ""}> nat 20</label><label class="check tanat" title="A natural 1 on the die: no extra cost (your call), counted on your Natural 1s board"><input type="checkbox" data-tanat1="${x.key}" ${(ta.nat||{})[x.key]===1 ? "checked" : ""}> nat 1</label><button class="btn" data-tar="check" data-k="${x.key}">Roll</button></div>${taBardBtns(x, P)}`; }).join("")}</div>
       ${who.length>1 ? `<button class="btn wide" data-tar="checkall">Roll for everyone</button>` : ""}
       ${ta.skill===SEARCH_SKILL && checkSpot() ? `<label class="check" style="margin:4px 0 0" title="Each total is also that person's search of the place: hidden pieces, items and coin they can see"><input type="checkbox" data-ta="search" ${ta.search!==false?"checked":""}> Also search ${esc(placeLabel(checkSpot()))} with these totals</label>` : ""}`;
   } else if((ta.what==="give" || ta.what==="take") && o){
@@ -26984,7 +27003,8 @@ function wireActionBox(){
   const set = t => { const k = t.dataset.ta; if(!k) return false; ta[k] = t.type==="checkbox" ? t.checked : t.value; if(k==="slot") ta.slot = +t.value; return true; };
   el.addEventListener("input", e=>{ const t = e.target; if(t.dataset.tatot){ ta.tot[t.dataset.tatot] = t.value; return; } if(t.tagName==="INPUT" && t.type!=="checkbox") set(t); });
   el.addEventListener("change", e=>{ const t = e.target;
-    if(t.dataset.tanat){ ta.nat = ta.nat || {}; if(t.checked) ta.nat[t.dataset.tanat] = 20; else delete ta.nat[t.dataset.tanat]; return; }      // a natural 20 rolled at the table
+    if(t.dataset.tanat){ ta.nat = ta.nat || {}; if(t.checked) ta.nat[t.dataset.tanat] = 20; else delete ta.nat[t.dataset.tanat]; return renderActionBox(true); }      // a natural 20 rolled at the table
+    if(t.dataset.tanat1){ ta.nat = ta.nat || {}; if(t.checked) ta.nat[t.dataset.tanat1] = 1; else delete ta.nat[t.dataset.tanat1]; return renderActionBox(true); }      // a natural 1 (2026-11-08)
     if(!set(t)) return;
     if(["who","what","to","how","spell","skill","slot","with","moodOn"].includes(t.dataset.ta)){ if(t.dataset.ta==="who"||t.dataset.ta==="to"||t.dataset.ta==="what") ta.item = ""; if(t.dataset.ta==="how"||t.dataset.ta==="spell") ta.slot = null; renderActionBox(true); } });
   el.addEventListener("click", e=>{
@@ -27081,6 +27101,7 @@ function logTableAction(){
       if(rolls.length){ runPlaceSearch(spot, siteOf(spot), rolls); if(battleOf){ renderBattle(); renderBattlePanel(); } }
     }
     const xpSaid = checkXp(who, dc, ta.nat || {}, what); ta.result = xpSaid ? `XP: ${xpSaid}` : (dc ? `${what}: no XP either way` : "");
+    for(const x of who) if(x.key.startsWith("pc:") && (ta.nat || {})[x.key]===1){ const S = statsOf(x.o); S.ones = (+S.ones || 0) + 1; }     // natural 1s, for the DM's board
     ta.nat = {};
     ta.tot = {}; ta.d20 = {};
   } else if(ta.what==="bi"){     // a Bard gives Bardic Inspiration outside a fight
