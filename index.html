@@ -1159,6 +1159,7 @@
   #cardview[hidden]{display:none}
   #cardview .cv-box{background:var(--paper-lit);color:var(--ink);border:1px solid var(--ink);border-radius:6px;box-shadow:0 14px 40px rgba(0,0,0,.45);padding:14px;max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(440px,100%)}
   #cardview .cv-img{width:100%;max-height:68vh;object-fit:contain}
+.cv-box.wide{width:min(1100px,100%)}
   #cardview .cv-acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
   /* rooms that scale to who walks in: an enemy line's setting, a room's, and the preview in the room panel */
   .scalerow{display:flex;flex-wrap:wrap;gap:3px 8px;align-items:center;font-size:11px;margin:0 0 6px}
@@ -7715,7 +7716,7 @@ function leaderRows(scope){
   return partyRoster().map(c=>{ const a = now[c.id] || {}, b = (base && base[c.id]) || {}, v = k => Math.max(0, (a[k]||0) - (base ? (b[k]||0) : 0));
     const d = k => (a[k]||0) - (base ? (b[k]||0) : 0), keep = (k, x) => k==="chk" ? x : Math.max(0, x);
     const inF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d("f_"+k))])), outF = Object.fromEntries(STAT_KEYS.map(k=>[k, keep(k, d(k) - d("f_"+k))]));
-    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), ctrl:v("ctrl"), ones:v("ones"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, inF:statRow(c, inF), outF:statRow(c, outF), xp:+c.xp||0 }; });
+    return { c, kills:v("kills"), dealt:v("dealt"), taken:v("taken"), healed:v("healed"), attacks:v("attacks"), hits:v("hits"), spells:v("spells"), greats:v("greats"), loot:v("loot"), downs:v("downs"), ctrl:v("ctrl"), ones:v("ones"), chk:(a.chk||0) - (base ? (b.chk||0) : 0), potS:aw.sessions.filter(s=>s.shown && s.who===c.id && inS(s)).length, potB:aw.battles.filter(s=>s.who===c.id && inS(s)).length, inF:statRow(c, inF), outF:statRow(c, outF), xp:base && root.statMarks.xp && root.statMarks.xp[c.id]!=null ? Math.max(0, (+c.xp||0) - root.statMarks.xp[c.id]) : +c.xp||0 }; });     // this session: what they've earned since it started (Joseph, 2026-11-08)
 }
 function leaderHtml(scope, tv){
   const rows = warRows(leaderRows(scope)), when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far (no session marked yet)") : "The whole campaign";
@@ -9825,10 +9826,48 @@ function cardCanvas(c){
     const fl = wrap(words(c.foot, { col:"#5a4630" }), 21, W-160, sans)[0] || []; draw(fl, footY + 30, 21, sans, true); }
   return cv;
 }
+/* the leaderboards' picture, drawn like the players' screen shows them (Joseph, 2026-11-08: "make the card for the
+   leaderboard look like the player's screen"): the parchment frame, the small-caps heading and when, then the boards
+   the TV shows four to a row, each with its leaders (★ for the first), what's under a value in small type */
+function leadersCanvas(scope){
+  const R = warRows(leaderRows(scope)), serif = `"Palatino Linotype", Palatino, "Iowan Old Style", Georgia, serif`, mono = `Consolas, Menlo, monospace`;
+  const boards = LEADER_BOARDS.filter(b => !b[6]).map(([k, title, get, fmt, sub, neg]) => ({ title,
+    rows:R.map(r => ({ r, v:get(r) })).filter(o => o.v!=null && (neg ? true : o.v > 0)).sort((a, b) => b.v - a.v)
+      .map((o, i) => ({ pos:i===0 ? "★" : String(i + 1), name:o.r.c.name || "Someone", val:fmt ? fmt(o.v) : o.v.toLocaleString(), sub:sub ? sub(o.r) : "", top:i===0 })) })).filter(b => b.rows.length);
+  const W = 1600, pad = 64, cols = 4, gap = 20, cw = (W - 2 * pad - (cols - 1) * gap) / cols, rh = 34, subH = 22;
+  const cardH = b => 20 + 34 + b.rows.reduce((s, x) => s + rh + (x.sub ? subH : 0), 0) + 14;
+  const lines = []; for(let i = 0; i < boards.length; i += cols) lines.push(boards.slice(i, i + cols));
+  const top = pad + 150, H = Math.max(520, top + lines.reduce((s, L) => s + Math.max(...L.map(cardH)) + gap, 0) - gap + pad);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
+  g.fillStyle = "#6d5c43"; g.fillRect(0, 0, W, H); g.fillStyle = "#efe4c6"; g.fillRect(8, 8, W - 16, H - 16);       // the frame: a dark rule outside, a parchment margin
+  g.strokeStyle = "#3a2e1e"; g.lineWidth = 3; g.strokeRect(16, 16, W - 32, H - 32);
+  g.fillStyle = "#3a2e1e"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+  const caps = (s, x, y, size) => { g.font = `${size}px ${serif}`; const big = s[0], rest = s.slice(1).toUpperCase(); const w1 = g.measureText(big).width; g.font = `${size * .78}px ${serif}`;
+    const w2 = g.measureText(rest).width + rest.length * size * .06; let at = x - (w1 + w2) / 2; g.textAlign = "left"; g.font = `${size}px ${serif}`; g.fillText(big, at, y); at += w1;
+    g.font = `${size * .78}px ${serif}`; for(const ch of rest){ g.fillText(ch, at, y); at += g.measureText(ch).width + size * .06; } g.textAlign = "center"; };
+  caps("Leaderboards", W / 2, pad + 70, 66);
+  const when = scope==="session" ? (root.statMarks ? `This session${root.statMarks.label ? ` · ${root.statMarks.label}` : ""}` : "So far") : "The whole campaign";
+  g.font = `17px ${mono}`; g.fillStyle = "#9b8968"; g.fillText(`${when} · ${campName()} · day ${campaignDay()}`.toUpperCase(), W / 2, pad + 112);
+  const fit = (s, w) => { if(g.measureText(s).width <= w) return s; while(s.length > 1 && g.measureText(s + "…").width > w) s = s.slice(0, -1); return s + "…"; };
+  let y = top;
+  for(const L of lines){ const h = Math.max(...L.map(cardH));
+    L.forEach((b, i) => { const x = pad + i * (cw + gap);
+      g.fillStyle = "#f6eedb"; g.fillRect(x, y, cw, h); g.strokeStyle = "#bfab84"; g.lineWidth = 1.5; g.strokeRect(x + .5, y + .5, cw - 1, h - 1);
+      g.textAlign = "left"; g.fillStyle = "#3a2e1e"; g.font = `600 23px ${serif}`; g.fillText(fit(b.title, cw - 32), x + 16, y + 40);
+      let ry = y + 54;
+      for(const r of b.rows){ ry += rh; g.textAlign = "left";
+        g.font = `19px ${mono}`; g.fillStyle = r.top ? "#a8331f" : "#9b8968"; g.fillText(r.pos, x + 16, ry);
+        g.font = `${r.top ? "600 " : ""}20px ${mono}`; g.fillStyle = "#3a2e1e"; const vw = g.measureText(r.val).width; g.textAlign = "right"; g.fillText(r.val, x + cw - 16, ry);
+        g.textAlign = "left"; g.font = `${r.top ? "600 " : ""}21px ${serif}`; g.fillText(fit(r.name, cw - 32 - 30 - vw - 12), x + 46, ry);
+        if(r.sub){ ry += subH; g.font = `italic 16px ${serif}`; g.fillStyle = "#9b8968"; g.textAlign = "right"; g.fillText(r.sub, x + cw - 16, ry - 4); } } });
+    y += h + gap; }
+  if(!boards.length){ g.textAlign = "center"; g.font = `italic 24px ${serif}`; g.fillStyle = "#9b8968"; g.fillText("Nothing yet: it fills in as fights and checks are logged.", W / 2, top + 60); }
+  return cv;
+}
 /* the card as a PNG */
 function cardBlob(cat, x){
   const c = cardOf(cat, x); if(!c) return Promise.resolve(null);
-  const cv = cardCanvas(c); return new Promise(r=>cv.toBlob(b=>r(b), "image/png"));
+  const cv = cat==="leaders" ? leadersCanvas(x.scope) : cardCanvas(c); return new Promise(r=>cv.toBlob(b=>r(b), "image/png"));
 }
 const cardFileName = x => `${String((x && x.name) || "card").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "card"}-card.png`;
 /* the survey's side: find the thing, show the card over the screen, and what can be done with it */
@@ -9852,6 +9891,7 @@ async function openCard(key){
       <button class="btn" data-cardact="close">Close</button></div>
     <p class="cv-said" id="cv-said" role="status" style="margin:0;text-align:center;font-weight:600" hidden></p>
     <p class="empty-note" style="font-size:11px;margin:0;text-align:center">Only what the players may see: ${CARD_HIDES[cat]}.</p>`;
+  $("#cardview .cv-box").classList.toggle("wide", cat==="leaders");     // the leaderboards are a wide picture
   $("#cardview").hidden = false;
 }
 /* what just happened, said in the card's own window: the top bar's message sits behind it */
