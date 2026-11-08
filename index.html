@@ -9307,6 +9307,8 @@ function libForm(cat, x){
       <div class="abil">${ABILITIES.map(([k,l])=>`<div class="ab"><label>${l}</label><input ${a} data-f="${k}" class="mono" type="text" value="${esc(x[k]??"")}" placeholder="10"></div>`).join("")}</div>
       <div class="pcrow">${t("sav","Saving throws",1,"Str +4, Dex +5")}</div>
       <div class="pcrow">${t("sen","Senses",1,"Darkvision 60 ft., Passive Perception 12")}</div>
+      <div class="pcrow">${t("vul","Vulnerable to",1,"Thunder (double)")}${t("res","Resists",1,"Fire (half)")}</div>
+      <div class="pcrow">${t("imm","Immune to",1,"Poison")}${t("cimm","Condition immunities",1,"Poisoned, Charmed")}</div>
       ${ta("attacks","Actions","Scimitar. +4 to hit, 1d6+2 slashing…",3)}
       ${ta("traits","Traits","Pack tactics, amphibious…")}
       <label class="grouplab">Each one's purse</label>
@@ -15773,6 +15775,8 @@ function toHitRow(c, t, info, all){
       <select id="ac-adv" style="flex:1;min-width:0"><option value="">Straight roll</option><option value="adv" ${act.adv==="adv"?"selected":""}>Advantage</option><option value="dis" ${act.adv==="dis"?"selected":""}>Disadvantage</option></select>
       <input id="ac-d20" class="mono" type="number" min="1" max="20" value="${esc(act.d20||"")}" placeholder="d20" style="width:52px" title="The d20 rolled at the table (empty: the app rolls)">
       <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
+    ${(() => { if(act.adv || !tg) return ""; const hu = act.helpUsed, CA = rollAdvOf(c, t, tg, info); act.helpUsed = hu; if(!CA || !CA.v) return "";     // what the app works out, said before anyone rolls (Joseph, 2026-11-08: Ander's Poisoned did nothing to a d20 typed in)
+      const A = CA.v==="adv"; return `<p class="actspell" style="margin:-2px 0 6px;color:var(--lead)"><b>Roll with ${A ? "Advantage" : "Disadvantage"}</b>${CA.why ? `: ${esc(CA.why)}` : ""}. A d20 from the table: they roll two and you type the ${A ? "higher" : "lower"}.</p>`; })()}
     ${reckRowHtml(c, t, info)}
     ${(() => { const me = luckLeft(t), vs = tg && tg.side!==t.side ? luckLeft(tg) : 0; if(!me && !vs) return "";
       return `<div class="pcrow" style="align-items:center;margin:-2px 0 6px;font-size:12px">${me ? `<label title="Lucky: Advantage on this attack roll (the 2024 rule; 3 points a long rest)"><input type="checkbox" id="ac-luckme" ${act.luckMe ? "checked" : ""}> ${esc(t.label)} spends a Luck point: Advantage (${me} left)</label>` : ""}
@@ -16421,6 +16425,7 @@ function actionForm(c, all){
       return `<div class="pcrow"><div class="field" style="flex:1.5"><label>Check</label><select id="ac-chk">${chkList().map(([v, l])=>`<option value="${esc(v)}" ${v===k?"selected":""}>${esc(l)}</option>`).join("")}</select></div>
         <div class="field" style="flex:.6"><label>DC</label><input id="ac-chkdc" class="mono" type="number" min="1" max="40" value="${act.chkDc || 15}"></div>
         <div class="field" style="flex:.7"><label>Their d20</label><input id="ac-chkd20" class="mono" type="number" min="1" max="20" value="${act.chkD20 || ""}" placeholder="roll it"></div></div>
+        ${condsOfT(t).includes("Poisoned") ? `<p class="actspell" style="color:var(--lead)"><b>Roll with Disadvantage</b>: ${esc(t.label)} is Poisoned. A d20 from the table: they roll two and you type the lower.</p>` : ""}
         <p class="actspell">${esc(t.label)}: ${esc(chkLabel(k))} ${b < 0 ? "−" : "+"}${Math.abs(b)}. Type the d20 they rolled, or leave it blank and Log it rolls it. It takes their action; XP as for a check outside a fight.</p>`; })() : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
@@ -16531,7 +16536,11 @@ const chkBonus = (p, k) => String(k).startsWith("abil:") ? abBonus(pcState(p), k
 function logFightCheck(c, actor){
   const k = act.chk || "Athletics", dc = Math.max(1, Math.round(+act.chkDc || 15)), p = actor.p, b = chkBonus(p, k), typed = Math.round(+act.chkD20);
   if(actionsLeft(c, actor.id) <= 0 && !confirm(`${actor.label} has already used their action this turn. Make the check anyway?`)) return;
-  const R = typed >= 1 && typed <= 20 ? { d:typed, w:" (rolled at the table)" } : pcD20(actor, `a ${chkLabel(k)} check (DC ${dc})`), tot = R.d + b, ok = tot >= dc;
+  const dis = condsOfT(actor).includes("Poisoned");     // Poisoned: Disadvantage on ability checks
+  const R = typed >= 1 && typed <= 20 ? { d:typed, w:` (rolled at the table${dis ? ", with Disadvantage: Poisoned" : ""})` }
+    : dis && !playerRollsT(actor) ? (r => ({ d:Math.min(...r), w:` (Disadvantage, Poisoned: ${r[0]} and ${r[1]})` }))([1 + Math.floor(Math.random() * 20), 1 + Math.floor(Math.random() * 20)])
+    : (Q => dis ? { ...Q, w:`${Q.w || ""} (Disadvantage: Poisoned)` } : Q)(pcD20(actor, `a ${chkLabel(k)} check (DC ${dc})`, dis ? "dis" : ""));
+  const tot = R.d + b, ok = tot >= dc;
   const actedBefore = JSON.stringify(c.acted || {}), snap = snapOf(c, [actor.id]);
   const a = (c.acted = c.acted || {})[actor.id] = c.acted[actor.id] || { n:0, more:0 }; a.n++;
   const line = `${actor.label} makes a ${chkLabel(k)} check: d20 ${R.d}${R.w || ""}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${ok ? "succeeds" : "fails"}${act.note ? ` (${act.note})` : ""}.`;
@@ -16967,7 +16976,8 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
 const SAVE_WORD = /(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) Saving Throw:\s*DC (\d+)/i;
 function effectAdd(c, t, cond, actor, info, SV, sp){
   const text = String((info.spell && info.spell.desc) || info.text || ""), r = SAVE_WORD.exec(text);
-  const end = /until the end of (?:its|the target's|their) next turn/i.test(text) ? "targetNext" : /until the start of (?:your|its|the [\w ]+?'s) next turn/i.test(text) ? "srcStart" : "";
+  const end = /until the end of (?:its|the target's|their) next turn/i.test(text) ? "targetNext" : /until the start of (?:your|its|the [\w ]+?'s) next turn/i.test(text) ? "srcStart"
+    : /until the end of (?:your|the [\w' -]+?'s) next turn/i.test(text) ? "srcEnd" : "";     // the one who did it (the merrow's Bite: Poisoned "until the end of the merrow's next turn", Joseph, 2026-11-08: it never ended)
   const rep = /at the end of each of (?:its|their|the target's) turns[^.]*\brepeats? the sav/i.test(text) || /\brepeats? the sav\w* at the end of each of (?:its|their) turns/i.test(text);
   const abil = (SV && SV.abil) || (r && r[1]) || (info.spell && String(info.spell.save || "").split(/[ ,]/)[0]) || "", dc = (SV && SV.dc) || (r && +r[2]) || null;
   const rounds = !sp && /\b(?:for|lasts?) 1 minute\b/i.test(text) ? 10 : null;
@@ -16988,6 +16998,9 @@ function effectsSweep(c, id, when){
     const t = all.find(x => x.id===e.who); if(!t || t.fled || !condsOfT(t).includes(e.cond)){ c.effects = c.effects.filter(x => x!==e); continue; }     // taken off by hand, or gone
     if(e.sp){ const by = all.find(x => x.id===e.by), h = by && hOfT(by); if(!(h && h.conc && h.conc.id===e.sp)){ snapIds.add(e.who); out.push(effectEnd(c, e, "concentration ended")); continue; } }
     if(when==="start" && e.end==="srcStart" && e.by===id && e.at!==now){ snapIds.add(e.who); out.push(effectEnd(c, e, "its time is up")); continue; }
+    if(when==="end" && e.end==="srcEnd" && e.by===id && e.at!==now){ snapIds.add(e.who); out.push(effectEnd(c, e, "its time is up")); continue; }
+    /* one that lasts till the doer's next turn, when the doer won't have one (down, dead or fled): it's over */
+    if((e.end==="srcEnd" || e.end==="srcStart") && (s => !s || s.fled || isDownT(s))(all.find(x => x.id===e.by))){ snapIds.add(e.who); out.push(effectEnd(c, e, "the one who did it is out of the fight")); continue; }
     if(when!=="end" || e.who!==id || e.at===now) continue;
     if(e.end==="targetNext"){ snapIds.add(e.who); out.push(effectEnd(c, e, "the end of its turn")); continue; }
     if(e.rounds && c.round >= e.round + e.rounds){ snapIds.add(e.who); out.push(effectEnd(c, e, `${e.rounds / 10} minute`)); continue; }
@@ -17623,7 +17636,7 @@ function renderBattlePanelNow(){
       act.luckMe = act.luckVs = false;
       let d = mine ? typed : adv==="adv" ? Math.max(r1, r2) : adv==="dis" ? Math.min(r1, r2) : r1; act.hadAdv = adv==="adv";
       const hl = !mine ? hLuck(t, d) : null; if(hl) d = hl.d;     // a halfling's 1, rerolled
-      const how = (mine ? `d20 ${d} (rolled at the table)` : adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")})` : ""}: ${hl ? 1 : d}` : `d20 ${hl ? 1 : d}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")}: Advantage and Disadvantage cancel)` : ""}`) + (hl ? `${hl.said}: ${d})` : "");
+      const how = (mine ? `d20 ${d} (rolled at the table${adv ? `, with ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? `: ${CA.why}` : ""}` : ""})` :adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")})` : ""}: ${hl ? 1 : d}` : `d20 ${hl ? 1 : d}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")}: Advantage and Disadvantage cancel)` : ""}`) + (hl ? `${hl.said}: ${d})` : "");
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
       const extra = (Math.round(+act.hitMod) || 0) + (SU ? 5 : 0), tot0 = d + bonus + extra + fN + F.n, out0 = d===20 ? "crit" : d===1 ? "miss" : tot0 >= ac ? "hit" : "miss";     // meets it, beats it
       const RS = out0==="miss" && d!==1 ? d20Rescue(c, t, tot0, ac, `attack roll on ${tg.label}`, "attack") : { tot:tot0, w:"" }, tot = RS.tot, out = out0==="miss" && d!==1 && tot >= ac ? "hit" : out0;     // Peerless Skill, a Bardic Inspiration die
