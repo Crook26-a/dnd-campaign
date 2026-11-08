@@ -7660,12 +7660,12 @@ function xpDueSite(){
 /* a check outside a fight that meets its DC earns XP by how far over it went, times the character's level */
 const checkXpFor = (over, lv, R) => { if(over < 0) return 0; const up = Math.max(1, +R.upTo||10), pp = Math.max(0, +R.perPoint||0), past = Math.max(0, +R.past||0);
   return Math.round((over <= up ? pp * Math.max(1, over) : pp * up + past * (over - up)) * lv); };
-function checkXp(who, dc, natOf, what){
+function checkXp(who, dc, natOf, what, tots){     // tots: the totals by key, when not the Action box's (a check in a fight)
   const R = xpRules().checks; if(!R.on || !dc) return "";
   const per = {}, why = [];
   for(const x of who){
     if(!x.key.startsWith("pc:")) continue;
-    const c = x.o, tot = Math.round(+ta.tot[x.key]), lv = clampLv(c.level), S = statsOf(c), over = tot - dc;
+    const c = x.o, tot = Math.round(+(tots || ta.tot)[x.key]), lv = clampLv(c.level), S = statsOf(c), over = tot - dc;
     if(!isFinite(over)) continue;
     S.chk = Math.round(((+S.chk||0) + warCheckPts(over)) * 100) / 100;      // for the value score
     if(over < 0){                                           // a miss: a share of what beating it by as much would earn, but only out of XP earned this session
@@ -12345,6 +12345,9 @@ function wirePc(box, rerender){
       const soak = Math.min(c.temp, v); c.temp -= soak;
       const rest = v - soak;
       if(rest>0 && hp<=0){ c.death.f = Math.min(3, c.death.f+1); }     // hit while down: a failed death save
+      /* damage put on here counts in their tallies like a fight's (Joseph, 2026-11-08: Xuna's first harpoon went on here
+         and her damage taken and drop to 0 never counted) */
+      if(rest > 0){ const S = statsOf(c); S.taken = (+S.taken || 0) + rest; if(hp > 0 && hp - rest <= 0) S.downs = (+S.downs || 0) + 1; }
       hp = Math.max(0, hp - rest);
       if(hp<=0 && !c.conds.includes("Unconscious")){ c.conds.push("Unconscious"); gameLog("down", `${c.name||"A character"} dropped to 0 hit points`); }
       if(hp<=0) delete c.shape;                                     // Wild Shape ends when they go down
@@ -15989,7 +15992,7 @@ function actionChoices(t){
     }
     if(c.res.length) out.push({ group:"Resources", items:c.res.map(r=>({ v:`res:${r.id||r.name}`, label:`${r.name} (${r.max-r.used} left)` })) });
   }
-  out.push({ group:"Other", items:[{ v:"atk:Opportunity attack", label:"Opportunity attack" },{ v:"anyspell", label:"Cast another spell…" },{ v:"flee", label:"Flees the fight" },{ v:"other", label:"Something else…" }] });
+  out.push({ group:"Other", items:[...(t.kind!=="foe" && t.p ? [{ v:"chk", label:"A check (skill or ability) against a DC" }] : []), { v:"atk:Opportunity attack", label:"Opportunity attack" },{ v:"anyspell", label:"Cast another spell…" },{ v:"flee", label:"Flees the fight" },{ v:"other", label:"Something else…" }] });
   return out;
 }
 /* ── dice: "3d8 + 1d6 + 3" read into terms, added up, and rolled (a crit rolls every die twice, 2024 rules) ── */
@@ -16286,6 +16289,7 @@ function hintFromText(text){
 function actInfo(c, t){
   /* what the chosen action is: its name, kind, any spell, level, and hints */
   const a = act, w = a.what||"";
+  if(w==="chk") return { kind:"check", name:`${act.chk || "Athletics"} check` };      // a check in a fight (2026-11-08)
   if(w.startsWith("fa:")){
     const nm = w.slice(3), m = foeById(t.x.foe);
     const text = (foeEntries(m).find(([n])=>n===nm)||[])[1] || [...pairs(m&&m.leg)].find(([n])=>n===nm)?.[1] || "";
@@ -16413,6 +16417,11 @@ function actionForm(c, all){
     ${Object.keys(c.holds||{}).length ? `<p class="actspell">Held now: ${Object.entries(c.holds).map(([id, H])=>{ const x = all.find(y=>y.id===id), b = all.find(y=>y.id===H.by);
       return `${esc(x ? x.label : "someone")} (${esc(b ? b.label : "someone")}'s ${esc(H.name)}: ${CTRL_SAY[H.tier]}${H.turns ? `, ${H.turns} turn${H.turns > 1 ? "s" : ""}, ${H.pts} control` : ""}) <button class="btn small" data-holdend="${id}" title="It's over for them: no more control from it">End</button>`; }).join(" · ")}</p>` : ""}
     ${t && fxOf(hOfT(t), true).length ? `<p class="actspell">On ${esc(t.label)}: ${fxOf(hOfT(t), true).map(f=>esc(f.name + fxSay(f.b) + (f.item ? ", worn" : ""))).join(" · ")}</p>` : ""}
+    ${act.what==="chk" && t && t.p ? (()=>{ const k = act.chk || "Athletics", b = chkBonus(t.p, k);
+      return `<div class="pcrow"><div class="field" style="flex:1.5"><label>Check</label><select id="ac-chk">${chkList().map(([v, l])=>`<option value="${esc(v)}" ${v===k?"selected":""}>${esc(l)}</option>`).join("")}</select></div>
+        <div class="field" style="flex:.6"><label>DC</label><input id="ac-chkdc" class="mono" type="number" min="1" max="40" value="${act.chkDc || 15}"></div>
+        <div class="field" style="flex:.7"><label>Their d20</label><input id="ac-chkd20" class="mono" type="number" min="1" max="20" value="${act.chkD20 || ""}" placeholder="roll it"></div></div>
+        <p class="actspell">${esc(t.label)}: ${esc(chkLabel(k))} ${b < 0 ? "−" : "+"}${Math.abs(b)}. Type the d20 they rolled, or leave it blank and Log it rolls it. It takes their action; XP as for a check outside a fight.</p>`; })() : ""}
     ${act.what==="anyspell"?`<div class="field"><label>Spell</label><input id="ac-spell" list="dl-spells" type="text" value="${esc(act.spellText)}" placeholder="Start typing a spell name"></div>`:""}
     ${act.what==="other"?`<div class="field"><label>What happens</label><input id="ac-other" type="text" value="${esc(act.otherText)}" placeholder="Shoves the bandit off the pier"></div>`:""}
     ${info && info.spell && SPELL_FX[info.spell.id] && SPELL_FX[info.spell.id].skillDie && !info.free ? `<div class="field"><label>Skill <small>(its 1d4 goes on checks with it)</small></label><select id="ac-fxskill"><option value="">Any check</option>${TA_SKILLS.map(k=>`<option ${k===act.fxSkill?"selected":""}>${k}</option>`).join("")}</select></div>` : ""}
@@ -16513,9 +16522,28 @@ function healAny(t, v){
   if(hp>0){ p.conds = p.conds.filter(c=>c!=="Unconscious"); p.death = { s:0, f:0 }; }
   return hp-was;
 }
+/* a check in a fight (Joseph, 2026-11-08, Session 2: "Tries to steal the hat. Misses with 10. Need checks in fights"): a
+   skill or an ability against a DC, their own d20 or the app's, their bonus added; it takes their action, goes in the
+   fight's log, and earns or costs XP like a check outside a fight */
+const chkList = () => [...Object.keys(SKILL_AB).sort().map(k => [k, k]), ...Object.entries(ABIL_NAME).map(([k, v]) => [`abil:${k}`, `${v} (no skill)`])];     // read when used: SKILL_AB is defined further down
+const chkLabel = k => String(k).startsWith("abil:") ? ABIL_NAME[k.slice(5)] : `${ABIL_NAME[SKILL_AB[k]] || ""} (${k})`.trim();
+const chkBonus = (p, k) => String(k).startsWith("abil:") ? abBonus(pcState(p), k.slice(5)) : skillMod(pcState(p), k);
+function logFightCheck(c, actor){
+  const k = act.chk || "Athletics", dc = Math.max(1, Math.round(+act.chkDc || 15)), p = actor.p, b = chkBonus(p, k), typed = Math.round(+act.chkD20);
+  if(actionsLeft(c, actor.id) <= 0 && !confirm(`${actor.label} has already used their action this turn. Make the check anyway?`)) return;
+  const R = typed >= 1 && typed <= 20 ? { d:typed, w:" (rolled at the table)" } : pcD20(actor, `a ${chkLabel(k)} check (DC ${dc})`), tot = R.d + b, ok = tot >= dc;
+  const actedBefore = JSON.stringify(c.acted || {}), snap = snapOf(c, [actor.id]);
+  const a = (c.acted = c.acted || {})[actor.id] = c.acted[actor.id] || { n:0, more:0 }; a.n++;
+  const line = `${actor.label} makes a ${chkLabel(k)} check: d20 ${R.d}${R.w || ""}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot} vs DC ${dc}, ${ok ? "succeeds" : "fails"}${act.note ? ` (${act.note})` : ""}.`;
+  (c.log = c.log || []).push({ id:uid("lg"), round:c.round, actor:actor.id, targets:[...(act.targets || [])], text:line, snap, acted:actedBefore });
+  gameLog("check", line); flash(line);
+  checkXp([{ key:"pc:" + p.id, o:p }], dc, { ["pc:" + p.id]:R.d }, `${k.startsWith("abil:") ? ABIL_NAME[k.slice(5)] : k} check`, { ["pc:" + p.id]:tot });
+  act = freshAct(actor.id); touch(); renderBattle(); renderBattlePanel();
+}
 function logAction(n, c){
   const all = combatants(c), actor = all.find(x=>x.id===act.actor); if(!actor || !act.what) return;
   const info = actInfo(c, actor); if(!info) return;
+  if(info.kind==="check"){ if(actor.p) logFightCheck(c, actor); return; }
   const targets = act.targets.map(id=>all.find(x=>x.id===id)).filter(Boolean);
   if(!targets.length && info.spell && zoneOf(info.spell)){ act.outcome = "none"; act.dmg = ""; act.saves = null; }     // a lingering area cast with nobody in it yet: it's just up
   /* attacking themself is nearly always a slip of the finger (2026-10-31: a Specter's Life Drain landed on itself) */
@@ -17541,6 +17569,8 @@ function renderBattlePanelNow(){
     touch(); renderBattle(); renderBattlePanel(); });
   { const fs = $("#ac-fxskill"); if(fs) fs.onchange = ()=>{ act.fxSkill = fs.value; }; }     // Guidance's skill
   { const wf = $("#ac-wsform"); if(wf) wf.onchange = ()=>{ act.wsForm = wf.value; }; }     // Wild Shape's form
+  { const k = $("#ac-chk"), dc = $("#ac-chkdc"), d = $("#ac-chkd20");                          // a check: which, the DC, their d20
+    if(k) k.onchange = ()=>{ act.chk = k.value; renderBattlePanel(); }; if(dc) dc.onchange = ()=>{ act.chkDc = dc.value; }; if(d) d.onchange = ()=>{ act.chkD20 = d.value; }; }
   el.querySelectorAll("[data-qdone]").forEach(b=>b.onclick = ()=>{ const a = (c.acted||{})[act.actor]; if(a) a.swings = 0; act = freshAct(act.actor); renderBattlePanel(); });     // the rest of a Multiattack (or Extra Attack) not made
   el.querySelectorAll("[data-holdend]").forEach(b=>b.onclick = ()=>{ if(c.holds) delete c.holds[b.dataset.holdend]; touch(); renderBattlePanel(); });     // a hold over, by hand
   { const cs = $("#ac-ctrl"); if(cs) cs.onchange = ()=>{ keep(); renderBattlePanel(); }; }
