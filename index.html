@@ -16556,7 +16556,12 @@ function logAction(n, c){
   /* damage that would land nowhere (Joseph, 2026-11-08: Session 2's Hail of Thorns and Acid Splash were logged with no
      target, a harpoon hit and a Thunderwave with no damage): asked first */
   { const dmg = +act.dmg > 0, dice = !info.heal && !!(D.dmgDice || (info.hint && info.hint.dice)), zone = !!(info.spell && zoneOf(info.spell));
-    if(dmg && !info.heal && !targets.length && !zone && !confirm(`Nobody is picked as a target, so the ${act.dmg} damage goes to no one.\n\nCancel, and pick who it hits under Targets. OK logs it anyway.`)) return;
+    /* ...and any action aimed at someone, logged at no one (Joseph, 2026-11-08: "if there isn't a targeted enemy or
+       teammate, there should be a pop up"): an attack, a save, healing, damage, a spell with a range that isn't Self.
+       Not asked: what's on themselves, a check, fleeing, "Something else", a lingering area cast with nobody in it yet */
+    const aimed = isAttackAct(info) || !!info.save || !!info.heal || +act.heal > 0 || dmg || (info.kind==="spell" && !!info.spell && !/^self/i.test(String(info.spell.range || "")));
+    if(aimed && !targets.length && !zone && !info.self && !["check", "flee"].includes(info.kind) && act.what!=="other"
+      && !confirm(`Nobody is picked as a target${dmg && !info.heal ? `, so the ${act.dmg} damage goes to no one` : +act.heal > 0 ? `, so the ${act.heal} healing goes to no one` : ""}.\n\nCancel, and pick who it's aimed at under Targets (an enemy or a teammate). OK logs it anyway.`)) return;
     if(dice && !dmg && targets.length && act.outcome!=="miss" && (act.outcome==="hit" || act.outcome==="crit" || info.save) && !confirm(`${info.name || "This"} ${info.save ? "deals damage" : "hits"}, but no damage is entered.\n\nCancel, and roll or type the damage. OK logs it with none.`)) return; }
   const snap = snapOf(c,[...new Set([actor.id, ...targets.map(t=>t.id), ...targets2.map(t=>t.id)])]), fledBefore = JSON.stringify(c.fled||{}), onceBefore = JSON.stringify(c.onceUsed||{});
   /* running away: out of the fight, not dead, and nothing else happens */

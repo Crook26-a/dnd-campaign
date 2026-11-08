@@ -35,6 +35,7 @@ step("the Ghoul claws Wren: Paralyzed, until the end of Wren's next turn", async
   const c = fight(); all().forEach((t, k) => { c.init[t.id] = 20 - k; }); place2(); c.turn = ghoul().id; act = freshAct(ghoul().id); battleSel = ghoul().id; renderBattle(); renderBattlePanel(); await wait(20);
   const s = $("#ac-what"); if (![...s.options].some(o => o.value === "fa:Claw")) return "options: " + [...s.options].map(o => o.value).join(", "); s.value = "fa:Claw"; s.dispatchEvent(new Event("change", { bubbles: true })); await wait(20); act.targets = [who("Wren").id]; renderBattlePanel(); await wait(20);
   await withRoll(0.6, () => { $('[data-acroll="hit"]').click(); }); renderBattlePanel(); await wait(20);
+  __KIT.answers.push(true);     // the claw hits with no damage typed: the app asks (2026-11-08), and this test is about the paralysis
   const sv = document.querySelector(`[data-svroll="${who("Wren").id}"]`); await withRoll(0.05, async () => { $("#ac-go").click(); }); await wait(30);
   return `${lastLog().slice(0, 200)} | Wren ${condsW("Wren")} | effects ${(c.effects || []).map(e => `${e.cond}:${e.end}`).join(",")} | a save was offered: ${!!sv}`;
 });
@@ -55,4 +56,9 @@ step("Hold Person on Gawain: at the end of his turn he repeats the save; a fail 
 step("the Fanatic stops concentrating: Hold Person ends on Gawain", async () => {
   const c = fight(); const h = hOfT(fan()); const had = !!(h.conc); delete h.conc; nextTurn(c); clearTimeout(autoTimer);
   return `was concentrating: ${had} | ${lastLog()} | Gawain ${condsW("Gawain")} | page errors ${__KIT.errors.length}`;
+});step("an attack logged at nobody is asked about first; Cancel keeps it out of the log", async () => {
+  const c = fight(), n0 = (c.log || []).length; c.turn = ghoul().id; act = freshAct(ghoul().id); battleSel = ghoul().id; renderBattlePanel(); await wait(20);
+  const s = $("#ac-what"); s.value = "fa:Claw"; s.dispatchEvent(new Event("change", { bubbles: true })); await wait(20);
+  act.targets = []; act.outcome = "hit"; act.dmg = "4"; __KIT.answers.push(false); logAction(hall(), c); await wait(20);
+  return `log ${n0} -> ${(c.log || []).length}`;
 });

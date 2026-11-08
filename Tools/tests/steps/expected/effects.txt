@@ -2,3 +2,4 @@
 2. other turns go by: still Paralyzed; Wren's turn ends: it ends: at the start of Wren's turn ["Paralyzed"] | after it: [] | Wren: Paralyzed ends (Claw, the end of its turn).
 3. Hold Person on Gawain: at the end of his turn he repeats the save; a fail keeps it, a made one ends it (and the hold): ["Paralyzed"] hold true effects Paralyzed:Wisdom 12:conc || Gawain repeats the save against Hold Person, Wisdom save d20 2 = 2 vs DC 12: still Paralyzed. → ["Paralyzed"] || Gawain repeats the save, Wisdom save d20 20 = 20 vs DC 12: made: Paralyzed ends (Hold Person). → [], hold false || after undo: ["Paralyzed"]
 4. the Fanatic stops concentrating: Hold Person ends on Gawain: was concentrating: true | Gawain: Paralyzed ends (Hold Person, concentration ended). | Gawain [] | page errors 0
+5. an attack logged at nobody is asked about first; Cancel keeps it out of the log: log 8 -> 8
