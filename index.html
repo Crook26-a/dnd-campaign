@@ -23619,6 +23619,54 @@ function placeOfSite(st){
 /* sessions: the markers, and the entries since a marker (up to the next one) */
 const glSessions = () => gameLogList().filter(e=>e.kind==="session");
 const glSessionNo = () => glSessions().length;
+/* ── pausing a session (Joseph, 2026-11-08: "pause a session ... and then pick back up where they were, regardless of
+   what then happens in the app"; his call: the party and their moment, not the whole campaign). Pause keeps a bookmark
+   (root.pause): every character's sheet (the roster and the companions), where everyone is (groups, the party's
+   place, the journey), the party's ship and the rival's (where, the voyage, its stops), the day and the hour, the rooms
+   they're in and any fight going (each one's site.combat), and what was open. Resume puts all of that back, whatever
+   happened since (practice, test fights, days gone by), and opens it again; everything else (the Library, maps, docs,
+   the background world's fleet) is as it is now. The session goes on: no new number, "this session" keeps counting. ── */
+const PAUSE_SHIP = ["x", "y", "course", "wake", "lastVoyage", "stopAt", "stopEvery", "arrive", "pace"];
+const clone = o => o==null ? o : JSON.parse(JSON.stringify(o));
+function pauseRooms(){
+  const out = [], at = new Set((root.groups || []).map(g => g.at && `${g.at.map}|${g.at.node}`));
+  const look = (map, nodes) => (nodes || []).forEach(n => { const c = n.site && n.site.combat; if(c && (!calmOf(c) || at.has(`${map}|${n.id}`))) out.push({ map, id:n.id, combat:clone(c) }); });
+  look("survey", root.nodes); for(const [id, p] of Object.entries(plans)) look(id, p.nodes);
+  return out;
+}
+function sessionPause(){
+  const n = glSessionNo(); if(!n){ flash("Start a session first: there's nothing to pause."); return; }
+  if(root.pause && !confirm(`Session ${root.pause.session} is paused already (${new Date(root.pause.at).toLocaleString()}). Pause again here instead?`)) return;
+  root.pause = { at:new Date().toISOString(), session:n, day:root.day, hour:root.hour, timeOfDay:root.timeOfDay, lastDawn:root.lastDawn,
+    roster:clone(root.roster), comps:clone(companions()), groups:clone(root.groups), activeGroup:root.activeGroup ?? null, partyAt:clone(root.partyAt), journey:clone(root.journey),
+    ships:root.nodes.filter(sailsAbout).map(s => ({ id:s.id, v:Object.fromEntries(PAUSE_SHIP.filter(k => k in s).map(k => [k, clone(s[k])])) })),
+    rooms:pauseRooms(), open:battleOf ? { plan:planOf || null, node:battleOf.nodeId, battle:true } : planOf ? { plan:planOf } : null };
+  gameLog("note", `Session ${n} paused: day ${campaignDay()}, ${hourWord(clockHour())}`); saveParty(); flash(`Session ${n} paused. Resume puts the party back just as they are now.`);
+}
+function sessionResume(){
+  const P = root.pause; if(!P) return;
+  if(!confirm(`Pick Session ${P.session} back up where it was paused (${new Date(P.at).toLocaleString()})?\n\nThe party, where they are, their ship, the day and hour and any fight go back to how they were then. What happened to them since is undone; your Library, maps and docs stay as they are now.`)) return;
+  if(battleOf) closeBattle(true);
+  Object.assign(root, { day:P.day, hour:P.hour, timeOfDay:P.timeOfDay, lastDawn:P.lastDawn, groups:clone(P.groups), partyAt:clone(P.partyAt) });
+  if(P.activeGroup==null) delete root.activeGroup; else root.activeGroup = P.activeGroup;
+  if(P.journey) root.journey = clone(P.journey); else delete root.journey;
+  for(const c of P.roster || []){ const i = root.roster.findIndex(x => x.id===c.id); if(i >= 0) root.roster[i] = clone(c); else root.roster.push(clone(c)); }
+  for(const c of P.comps || []){ const L = lib().npcs, i = L.findIndex(x => x.id===c.id); if(i >= 0) L[i] = clone(c); }
+  for(const s of P.ships || []){ const n = root.nodes.find(x => x.id===s.id); if(!n) continue; for(const k of PAUSE_SHIP){ if(k in s.v) n[k] = clone(s.v[k]); else delete n[k]; } }
+  for(const r of P.rooms || []){ const d = mapDoc(r.map), n = d && (d.nodes || []).find(x => x.id===r.id); if(n){ (n.site = n.site || {}).combat = clone(r.combat); } }
+  const open = P.open, k = P.session; delete root.pause;
+  gameLog("note", `Session ${k} resumed where it was paused: day ${campaignDay()}, ${hourWord(clockHour())}`);
+  saveParty(); touch(); syncTimeBar();
+  if(open && open.plan) enterPlan(open.plan); else if(planOf) leavePlan();
+  if(open && open.battle){ const n = (mapDoc(open.plan || "survey") || {}).nodes?.find(x => x.id===open.node); if(n) openBattle(n); }
+  render(); renderPane(true); sendPlayers(true); flash(`Session ${k} picked back up where it was paused.`);
+}
+/* a new session while one is paused: its bookmark goes (asked first) */
+function pauseDrop(){ if(!root.pause) return true; if(!confirm(`Session ${root.pause.session} is paused. Start a new session and forget that pause?`)) return false; delete root.pause; return true; }
+/* the buttons, beside "Start session" in both game logs */
+const pauseBtns = attr => root.pause
+  ? `<button class="btn" ${attr}="resume" style="padding:2px 8px" title="Put the party back as they were when it was paused (${esc(new Date(root.pause.at).toLocaleString())})">Resume session ${root.pause.session}</button>`
+  : glSessionNo() ? `<button class="btn" ${attr}="pause" style="padding:2px 8px" title="Keep a bookmark of the party and their moment, to pick back up next time whatever happens in between">Pause session ${glSessionNo()}</button>` : "";
 function glSlice(n){
   const L = gameLogList(); if(!n) return L.slice();
   const marks = L.map((e,i)=>e.kind==="session" ? i : -1).filter(i=>i>=0);
@@ -23639,7 +23687,7 @@ function gameLogBlock(){
   const n = glSessionNo(), cnt = n ? glSlice(n).filter(e=>e.kind!=="session").length : gameLogList().length;
   return `<p class="eyebrow spaced">Game log</p>
     <div class="pcrow" style="align-items:center"><span id="gl-head" style="flex:1;font-size:12px;color:var(--ink-soft)">${n ? `Session ${n} · ${cnt} entr${cnt===1?"y":"ies"}` : `${cnt} entr${cnt===1?"y":"ies"} · no session started`}</span>
-      <button class="btn" data-nact="glsession" title="Put a marker in the log; everything after it belongs to the new session">Start session ${n+1}</button></div>
+      ${pauseBtns("data-nact")}<button class="btn" data-nact="glsession" title="Put a marker in the log; everything after it belongs to the new session">Start session ${n+1}</button></div>
     <div class="pcrow"><input id="gl-note" type="text" value="${esc(glNoteDraft)}" placeholder="Jot something down: a ruling, a name you made up, a promise…" style="flex:1;min-width:0"><button class="btn" data-nact="glnote">Add</button></div>
     <div class="adtabs" style="margin:4px 0 6px">${[["session", n ? `Session ${n}` : "This session"],["all","Everything"]].map(([k,l])=>`<button data-glview="${k}" class="${glView===k?"on":""}">${l}</button>`).join("")}</div>
     <div id="gl-list" class="gllist">${glRows()}</div>
@@ -23774,7 +23822,9 @@ $("#pane-notes").addEventListener("click", e=>{
   if(b.dataset.glview){ glView = b.dataset.glview; renderNotes(); return; }
   if(b.dataset.gldel){ root.gameLog = gameLogList().filter(x=>x.id!==b.dataset.gldel); saveParty(); refreshGameLog(); return; }
   const gl = b.dataset.nact;
-  if(gl==="glsession"){ const n = glSessionNo()+1; gameLog("session", `Session ${n}`); glView = "session"; renderNotes(); flash(`Session ${n} started: everything from here goes under it.`); return; }
+  if(gl==="pause"){ sessionPause(); renderNotes(); return; }
+  if(gl==="resume"){ sessionResume(); renderNotes(); return; }
+  if(gl==="glsession"){ if(!pauseDrop()) return; const n = glSessionNo()+1; gameLog("session", `Session ${n}`); glView = "session"; renderNotes(); flash(`Session ${n} started: everything from here goes under it.`); return; }
   if(gl==="glnote"){ if(!glNoteDraft.trim()){ flash("Write something first."); return; } gameLog("note", glNoteDraft); glNoteDraft = ""; renderNotes(); return; }
   if(gl==="glcopy" || gl==="gldl"){
     const n = glSessionNo(), txt = glExport(n), name = `${n ? `Session ${n}` : "Game"} log - ${root.title||"campaign"}.md`.replace(/[\\/:*?"<>|]/g, "");
@@ -26817,7 +26867,7 @@ function renderTLog(force){
       <div class="adtabs" style="margin:8px 0 4px">${[["log","Game log"],["notes","My notes"]].map(([k,l])=>`<button data-tltab="${k}" class="${tlTab===k?"on":""}">${l}</button>`).join("")}</div>
       ${tlTab==="log" ? `<div class="pcrow" style="align-items:center"><span class="empty-note" style="flex:1;margin:0;font-size:11px">${n?`Session ${n}`:"No session started"}</span>
           <button class="btn" data-tl="${glView==="session"?"all":"session"}" style="padding:2px 8px">${glView==="session"?"Show everything":"This session only"}</button>
-          <button class="btn" data-tl="newsession" style="padding:2px 8px" title="Put a marker in the log; everything after it belongs to the new session">Start session ${n+1}</button></div>
+          ${pauseBtns("data-tl")}<button class="btn" data-tl="newsession" style="padding:2px 8px" title="Put a marker in the log; everything after it belongs to the new session">Start session ${n+1}</button></div>
         <div class="tlfilters">${TL_KINDS.map(([k,l])=>`<button data-tlk="${k}" class="${tlKind===k?"on":""}">${l}</button>`).join("")}</div>
         <div class="gllist">${list.length ? list.slice().reverse().map(e=> e.kind==="session"
           ? `<div class="glsess">${esc(e.text)}</div>`
@@ -26842,7 +26892,9 @@ function wireTLog(){
       if(tlToLog) gameLog("note", t); else { const j = journal(); j.general = (j.general ? j.general.replace(/\s*$/, "") + "\n" : "") + "- " + t; saveParty(); flash("In your notes."); }
       return renderTLog(true); }
     if(a==="all" || a==="session"){ glView = a; return renderTLog(true); }
-    if(a==="newsession"){ const n = glSessionNo()+1; gameLog("session", `Session ${n}`); return renderTLog(true); }
+    if(a==="newsession"){ if(!pauseDrop()) return; const n = glSessionNo()+1; gameLog("session", `Session ${n}`); return renderTLog(true); }
+    if(a==="pause"){ sessionPause(); return renderTLog(true); }
+    if(a==="resume"){ sessionResume(); return renderTLog(true); }
   });
 }
 
