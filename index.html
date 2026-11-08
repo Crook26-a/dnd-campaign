@@ -8002,6 +8002,25 @@ function concEnd(o, why){
 function concNewRound(c){
   for(const t of combatants(c)){ const h = t.kind==="foe" ? t.x : t.p; if(h && h.conc && h.conc.left!=null) h.conc.left -= 1; }
 }
+/* every hit point in the fight's history (Joseph, 2026-11-08, after Session 2: Xuna lost 8 or more to the harpoon by a hand
+   edit that no step showed, and a merrow was set to 0 the same way): the fight on screen keeps what each one's hit points
+   were (c.hpSeen) as of its last step (c.hpSeenN). A change that comes with a new step is written on that step (e.hp,
+   "Xuna 24 → 8"); one with no new step is a step of its own, "changed by hand", which Undo takes back like any other */
+function fightHpSweep(){
+  const n = typeof battleOf!=="undefined" && battleOf ? bnode() : null, c = n && n.site && n.site.combat; if(!c || calmOf(c)) return;
+  const L = c.log = c.log || [], seen = c.hpSeen = c.hpSeen || {}, k = L.length, was = c.hpSeenN!=null ? c.hpSeenN : k, moved = [];
+  for(const t of combatants(c)){ const hp = t.kind==="foe" ? (t.x.max!=null ? +t.x.hp : null) : numOr(t.p.hp, 0); if(hp==null) continue;
+    if(seen[t.id]==null){ seen[t.id] = hp; continue; }
+    if(hp!==seen[t.id]){ moved.push({ t, from:seen[t.id], to:hp }); seen[t.id] = hp; } }
+  c.hpSeenN = k; if(!moved.length) return;
+  const words = moved.map(m => `${m.t.label} ${m.from} → ${m.to}`).join(", ");
+  if(k > was && L[k - 1]){ L[k - 1].hp = L[k - 1].hp ? `${L[k - 1].hp}, ${words}` : words; return; }
+  if(k < was) return;                                                                         // a step undone: its numbers went back
+  const snap = snapOf(c, moved.map(m => m.t.id));
+  for(const m of moved){ const s = snap[m.t.id]; if(s && s.v) s.v.hp = m.from; }           // Undo puts the old number back
+  const line = `Hit points changed by hand: ${words}.`;
+  L.push({ id:uid("lg"), round:c.round, text:line, snap, hp:words }); c.hpSeenN = L.length; gameLog("fight", line);
+}
 let concBusy = false;
 function concSweep(){
   if(concBusy || typeof root==="undefined" || !root) return; concBusy = true; let changed = false;
@@ -8017,6 +8036,7 @@ function concSweep(){
     }
   } finally { concBusy = false; }
   fxSweep();                                      // spell effects end with their concentration or their time
+  fightHpSweep();                                 // hit points in the fight on screen: each step's, and any changed by hand
   concPaint(); if(changed) concRefreshRows();
 }
 /* on a card: "Concentrating: Bless · 8 rounds left [End it]" (an empty holder when not, so it can fill in later) */
@@ -10985,6 +11005,7 @@ function beginBattle(st){
   for(const x of foesNow){ const nm = (foeById(x.foe)||{}).name||"foe"; by[nm] = (by[nm]||0)+1; }
   gameLog("fight", `A fight began${placeOfSite(st) ? ` at ${placeOfSite(st)}` : ""}${foesNow.length ? `: ${Object.entries(by).map(([k,v])=>v>1?`${v} × ${k}`:k).join(", ")}` : ""}`);
   if(battleOf){ const all = combatants(c); act = freshAct((all[0]||{}).id); }
+  delete c.hpSeen; delete c.hpSeenN; fightHpSweep();    // everyone's hit points as the fight starts, so a change by hand from here on is a step
   return c;
 }
 /* End the battle, standing in the place: the fallen are laid out to search, whoever ran is gone, and it's calm again —
@@ -10993,7 +11014,7 @@ function calmAfterBattle(st){
   const c = st.combat; if(!c) return;
   c.list = c.list.filter(y=>!(y.max!=null && y.hp<=0 && !y.ally && !y.neutral) && !y.fled);
   for(const id of Object.keys(c.pos||{})) if(!combatants(c).some(t=>t.id===id) && !String(id).startsWith("p:")) delete c.pos[id];
-  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.holds; delete c.readDone; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled; delete c.startedAt;
+  c.calm = true; c.turn = null; c.init = {}; delete c.order; c.round = 1; c.log = []; delete c.hpSeen; delete c.hpSeenN; delete c.reacted; delete c.bonused; delete c.acted; delete c.moved; delete c.dealt; delete c.holds; delete c.readDone; delete c.hurt; delete c.hurtAt; delete c.onceUsed; delete c.fled; delete c.startedAt;
 }
 /* End the fight: into the logs, its XP onto the card that shares it out, the fallen laid out to search; on the map it's
    calm again, from the place's panel it's put away ("calm" / "gone", or false if the DM says no). A fight a waking
@@ -11006,7 +11027,11 @@ function endTheFight(st, n, c, auto){
   /* Also coming: whatever was still held back never came */
   if(heldTotal(c)){ const E = (c.scaled.expected || []).map(w=>w.name || "someone"); gameLog("fight", `Held back and never came: ${heldWords(c, st, n)}${E.length ? ` (for ${andList(E)}, who didn't arrive)` : ""}`); c.scaled.held = {}; }
   /* the fight goes into the session log before it's cleared away, and its whole log into the survey (root.fightLogs) for the download */
-  root.fightLogs = [...(root.fightLogs || []).slice(-19), { at:new Date().toISOString(), node:n.id, place:placeLabel(n), text:fightLogText(n, c, true) }];
+  fightHpSweep();                                                                              // the last step's hit points, or a last change by hand
+  /* ...and its step history, kept (Joseph, 2026-11-08: "make it so the fight step history isn't cleared"): every step's
+     round, words and hit points, and who held what before it (the snapshots Undo used), with the fight's log */
+  root.fightLogs = [...(root.fightLogs || []).slice(-19), { at:new Date().toISOString(), node:n.id, place:placeLabel(n), text:fightLogText(n, c, true),
+    steps:(c.log || []).map(e => ({ round:e.round, text:e.text, hp:e.hp || "", before:Object.fromEntries(Object.entries(e.snap || {}).map(([id, s]) => [id, { hp:s && s.v ? s.v.hp : null }])) })) }];
   if((c.log||[]).length){ const j = journal(); j.log.push({ id:uid("lg"), at:today(), n:j.log.length+1, text:fightSummary(n, c) }); saveParty(); }
   gameLog("fight", fightSummary(n, c).split("\n")[0]);
   fightWitnesses(st, n, c);
@@ -16334,8 +16359,8 @@ function actDice(c, t, info){
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
      Cure Wounds), and the form's + box adds anything else to the damage */
   const desc = String((info && info.spell && info.spell.desc) || ""), sMod = t && t.kind==="pc" ? spellModOf(pcState(t.p)) : 0;
-  const dmgMod = (sMod && /damage[^.]*plus your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0);
-  const healMod = sMod && /(Hit Points|regains?)[^.]*plus your spellcasting ability modifier/i.test(desc) ? sMod : 0;
+  const dmgMod = (sMod && /damage[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0);
+  const healMod = sMod && /(Hit Points|regains?)[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0;     // "+ your…" too: Rin's 2014 sheet (2026-11-08)
   /* the damage, a part for each type (2026-10-30): its own, what rides on the same hit ("plus 7 (2d6) Fire"), what's ticked */
   const baseType = String(act.dtype || (part1 && part1.dtype) || "").toLowerCase(), parts = [];
   const put = (dice, dtype) => { if(!dice) return; const k = String(dtype || baseType).toLowerCase(), p = parts.find(x=>x.dtype===k);
@@ -16500,7 +16525,12 @@ function logAction(n, c){
   /* what rode on it, and a second part (Ice Knife's explosion) with its own targets */
   const D = actDice(c, actor, info), p2 = D.part2 && act.p2 ? act.p2 : null;
   const targets2 = p2 ? (p2.targets || act.targets).map(id=>all.find(x=>x.id===id)).filter(Boolean) : [];
-  const snap = snapOf(c, [...new Set([actor.id, ...targets.map(t=>t.id), ...targets2.map(t=>t.id)])]), fledBefore = JSON.stringify(c.fled||{}), onceBefore = JSON.stringify(c.onceUsed||{});
+  /* damage that would land nowhere (Joseph, 2026-11-08: Session 2's Hail of Thorns and Acid Splash were logged with no
+     target, a harpoon hit and a Thunderwave with no damage): asked first */
+  { const dmg = +act.dmg > 0, dice = !info.heal && !!(D.dmgDice || (info.hint && info.hint.dice)), zone = !!(info.spell && zoneOf(info.spell));
+    if(dmg && !info.heal && !targets.length && !zone && !confirm(`Nobody is picked as a target, so the ${act.dmg} damage goes to no one.\n\nCancel, and pick who it hits under Targets. OK logs it anyway.`)) return;
+    if(dice && !dmg && targets.length && act.outcome!=="miss" && (act.outcome==="hit" || act.outcome==="crit" || info.save) && !confirm(`${info.name || "This"} ${info.save ? "deals damage" : "hits"}, but no damage is entered.\n\nCancel, and roll or type the damage. OK logs it with none.`)) return; }
+  const snap = snapOf(c,[...new Set([actor.id, ...targets.map(t=>t.id), ...targets2.map(t=>t.id)])]), fledBefore = JSON.stringify(c.fled||{}), onceBefore = JSON.stringify(c.onceUsed||{});
   /* running away: out of the fight, not dead, and nothing else happens */
   if(info.kind==="flee"){
     if(actor.kind==="foe") actor.x.fled = true; else { c.fled = c.fled||{}; c.fled[actor.id] = true; }
@@ -16745,7 +16775,7 @@ function logAction(n, c){
   const stealthBefore = JSON.stringify(c.stealth || {}), outed = isAttackAct(info) && act.toHit && c.stealth && c.stealth[actor.id] && c.stealth[actor.id].hide!=null;
   if(outed) delete c.stealth[actor.id].hide;
   if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
-  c.log.push({ id:uid("lg"), round:c.round, text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap, fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell && !act.miFree,
+  c.log.push({ id:uid("lg"), round:c.round, actor:actor.id, targets:targets.map(t=>t.id), text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap,fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell && !act.miFree,
     ...(info.origin==="rush" || info.origin==="rage" || act.brutal ? { moved:movedBefore } : {}), ...(act.pushed ? { pushed:act.pushed } : {}), ...(info.origin==="large" ? { big:{ id:actor.id, v:bigBefore } } : {}), ...(info.origin==="jaunt" ? { jaunt:true } : {}) }); gripSweep(c);
   /* their first attack roll this turn (Reckless Attack is decided on it), and Reckless Attack itself */
   if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
@@ -16879,7 +16909,7 @@ function fightLogText(n, c, ended){
     return `${t.label} (${t.side}): ${hp(t)} HP${cs.length ? `, ${cs.join(", ")}` : ""}${d && (d.s || d.f) ? `, death saves ${d.s} made / ${d.f} failed` : ""}${deadT(t) ? ", DEAD" : ""}${t.fled ? ", fled" : ""}`; };
   const G = since ? gameLogList().filter(e => e.t >= since).map(e => `${new Date(e.t).toLocaleTimeString()} ${e.kind}: ${e.text}`) : [];
   return [`${placeLabel(n)}: a fight, ${c.round} round${c.round===1 ? "" : "s"}${ended ? ", ended" : ", still going"} (${new Date().toLocaleString()})`, "",
-    "WHO'S IN IT", ...all.map(state), "", "THE FIGHT'S LOG (oldest first)", ...(c.log || []).map(e => `R${e.round}: ${e.text}`), "",
+    "WHO'S IN IT", ...all.map(state), "", "THE FIGHT'S LOG (oldest first)", ...(c.log || []).map(e => `R${e.round}: ${e.text}${e.hp ? ` [hit points: ${e.hp}]` : ""}`), "",
     "THE SESSION LOG WHILE IT WENT ON", ...(G.length ? G : ["(nothing, or the fight began before this was kept)"])].join("\n");
 }
 function downloadText(name, text){
@@ -17428,6 +17458,11 @@ function renderBattlePanelNow(){
       else if(!act.queue && /^(sp|pca|fsp):/.test(act.what) && t0){ const i0 = actInfo(c, t0), s0 = i0 && i0.spell, n0 = beamsOf(t0, s0, s0 && s0.lv);
         if(n0 > 1) act.queue = { word:/scorching/i.test(s0.name) ? "ray" : "beam", items:Array(n0).fill(act.what), i:0 }; } }
     const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t);
+    /* a spell that rides on a hit ("the target of the attack": Hail of Thorns) aims at the one they last hit this round,
+       when nobody's picked (Joseph, 2026-11-08: it was logged at no one) */
+    if(info && info.spell && /target of the attack/i.test(info.spell.desc || "") && !(act.targets || []).length){
+      const last = [...(c.log || [])].reverse().find(e => e.round===c.round && e.actor===act.actor && (e.targets || []).length);
+      if(last) act.targets = last.targets.filter(id => all.some(x => x.id===id)); }
     aoeStart(c, t, info);                                         // an area: aimed on the map (or placed at once around them)
     if(info && info.spell && info.spell.save && !info.cond) info.cond = spellCond(info.spell.desc);     // Charm Person's Charmed, Hold Person's Paralyzed: the spell's own words
     if(info){ act.outcome = (info.spell && info.spell.atk) || (info.save && isAttackAct(info)) ? "hit" : info.save ? "fail" :      /* a spell attack (Ice Knife) starts at Hit; its save is for the second part */
