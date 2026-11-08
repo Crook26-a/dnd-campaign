@@ -1159,7 +1159,7 @@
   #cardview[hidden]{display:none}
   #cardview .cv-box{background:var(--paper-lit);color:var(--ink);border:1px solid var(--ink);border-radius:6px;box-shadow:0 14px 40px rgba(0,0,0,.45);padding:14px;max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(440px,100%)}
   #cardview .cv-img{width:100%;max-height:68vh;object-fit:contain}
-.cv-box.wide{width:min(1100px,100%)}
+.cv-box.wide{width:min(620px,100%)}
   #cardview .cv-acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
   /* rooms that scale to who walks in: an enemy line's setting, a room's, and the preview in the room panel */
   .scalerow{display:flex;flex-wrap:wrap;gap:3px 8px;align-items:center;font-size:11px;margin:0 0 6px}
@@ -9834,10 +9834,10 @@ function leadersCanvas(scope){
   const boards = LEADER_BOARDS.filter(b => !b[6]).map(([k, title, get, fmt, sub, neg]) => ({ title,
     rows:R.map(r => ({ r, v:get(r) })).filter(o => o.v!=null && (neg ? true : o.v > 0)).sort((a, b) => b.v - a.v)
       .map((o, i) => ({ pos:i===0 ? "★" : String(i + 1), name:o.r.c.name || "Someone", val:fmt ? fmt(o.v) : o.v.toLocaleString(), sub:sub ? sub(o.r) : "", top:i===0 })) })).filter(b => b.rows.length);
-  const W = 1600, pad = 64, cols = 4, gap = 20, cw = (W - 2 * pad - (cols - 1) * gap) / cols, rh = 34, subH = 22;
+  const W = 1100, pad = 60, cols = 2, gap = 20, cw = (W - 2 * pad - (cols - 1) * gap) / cols, rh = 34, subH = 22;     // portrait (Joseph: "I still want it portrait"): two to a row
   const cardH = b => 20 + 34 + b.rows.reduce((s, x) => s + rh + (x.sub ? subH : 0), 0) + 14;
   const lines = []; for(let i = 0; i < boards.length; i += cols) lines.push(boards.slice(i, i + cols));
-  const top = pad + 150, H = Math.max(520, top + lines.reduce((s, L) => s + Math.max(...L.map(cardH)) + gap, 0) - gap + pad);
+  const top = pad + 150, H = Math.max(Math.round(W * 4 / 3), top + lines.reduce((s, L) => s + Math.max(...L.map(cardH)) + gap, 0) - gap + pad);     // never wider than tall
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
   g.fillStyle = "#6d5c43"; g.fillRect(0, 0, W, H); g.fillStyle = "#efe4c6"; g.fillRect(8, 8, W - 16, H - 16);       // the frame: a dark rule outside, a parchment margin
   g.strokeStyle = "#3a2e1e"; g.lineWidth = 3; g.strokeRect(16, 16, W - 32, H - 32);
