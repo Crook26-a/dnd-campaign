@@ -16659,7 +16659,9 @@ function logAction(n, c){
       if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } spendItem(p, x.k);
         slotTxt = x.u.charges ? ` (${p.inv.includes(x.e) ? `${x.e.ch}/${x.u.charges} charges left` : "used up"})` : (p.inv.includes(x.e) ? "" : " (the last one)");
         if(info.bite && info.bite.onHitBa) slotTxt += " as a Bonus Action"; } }
-    if(info.kind==="spell") S.spells[info.name] = (S.spells[info.name]||0)+1;
+    if(info.kind==="spell"){ S.spells[info.name] = (S.spells[info.name]||0)+1;
+      /* a spell's attack roll is an attack too (Joseph, 2026-11-08: "Best aim" left out Ander's Fire Bolt and Xuna's Guiding Bolt) */
+      if(isAttackAct(info) && ["hit","crit","miss"].includes(act.outcome)){ S.attacks++; if(act.outcome!=="miss") S.hits++; } }
     else if(info.kind==="attack"){ S.attacks++; if(act.outcome==="hit"||act.outcome==="crit") S.hits++; }
     else S.abilities[info.name] = (S.abilities[info.name]||0)+1;
     if(act.outcome==="crit") S.crits = (S.crits||0) + 1;          // a critical hit, weapon or spell: XP on the fight's card (your table rule)
