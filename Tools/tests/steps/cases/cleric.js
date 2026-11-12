@@ -76,6 +76,14 @@ step("Divine Intervention (10): Cure Wounds free (no slot), once a Long Rest; at
   p.level = 5; pcState(p);
   return `${label} || ${one} || ${wish} | after one Long Rest: ${after1}`;
 });
+step("Life Domain: Cure Wounds with a 1st-level slot on Bram heals 3 more (Disciple of Life); at 6 Mira regains 3 (Blessed Healer); at 17 the heal roll is every die at its highest", async () => {
+  const c = clFight(), M = clWho("Mira"), B = clWho("Bram"), p = pcState(M.p); pcState(B.p).hp = 10; p.hp = 20; p.slots[1].used = 0; c.round++; await clTurn(M);
+  const cast = async () => { act = freshAct(M.id); act.what = "sp:spell:cure-wounds"; act.lvl = 1; act.targets = [B.id]; act.outcome = "none"; act.heal = "8"; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30); return clLast(); };
+  const five = `${await cast()} | Bram ${pcState(B.p).hp}, Mira ${pcState(M.p).hp}`; pcState(B.p).hp = 10; p.level = 6; c.round++; await clTurn(M);
+  const six = `${await cast()} | Bram ${pcState(B.p).hp}, Mira ${pcState(M.p).hp}`; p.level = 17; c.round++; await clTurn(M); act = freshAct(M.id); act.what = "sp:spell:cure-wounds"; act.lvl = 1; act.targets = [B.id]; renderBattlePanel(); await wait(20);
+  document.querySelector('[data-acroll="heal"]').click(); await wait(20); const sup = (act.rolled && act.rolled.heal || {}).said; p.level = 5;
+  return `level 5: ${five} || level 6: ${six} || level 17: ${sup}`;
+});
 step("Preserve Life: 25 hit points split between Bram (Bloodied, 10/44) and Old Gnick (5/27), each no higher than half its maximum; Mira (full) asks first", async () => {
   const c = clFight(), B = clWho("Bram"), G = clWho("Old Gnick"), M = clWho("Mira"); pcState(B.p).hp = 10; pcState(G.p).hp = 5; c.round++; pcState(M.p).res.find(x => x.name === "Channel Divinity").used = 0;
   await clCD("Mira", "preserve"); act.targets = [B.id, G.id]; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30);

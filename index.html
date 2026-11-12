@@ -11903,6 +11903,14 @@ function cdInfo(t, k, res){
   if(k==="preserve") return { ...base, name:"Preserve Life", heal:true };
   return { ...base, name:"Channel Divinity" };
 }
+/* the Life Domain: Disciple of Life (3), a spell cast with a slot heals 2 + the slot's level more; Blessed Healer (6), healing
+   someone else that way heals the cleric 2 + the slot's level; Supreme Healing (17), healing dice of a spell or Channel
+   Divinity at their highest */
+function lifeSlotBonus(t, info){
+  const p = t && t.kind==="pc" && t.p ? pcState(t.p) : null;
+  return p && lifeOf(p) && info && info.kind==="spell" && info.spell && +info.spell.lv > 0 && !info.free && !act.miFree && +act.lvl > 0 ? 2 + (+act.lvl) : 0;
+}
+function supremeT(t, info){ const p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; return !!(p && lifeOf(p) && clHas(p, "Supreme Healing", 17) && info && (info.spell || info.cdFx)); }
 /* Potent Spellcasting (Blessed Strikes, 7): Wisdom on the damage of their Cleric cantrips; from 14, a damaging one offers
    twice their Wisdom as temporary hit points (to themselves, asked first; someone else within 60 ft: by hand on their card) */
 function potentMod(t, info){
@@ -16816,7 +16824,7 @@ function logAction(n, c){
   const effectsBefore = JSON.stringify(c.effects || []), gripsBefore = JSON.stringify(c.grips || {});
   let retal = null, cleaveFrom = null;     // a Berserker hurt from within 5 ft (Retaliation); a Cleave weapon's first hit
   const cp = actor.kind==="pc" && actor.p ? pcState(actor.p) : null;
-  let pPool = info.cdFx==="preserve" && cp ? 5 * clericLevel(cp) : 0;     // Preserve Life: the hit points to share
+  let pPool = info.cdFx==="preserve" && cp ? 5 * clericLevel(cp) : 0, blessedTo = false;     // Preserve Life: the hit points to share; someone else healed by a slot spell (Blessed Healer)
   const searN = info.cdFx==="turn" && cp && clHas(cp, "Sear Undead", 5) ? rollTerms(diceTerms(`${Math.max(1, abBonus(cp, "wis"))}d8`)).total : 0;     // Sear Undead: one roll for every Undead that fails
   const MW = isAttackAct(info) ? masteryOf(actor, info) : "", MQ = MW && D.on.some(a => a.mastery) ? MW : "";     // Weapon Mastery: this weapon's property, and whether it's on
   const vexSap0 = new Set((c.effects || []).filter(e => e.vex || e.sap).map(e => e.id));     // Vex and Sap from before this attack, used up by it
@@ -16846,7 +16854,8 @@ function logAction(n, c){
     if(MQ && ["hit","crit"].includes(act.outcome) && !off) masteryHit(c, actor, t, MQ, info, got, turned);     // Topple, Vex, Slow, Sap, Push
     if(MW==="Cleave" && ["hit","crit"].includes(act.outcome) && !off && !cleaveFrom && !wasCleave) cleaveFrom = t;
     if(heal && D.temp){ const h = hOfT(t), was = numOr(h.temp, 0); if(heal > was){ h.temp = heal; tempGot.push(t.label); } }     /* temporary hit points: the higher, they don't stack */
-    else if(heal){ hl = healAny(t, heal); healed += hl; }
+    else if(heal){ const dl = cp && clHas(cp, "Disciple of Life", 3) ? lifeSlotBonus(actor, info) : 0; hl = healAny(t, heal + dl); healed += hl;     // Disciple of Life's 2 + the slot level
+      if(dl) turned.push(`${t.label}: +${dl} (Disciple of Life)`); if(dl && t.id!==actor.id && hl > 0) blessedTo = true; }
     if(info.loh && act.lohPoison){ const cs = condsOfT(t), k = cs.indexOf("Poisoned"); if(k >= 0){ cs.splice(k, 1); turned.push(`${t.label}: no longer Poisoned`); } }     // Lay on Hands' 5 points
     /* "becomes Stable" (Spare the Dying): at 0 hit points and not dead, three successes, the failures cleared */
     if(info.spell && /becomes Stable/i.test(info.spell.desc || "") && t.kind!=="foe" && t.p && isDownT(t) && !deadT(t)){ pcState(t.p).death = { s:3, f:0 }; turned.push(`${t.label} is Stable`); }
@@ -16961,6 +16970,8 @@ function logAction(n, c){
   if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
     if(act.brutal){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).brutal = turnStamp(c); } }     // Brutal Strike: once on their turn
   if(act.sunderId && isAttackAct(info)) c.effects = (c.effects || []).filter(e => e.id!==act.sunderId);     // a Sundering Blow's +5, used
+  if(blessedTo && cp && clHas(cp, "Blessed Healer", 6) && !targets.some(o => o.id===actor.id)){ const n = lifeSlotBonus(actor, info), got = healAny(actor, n);     // Blessed Healer
+    if(got) { const e = c.log[c.log.length - 1]; if(e) e.text = e.text.replace(/\.$/, `; ${actor.label} regains ${got} (Blessed Healer).`); } }
   if(cp && dealt > 0 && potentMod(actor, info) && clericLevel(cp) >= 14){ const n = 2 * Math.max(0, abBonus(cp, "wis"));     // Improved Potent Spellcasting: temporary hit points
     if(n && confirm(`Potent Spellcasting: ${actor.label} can give ${n} temporary hit points to themselves or someone within 60 feet. Give them to ${actor.label}? (Someone else: set it on their card.)`) && n > numOr(cp.temp, 0)){ cp.temp = n; flash(`${actor.label} has ${n} temporary hit points (Potent Spellcasting).`); } }
   if(isAttackAct(info)){ const tid = new Set(targets.map(o => o.id)); c.effects = (c.effects || []).filter(e => !(vexSap0.has(e.id) && ((e.vex && e.by===actor.id && tid.has(e.who)) || (e.sap && e.who===actor.id)))); }     // Vex's Advantage and Sap's Disadvantage, used
@@ -17797,6 +17808,8 @@ function renderBattlePanelNow(){
       partsSum(D); if(w==="dmg") cwDamage(c, t); flash(act.rolled.dmg.said); renderBattlePanel(); return; }     // a Lore bard's Cutting Words on the damage
     const dice = w==="heal" ? D.healDice : w==="dmg2" ? (D.part2 && D.part2.dice) : D.dmgDice; if(!dice) return;
     const crit = w==="dmg" && act.outcome==="crit", r = rollTerms(diceTerms(dice), crit);
+    if(w==="heal" && supremeT(t, info)){ const T = diceTerms(dice), mx = T.reduce((a, x) => a + (x.d ? x.n * x.d : x.k), 0);     // Supreme Healing: every die at its highest
+      act.heal = String(mx); (act.rolled = act.rolled || {}).heal = { v:act.heal, said:`${dice}: Supreme Healing, every die at its highest, ${mx}` }; flash(act.rolled.heal.said); renderBattlePanel(); return; }
     const cut = w==="heal" && info.reduce ? reduceCap(info.reduce, r.total, +act.took || 0) : r.total;     // a damage-cutting item: no more than half the hit
     if(w==="heal") act.heal = String(cut); else if(w==="dmg2"){ if(act.p2) act.p2.dmg = String(r.total); } else act.dmg = String(r.total);
     (act.rolled = act.rolled || {})[w] = { v:String(cut), said:rollSaid(dice, r, crit) + (cut < r.total ? `, no more than half of ${+act.took}: ${cut}` : "") };     // the dice go in the log too, unless the number is changed by hand
