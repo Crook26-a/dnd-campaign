@@ -11581,6 +11581,8 @@ function originRes(c){
   { const dl = druidLevel(c); if(dl >= 2 && !is2014(c)) want.push(["Wild Shape", dl >= 17 ? 4 : dl >= 6 ? 3 : 2, "one"]);     // a 2024 Druid's (the SRD 5.2.1's Druid table: 2, 3 at 6, 4 at 17)
     if(landOf(c) && dl >= 6 && !is2014(c)) want.push(["Natural Recovery", 1, "long"]); }     // a Land druid's free Circle spell
   { const cl = clericLevel(c); if(cl >= 2 && !is2014(c)) want.push(["Channel Divinity", cl >= 18 ? 4 : cl >= 6 ? 3 : 2, "one"]); if(cl >= 10 && !is2014(c)) want.push(["Divine Intervention", 1, "long"]); }     // a 2024 Cleric's (one Channel Divinity back on a Short Rest, all on a Long)
+  { const ml = monkLevel(c); if(ml >= 2 && !is2014(c)){ want.push(["Focus Points", ml, "short"], ["Uncanny Metabolism", 1, "long"]);     // a 2024 Monk's (the SRD 5.2.1 Monk table)
+      if(openHandOf(c) && ml >= 6) want.push(["Wholeness of Body", Math.max(1, abBonus(c, "wis")), "long"]); } }
   { const bl = bardLevel(c); if(bl) want.push(["Bardic Inspiration", Math.max(1, Math.floor(((+c.cha || 10) - 10) / 2)), bl >= 5 ? "short" : "long"]); }     // a Bard's (Font of Inspiration: a Short Rest too from 5)
   for(const [name, max, rest] of want){ let r = c.res.find(q => String(q.name || "").trim().toLowerCase()===name.toLowerCase()); if(!r) c.res.push(r = { id:uid("rs"), name, max, used:0, rest });
     r.max = max; r.used = Math.min(max, +r.used || 0); r.rest = rest; }
@@ -12004,6 +12006,154 @@ function tmasterHtml(c, t, info){
   return `<div class="field" style="margin:-2px 0 6px"><label>Tactical Master: this attack's mastery</label><select id="ac-tmaster"><option value="">${esc(M)} (the weapon's own)</option>${["Push", "Sap", "Slow"].filter(k => k!==M).map(k => `<option ${act.tmaster===k ? "selected" : ""}>${k}</option>`).join("")}</select></div>`;
 }
 const tmasterOf = (t, info) => { const M = masteryOf(t, info); return M && act.tmaster && t && t.p && fiHas(pcState(t.p), "Tactical Master", 9) ? act.tmaster : M; };
+/* ══ THE MONK (Joseph, 2026-11-12, the SRD walk-through: "Do it"; text from his SRD 5.2.1 PDF). Their Monk level; the
+   Warrior of the Open Hand by subclass; only what the sheet has, and only on a 2024 sheet (a 2014 Monk's Ki works
+   differently), except Evasion, the same in both. Focus Points are their "Focus Points" use (the Character Book's, or
+   made here by originRes). The Monk's choices are "mk:<k>" in the Action box (monkChoices, monkInfo, monkDo) ══ */
+function monkLevel(c){ const s = String((c && c.cls) || ""), m = /\bmonk\s*(\d+)/i.exec(s); return m ? clampLv(+m[1]) : /\bmonk\b/i.test(s) ? clampLv(c.level) : 0; }
+function openHandOf(c){ return monkLevel(c) > 0 && /open hand/i.test(`${(c && c.subcls) || ""} ${(c && c.cls) || ""}`); }
+function mkHas(c, name, lv){ return !!c && !is2014(c) && monkLevel(c) >= lv && (c.feats ? new RegExp(`\\b${name}\\b`, "i").test(c.feats) : true); }
+const maDie = lv => lv >= 17 ? 12 : lv >= 11 ? 10 : lv >= 5 ? 8 : 6;     // the Martial Arts column
+const umBonus = lv => lv >= 18 ? 30 : lv >= 14 ? 25 : lv >= 10 ? 20 : lv >= 6 ? 15 : lv >= 2 ? 10 : 0;     // the Unarmored Movement column
+const focusRes = p => ((p && p.res) || []).find(q => /^focus points?$/i.test(String(q.name || "").trim()));
+const focusLeft = p => { const r = focusRes(p); return r ? Math.max(0, (+r.max || 0) - (+r.used || 0)) : 0; };
+const focusDC = p => 8 + abBonus(p, "wis") + pbOfPc(p);
+function focusSpend(p, n){ const r = focusRes(p); if(!r || (+r.max || 0) - (+r.used || 0) < n) return false; r.used = (+r.used || 0) + n; return true; }
+const wholeRes = p => ((p && p.res) || []).find(q => /^wholeness of body$/i.test(String(q.name || "").trim()));
+/* their Unarmed Strike: the sheet's own line if it has one with a bonus to hit, else Martial Arts' (the better of Strength
+   and Dexterity, Dexterous Attacks; the Martial Arts die); Force from Empowered Strikes (6), their choice: Force here */
+function monkStrikeRow(p){
+  const lv = monkLevel(p), m = Math.max(abBonus(p, "str"), abBonus(p, "dex")), force = mkHas(p, "Empowered Strikes", 6);
+  const a = (p.attacks || []).find(x => x && /unarmed strike/i.test(x.name || "") && /\d/.test(String(x.hit || "")));
+  if(a) return { hit:String(a.hit), dmg:+a.mod ? addDice(a.dmg || `1d${maDie(lv)}`, String(Math.round(+a.mod))) : String(a.dmg || `1d${maDie(lv)}${m ? signed(m) : ""}`).replace(/\s+/g, ""), dtype:force ? "force" : String(a.dtype || "bludgeoning").toLowerCase() };
+  return { hit:signed(m + pbOfPc(p)), dmg:`1d${maDie(lv)}${m ? signed(m) : ""}`, dtype:force ? "force" : "bludgeoning" };
+}
+/* what a Monk can pick in the Action box (only theirs, only what they have) */
+function monkChoices(t, p){
+  const lv = monkLevel(p); if(!lv || is2014(p)) return []; const fc = aoeFight(), f = focusLeft(p), out = [], hf = mkHas(p, "Heightened Focus", 10);
+  if(mkHas(p, "Martial Arts", 1)) out.push({ v:"mk:ua", label:"Unarmed Strike, a Bonus Action (Martial Arts)" });
+  if(mkHas(p, "Monk's Focus", 2)){
+    out.push({ v:"mk:flurry", label:`Flurry of Blows: ${hf ? "three" : "two"} Unarmed Strikes, a Bonus Action (1 Focus Point; ${f} left)` });
+    const F = fc && fc.flurry; if(F && F.id===t.id && F.at===turnStamp(fc) && F.left > 0) out.push({ v:"mk:fs", label:`Flurry of Blows: the next Unarmed Strike (${F.left} left)` });
+    out.push({ v:"mk:pd", label:"Patient Defense: Disengage, a Bonus Action" }, { v:"mk:pd1", label:`Patient Defense: Disengage and Dodge${hf ? ", and temporary hit points" : ""} (1 Focus Point)` },
+      { v:"mk:sw", label:"Step of the Wind: Dash, a Bonus Action" }, { v:"mk:sw1", label:"Step of the Wind: Disengage and Dash, jump doubled (1 Focus Point)" }); }
+  { const r = openHandOf(p) && mkHas(p, "Wholeness of Body", 6) ? wholeRes(p) : null; if(r) out.push({ v:"mk:wb", label:`Wholeness of Body: heal 1d${maDie(lv)} + Wisdom, a Bonus Action (${Math.max(0, r.max - r.used)} left)` }); }
+  if(mkHas(p, "Superior Defense", 18) && !p.supDef) out.push({ v:"mk:sd", label:"Superior Defense: Resistance to all but Force for 1 minute (3 Focus Points, at the start of their turn)" });
+  if(openHandOf(p) && mkHas(p, "Quivering Palm", 17) && p.qpalm && fc && combatants(fc).some(o => o.id===p.qpalm.id)) out.push({ v:"mk:qp", label:`Quivering Palm: end the vibrations in ${p.qpalm.name}` });
+  return out;
+}
+function monkInfo(c, t, k){
+  const p = t && t.p ? pcState(t.p) : null; if(!p) return null; const lv = monkLevel(p), S = monkStrikeRow(p);
+  const strike = (name, extra) => ({ kind:"attack", name, hitRow:S, hint:{ dice:S.dmg, dtype:S.dtype }, save:false, monk:k, ...extra });
+  if(k==="ua") return strike("Unarmed Strike (Martial Arts)", { ba:true });
+  if(k==="flurry") return strike("Flurry of Blows", { ba:true, focus:1 });
+  if(k==="fs") return strike("Flurry of Blows (the next strike)", {});
+  if(k==="pd" || k==="pd1") return { kind:"ability", name:"Patient Defense", ba:true, self:true, monk:k, focus:k==="pd1" ? 1 : 0, healDice:"" };
+  if(k==="sw" || k==="sw1") return { kind:"ability", name:"Step of the Wind", ba:true, self:true, monk:k, focus:k==="sw1" ? 1 : 0, healDice:"" };
+  if(k==="wb"){ const w = abBonus(p, "wis"); return { kind:"ability", name:"Wholeness of Body", ba:true, self:true, monk:k, healDice:`1d${maDie(lv)}${w ? signed(w) : ""}` }; }
+  if(k==="sd") return { kind:"ability", name:"Superior Defense", self:true, monk:k, focus:3, healDice:"" };
+  if(k==="qp"){ const dc = focusDC(p); return { kind:"ability", name:"Quivering Palm", monk:k, save:true, hint:{ dice:"10d12", dtype:"force" }, healDice:"",
+    text:`Constitution Saving Throw: DC ${dc}. Failure: 10d12 Force damage. Success: half as much damage.` }; }
+  return null;
+}
+/* what a Monk's choice does once logged (the Focus Points are spent here) */
+function monkDo(c, t, info){
+  const p = pcState(t.p), lv = monkLevel(p), k = info.monk, out = [], M = () => (c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] };
+  if(info.focus && !focusSpend(p, info.focus)) out.push(`(no Focus Points were left to spend)`);
+  else if(info.focus) out.push(`${info.focus} Focus Point${info.focus > 1 ? "s" : ""} spent, ${focusLeft(p)} left`);
+  if(k==="flurry"){ const n = mkHas(p, "Heightened Focus", 10) ? 3 : 2; c.flurry = { id:t.id, at:turnStamp(c), left:n - 1 }; out.push(`${n - 1} more Unarmed Strike${n > 2 ? "s" : ""} from it (Flurry of Blows: the next strike)`); }
+  if(k==="fs" && c.flurry && c.flurry.id===t.id) c.flurry.left = Math.max(0, c.flurry.left - 1);
+  if(k==="pd" || k==="pd1" || k==="sw1"){ (c.disengaged = c.disengaged || {})[t.id] = turnStamp(c); out.push("Disengage: no opportunity attacks against them this turn"); }
+  if(k==="pd1"){ (c.dodging = c.dodging || {})[t.id] = turnStamp(c); out.push("Dodge: attack rolls against them have Disadvantage, and their Dexterity saves Advantage, until their next turn");
+    if(mkHas(p, "Heightened Focus", 10)){ const d = maDie(lv), Q = pcDie(t, `the first Martial Arts die (d${d}) for Patient Defense`, d), Q2 = pcDie(t, `the second Martial Arts die (d${d}) for Patient Defense`, d), n = Q.d + Q2.d, was = numOr(p.temp, 0);
+      if(n > was) p.temp = n; out.push(`${n} temporary hit points (Heightened Focus, d${d} ${Q.d}${Q.w} + ${Q2.d}${Q2.w})${n > was ? "" : `, but they have ${was} already`}`); } }
+  if(k==="sw" || k==="sw1"){ M().dash = true; out.push(`Dash: ${speedOf(t)} ft more movement${k==="sw1" ? ", their jump distance doubled this turn" : ""}`);
+    if(k==="sw1" && mkHas(p, "Heightened Focus", 10)) out.push("Heightened Focus: they can take a willing Large or smaller creature within 5 ft along, its movement drawing no opportunity attacks (move its token with theirs)"); }
+  if(k==="wb"){ const r = wholeRes(p); if(r) r.used = Math.min(+r.max || 0, (+r.used || 0) + 1); }
+  if(k==="sd"){ p.supDef = { round:c.round }; out.push("Resistance to all damage except Force for 1 minute, or until they're Incapacitated"); }
+  if(k==="qp") delete p.qpalm;
+  return out;     // (Fleet Step, Open Hand 11: Step of the Wind right after another Bonus Action; logAction lets it through without asking)
+}
+/* a Monk's hit (before the next target): Stunning Strike (5), Quivering Palm (Open Hand 17), Open Hand Technique (Open Hand 3) */
+function monkHit(c, actor, t, D, info, turned){
+  const p = pcState(actor.p); if(!monkLevel(p)) return;
+  const add = e => (c.effects = c.effects || []).push({ id:uid("ef"), who:t.id, cond:"", by:actor.id, at:turnStamp(c), round:c.round, end:"srcStart", repeat:null, sp:null, rounds:null, ...e });
+  if(D.on.some(a => a.stun) && !addonUsed(c, actor.id, "stun") && focusSpend(p, 1)){ (c.onceUsed = c.onceUsed || {}); (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).stun = turnStamp(c);
+    const dc = focusDC(p), b = saveBonusOf(t, "Constitution"), Q = saveD(t, "Constitution", `a Constitution save against DC ${dc} (Stunning Strike)`), RS = d20Rescue(c, t, Q.d + b, dc, "Constitution save", "save", b), ok = RS.tot >= dc;
+    const said = `${t.label}: Stunning Strike (1 Focus Point), Constitution save d20 ${Q.d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${RS.tot}${RS.w} vs DC ${dc}`;
+    if(!ok && !condImmune(t, "Stunned")){ const cs = condsOfT(t); if(!cs.includes("Stunned")) cs.push("Stunned"); add({ cond:"Stunned", name:"Stunning Strike" }); turned.push(`${said}, failed: Stunned until the start of ${actor.label}'s next turn`); }
+    else if(!ok) turned.push(`${said}, failed, but it can't be Stunned`);
+    else { const half = Math.ceil(speedOf(t) / 2); if(half) add({ name:"Stunning Strike", slow:half }); (c.helped = c.helped || {})[t.id] = { by:actor.id, side:actor.side, any:true, why:"Stunning Strike" };
+      turned.push(`${said}, made: its Speed is halved, and the next attack roll on it has Advantage, until the start of ${actor.label}'s next turn`); } }
+  if(D.on.some(a => a.qpalm) && /unarmed|flurry/i.test(info.name || "") && focusSpend(p, 4)){ p.qpalm = { id:t.id, name:t.label };
+    turned.push(`${t.label}: Quivering Palm (4 Focus Points), the vibrations are set for ${monkLevel(p)} days: end them with the Monk action (an action), or harmlessly on their card`); }
+  if(["flurry", "fs"].includes(info.monk) && openHandOf(p) && mkHas(p, "Open Hand Technique", 3) && act.ohFx){ const dc = focusDC(p);
+    if(act.ohFx==="addle"){ add({ name:"Addle", noOA:true, end:"targetStart" }); turned.push(`${t.label}: Addle, no opportunity attacks until the start of its next turn`); }
+    if(act.ohFx==="push" || act.ohFx==="topple"){ const ab = act.ohFx==="push" ? "Strength" : "Dexterity", b = saveBonusOf(t, ab), Q = saveD(t, ab, `a ${ab} save against DC ${dc} (${act.ohFx==="push" ? "Push" : "Topple"})`), RS = d20Rescue(c, t, mightTot(t, ab, Q.d + b), dc, `${ab} save`, "save", b), ok = RS.tot >= dc;
+      const said = `${t.label}: ${act.ohFx==="push" ? "Push" : "Topple"}, ${ab} save d20 ${Q.d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${RS.tot}${RS.w} vs DC ${dc}`;
+      if(ok) turned.push(`${said}, made`);
+      else if(act.ohFx==="topple"){ const prone = !condImmune(t, "Prone"); if(prone){ const cs = condsOfT(t); if(!cs.includes("Prone")) cs.push("Prone"); } turned.push(`${said}, failed: ${prone ? "Prone" : "but it can't be knocked Prone"}`); }
+      else { const was = c.pos && c.pos[t.id] ? { ...c.pos[t.id] } : null, sq = pushAway(c, actor, t, 3); if(was && sq) (act.pushed = act.pushed || {})[t.id] = was; turned.push(`${said}, failed: pushed ${sq * 5} ft away${sq < 3 ? " (something in the way)" : ""}`); } } }
+}
+/* the Open Hand Technique pick on a Flurry of Blows strike */
+function ohHtml(c, t, info){
+  if(!info || !["flurry", "fs"].includes(info.monk) || !t || !t.p || !openHandOf(pcState(t.p)) || !mkHas(pcState(t.p), "Open Hand Technique", 3)) return "";
+  return `<div class="field" style="margin:-2px 0 6px"><label>Open Hand Technique, on a hit (DC ${focusDC(pcState(t.p))})</label><select id="ac-ohfx"><option value="">None</option>${[["addle", "Addle: no opportunity attacks until its next turn"], ["push", "Push: a Strength save or pushed 15 ft"], ["topple", "Topple: a Dexterity save or Prone"]].map(([k, l]) => `<option value="${k}" ${act.ohFx===k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
+}
+/* Deflect Attacks (3): an attack roll hits them for Bludgeoning, Piercing, or Slashing (any type from 13, Deflect
+   Energy): their Reaction cuts it by 1d10 + Dexterity + Monk level; brought to 0, 1 Focus Point sends some back (a
+   Dexterity save, two Martial Arts dice + Dexterity, the attack's type) at the attacker (asked first) */
+function deflectAttacks(c, t, by, dm, dtype, turned){
+  const p = pcState(t.p), lv = monkLevel(p); if(!mkHas(p, "Deflect Attacks", 3) || dm <= 0 || isDownT(t) || reactedThisRound(c, t.id) || cantAct(t).length) return dm;
+  const dt = String(dtype || "").toLowerCase(); if(!/^(bludgeoning|piercing|slashing)$/.test(dt) && !mkHas(p, "Deflect Energy", 13)) return dm;
+  const dx = abBonus(p, "dex"); if(!confirm(`${by ? by.label + "'s" : "An"} attack hits ${t.label} for ${dm}${dt ? ` ${dt}` : ""} damage. Deflect Attacks (their Reaction): cut it by 1d10 + ${dx + lv}?`)) return dm;
+  const Q = pcDie(t, "Deflect Attacks' d10", 10), cut = Math.max(0, Q.d + dx + lv), left = Math.max(0, dm - cut); (c.reacted = c.reacted || {})[t.id] = c.round;
+  turned.push(`${t.label}: Deflect Attacks (Reaction), d10 ${Q.d}${Q.w} + ${dx + lv} = ${cut} less${left ? `, ${left} taken` : ", none taken"}`);
+  if(!left && by && by.id!==t.id && focusLeft(p) > 0 && confirm(`${t.label} took none of it. Spend 1 Focus Point (${focusLeft(p)} left) to redirect it at ${by.label}? A Dexterity save (DC ${focusDC(p)}) or two Martial Arts dice + ${dx} ${dt || "damage"}.`)){
+    focusSpend(p, 1); const d = maDie(lv), dc = focusDC(p), b = saveBonusOf(by, "Dexterity"), S = saveD(by, "Dexterity", `a Dexterity save against DC ${dc} (Deflect Attacks)`), ok = S.d + b >= dc;
+    const r = rollTerms(diceTerms(`2d${d}${dx ? signed(dx) : ""}`)), how = dmgTakes(by, dt), n = ok ? 0 : dmgAfter(r.total, how), ds = [], down = n > 0 ? (by.kind==="foe" ? damageFoe(by.x, n) : damagePc(by.p, n, false, ds)) : false;
+    turned.push(`${t.label} redirects it (1 Focus Point): ${by.label}'s Dexterity save d20 ${S.d}${S.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${S.d + b} vs DC ${dc}, ${ok ? "made" : `failed: ${n}${dt ? ` ${dt}` : ""} damage (2d${d}${dx ? signed(dx) : ""}: ${r.total})${how ? ` (${how})` : ""}${down ? `; ${by.label} drops` : ""}`}`); }
+  return left;
+}
+/* Evasion (Monk 7, and a Rogue's 7): a Dexterity save for half: none on a success, half on a failure; not while Incapacitated */
+function evasionT(t){
+  const p = t && t.kind!=="foe" && t.p ? pcState(t.p) : null; if(!p || condsOfT(t).some(k => INCAP.includes(k))) return false;
+  if(p.feats) return /\bEvasion\b/.test(p.feats);
+  return monkLevel(p) >= 7 || (/\brogue\s*(\d+)/i.test(String(p.cls || "")) ? +/\brogue\s*(\d+)/i.exec(p.cls)[1] >= 7 : /\brogue\b/i.test(String(p.cls || "")) && clampLv(p.level) >= 7);
+}
+/* rolling Initiative: Uncanny Metabolism (2: all Focus Points back and Monk level + the die healed, once a Long Rest,
+   asked), else Perfect Focus (15: back up to 4 Focus Points) */
+function monkInit(c, id){
+  const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !monkLevel(p) || is2014(p)) return;
+  const r = focusRes(p), um = (p.res || []).find(q => /^uncanny metabolism$/i.test(q.name || "")), lv = monkLevel(p), say = line => { (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line); flash(line + "."); };
+  if(r && mkHas(p, "Uncanny Metabolism", 2) && um && um.used < um.max && (+r.used > 0 || numOr(p.hp, 0) < numOr(p.hpMax, 0))
+    && confirm(`${t.label} rolls Initiative. Uncanny Metabolism (once a Long Rest): all ${r.max} Focus Points back (${focusLeft(p)} now), and heal ${lv} + the Martial Arts die (d${maDie(lv)})?`)){
+    const Q = pcDie(t, `the Martial Arts die (d${maDie(lv)}) for Uncanny Metabolism`, maDie(lv)), got = healAny(t, lv + Q.d); r.used = 0; um.used = (+um.used || 0) + 1;
+    say(`${t.label}: Uncanny Metabolism, all Focus Points back and ${got} hit points (${lv} + d${maDie(lv)} ${Q.d}${Q.w})`); return; }
+  if(r && mkHas(p, "Perfect Focus", 15) && focusLeft(p) < 4){ const was = focusLeft(p); r.used = Math.max(0, (+r.max || 0) - 4); say(`${t.label} rolls Initiative: Focus Points from ${was} back up to ${focusLeft(p)} (Perfect Focus)`); }
+}
+/* the end of a Monk's turn: Self-Restoration (10) takes off one of Charmed, Frightened, or Poisoned; Superior Defense
+   ends after a minute or when they're Incapacitated */
+function monkTurnEnd(c, id){
+  for(const t of combatants(c)){ if(t.kind!=="pc" || !t.p || !t.p.supDef) continue; const sd = t.p.supDef;
+    if(condsOfT(t).some(k => INCAP.includes(k)) || c.round - (sd.round || c.round) >= 10){ delete t.p.supDef; const line = `${t.label}'s Superior Defense ends`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line); } }
+  const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !mkHas(p, "Self-Restoration", 10)) return;
+  const cs = condsOfT(t), k = ["Charmed", "Frightened", "Poisoned"].find(x => cs.includes(x)); if(!k) return;
+  cs.splice(cs.indexOf(k), 1); if(c.effects) c.effects = c.effects.filter(e => !(e.who===t.id && e.cond===k));
+  const line = `${t.label} is no longer ${k} (Self-Restoration)`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line);
+}
+/* a Monk's card (only theirs): the Martial Arts die, Focus Points and their save DC, Unarmored Movement, Quivering Palm's target */
+function monkCardHtml(c){
+  const lv = monkLevel(c); if(!lv || is2014(c)) return ""; const B = [];
+  B.push(`Martial Arts d${maDie(lv)}`); if(focusRes(c)) B.push(`Focus Points ${focusLeft(c)}/${focusRes(c).max} · DC ${focusDC(c)}`);
+  if(mkHas(c, "Unarmored Movement", 2)) B.push(`Speed +${umBonus(lv)} ft unarmored`);
+  if(c.supDef) B.push("Superior Defense up");
+  const notes = [mkHas(c, "Slow Fall", 4) ? `Slow Fall: their Reaction cuts falling damage by ${5 * lv}` : "", mkHas(c, "Acrobatic Movement", 9) ? "Acrobatic Movement: walls and liquids on their turn" : "", mkHas(c, "Body and Mind", 20) && !c.cbId ? "Body and Mind: Dexterity and Wisdom +4 (up to 25): set them on the sheet" : ""].filter(Boolean);
+  return `<div class="fc-res">${B.map(b => `<span class="chip">${esc(b)}</span>`).join("")}${c.qpalm ? `<span class="chip" title="Set by Quivering Palm: end it with an action (the Monk choices), or harmlessly here">Vibrations in ${esc(c.qpalm.name)}</span><button class="btn small" data-qpclear="${esc(c.id)}">End harmlessly</button>` : ""}</div>`
+    + (notes.length ? `<p class="empty-note" style="font-size:11px;margin:2px 0 4px">${esc(notes.join(". "))}.</p>` : "");
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-qpclear]"); if(!b) return; const p = pcById(b.dataset.qpclear); if(!p) return;
+  delete p.qpalm; gameLog("fight", `${p.name || "The monk"} ends Quivering Palm's vibrations harmlessly`); saveParty(); touch(); try{ renderPane(true); if(battleOf) renderBattlePanel(); }catch(err){} });
 /* Archdruid's Evergreen Wild Shape (20): rolling Initiative with no use left gives one back */
 function evergreenWS(c, id){
   const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !drHas(p, "Archdruid", 20)) return;
@@ -12046,6 +12196,10 @@ function d20Rescue(c, t, tot, need, what, kind, base){
   if(p && kind==="save" && base!=null && fiHas(p, "Indomitable", 9)){ const r = (p.res || []).find(q => /^indomitable$/i.test(q.name || "")), lv = fighterLevel(p);
     if(r && r.used < r.max && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Indomitable (${r.max - r.used} left until a Long Rest): reroll it with +${lv}? The new roll stands.`)){
       const Q = pcD20(t, `the ${what} again (Indomitable, +${lv})`); r.used++; tot = Q.d + base + lv; w += ` (Indomitable: rerolled, d20 ${Q.d}${Q.w} ${base < 0 ? "−" : "+"} ${Math.abs(base)} + ${lv} = ${tot})`; if(tot >= need) return { tot, w }; } }
+  /* a Monk's Disciplined Survivor (14): a failed save rerolled for 1 Focus Point, the new roll standing */
+  if(p && kind==="save" && base!=null && mkHas(p, "Disciplined Survivor", 14) && focusLeft(p) > 0
+    && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Disciplined Survivor: spend 1 Focus Point (${focusLeft(p)} left) to reroll it? The new roll stands.`)){
+    const Q = pcD20(t, `the ${what} again (Disciplined Survivor)`); focusSpend(p, 1); tot = Q.d + base; w += ` (Disciplined Survivor, 1 Focus Point: rerolled, d20 ${Q.d}${Q.w} ${base < 0 ? "−" : "+"} ${Math.abs(base)} = ${tot})`; if(tot >= need) return { tot, w }; }
   /* a Fighter's Tactical Mind (2): a failed ability check, a Second Wind use for +1d10 (kept if it still fails) */
   if(p && kind==="check" && fiHas(p, "Tactical Mind", 2)){ const r = (p.res || []).find(q => /second wind/i.test(q.name || ""));
     if(r && r.used < r.max && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Tactical Mind: spend a Second Wind (${r.max - r.used} left) for +1d10? It isn't spent if the check still fails.`)){
@@ -12456,7 +12610,7 @@ function wildFormsEditor(c, i){
 }
 /* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
 function originCardHtml(c){
-  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + fighterCardHtml(c) + masteryCardHtml(c);
+  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + fighterCardHtml(c) + monkCardHtml(c) + masteryCardHtml(c);
 }
 /* a Fighter's Fighting Style picks (only theirs; a Champion's second from 7), and Heroic Inspiration on anyone's card who has it */
 const STYLES = [["archery", "Archery: +2 to hit with Ranged weapons"], ["defense", "Defense: +1 AC in armor"], ["gwf", "Great Weapon Fighting: 1s and 2s as 3s, two-handed"], ["twf", "Two-Weapon Fighting: the modifier on the off-hand attack"]];
@@ -15313,7 +15467,7 @@ function rollAdvOf(c, t, tg, info){
   if(me.includes("Frightened")){ const f = fearOf(c, t); if(!f || line(t, f)) D.push(`${t.label} is Frightened${f ? ` of ${f.label}` : ""}`); }
   if(me.includes("Grappled")){ const g = gripOf(c, t); if(g && g.by.id!==tg.id) D.push(`${t.label} is Grappled by ${g.by.label}`); }
   if(dodging(c, tg)) D.push(`${tg.label} is Dodging`);
-  { const Hp = c && c.helped && c.helped[tg.id]; if(Hp && Hp.side===t.side && Hp.by!==t.id){ const hb = combatants(c).find(x => x.id===Hp.by); A.push(`helped by ${hb ? hb.label : "an ally"}`); act.helpUsed = tg.id; } }
+  { const Hp = c && c.helped && c.helped[tg.id]; if(Hp && (Hp.any || (Hp.side===t.side && Hp.by!==t.id))){ const hb = combatants(c).find(x => x.id===Hp.by); A.push(Hp.why ? `${Hp.why} (${hb ? hb.label : "a monk"})` : `helped by ${hb ? hb.label : "an ally"}`); act.helpUsed = tg.id; } }
   if(them.includes("Invisible") && !sees(t, tg)) D.push(`${tg.label} is Invisible`);
   else if(act.unseen) D.push(`${t.label} can't see ${tg.label}`);
   if(me.includes("Invisible") && !sees(tg, t)) A.push(`${t.label} is Invisible`);
@@ -15948,6 +16102,7 @@ const OUTCOMES = [["hit","Hit"],["crit","Crit"],["miss","Miss"],["fail","Save fa
    radius…), an item used on "yourself" (or that gives its user temporary hit points) */
 function selfOnly(info, t){
   if(!info) return false;
+  if(info.monk) return !!info.self;     // Patient Defense, Step of the Wind, Wholeness of Body, Superior Defense
   if(info.spell){ const r = String(info.spell.range||""); return /^self/i.test(r) && !/radius|cone|cube|line|sphere|emanation/i.test(r) && (!info.spell.dmg || !!spellTemp(info.spell)); }     // False Life: its "dmg" is its temporary hit points
   if(info.res) return /second wind|action surge|form of dread|rage|wild shape|cunning action/i.test(String(info.name||info.res));
   if(info.kind==="item" && !info.bite && t && t.p){ const x = usableOf(pcState(t.p)).find(y=>y.k===info.useK); return !!x && (/\byourself\b/i.test(x.u.effect || "") || (!!x.u.tempHp && !x.u.heal)); }
@@ -15966,7 +16121,7 @@ function toHitOf(c, t, info){
   if(w.startsWith("fa:")) return fromText(txt(foeById(t.x.foe), w.slice(3)));
   if(w.startsWith("wsa:")) return fromText(txt(pcStatBlock(t.p), w.slice(4)));
   if(w.startsWith("pca:")){ const a = (pcState(t.p).attacks||[])[+w.slice(4)] || {}; return /DC/i.test(a.hit||"") ? null : num(a.hit); }
-  if(w.startsWith("itm:")) return info.hitRow ? num(info.hitRow.hit) : null;
+  if(w.startsWith("itm:") || w.startsWith("mk:")) return info.hitRow ? num(info.hitRow.hit) : null;
   return null;
 }
 /* ── saving throws (Joseph, 2026-10-30: "needs to show dc of enemy spell casters/monsters"): the DC and ability of what's
@@ -15999,7 +16154,7 @@ function saveBonusOf(t, abil){
   if(t.kind==="foe"){ const m = foeById(t.x.foe), v = m && said(m.sav); if(v!=null) return v; return Math.floor(((m && Array.isArray(m.ab) ? +m.ab[ABK.indexOf(k)] : 10) - 10) / 2); }
   const o = t.kind==="pc" ? pcState(t.p) : t.p; if(!o) return 0;
   const v = said(o.saves) ?? said((pcStatBlock(t.p)||{}).sav); if(v!=null) return v;
-  const cls = Object.keys(CLASS_SAVES).find(n=>new RegExp(`\\b${n}\\b`, "i").test(String(o.cls||""))), prof = cls && CLASS_SAVES[cls].includes(k) ? profOf(o) : 0;     // the class's save proficiencies
+  const cls = Object.keys(CLASS_SAVES).find(n=>new RegExp(`\\b${n}\\b`, "i").test(String(o.cls||""))), prof = (cls && CLASS_SAVES[cls].includes(k)) || mkHas(o, "Disciplined Survivor", 14) ? profOf(o) : 0;     // the class's save proficiencies (a Monk's Disciplined Survivor: all)
   return abBonus(o, k) + prof + fxNum(o, "save", k, true) - fxNum(o, "save", k, false);     // what they wear (a Cloak of Protection): only here, where the app works it out
 }
 function saveRow(c, t, info, all){
@@ -16036,7 +16191,7 @@ function toHitRow(c, t, info, all){
       <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
     ${(() => { if(act.adv || !tg) return ""; const hu = act.helpUsed, CA = rollAdvOf(c, t, tg, info); act.helpUsed = hu; if(!CA || !CA.v) return "";     // what the app works out, said before anyone rolls (Joseph, 2026-11-08: Ander's Poisoned did nothing to a d20 typed in)
       const A = CA.v==="adv"; return `<p class="actspell" style="margin:-2px 0 6px;color:var(--lead)"><b>Roll with ${A ? "Advantage" : "Disadvantage"}</b>${CA.why ? `: ${esc(CA.why)}` : ""}. A d20 from the table: they roll two and you type the ${A ? "higher" : "lower"}.</p>`; })()}
-    ${reckRowHtml(c, t, info)}${tmasterHtml(c, t, info)}
+    ${reckRowHtml(c, t, info)}${tmasterHtml(c, t, info)}${ohHtml(c, t, info)}
     ${(() => { const me = luckLeft(t), vs = tg && tg.side!==t.side ? luckLeft(tg) : 0; if(!me && !vs) return "";
       return `<div class="pcrow" style="align-items:center;margin:-2px 0 6px;font-size:12px">${me ? `<label title="Lucky: Advantage on this attack roll (the 2024 rule; 3 points a long rest)"><input type="checkbox" id="ac-luckme" ${act.luckMe ? "checked" : ""}> ${esc(t.label)} spends a Luck point: Advantage (${me} left)</label>` : ""}
         ${vs ? `<label title="Lucky: an attack roll against them has Disadvantage"><input type="checkbox" id="ac-luckvs" ${act.luckVs ? "checked" : ""}> ${esc(tg.label)} spends a Luck point: Disadvantage on it (${vs} left)</label>` : ""}</div>`; })()}
@@ -16130,6 +16285,7 @@ function speedOf(t){
   const h = hOfT(t), F = fxOf(h, false), conds = t.kind==="foe" ? (t.x.conds||[]) : ((t.p && pcState(t.p).conds) || []);
   const fl = /\bfly\s*(\d+)/i.exec(speedText(t)); if(fl) sp = Math.max(sp, +fl[1]); if(F.some(f=>f.sp==="spell:fly")) sp = Math.max(sp, 60);     // simple flight (item 9): it goes by its Fly Speed when that's faster
   if(t.kind!=="foe" && t.p && t.p.big) sp += 10;     // Large Form: +10 ft
+  if(t.kind!=="foe" && t.p && !shapeForm(t.p) && mkHas(t.p, "Unarmored Movement", 2)) sp += umBonus(monkLevel(t.p));     // a Monk's Unarmored Movement, taken to be unarmored (the Character Book sends the Speed without it)
   { const fc = aoeFight(), by = {}; for(const e of ((fc && fc.effects) || [])) if(e.who===t.id && e.slow) by[e.name] = Math.max(by[e.name] || 0, e.slow);     // Frost's Chill, Hamstring Blow, the Slow mastery: each its own, not more than it says
     sp = Math.max(0, sp - Object.values(by).reduce((a, n) => a + n, 0)); }
   if(F.some(f=>f.sp==="spell:haste")) sp *= 2; if(F.some(f=>f.sp==="spell:slow")) sp = Math.floor(sp / 2);
@@ -16163,6 +16319,7 @@ function isActionAct(t, info, what, isBonus){
   if(!info || isBonus || act.reaction || act.legendary || info.kind==="flee" || /action surge/i.test(info.name||"") || /opportunity/i.test(what||"")) return false;
   if(info.spell && /reaction/i.test(info.spell.time||"")) return false;     // Shield, Counterspell: a reaction
   if(info.free) return false;
+  if(info.monk==="fs" || info.monk==="sd") return false;     // Flurry of Blows' next strike (its Bonus Action is spent), Superior Defense (no action)
   const w = String(what||""), nm = w.replace(/^(fa|wsa):/, "");
   if(w.startsWith("fa:") && t && t.kind==="foe"){ const m = foeById(t.x.foe); if(m && (pairs(m.leg).some(([n])=>n===nm) || pairs(m.rea).some(([n])=>n===nm))) return false; }
   if(w.startsWith("wsa:") && t && t.p){ const sb = pcStatBlock(t.p); if(sb && pairs(sb.rea).some(([n])=>n===nm || n===`Reaction: ${nm}`)) return false; }
@@ -16250,6 +16407,7 @@ function actionChoices(t){
       /* add-ons (Sneak Attack) ride on another attack, so they aren't attacks of their own here */
       const own = (c.attacks||[]).map((a,j)=>a && a.name && !isAddonRow(a) ? { v:`pca:${j}`, label:`${a.name}${a.hit?` (${a.hit})`:""}` } : null).filter(Boolean);
       out.push({ group:"Attacks", items:[...own, ...itemWeapons(c.inv).map(o=>({ v:`itm:${o.x.id}`, label:`${o.x.name}${o.x.hit?` (${o.x.hit} magic)`:""}` })), { v:"atk:Weapon attack", label:"Weapon attack" },{ v:"atk:Unarmed strike", label:"Unarmed strike" }] });
+      { const mk = monkChoices(t, c); if(mk.length) out.push({ group:"Monk", items:mk }); }     // a Monk's (2026-11-12)
       /* a carried thing with On a hit (Glaive Bite) is its own choice, made after the hit: "bite:<k>" */
       const usable = usableOf(c); if(usable.length) out.push({ group:"Items", items:usable.map(x=>x.u.onHit
         ? { v:`bite:${x.k}`, label:`${usableLabel(x)} · ${x.u.onHitBa ? "Bonus Action, " : ""}after a hit` }
@@ -16370,6 +16528,9 @@ function attackAddons(t){
     if(c.strikes==="divine" && clHas(c, "Blessed Strikes", 7)) for(const dt of ["radiant", "necrotic"]) out.push({ key:`dstrike-${dt}`, name:`Divine Strike (${dt[0].toUpperCase() + dt.slice(1)})`, dice:clericLevel(c) >= 14 ? "2d8" : "1d8", dtype:dt, once:true, dstrike:true, note:"Once on their turn, a weapon hit" });
     /* Savage Attacker (the Soldier's origin feat): once a turn, a weapon's damage dice rolled twice, either total used (the higher, here) */
     if(/savage attacker/i.test(featText(c))) out.push({ key:"savage", name:"Savage Attacker", once:true, savage:true, note:"Once a turn, on a weapon hit: the damage dice rolled twice, the higher kept" });
+    /* a Monk's Stunning Strike (5): once a turn, on a Monk weapon or Unarmed Strike hit, 1 Focus Point (spent on a hit); Quivering Palm (Open Hand 17): 4 on an Unarmed Strike hit */
+    { const fc = aoeFight(); if(mkHas(c, "Stunning Strike", 5) && focusLeft(c) > 0 && !(fc && addonUsed(fc, t.id, "stun"))) out.push({ key:"stun", name:"Stunning Strike", stun:true, note:`Once a turn, on a Monk weapon or Unarmed Strike hit: 1 Focus Point; a Constitution save (DC ${focusDC(c)}) or Stunned until the start of their next turn, else Speed halved and the next attack on it with Advantage` });
+      if(openHandOf(c) && mkHas(c, "Quivering Palm", 17) && focusLeft(c) >= 4 && !c.qpalm) out.push({ key:"qpalm", name:"Quivering Palm", qpalm:true, note:"On an Unarmed Strike hit: 4 Focus Points, the vibrations set (end them later with an action: 10d12 Force, a Constitution save for half)" }); }
   }
   if(t.kind==="pc") out.push(...itemExtras(pcState(t.p)));
   const sb = t.kind==="foe" ? foeById(t.x.foe) : pcStatBlock(t.p);
@@ -16425,6 +16586,7 @@ function dmgTakes(t, dtype){
   const how = has(def, "immun") ? "immune" : has(def, "resist") ? "resists" : has(def, "vulnerab") ? "vulnerable" : "";
   if(t.p && how!=="immune" && (wardOf(t.p)===d || ((aoeFight() || {}).effects || []).some(e => e.who===t.id && e.sanct===d))) return how==="vulnerable" ? "" : "resists";     // Nature's Ward's Resistance, and its allies' in Nature's Sanctuary
   if(t.p && t.p.rage && /^(bludgeoning|piercing|slashing)$/.test(d)) return how==="immune" ? how : how==="vulnerable" ? "" : "resists";     // Rage: Resistance (and vulnerable + resistant = neither)
+  if(t.p && t.p.supDef && d!=="force") return how==="immune" ? how : how==="vulnerable" ? "" : "resists";     // a Monk's Superior Defense: all but Force
   return how;
 }
 /* a spell that stays up in a fight (Joseph, 2026-10-30: "spiritual weapon, it's not doing a token or anything";
@@ -16627,6 +16789,7 @@ function actInfo(c, t){
     return { kind:"item", name:x ? x.it.name : "an item", useK:k, healDice:"", bite:x ? x.u : null, ba:!!(x && x.u.onHitBa), hint:x ? { dice:abilDice(x.u.onHit, o), dtype:x.u.onHitType } : null, cond:"", save:false }; }
   if(w.startsWith("use:")){ const k = +w.slice(4), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* a carried thing with a use */
     return { kind:"item", name:x ? x.it.name : "an item", useK:k, ba:!!(x && /bonus/i.test(x.u.use||"")), healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : abilDice(x.u.heal || x.u.tempHp, o)) : "", temp:!!(x && !x.u.heal && !x.u.reduce && x.u.tempHp), reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
+  if(w.startsWith("mk:")) return monkInfo(c, t, w.slice(3));     // a Monk's (2026-11-12)
   if(w.startsWith("atk:")) return { kind:"attack", name:w.slice(4) };
   if(w==="other") return { kind:"other", name:a.otherText||"something" };
   if(w==="flee") return { kind:"flee", name:"flees" };
@@ -16765,7 +16928,7 @@ function snapOf(c, ids){
     if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, temp:x.temp||0, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null, fx:x.fx||null, bi:x.bi||null })) };
     const p = partyRoster().find(y=>y.id===id);
     if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null, fx:p.fx||null,
-      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null, diWait:p.diWait||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
+      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null, diWait:p.diWait||null, supDef:p.supDef||null, qpalm:p.qpalm||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
   }
   return s;
 }
@@ -16773,7 +16936,7 @@ function restoreSnap(c, s){
   for(const id in s){
     if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; if(!x.fx) delete x.fx; if(!x.bi) delete x.bi; } }     // concentration and spell effects come back with the rest
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; if(!p.fx) delete p.fx;
-      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape", "diWait"]) if(p[k]==null) delete p[k]; } }
+      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape", "diWait", "supDef", "qpalm"]) if(p[k]==null) delete p[k]; } }
   }
 }
 const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of STAT_KEYS) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
@@ -16878,7 +17041,8 @@ function logAction(n, c){
   const isBonus = !act.reaction && (act.bonus ?? bonusActOf(actor, info, act.what));
   /* your table rule (Joseph, 2026-11-06): their action can be spent on a second Bonus Action, if it's still there */
   let baByAction = false;
-  if(isBonus && bonusUsed(c, actor.id) && !part){
+  const fleet = isBonus && (info.monk==="sw" || info.monk==="sw1") && actor.p && openHandOf(pcState(actor.p)) && mkHas(pcState(actor.p), "Fleet Step", 11);     // Fleet Step: Step of the Wind right after another Bonus Action
+  if(isBonus && bonusUsed(c, actor.id) && !part && !fleet){
     if(baForAction() && c.turn===actor.id && actionsLeft(c, actor.id) > 0){
       if(!confirm(`${actor.label} has already used a Bonus Action this turn. Your table rule: they can spend their action on a second one. Use their action for this Bonus Action?`)) return;
       baByAction = true; }
@@ -16933,6 +17097,9 @@ function logAction(n, c){
     if(r && (+r.used || 0) >= (+r.max || 0) && rg && (+rg.used || 0) < (+rg.max || 0) && confirm(`${actor.label} has used Intimidating Presence. Spend a Rage (${rg.max - rg.used} left) to have it again?`)){ rg.used = (+rg.used || 0) + 1; r.used = Math.max(0, (+r.used || 0) - 1); } }
   if(/action surge/i.test(info.name || "") && actor.kind==="pc" && c.turn===actor.id && ((c.acted || {})[actor.id] || {}).more > 0 && !confirm(`${actor.label} has used Action Surge this turn already: it's once a turn. Log it anyway?`)) return;     // two uses from 17, one a turn
   if(info.origin && info.res && actor.p){ const r = pcState(actor.p).res.find(q => (q.id || q.name)===info.res); if(r && (+r.used || 0) >= (+r.max || 0) && !confirm(`${actor.label} has no ${r.name} left (${r.rest==="short" ? "back on a Short or Long Rest" : r.rest==="one" ? "one back on a Short Rest, all on a Long Rest" : "back on a Long Rest"}). Log it anyway?`)) return; }
+  if(info.focus && actor.p && focusLeft(pcState(actor.p)) < info.focus && !confirm(`${actor.label} has ${focusLeft(pcState(actor.p))} Focus Point${focusLeft(pcState(actor.p))===1 ? "" : "s"} left, and ${info.name} takes ${info.focus} (all back on a Short or Long Rest). Log it anyway?`)) return;     // a Monk's
+  if(info.monk==="wb" && actor.p && (r => r && r.used >= r.max)(wholeRes(pcState(actor.p))) && !confirm(`${actor.label} has no Wholeness of Body left (back on a Long Rest). Log it anyway?`)) return;
+  if(info.monk==="sd" && c.turn===actor.id && ((c.log || []).some(e => e.by===actor.id && e.at===turnStamp(c))) && !confirm(`Superior Defense is used at the start of ${actor.label}'s turn, and they've done something this turn already. Log it anyway?`)) return;
   if(info.kind==="spell" && ragingT(actor) && !confirm(`${actor.label} is raging, and can't cast spells while the Rage lasts. Log it anyway?`)) return;
   /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
   { const CS = counterCheck(c, actor, info, part); if(CS && !CS.made){ const acted0 = JSON.stringify(c.acted || {}), bon0 = JSON.stringify(c.bonused || {});
@@ -16993,6 +17160,8 @@ function logAction(n, c){
   const vexSap0 = new Set((c.effects || []).filter(e => e.vex || e.sap).map(e => e.id));     // Vex and Sap from before this attack, used up by it
   const reacted0 = JSON.stringify(c.reacted||{}), movedBefore = JSON.stringify(c.moved||{}), bigBefore = actor.kind==="pc" && actor.p ? !!actor.p.big : null;     // (Stone's Endurance and Storm's Thunder take reactions below)
   if(info.origin && actor.kind==="pc") turned.push(...originDo(c, actor, info));     // Adrenaline Rush, Large Form, Cloud's Jaunt
+  const mkBefore = info.monk ? { f:JSON.stringify(c.flurry || null), d:JSON.stringify(c.dodging || {}), dis:JSON.stringify(c.disengaged || {}) } : null, helpedBefore = JSON.stringify(c.helped || {});
+  if(info.monk && actor.kind==="pc") turned.push(...monkDo(c, actor, info));     // a Monk's Flurry of Blows, Patient Defense, Step of the Wind…
   { const G0 = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null; if(G0 && (act.cond==="Grappled" || G0.also.includes(act.cond))) act.cond = ""; }     // a grapple puts on what comes with it itself (not on someone too big)     // how long what it puts on lasts (effectAdd), and grapples, for undo
   for(const t of targets){
     let dropped = false, got = 0, hl = 0, off = false;
@@ -17001,16 +17170,19 @@ function logAction(n, c){
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
     if(!off && isAttackAct(info) && ["hit","crit"].includes(act.outcome)){ const m = mirrorCheck(actor, t); if(m){ off = m.off; turned.push(m.said); } }     // Mirror Image
     let dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
+    if(dm && SV && SV.half && /^dex/i.test(SV.abil || "") && svOf(t) && evasionT(t)){ const was = dm; dm = svOf(t).made ? 0 : Math.floor(dm / 2); turned.push(`${t.label}: Evasion, ${svOf(t).made ? "none" : `half (${dm})`} instead of ${was}`); }     // a Monk's or Rogue's Evasion
     if(info.cdFx==="turn" && undeadT(t) && (svOf(t) ? !svOf(t).made : act.outcome==="fail")){     // Turn Undead failed: Incapacitated too (2024), and Sear Undead's Radiant (it doesn't end the turning)
       if(cp && !is2014(cp) && !condImmune(t, "Incapacitated")){ const cs = condsOfT(t); if(!cs.includes("Incapacitated")) cs.push("Incapacitated"); }
       if(searN){ dm = searN; turned.push(`${t.label}: Sear Undead, ${searN} Radiant damage`); } }
     if(info.cdFx==="preserve"){ const max = t.kind==="foe" ? t.x.max : numOr(pcState(t.p).hpMax, 0), now = t.kind==="foe" ? t.x.hp : numOr(pcState(t.p).hp, 0), n = Math.max(0, Math.min(pPool, Math.floor(max / 2) - now));
       if(n){ hl = healAny(t, n); healed += hl; pPool -= hl; } turned.push(`${t.label}: +${hl} hit points (Preserve Life${now + hl >= Math.floor(max / 2) ? ", to half its maximum" : ""})`); }
     if(!dm && !off && act.outcome==="miss" && MQ==="Graze"){ const g = abilModFor(actor, info); if(g > 0){ dm = g; turned.push(`${t.label}: Graze, ${g} damage on the miss`); } }     // Weapon Mastery: Graze
+    if(dm && !off && t.kind==="pc" && t.id!==actor.id && isAttackAct(info) && ["hit","crit"].includes(act.outcome)) dm = deflectAttacks(c, t, actor, dm, D.parts && D.parts.length > 1 ? D.parts[0].dtype : act.dtype, turned);     // a Monk's Deflect Attacks: their Reaction
     if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = stoneEndurance(c, t, dm, turned);     // a Goliath's Stone's Endurance: their Reaction, the damage cut
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
     if(got && t.kind==="pc" && t.id!==actor.id) stormThunder(c, t, actor, turned);     // a Goliath's Storm's Thunder: their Reaction, 1d8 Thunder back
     if(got && ["hit","crit"].includes(act.outcome) && isAttackAct(info)){ const GA = D.on.find(a => a.giant); if(GA) giantHit(c, actor, t, GA, turned); }     // Fire's Burn, Frost's Chill, Hill's Tumble
+    if(["hit","crit"].includes(act.outcome) && !off && actor.kind==="pc" && actor.p && isAttackAct(info) && !info.spell) monkHit(c, actor, t, D, info, turned);     // Stunning Strike, Quivering Palm, Open Hand Technique
     if(["hit","crit"].includes(act.outcome) && !off && act.brutal && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 9 && isAttackAct(info)) brutalHit(c, actor, t, turned);     // Brutal Strike's effect
     if(got && ["hit","crit"].includes(act.outcome) && D.on.some(a => a.frenzy)){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).frenzy = turnStamp(c); }     // Frenzy: the first target hit this turn
     if(got && !retal && retalCan(c, t, actor)) retal = t;     // Retaliation, offered once this is logged
@@ -17128,7 +17300,7 @@ function logAction(n, c){
   if(outed) delete c.stealth[actor.id].hide;
   if(act.helpUsed && c.helped && isAttackAct(info)) delete c.helped[act.helpUsed];     // a Help is used by the attack it helped
   c.log.push({ id:uid("lg"), round:c.round, actor:actor.id, targets:targets.map(t=>t.id), text:line.replace(/\.$/, asWhat) + upW + holdW + (outed ? ` ${actor.label} is no longer hidden.` : ""), snap,fled:fledBefore, reacted:reactedBefore, bonused:bonusBefore, acted:actedBefore, once:onceBefore, tac:tacBefore, ups:upsBefore, holds:holdsBefore, stealth:stealthBefore, effects:effectsBefore, grips:gripsBefore, by:actor.id, at:turnStamp(c), slot:slotSpell && !act.miFree,
-    ...(info.origin==="rush" || info.origin==="rage" || act.brutal ? { moved:movedBefore } : {}), ...(act.pushed ? { pushed:act.pushed } : {}), ...(info.origin==="large" ? { big:{ id:actor.id, v:bigBefore } } : {}), ...(info.origin==="jaunt" ? { jaunt:true } : {}) }); gripSweep(c);
+    ...(info.origin==="rush" || info.origin==="rage" || act.brutal ? { moved:movedBefore } : {}), ...(act.pushed ? { pushed:act.pushed } : {}), ...(info.origin==="large" ? { big:{ id:actor.id, v:bigBefore } } : {}), ...(info.origin==="jaunt" ? { jaunt:true } : {}), ...(mkBefore ? { moved:movedBefore, mk:mkBefore } : {}), ...(helpedBefore!==JSON.stringify(c.helped || {}) ? { helpedB:helpedBefore } : {}) }); gripSweep(c);
   /* their first attack roll this turn (Reckless Attack is decided on it), and Reckless Attack itself */
   if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
     if(act.brutal){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).brutal = turnStamp(c); } }     // Brutal Strike: once on their turn
@@ -17251,6 +17423,8 @@ function undoAction(c){
   restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.moved!=null) c.moved = JSON.parse(e.moved); if(e.dis!=null) c.disengaged = JSON.parse(e.dis); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   if(e.big){ const T = combatants(c).find(x => x.id===e.big.id); if(T && T.p){ if(e.big.v) T.p.big = true; else delete T.p.big; } }     // Large Form taken back
   if(e.jaunt) delete c.jaunt;
+  if(e.mk){ c.flurry = JSON.parse(e.mk.f); if(!c.flurry) delete c.flurry; c.dodging = JSON.parse(e.mk.d); c.disengaged = JSON.parse(e.mk.dis); }     // a Monk's Flurry, Dodge, Disengage taken back
+  if(e.helpedB!=null) c.helped = JSON.parse(e.helpedB);     // Stunning Strike's Advantage taken back
   if(e.pushed && c.pos){ for(const [id, p] of Object.entries(e.pushed)) c.pos[id] = p; delete c.forceful; }     // a Forceful Blow's push taken back
   partySync();
   flash("Took back the last action.");
@@ -17304,13 +17478,14 @@ function effectEnd(c, e, why, extra){
   const t = combatants(c).find(x => x.id===e.who); c.effects = (c.effects || []).filter(x => x!==e); if(!t) return "";
   const cs = condsOfT(t), i = cs.indexOf(e.cond); if(i >= 0 && !(c.effects || []).some(x => x.who===e.who && x.cond===e.cond)) cs.splice(i, 1);
   const H = c.holds && c.holds[e.who]; if(H && (H.cond===e.cond || (e.sp && H.sp===e.sp) || H.name===e.name)) delete c.holds[e.who];
-  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.stagger || e.sunder || e.sap || e.vex || e.sanct!=null ? "it" : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
+  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.stagger || e.sunder || e.sap || e.vex || e.noOA || e.sanct!=null ? "it" : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
 }
 function effectsSweep(c, id, when){
   const all = combatants(c), now = turnStamp(c), out = [], before = JSON.stringify(c.effects || []), holdsBefore = JSON.stringify(c.holds || {}), snapIds = new Set();
   const snap = snapOf(c, [...new Set((c.effects || []).map(e => e.who))]);     // as they were, for undo
   for(const e of (c.effects || []).slice()){
-    const t = all.find(x => x.id===e.who); if(!t || t.fled || !condsOfT(t).includes(e.cond)){ c.effects = c.effects.filter(x => x!==e); continue; }     // taken off by hand, or gone
+    const t = all.find(x => x.id===e.who); if(!t || t.fled || (e.cond && !condsOfT(t).includes(e.cond))){ c.effects = c.effects.filter(x => x!==e); continue; }     // taken off by hand, or gone (one that's no condition, Slow or Sap, isn't: 2026-11-12, they went at the next turn's change)
+    if(when==="start" && e.end==="targetStart" && e.who===id && e.at!==now){ snapIds.add(e.who); out.push(effectEnd(c, e, "the start of its turn")); continue; }     // Addle: until the start of its next turn
     if(e.sp){ const by = all.find(x => x.id===e.by), h = by && hOfT(by); if(!(h && h.conc && h.conc.id===e.sp)){ snapIds.add(e.who); out.push(effectEnd(c, e, "concentration ended")); continue; } }
     if(when==="start" && e.end==="srcStart" && e.by===id && e.at!==now){ snapIds.add(e.who); out.push(effectEnd(c, e, "its time is up")); continue; }
     if(when==="end" && e.end==="srcEnd" && e.by===id && e.at!==now){ snapIds.add(e.who); out.push(effectEnd(c, e, "its time is up")); continue; }
@@ -17792,7 +17967,7 @@ function renderBattlePanelNow(){
     [ids[k], ids[j]] = [ids[j], ids[k]]; c.order = ids;
     touch(); renderBattlePanel();
   });
-  el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; if(v!==undefined){ persistentRage(c, inp.dataset.bid); superiorInspiration(c, inp.dataset.bid); evergreenWS(c, inp.dataset.bid); } touch(); renderBattlePanel(); });
+  el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; if(v!==undefined){ persistentRage(c, inp.dataset.bid); superiorInspiration(c, inp.dataset.bid); evergreenWS(c, inp.dataset.bid); monkInit(c, inp.dataset.bid); } touch(); renderBattlePanel(); });
   /* the action form: keep what's typed, redraw only when a choice changes what's shown */
   const keep = () => { const g = id => { const e = $(id); return e ? e.value : undefined; };
     if(g("#ac-dmgmod")!==undefined) act.dmgMod = g("#ac-dmgmod"); if(g("#ac-hitmod")!==undefined) act.hitMod = g("#ac-hitmod"); if(g("#ac-hitbonus")!==undefined) act.hitBonus = g("#ac-hitbonus"); if(g("#ac-adv")!==undefined) act.adv = g("#ac-adv"); if(g("#ac-d20")!==undefined) act.d20 = g("#ac-d20");     // rolling to hit
@@ -17844,6 +18019,7 @@ function renderBattlePanelNow(){
   { const wf = $("#ac-wsfx"); if(wf) wf.onchange = ()=>{ act.wsFx = wf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // a Land druid's Wild Shape use
   { const lh = $("#ac-laheal"); if(lh) lh.onchange = ()=>{ act.laHeal = lh.value; }; }
   { const cf = $("#ac-cdfx"); if(cf) cf.onchange = ()=>{ act.cdFx = cf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // Channel Divinity's effect: set up as if just chosen
+  { const oh = $("#ac-ohfx"); if(oh) oh.onchange = ()=>{ act.ohFx = oh.value; }; }     // Open Hand Technique's pick
   { const tm = $("#ac-tmaster"); if(tm) tm.onchange = ()=>{ act.tmaster = tm.value; const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); act.addons = (act.addons || []).filter(k => k!=="mastery"); if(t && info && tmasterOf(t, info) && !["Nick", "Cleave"].includes(tmasterOf(t, info))) act.addons.push("mastery"); redraw(); }; }     // Tactical Master
   { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; if(!act.reck) act.brutal = false; redraw(); }; }     // Reckless Attack
   { const bs = $("#ac-brutal"); if(bs) bs.onchange = ()=>{ act.brutal = bs.checked; if(act.brutal && !act.brutalFx) act.brutalFx = ["forceful", ""]; redraw(); }; }     // Brutal Strike
@@ -23079,7 +23255,7 @@ function renderTurnStrip(){
 /* the next one's turn (the dead and the fled are skipped; past the last, a new round) */
 /* the end of whoever's turn it is: an area it ends in; what lasts "until the end of its next turn" ends, repeat saves;
    grapples; Blink's d6. Also when a turn is given by hand (▶), so nothing is skipped (Joseph, 2026-11-03: Blink didn't remind) */
-function turnEnds(c){ if(c.turn){ zonesTurn(c, c.turn, "end"); effectsTurnEnd(c, c.turn); gripSweep(c); blinkTurnEnd(c, c.turn); barbTurnEnd(c, c.turn); } }
+function turnEnds(c){ if(c.turn){ zonesTurn(c, c.turn, "end"); effectsTurnEnd(c, c.turn); gripSweep(c); blinkTurnEnd(c, c.turn); barbTurnEnd(c, c.turn); monkTurnEnd(c, c.turn); } }
 function nextTurn(c){
   const order = combatants(c).filter(t=>!(t.kind==="foe" && t.x.max!=null && t.x.hp<=0) && !t.fled && !(t.kind==="foe" && t.x.dormant) && !deadT(t));   // a dormant thing gets no turn, nor the dead
   if(!order.length) return false;
