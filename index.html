@@ -8210,7 +8210,12 @@ function blinkPop(c){
 /* (Joseph, 2026-11-03: "cover is far too generous") a line blocks only where it runs through a square's inside, not
    where it grazes an edge or a corner (GRAZE: a tenth of a square), and a creature down at 0 hit points gives none */
 const GRAZE = 0.1;
+/* Nature's Sanctuary (a Land druid, 14): the druid and their allies in its trees have Half Cover at least */
 function coverOf(c, fromId, toId, origin){
+  const r = coverOf0(c, fromId, toId, origin);
+  return r.level < 1 && c && (c.effects || []).some(e => e.who===toId && e.sanct!=null) ? { level:1, ac:2, word:"half cover (Nature's Sanctuary)" } : r;
+}
+function coverOf0(c, fromId, toId, origin){
   const none = { level:0, ac:0, word:"" }, n = bnode(); if(!n || !c || !c.pos || c.layout==="lineup") return none;
   const P = c.pos, A = origin ? null : P[fromId], B = P[toId]; if(!B || (!A && !origin)) return none;
   const bm = bmapOf(n), st = n.site || {}, occ = new Set(combatants(c).filter(o=>o.id!==fromId && o.id!==toId && !o.fled && !isDownT(o) && P[o.id]).flatMap(o=>{ const m = footOf(o), out = []; for(let i = 0; i < m; i++) for(let j = 0; j < m; j++) out.push(`${P[o.id].x + i},${P[o.id].y + j}`); return out; }));     // every square of a big one
@@ -9630,7 +9635,9 @@ function cbIntoPc(pc, x){
   for(const k of ["name","player","species","cls","subcls","bg","align","ac","hpMax","speed","init","pp","dc","satk","saves","skills","senses","langs","looks","persona"]) if(x[k]!=null && x[k]!=="") pc[k] = x[k];
   for(const k of ["str","dex","con","int","wis","cha","hp","temp"]) if(x[k]!=null) pc[k] = x[k];
   pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
-  if(x.feats) pc.feats = x.feats; if(x.rules) pc.rules = x.rules; if(x.order) pc.order = x.order; if(x.strikes) pc.strikes = x.strikes; if(x.giant) pc.giant = x.giant;     // which rules their sheet is built on (2014 or 2024) if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds
+  if(x.feats) pc.feats = x.feats; if(x.rules) pc.rules = x.rules; if(x.order) pc.order = x.order; if(x.strikes) pc.strikes = x.strikes;
+  for(const k of ["porder", "fury", "land"]) if(x[k]) pc[k] = x[k];     // a Druid's Primal Order, Elemental Fury, land
+  if(Array.isArray(x.forms) && x.forms.length){ const B = [...lib().foes, ...SRD_FOES]; pc.forms = x.forms.map(n => (B.find(m => lc(m.name)===lc(n)) || {}).id).filter(Boolean); }     // Wild Shape forms, by name if(x.giant) pc.giant = x.giant;     // which rules their sheet is built on (2014 or 2024) if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds
   if(x.bi && +x.bi.die) pc.bi = { die:+x.bi.die, by:x.bi.by || "" }; else if(x.bi===null) delete pc.bi;     // a Bardic Inspiration die they hold     // their features by name (Alert, Savage Attacker…), and a Goliath's giant (2026-11-06)
   if((+pc.xp || 0) < XP_LEVELS[pc.level]) pc.xp = XP_LEVELS[pc.level];     // the Character Book keeps no XP: a level it raised brings the XP up to that level's start (Joseph, 2026-11-03: "I updated Gnick, but it didn't update the xp")
   if(x.purse) pc.purse = { ...x.purse };
@@ -9715,7 +9722,7 @@ function pcToCb(c){
     hpMax:numOr(c.hpMax,1), hp:numOr(c.hp, numOr(c.hpMax,1)), temp:numOr(c.temp,0), hd:{ die, max:hdRes ? +hdRes.max : clampLv(c.level), used:hdRes ? +hdRes.used||0 : 0 },
     death:{ ok:+((c.death||{}).s)||0, fail:+((c.death||{}).f)||0 }, conds:(c.conds||[]).slice(), exh:0, conc:null, effects:[],
     res:(c.res||[]).filter(r=>r && r.name && r!==hdRes).map(r=>({ id:r.id||uid("rs_"), name:r.name, max:+r.max||0, used:+r.used||0, rest:["short","long","one"].includes(r.rest) ? r.rest : "long" })),
-    slots, pact:c.cls==="Warlock", giant:c.giant || "", order:c.order || "", strikes:c.strikes || "", mastery:(c.mastery || []).slice(), bi:c.bi ? String(c.bi.die) : "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
+    slots, pact:c.cls==="Warlock", giant:c.giant || "", order:c.order || "", strikes:c.strikes || "", porder:c.porder || "", fury:c.fury || "", land:c.land || "", forms:(c.forms || []).map(id => (foeById(id) || {}).name).filter(Boolean), mastery:(c.mastery || []).slice(), bi:c.bi ? String(c.bi.die) : "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
     purse:{ cp:0, sp:0, ep:0, gp:0, pp:0, ...(c.purse||{}) }, debtCp:0, marked:false, log:[], sessions:[], people:[],
     story:{ profs:[c.langs ? `Languages: ${c.langs}` : ""].filter(Boolean).join("\n"), traits:line("Trait") || (/^\w+:/m.test(persona) ? "" : persona), ideals:line("Ideal"), bonds:line("Bond"), flaws:line("Flaw"), looks:c.looks||"", backstory:"", more:"" },
     rolls:[], inspiration:false };
@@ -11568,6 +11575,8 @@ function originRes(c){
   if(goliathOf(c)){ want.push(["Giant Ancestry", pb, "long"]); if(clampLv(c.level) >= 5) want.push(["Large Form", 1, "long"]); }
   if(orcOf(c)) want.push(["Adrenaline Rush", pb, "short"], ["Relentless Endurance", 1, "long"]);
   if(berserkerOf(c) && barbLevel(c) >= 14) want.push(["Intimidating Presence", 1, "long"]);     // a Berserker's (2026-11-06)
+  { const dl = druidLevel(c); if(dl >= 2 && !is2014(c)) want.push(["Wild Shape", dl >= 17 ? 4 : dl >= 6 ? 3 : 2, "one"]);     // a 2024 Druid's (the SRD 5.2.1's Druid table: 2, 3 at 6, 4 at 17)
+    if(landOf(c) && dl >= 6 && !is2014(c)) want.push(["Natural Recovery", 1, "long"]); }     // a Land druid's free Circle spell
   { const cl = clericLevel(c); if(cl >= 2 && !is2014(c)) want.push(["Channel Divinity", cl >= 18 ? 4 : cl >= 6 ? 3 : 2, "one"]); if(cl >= 10 && !is2014(c)) want.push(["Divine Intervention", 1, "long"]); }     // a 2024 Cleric's (one Channel Divinity back on a Short Rest, all on a Long)
   { const bl = bardLevel(c); if(bl) want.push(["Bardic Inspiration", Math.max(1, Math.floor(((+c.cha || 10) - 10) / 2)), bl >= 5 ? "short" : "long"]); }     // a Bard's (Font of Inspiration: a Short Rest too from 5)
   for(const [name, max, rest] of want){ let r = c.res.find(q => String(q.name || "").trim().toLowerCase()===name.toLowerCase()); if(!r) c.res.push(r = { id:uid("rs"), name, max, used:0, rest });
@@ -11614,6 +11623,12 @@ function originDo(c, t, info){
     return [`${t.label} Dashes and has ${Math.max(pb, was)} temporary hit points${pb > was ? "" : " (as many as they had: they don't stack)"}`]; }
   if(info.origin==="large"){ p.big = true; return [`${t.label} grows to Large for 10 minutes (any rest ends it, or their card's End button): Advantage on Strength checks, Speed +10 ft`]; }
   if(info.origin==="jaunt"){ c.jaunt = { id:t.id, at:turnStamp(c) }; return [`${t.label} teleports up to 30 ft to a space they can see: move their token there (it isn't movement)`]; }
+  if(info.origin==="landaid"){ const o = combatants(c).find(x => x.id===act.laHeal); if(!o) return [];     // Land's Aid: the one creature it heals
+    const r = rollTerms(diceTerms(landAidDice(druidLevel(p)))), got = healAny(o, r.total); return [`${o.label} regains ${got} hit points (Land's Aid, ${landAidDice(druidLevel(p))}: ${r.total})`]; }
+  if(info.origin==="sanct"){ const ward = wardOf(p), ids = [...new Set([t.id, ...(act.targets || [])])];     // Nature's Sanctuary: a minute of Half Cover, and the Ward's Resistance for allies
+    c.effects = (c.effects || []).filter(e => !(e.sanct!=null && e.by===t.id));
+    for(const id of ids) (c.effects = c.effects || []).push({ id:uid("ef"), who:id, cond:"", by:t.id, name:"Nature's Sanctuary", at:turnStamp(c), round:c.round, end:"", repeat:null, sp:null, rounds:10, sanct:id===t.id ? "" : ward });
+    return [`Nature's Sanctuary: ${ids.map(id => (combatants(c).find(x => x.id===id) || {}).label).filter(Boolean).join(", ")} have Half Cover in the trees for 1 minute${ward ? `, the allies ${ward[0].toUpperCase() + ward.slice(1)} Resistance` : ""}`]; }
   if(info.origin==="bi"){ const d = biDie(bardLevel(p)), got = (act.targets || []).map(id => combatants(c).find(o => o.id===id)).filter(o => o && o.id!==t.id);
     for(const o of got){ const h = hOfT(o); if(h) h.bi = { die:d, by:t.label }; }
     return got.length ? [`${got.map(o => o.label).join(", ")} ${got.length > 1 ? "each hold" : "holds"} a Bardic Inspiration die (d${d}), to add to a failed attack roll, save, or check within the hour`] : []; }
@@ -11651,9 +11666,13 @@ function miResOf(t, info){
      Long Rest; Wish too from 20 (Greater Divine Intervention, then 2d4 Long Rests before it's back) */
   const p = pcState(t.p), s = info.spell, di = (p.res || []).find(r => /^divine intervention$/i.test(r.name || ""));
   if(di && clHas(p, "Divine Intervention", 10) && ((+s.lv <= 5 && /\bCleric\b/.test(String(s.cls || "")) && !/reaction/i.test(String(s.time || ""))) || (/^wish$/i.test(s.name || "") && clHas(p, "Greater Divine Intervention", 20)))) return di;
+  /* a Land druid's Natural Recovery (6): one of their Circle Spells, no slot, once a Long Rest */
+  const nr = (p.res || []).find(r => /^natural recovery$/i.test(r.name || "")); if(nr && landOf(p) && circleNames(p).some(n => lc(n)===nm)) return nr;
+  /* a Druid's Wild Companion (2): Find Familiar for a Wild Shape use */
+  const ws = wildShapeRes(p); if(ws && /^find familiar$/i.test(s.name || "") && drHas(p, "Wild Companion", 2)) return ws;
   return null;
 }
-const freeFrom = r => /^divine intervention$/i.test(String(r.name || "")) ? "Divine Intervention" : (/\(([^)]+)\)/.exec(String(r.name||"").replace(/,?\s*no slot/i, "")) || [])[1] || (/magic initiate/i.test(r.name||"") ? "Magic Initiate" : "free");
+const freeFrom = r => /^divine intervention$/i.test(String(r.name || "")) ? "Divine Intervention" : /^natural recovery$/i.test(String(r.name || "")) ? "Natural Recovery" : /^wild shape$/i.test(String(r.name || "")) ? "Wild Companion, a Wild Shape use" : (/\(([^)]+)\)/.exec(String(r.name||"").replace(/,?\s*no slot/i, "")) || [])[1] || (/magic initiate/i.test(r.name||"") ? "Magic Initiate" : "free");
 /* their Strength checks with Advantage (Large Form), and checks to end Grappled (a Goliath's Powerful Build) */
 const strAdvT = t => !!(t && t.kind!=="foe" && t.p && (t.p.big || t.p.rage));
 const strAdvWhy = t => t && t.p ? (t.p.rage ? "Rage" : t.p.big ? "Large Form" : "") : "";
@@ -11742,6 +11761,8 @@ function rageEnd(c, t, why){
 /* the end of anyone's turn: a Rage not kept up ends at the end of its Barbarian's turn; Incapacitated (Unconscious, for
    Persistent Rage) or 10 minutes ends it at once */
 function barbTurnEnd(c, id){
+  for(const t of combatants(c)) if(t.kind==="pc" && t.p && t.p.shape && !t.p.shape.starry && condsOfT(t).some(k => INCAP.includes(k))){     // Wild Shape ends when they're Incapacitated
+    const nm = shapeName(t.p); delete t.p.shape; const line = `${t.label} drops out of their ${nm}: Incapacitated`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line); }
   if(c.effects) c.effects = c.effects.filter(e => !(e.vex && e.by===id && e.at!==turnStamp(c)));     // Vex: until the end of the attacker's next turn
   for(const t of combatants(c)){ if(!ragingT(t)) continue; const lv = barbLevel(t.p), cs = condsOfT(t), R = t.p.rage, persist = lv >= 15;
     const down = persist ? cs.includes("Unconscious") : cs.some(k => INCAP.includes(k));
@@ -11915,8 +11936,59 @@ function supremeT(t, info){ const p = t && t.kind==="pc" && t.p ? pcState(t.p) :
    twice their Wisdom as temporary hit points (to themselves, asked first; someone else within 60 ft: by hand on their card) */
 function potentMod(t, info){
   const p = t && t.kind==="pc" && t.p ? pcState(t.p) : null, s = info && info.spell;
-  return p && p.strikes==="potent" && clHas(p, "Blessed Strikes", 7) && s && !(+s.lv) && /\bCleric\b/.test(String(s.cls || "")) ? Math.max(0, abBonus(p, "wis")) : 0;
+  if(!p || !s || +s.lv) return 0;
+  if(p.strikes==="potent" && clHas(p, "Blessed Strikes", 7) && /\bCleric\b/.test(String(s.cls || ""))) return Math.max(0, abBonus(p, "wis"));
+  if(p.fury==="potent" && drHas(p, "Elemental Fury", 7) && /\bDruid\b/.test(String(s.cls || ""))) return Math.max(0, abBonus(p, "wis"));     // a Druid's Elemental Fury
+  return 0;
 }
+/* ══ THE DRUID (Joseph, 2026-11-12, the SRD walk-through: "Do it"). Their Druid level; the Circle of the Land by subclass;
+   offered only when the sheet has it (as for the Cleric). Wild Shape's uses from the SRD 5.2.1's Druid table (Joseph's own
+   download): 2, 3 at 6, 4 at 17 ══ */
+function druidLevel(c){ const s = String((c && c.cls) || ""), m = /\bdruid\s*(\d+)/i.exec(s); return m ? clampLv(+m[1]) : /\bdruid\b/i.test(s) ? clampLv(c.level) : 0; }
+function landOf(c){ return druidLevel(c) > 0 && /\bland\b/i.test(`${(c && c.subcls) || ""} ${(c && c.cls) || ""}`); }
+function drHas(c, name, lv){ return druidLevel(c) >= lv && (c.feats ? new RegExp(`\\b${name}\\b`, "i").test(c.feats) : !is2014(c)); }
+const LANDS = { arid:[[3, ["Blur", "Burning Hands", "Fire Bolt"]], [5, ["Fireball"]], [7, ["Blight"]], [9, ["Wall of Stone"]]],
+  polar:[[3, ["Fog Cloud", "Hold Person", "Ray of Frost"]], [5, ["Sleet Storm"]], [7, ["Ice Storm"]], [9, ["Cone of Cold"]]],
+  temperate:[[3, ["Misty Step", "Shocking Grasp", "Sleep"]], [5, ["Lightning Bolt"]], [7, ["Freedom of Movement"]], [9, ["Tree Stride"]]],
+  tropical:[[3, ["Acid Splash", "Ray of Sickness", "Web"]], [5, ["Stinking Cloud"]], [7, ["Polymorph"]], [9, ["Insect Plague"]]] };
+/* the Circle Spells for their land and level (names), and as spells the app knows */
+const circleNames = p => landOf(p) && LANDS[p.land] ? LANDS[p.land].filter(([lv]) => druidLevel(p) >= lv).flatMap(([, n]) => n) : [];
+const circleSpells = p => circleNames(p).map(n => spellByName(n)).filter(Boolean);
+const landAidDice = lv => `${lv >= 14 ? 4 : lv >= 10 ? 3 : 2}d6`;
+/* Archdruid's Evergreen Wild Shape (20): rolling Initiative with no use left gives one back */
+function evergreenWS(c, id){
+  const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !drHas(p, "Archdruid", 20)) return;
+  const r = wildShapeRes(p); if(!r || r.used < r.max) return; r.used--; const line = `${t.label} rolls Initiative: a Wild Shape use back (Evergreen Wild Shape)`; (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line);
+}
+/* Nature's Ward (Land, 10): immune to Poisoned, and Resistance by their land; Nature's Sanctuary (14) gives it to allies in its cube */
+const WARD = { arid:"fire", polar:"cold", temperate:"lightning", tropical:"poison" };
+const wardOf = p => p && landOf(p) && drHas(p, "Nature's Ward", 10) ? WARD[p.land] || "" : "";
+/* a Druid's card (only theirs, only what their sheet has): Primal Order (1), Elemental Fury (7), the land (Land 3); Wild
+   Resurgence (5), Archdruid's Nature Magician (20) and Natural Recovery's slots (Land 6) as buttons */
+function druidCardHtml(c){
+  const dl = druidLevel(c); if(!dl) return "";
+  const row = (k, label, opts) => `<div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">${label}</label><select data-clpick="${esc(c.id)}" data-k="${k}" style="flex:2;min-width:0"><option value="">Pick one</option>${opts.map(([v, l]) => `<option value="${v}" ${c[k]===v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
+  const ws = wildShapeRes(pcState(c)), wsLeft = ws ? ws.max - ws.used : 0, slotLow = [1,2,3,4,5,6,7,8,9].find(n => c.slots[n] && c.slots[n].max > c.slots[n].used), B = [];
+  if(drHas(c, "Wild Resurgence", 5) && ws && !wsLeft && slotLow) B.push(`<button class="btn small" data-drb="wrslot" data-id="${esc(c.id)}" title="Wild Resurgence: once on their turn, with no Wild Shape left">A ${ORD[slotLow]}-level slot for a Wild Shape use</button>`);
+  if(drHas(c, "Wild Resurgence", 5) && wsLeft && !c.wrUsed && c.slots[1] && c.slots[1].used > 0) B.push(`<button class="btn small" data-drb="wruse" data-id="${esc(c.id)}" title="Wild Resurgence: once a Long Rest">A Wild Shape use for a 1st-level slot</button>`);
+  if(drHas(c, "Archdruid", 20) && wsLeft && !c.nmUsed) B.push(`<button class="btn small" data-drb="natmag" data-id="${esc(c.id)}" title="Nature Magician: once a Long Rest; each use is 2 spell levels">Wild Shape uses for a spell slot</button>`);
+  if(landOf(c) && drHas(c, "Natural Recovery", 6) && !c.nrUsed && [1,2,3,4,5].some(n => c.slots[n] && c.slots[n].used > 0)) B.push(`<button class="btn small" data-drb="nrslots" data-id="${esc(c.id)}" title="Natural Recovery: after a Short Rest, once a Long Rest">Natural Recovery: slots back (${Math.ceil(dl / 2)} levels)</button>`);
+  return (drHas(c, "Primal Order", 1) ? row("porder", "Primal Order", [["magician", "Magician: a cantrip more, Wisdom on Arcana and Nature"], ["warden", "Warden: Martial weapons, Medium armor"]]) : "")
+    + (drHas(c, "Elemental Fury", 7) ? row("fury", "Elemental Fury", [["potent", "Potent Spellcasting: Wisdom on Druid cantrips"], ["primal", `Primal Strike: +${dl >= 15 ? 2 : 1}d8 on a weapon or beast hit`]]) : "")
+    + (landOf(c) && drHas(c, "Circle of the Land", 3) ? row("land", "Their land (each Long Rest)", [["arid", "Arid"], ["polar", "Polar"], ["temperate", "Temperate"], ["tropical", "Tropical"]]) : "")
+    + (B.length ? `<div class="fc-res">${B.join("")}</div>` : "");
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-drb]"); if(!b) return; const p = pcById(b.dataset.id); if(!p) return; pcState(p);
+  const ws = wildShapeRes(p), k = b.dataset.drb, nm = p.name || "They"; let line = "";
+  if(k==="wrslot"){ const L = [1,2,3,4,5,6,7,8,9].find(n => p.slots[n] && p.slots[n].max > p.slots[n].used); if(!L || !ws) return; partyDoing("Wild Resurgence", p); p.slots[L].used++; ws.used = Math.max(0, ws.used - 1); line = `${nm} spends a ${ORD[L]}-level slot for a Wild Shape use (Wild Resurgence)`; }
+  if(k==="wruse"){ if(!ws || ws.used >= ws.max) return; partyDoing("Wild Resurgence", p); ws.used++; p.slots[1].used = Math.max(0, p.slots[1].used - 1); p.wrUsed = true; line = `${nm} spends a Wild Shape use for a 1st-level slot (Wild Resurgence)`; }
+  if(k==="natmag"){ const left = ws ? ws.max - ws.used : 0, n = Math.round(+prompt(`Nature Magician: how many Wild Shape uses (1 to ${left}) to turn into one spell slot? Each is 2 spell levels.`, String(Math.min(left, 2)))) || 0;
+    if(n < 1 || n > left) return; const L = Math.min(9, 2 * n); if(!(p.slots[L] && p.slots[L].used > 0)){ flash(`${nm} has no spent ${ORD[L]}-level slot to get back.`); return; }
+    partyDoing("Nature Magician", p); ws.used += n; p.slots[L].used--; p.nmUsed = true; line = `${nm} turns ${n} Wild Shape use${n > 1 ? "s" : ""} into a ${ORD[L]}-level slot (Nature Magician)`; }
+  if(k==="nrslots"){ let budget = Math.ceil(druidLevel(p) / 2); const got = []; partyDoing("Natural Recovery", p);
+    for(let L = 5; L >= 1; L--) while(p.slots[L] && p.slots[L].used > 0 && L <= budget){ p.slots[L].used--; budget -= L; got.push(ORD[L]); }
+    if(!got.length) return; p.nrUsed = true; line = `${nm} gets back ${andList(got)}-level slots (Natural Recovery)`; }
+  if(line){ gameLog("spell", line); flash(line + "."); saveParty(); touch(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} } });
 function d20Rescue(c, t, tot, need, what, kind){
   let w = "";
   if(!t || tot >= need) return { tot, w };
@@ -12289,7 +12361,7 @@ const shapeName = c => !c || !c.shape ? "" : c.shape.starry ? `Starry Form: ${c.
 const wildShapeRes = c => (c.res||[]).find(r=>/wild shape/i.test(r.name||""));
 /* Wild Shape picked in a fight's Action box (Joseph, 2026-11-07: it spent a use without changing her): the form to take,
    the same list as the card's, and logging it shape-shifts them (shapeShift spends the use) */
-const wsActOf = (t, info) => !!(t && t.kind==="pc" && t.p && info && info.res && (r=>r && (r.id||r.name)===info.res)(wildShapeRes(t.p)));
+const wsActOf = (t, info) => !!(t && t.kind==="pc" && t.p && info && info.res && !info.origin && (r=>r && (r.id||r.name)===info.res)(wildShapeRes(t.p)));     // (Land's Aid and Nature's Sanctuary spend a use without shape-shifting)
 const wsOptions = c => (c.forms||[]).map(id=>foeById(id)).filter(Boolean).map(f=>[f.id, f.name])
   .concat(isStarDruid(c) ? Object.keys(STARRY).map(k=>[`star:${k}`, `Starry Form: ${k}`]) : []);
 function shapeShift(c, pick){
@@ -12327,7 +12399,7 @@ function wildFormsEditor(c, i){
 }
 /* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
 function originCardHtml(c){
-  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + masteryCardHtml(c);
+  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + masteryCardHtml(c);
 }
 /* a Cleric's picks on their card (only theirs, and only what their sheet has): Divine Order (1), Blessed Strikes (7) */
 function clericCardHtml(c){
@@ -12436,6 +12508,7 @@ function restPc(c, kind){
   delete c.shape;                                                // a long rest outlasts any Wild Shape
   delete c.conc;                                                 // and any spell they were holding (Joseph's fight, 2026-11-06: Spiritual Weapon and Shield of Faith carried into the next fight)
   for(let L=1; L<=9; L++) c.slots[L].used = 0; for(const r of c.res) r.used = 0;
+  delete c.wrUsed; delete c.nmUsed; delete c.nrUsed;     // a Druid's Wild Resurgence, Nature Magician, Natural Recovery's slots: once a Long Rest
   if(c.diWait > 0){ c.diWait--; const r = c.res.find(q => /^divine intervention$/i.test(q.name || "")); if(c.diWait > 0 && r) r.used = r.max; else delete c.diWait; }     // after Wish: 2d4 Long Rests without Divine Intervention
 }
 /* the whole party rests at once: one step to undo */
@@ -16110,9 +16183,11 @@ function actionChoices(t){
         ? { v:`bite:${x.k}`, label:`${usableLabel(x)} · ${x.u.onHitBa ? "Bonus Action, " : ""}after a hit` }
         : { v:`use:${x.k}`, label:`${usableLabel(x)}${x.u.use?` · ${x.u.use}`:""}` }) });
       const asRow = new Set((c.attacks||[]).map(a=>rowSpell(t.p, a)).filter(Boolean).map(s=>s.id));
-      const known = (c.spells||[]).map(spellOf).filter(s=>s && !asRow.has(s.id)).sort((a,b)=>a.lv-b.lv||a.name.localeCompare(b.name));
+      const known = (c.spells||[]).map(spellOf).filter(s=>s && !asRow.has(s.id)).concat(circleSpells(c).filter(s => !(c.spells||[]).includes(s.id))).sort((a,b)=>a.lv-b.lv||a.name.localeCompare(b.name));     // a Land druid's Circle Spells, always prepared
       if(known.length) out.push({ group:`${t.label}'s spells`, items:known.map(s=>({ v:`sp:${s.id}`, label:`${s.name} (${s.lv?ORD[s.lv]:"cantrip"})` })) });
     }
+    if(beast && drHas(c, "Beast Spells", 18)){ const S = (c.spells||[]).map(spellOf).concat(circleSpells(c)).filter(Boolean).filter(s => !/\b(\d[\d,]*\+? ?gp|consume[sd]?)\b/i.test(String(s.comp || "")));     // Beast Spells (18): spells in beast form, not those with a costly or consumed component
+      if(S.length) out.push({ group:`${t.label}'s spells (Beast Spells)`, items:S.map(s=>({ v:`sp:${s.id}`, label:`${s.name} (${s.lv?ORD[s.lv]:"cantrip"})` })) }); }
     if(c.res.length) out.push({ group:"Resources", items:c.res.map(r=>({ v:`res:${r.id||r.name}`, label:`${r.name} (${r.max-r.used} left)` })) });
   }
   out.push({ group:"Other", items:[...(t.kind!=="foe" && t.p ? [{ v:"chk", label:"A check (skill or ability) against a DC" }] : []), { v:"atk:Opportunity attack", label:"Opportunity attack" },{ v:"anyspell", label:"Cast another spell…" },{ v:"flee", label:"Flees the fight" },{ v:"other", label:"Something else…" }] });
@@ -16218,6 +16293,8 @@ function attackAddons(t){
       /* a Berserker's Frenzy: raging and Reckless, the first target they hit on their turn with a Strength attack takes (Rage Damage)d6 more */
       if(lv && c.rage && berserkerOf(c)) out.push({ key:"frenzy", name:"Frenzy", dice:`${rageBonus(lv)}d6`, dtype:"", frenzy:true, note:"Raging and Reckless: the first target they hit on their turn with a Strength attack" }); }
     /* a Cleric's Divine Strike (Blessed Strikes, 7): once on their turn, a weapon hit, +1d8 (2d8 from 14) Radiant or Necrotic */
+    /* a Druid's Primal Strike (Elemental Fury, 7): once on their turn, a weapon or beast-form hit, +1d8 (2d8 from 15) Cold, Fire, Lightning, or Thunder */
+    if(c.fury==="primal" && drHas(c, "Elemental Fury", 7)) for(const dt of ["cold", "fire", "lightning", "thunder"]) out.push({ key:`pstrike-${dt}`, name:`Primal Strike (${dt[0].toUpperCase() + dt.slice(1)})`, dice:druidLevel(c) >= 15 ? "2d8" : "1d8", dtype:dt, once:true, pstrike:true, note:"Once on their turn, a weapon or beast-form hit" });
     if(c.strikes==="divine" && clHas(c, "Blessed Strikes", 7)) for(const dt of ["radiant", "necrotic"]) out.push({ key:`dstrike-${dt}`, name:`Divine Strike (${dt[0].toUpperCase() + dt.slice(1)})`, dice:clericLevel(c) >= 14 ? "2d8" : "1d8", dtype:dt, once:true, dstrike:true, note:"Once on their turn, a weapon hit" });
     /* Savage Attacker (the Soldier's origin feat): once a turn, a weapon's damage dice rolled twice, either total used (the higher, here) */
     if(/savage attacker/i.test(featText(c))) out.push({ key:"savage", name:"Savage Attacker", once:true, savage:true, note:"Once a turn, on a weapon hit: the damage dice rolled twice, the higher kept" });
@@ -16274,6 +16351,7 @@ function dmgTakes(t, dtype){
   if(m) return has(m.imm) ? "immune" : has(m.res) ? "resists" : has(m.vul) ? "vulnerable" : "";
   const def = t.p ? t.p.defenses : "";
   const how = has(def, "immun") ? "immune" : has(def, "resist") ? "resists" : has(def, "vulnerab") ? "vulnerable" : "";
+  if(t.p && how!=="immune" && (wardOf(t.p)===d || ((aoeFight() || {}).effects || []).some(e => e.who===t.id && e.sanct===d))) return how==="vulnerable" ? "" : "resists";     // Nature's Ward's Resistance, and its allies' in Nature's Sanctuary
   if(t.p && t.p.rage && /^(bludgeoning|piercing|slashing)$/.test(d)) return how==="immune" ? how : how==="vulnerable" ? "" : "resists";     // Rage: Resistance (and vulnerable + resistant = neither)
   return how;
 }
@@ -16337,6 +16415,7 @@ function rowSpell(p, row){
 function condImmune(t, cond){
   const c = String(cond||"").toLowerCase(); if(!c) return false;
   if(t.kind!=="foe" && t.p && t.p.rage && berserkerOf(t.p) && barbLevel(t.p) >= 6 && (c==="charmed" || c==="frightened")) return true;     // Mindless Rage
+  if(t.kind!=="foe" && t.p && c==="poisoned" && wardOf(t.p)) return true;     // Nature's Ward
   const m = t.kind==="foe" ? foeById(t.x.foe) : null, p = t.kind==="foe" ? null : t.p;
   if(m && String(m.cimm||"").toLowerCase().split(/[,;]\s*|\s+and\s+/).map(s=>s.trim()).includes(c)) return true;
   const def = [p && p.defenses, m && (pairs(m.tr).find(([n])=>/^Defenses$/i.test(n))||[])[1]].filter(Boolean).join(" ; ").toLowerCase();
@@ -16433,6 +16512,11 @@ function actInfo(c, t){
   if(w.startsWith("res:")){ const r = (t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4)))||{}, nm = r.name||"a resource";
     const heal = /second wind/i.test(nm) ? ((/(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(nm)||[])[1] || `1d10+${clampLv(pcState(t.p).level)}`).replace(/\s+/g, "") : "";     // Second Wind heals (2026-10-30)
     if(/lay on hands/i.test(nm)) return { kind:"ability", name:"Lay on Hands", res:w.slice(4), loh:true, ba:true, healDice:"" };     // a Bonus Action (2024): a pool of hit points
+    /* a Land druid's Wild Shape use for Land's Aid (3) or Nature's Sanctuary (14), picked under it (act.wsFx) */
+    if(/^wild shape$/i.test(nm) && landOf(pcState(t.p)) && act.wsFx && act.wsFx!=="shape"){ const p = pcState(t.p), lv = druidLevel(p), dc = spellDcOfT(t), dice = landAidDice(lv);
+      if(act.wsFx==="aid" && drHas(p, "Land's Aid", 3)) return { kind:"ability", name:"Land's Aid", res:w.slice(4), origin:"landaid", save:true, hint:{ dice, dtype:"necrotic" }, healDice:"",
+        text:`Constitution Saving Throw: DC ${dc}. Failure: ${dice} Necrotic damage. Success: half as much damage. One creature of your choice in the area regains ${dice} Hit Points.` };
+      if(act.wsFx==="sanct" && drHas(p, "Nature's Sanctuary", 14)) return { kind:"ability", name:"Nature's Sanctuary", res:w.slice(4), origin:"sanct", healDice:"" }; }
     if(/^channel divinity\b/i.test(nm) && clericLevel(pcState(t.p))){ const C = cdChoices(pcState(t.p)), k = C.some(x => x[0]===act.cdFx) ? act.cdFx : (C[0] || [])[0]; if(k) return cdInfo(t, k, w.slice(4)); }     // a Cleric's Channel Divinity: the effect picked under it
     if(/^bardic inspiration$/i.test(nm) && bardLevel(pcState(t.p))) return { kind:"ability", name:"Bardic Inspiration", res:w.slice(4), ba:true, origin:"bi", healDice:"" };     // a Bard's: a die to someone else
     if(/^intimidating presence$/i.test(nm)){ const dc = ipDC(pcState(t.p));     // a Berserker's, level 14: a Bonus Action, a Wisdom save or Frightened
@@ -16483,7 +16567,8 @@ function actDice(c, t, info){
   const part1 = sc && sc.parts[0] ? sc.parts[0] : (info && info.hint) || null, part2 = (sc && sc.parts[1]) || null;
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
   const MQ = isAtk ? masteryOf(t, info) : "";     // Weapon Mastery: the weapon's property, as a chip (on by itself)
-  const addons = (t && (isAtk || part1) ? [...attackAddons(t), ...(MQ ? [{ key:"mastery", name:`${MQ} (mastery)`, dice:"", dtype:"", mastery:MQ, note:MASTERY_TEXT[MQ] }] : [])] : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)) && !(a.dstrike && (!isAtk || (info && info.spell) || c.turn!==t.id || addonUsed(c, t.id, "dstrike-radiant") || addonUsed(c, t.id, "dstrike-necrotic"))));     // Divine Strike: a weapon, their turn, once     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
+  const addons = (t && (isAtk || part1) ? [...attackAddons(t), ...(MQ ? [{ key:"mastery", name:`${MQ} (mastery)`, dice:"", dtype:"", mastery:MQ, note:MASTERY_TEXT[MQ] }] : [])] : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)) && !(a.dstrike && (!isAtk || (info && info.spell) || c.turn!==t.id || addonUsed(c, t.id, "dstrike-radiant") || addonUsed(c, t.id, "dstrike-necrotic")))
+    && !(a.pstrike && (!isAtk || (info && info.spell) || c.turn!==t.id || ["cold", "fire", "lightning", "thunder"].some(k => addonUsed(c, t.id, `pstrike-${k}`)))));     // Divine Strike, Primal Strike: a weapon (or a beast's attack), their turn, once     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
   /* the modifier the rules add (Joseph, 2026-10-30: "a plus modifier for spiritual weapon and just in general"): a spell
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
@@ -16575,6 +16660,9 @@ function actionForm(c, all){
       <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : D.temp ? "Temp HP" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
     ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
       <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
+    ${t && t.kind==="pc" && t.p && info && info.res && landOf(pcState(t.p)) && /^wild shape$/i.test((pcState(t.p).res.find(r => (r.id || r.name)===info.res) || {}).name || "") && drHas(pcState(t.p), "Land's Aid", 3) ? `<div class="field" style="margin:-2px 0 6px"><label>Wild Shape use for</label><select id="ac-wsfx">${[["shape", "A beast form"], ["aid", `Land's Aid: ${landAidDice(druidLevel(pcState(t.p)))} Necrotic in a 10 ft sphere, one creature healed`], ...(drHas(pcState(t.p), "Nature's Sanctuary", 14) ? [["sanct", `Nature's Sanctuary: Half Cover and ${WARD[pcState(t.p).land] || "(pick their land)"} Resistance in a 15 ft cube`]] : [])].map(([k, l]) => `<option value="${k}" ${k===(act.wsFx || "shape") ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+      ${info.origin==="landaid" ? `<div class="field" style="margin:-2px 0 6px"><label>Healed (${landAidDice(druidLevel(pcState(t.p)))})</label><select id="ac-laheal"><option value="">Nobody</option>${all.filter(o => !isDownT(o) || o.kind==="pc").map(o => `<option value="${o.id}" ${act.laHeal===o.id ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></div>` : ""}
+      ${info.origin==="sanct" ? `<p class="empty-note" style="font-size:11px;margin:-4px 0 6px">Pick ${esc(t.label)} and the allies in the cube: for 1 minute they have Half Cover, and the allies ${esc(WARD[pcState(t.p).land] || "the Nature's Ward")} Resistance (move the cube by hand: pick again).</p>` : ""}` : ""}
     ${info && info.origin==="cd" ? `<div class="field" style="margin:-2px 0 6px"><label>Channel Divinity: which</label><select id="ac-cdfx">${cdChoices(pcState(t.p)).map(([k, l]) => `<option value="${k}" ${k===info.cdFx ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
       ${info.cdFx==="preserve" ? `<p class="empty-note" style="font-size:11px;margin:-4px 0 6px">${5 * clericLevel(pcState(t.p))} hit points split among the Bloodied creatures picked (within 30 ft), in the order picked; none above half its hit point maximum.</p>` : ""}` : ""}
     ${info && info.loh ? (r=>`<div class="pcrow" style="align-items:center"><p class="empty-note" style="flex:2;font-size:11px;margin:0">Lay on Hands, a Bonus Action and a touch: ${r ? r.max - r.used : 0} of ${r ? r.max : 0} hit points left in the pool. Pick who (themself too), and type how many it restores in Healing.</p>
@@ -16751,6 +16839,8 @@ function logAction(n, c){
   if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
   if(info.origin==="large" && actor.p && actor.p.big){ flash(`${actor.label} is Large already.`); return; }
   if(info.self) act.outcome = "none";     // on themselves: nothing hits or misses
+  if(info.origin==="sanct") act.outcome = "none";
+  if(info.origin==="landaid" && !targets.length && !act.laHeal){ flash("Land's Aid: pick the creatures in the sphere (and who it heals)."); return; }
   if(info.origin==="cd"){ const k = info.cdFx, bloodied = o => o.kind==="foe" ? o.x.max > 0 && o.x.hp <= o.x.max / 2 : numOr(pcState(o.p).hp, 0) <= numOr(pcState(o.p).hpMax, 0) / 2;     // Channel Divinity: who and how far
     if(!targets.length){ flash(`${info.name}: pick ${k==="turn" ? "the Undead" : k==="preserve" ? "the Bloodied creatures" : "who"}.`); return; }
     const far = targets.filter(o => o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 30);
@@ -17140,7 +17230,7 @@ function effectEnd(c, e, why, extra){
   const t = combatants(c).find(x => x.id===e.who); c.effects = (c.effects || []).filter(x => x!==e); if(!t) return "";
   const cs = condsOfT(t), i = cs.indexOf(e.cond); if(i >= 0 && !(c.effects || []).some(x => x.who===e.who && x.cond===e.cond)) cs.splice(i, 1);
   const H = c.holds && c.holds[e.who]; if(H && (H.cond===e.cond || (e.sp && H.sp===e.sp) || H.name===e.name)) delete c.holds[e.who];
-  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.stagger || e.sunder || e.sap || e.vex ? "it" : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
+  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.stagger || e.sunder || e.sap || e.vex || e.sanct!=null ? "it" : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
 }
 function effectsSweep(c, id, when){
   const all = combatants(c), now = turnStamp(c), out = [], before = JSON.stringify(c.effects || []), holdsBefore = JSON.stringify(c.holds || {}), snapIds = new Set();
@@ -17628,7 +17718,7 @@ function renderBattlePanelNow(){
     [ids[k], ids[j]] = [ids[j], ids[k]]; c.order = ids;
     touch(); renderBattlePanel();
   });
-  el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; if(v!==undefined){ persistentRage(c, inp.dataset.bid); superiorInspiration(c, inp.dataset.bid); } touch(); renderBattlePanel(); });
+  el.querySelectorAll(".init-in").forEach(inp=>inp.onchange = ()=>{ const v = inp.value===""?undefined:Math.round(+inp.value); if(v===undefined) delete c.init[inp.dataset.bid]; else c.init[inp.dataset.bid] = v; if(v!==undefined){ persistentRage(c, inp.dataset.bid); superiorInspiration(c, inp.dataset.bid); evergreenWS(c, inp.dataset.bid); } touch(); renderBattlePanel(); });
   /* the action form: keep what's typed, redraw only when a choice changes what's shown */
   const keep = () => { const g = id => { const e = $(id); return e ? e.value : undefined; };
     if(g("#ac-dmgmod")!==undefined) act.dmgMod = g("#ac-dmgmod"); if(g("#ac-hitmod")!==undefined) act.hitMod = g("#ac-hitmod"); if(g("#ac-hitbonus")!==undefined) act.hitBonus = g("#ac-hitbonus"); if(g("#ac-adv")!==undefined) act.adv = g("#ac-adv"); if(g("#ac-d20")!==undefined) act.d20 = g("#ac-d20");     // rolling to hit
@@ -17677,6 +17767,8 @@ function renderBattlePanelNow(){
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
   const lv = $("#ac-lvl"); if(lv) lv.onchange = ()=>{ act.lvl = +lv.value; redraw(); };
+  { const wf = $("#ac-wsfx"); if(wf) wf.onchange = ()=>{ act.wsFx = wf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // a Land druid's Wild Shape use
+  { const lh = $("#ac-laheal"); if(lh) lh.onchange = ()=>{ act.laHeal = lh.value; }; }
   { const cf = $("#ac-cdfx"); if(cf) cf.onchange = ()=>{ act.cdFx = cf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // Channel Divinity's effect: set up as if just chosen
   { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; if(!act.reck) act.brutal = false; redraw(); }; }     // Reckless Attack
   { const bs = $("#ac-brutal"); if(bs) bs.onchange = ()=>{ act.brutal = bs.checked; if(act.brutal && !act.brutalFx) act.brutalFx = ["forceful", ""]; redraw(); }; }     // Brutal Strike
@@ -27083,7 +27175,8 @@ function skillMod(o, skill){
   if(ABIL_NAME[skill]) return abBonus(o, skill) + fx + worn;
   const m = new RegExp(`${skill.replace(/ /g,"\\s+")}\\s*([+-]\\d+)`, "i").exec(String(o.skills||"")); if(m) return +m[1] + fx;
   return abBonus(o, SKILL_AB[skill] || "dex") + fx + worn + (bardLevel(o) >= 2 ? Math.floor(profOf(o) / 2) : 0)     // a Bard's Jack of All Trades: half their Proficiency Bonus on a skill they lack
-    + (o.order==="thaumaturge" && clericLevel(o) && /^(Arcana|Religion)$/i.test(skill) ? Math.max(1, abBonus(o, "wis")) : 0);     // a Thaumaturge cleric's Wisdom on Arcana and Religion
+    + (o.order==="thaumaturge" && clericLevel(o) && /^(Arcana|Religion)$/i.test(skill) ? Math.max(1, abBonus(o, "wis")) : 0)     // a Thaumaturge cleric's Wisdom on Arcana and Religion
+    + (o.porder==="magician" && druidLevel(o) && /^(Arcana|Nature)$/i.test(skill) ? Math.max(1, abBonus(o, "wis")) : 0);     // a Magician druid's on Arcana and Nature
 }
 const spellModOf = o => { const s = parseInt(String(o.satk||"").replace("+","")); return isFinite(s) ? s - profOf(o) : 0; };
 const knownSpells = o => (o.spells||[]).map(id=>spellFor(o, id)).filter(Boolean);
