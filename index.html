@@ -8509,13 +8509,14 @@ function deathSaveHtml(c, t){
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-dsroll]"); if(!b) return;
   const n = bnode(), c = n && n.site && n.site.combat, t = c && combatants(c).find(x => x.id===b.dataset.dsroll); if(!t || !t.p) return;
-  const p = pcState(t.p), typed = Math.round(+((document.querySelector("#ac-ds") || {}).value || 0)), d = typed >= 1 && typed <= 20 ? typed : 1 + Math.floor(Math.random() * 20);
+  const p = pcState(t.p), typed = Math.round(+((document.querySelector("#ac-ds") || {}).value || 0)), defy = champOf(p) && fiHas(p, "Survivor", 18);     // a Champion's Defy Death: Advantage, and 18-20 counts as a 20
+  const r1 = 1 + Math.floor(Math.random() * 20), r2 = 1 + Math.floor(Math.random() * 20), d = typed >= 1 && typed <= 20 ? typed : defy ? Math.max(r1, r2) : r1;
   const snap = snapOf(c, [t.id]); let said;
-  if(d===20){ p.hp = 1; p.conds = p.conds.filter(x => x!=="Unconscious"); p.death = { s:0, f:0 }; said = "a 20: they're back up with 1 hit point"; }
+  if(d >= (defy ? 18 : 20)){ p.hp = 1; p.conds = p.conds.filter(x => x!=="Unconscious"); p.death = { s:0, f:0 }; said = "a 20: they're back up with 1 hit point"; }
   else if(d===1){ p.death.f = Math.min(3, p.death.f + 2); said = `a 1: two failures (${p.death.f} of 3)`; }
   else if(d >= 10){ p.death.s = Math.min(3, p.death.s + 1); if(p.death.s >= 3) p.death.f = 0; said =`a success (${p.death.s} of 3)${p.death.s >= 3 ? ": Stable" : ""}`; }
   else { p.death.f = Math.min(3, p.death.f + 1); said = `a failure (${p.death.f} of 3)`; }
-  const line = `${t.label} makes a death save: d20 ${d}${typed ? " (rolled at the table)" : ""}, ${said}${deadP(p) ? `. ${t.label} dies.` : "."}`;
+  const line = `${t.label} makes a death save: ${defy && !typed ? `d20 ${r1} and ${r2}, Advantage (Defy Death): ${d}` : `d20 ${d}${typed ? " (rolled at the table)" : ""}`}${defy && d >= 18 && d < 20 ? " (Defy Death: counts as a 20)" : ""}, ${said}${deadP(p) ? `. ${t.label} dies.` : "."}`;
   (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line, snap }); gameLog("down", line); flash(line);
   partySync(); touch(); renderBattle(); renderBattlePanel(); });
 /* stabilizing (Joseph, 2026-11-06: "a medicine check so you can stabilize a downed ally"): on someone's turn, each of
@@ -9637,6 +9638,7 @@ function cbIntoPc(pc, x){
   pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
   if(x.feats) pc.feats = x.feats; if(x.rules) pc.rules = x.rules; if(x.order) pc.order = x.order; if(x.strikes) pc.strikes = x.strikes;
   for(const k of ["porder", "fury", "land"]) if(x[k]) pc[k] = x[k];     // a Druid's Primal Order, Elemental Fury, land
+  for(const k of ["style1", "style2"]) if(x[k]) pc[k] = x[k]; if(x.inspiration!=null){ if(x.inspiration) pc.insp = true; else delete pc.insp; }     // a Fighter's Fighting Styles; Heroic Inspiration
   if(Array.isArray(x.forms) && x.forms.length){ const B = [...lib().foes, ...SRD_FOES]; pc.forms = x.forms.map(n => (B.find(m => lc(m.name)===lc(n)) || {}).id).filter(Boolean); }     // Wild Shape forms, by name if(x.giant) pc.giant = x.giant;     // which rules their sheet is built on (2014 or 2024) if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds
   if(x.bi && +x.bi.die) pc.bi = { die:+x.bi.die, by:x.bi.by || "" }; else if(x.bi===null) delete pc.bi;     // a Bardic Inspiration die they hold     // their features by name (Alert, Savage Attacker…), and a Goliath's giant (2026-11-06)
   if((+pc.xp || 0) < XP_LEVELS[pc.level]) pc.xp = XP_LEVELS[pc.level];     // the Character Book keeps no XP: a level it raised brings the XP up to that level's start (Joseph, 2026-11-03: "I updated Gnick, but it didn't update the xp")
@@ -9722,10 +9724,10 @@ function pcToCb(c){
     hpMax:numOr(c.hpMax,1), hp:numOr(c.hp, numOr(c.hpMax,1)), temp:numOr(c.temp,0), hd:{ die, max:hdRes ? +hdRes.max : clampLv(c.level), used:hdRes ? +hdRes.used||0 : 0 },
     death:{ ok:+((c.death||{}).s)||0, fail:+((c.death||{}).f)||0 }, conds:(c.conds||[]).slice(), exh:0, conc:null, effects:[],
     res:(c.res||[]).filter(r=>r && r.name && r!==hdRes).map(r=>({ id:r.id||uid("rs_"), name:r.name, max:+r.max||0, used:+r.used||0, rest:["short","long","one"].includes(r.rest) ? r.rest : "long" })),
-    slots, pact:c.cls==="Warlock", giant:c.giant || "", order:c.order || "", strikes:c.strikes || "", porder:c.porder || "", fury:c.fury || "", land:c.land || "", forms:(c.forms || []).map(id => (foeById(id) || {}).name).filter(Boolean), mastery:(c.mastery || []).slice(), bi:c.bi ? String(c.bi.die) : "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
+    slots, pact:c.cls==="Warlock", giant:c.giant || "", order:c.order || "", strikes:c.strikes || "", porder:c.porder || "", fury:c.fury || "", land:c.land || "", style1:c.style1 || "", style2:c.style2 || "", forms:(c.forms || []).map(id => (foeById(id) || {}).name).filter(Boolean), mastery:(c.mastery || []).slice(), bi:c.bi ? String(c.bi.die) : "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
     purse:{ cp:0, sp:0, ep:0, gp:0, pp:0, ...(c.purse||{}) }, debtCp:0, marked:false, log:[], sessions:[], people:[],
     story:{ profs:[c.langs ? `Languages: ${c.langs}` : ""].filter(Boolean).join("\n"), traits:line("Trait") || (/^\w+:/m.test(persona) ? "" : persona), ideals:line("Ideal"), bonds:line("Bond"), flaws:line("Flaw"), looks:c.looks||"", backstory:"", more:"" },
-    rolls:[], inspiration:false };
+    rolls:[], inspiration:!!c.insp };
 }
 function cbOut(pcs){
   pcs = pcs.filter(c=>c && (c.name||"").trim()); if(!pcs.length){ flash("Nobody with a name to send."); return; }
@@ -11575,6 +11577,7 @@ function originRes(c){
   if(goliathOf(c)){ want.push(["Giant Ancestry", pb, "long"]); if(clampLv(c.level) >= 5) want.push(["Large Form", 1, "long"]); }
   if(orcOf(c)) want.push(["Adrenaline Rush", pb, "short"], ["Relentless Endurance", 1, "long"]);
   if(berserkerOf(c) && barbLevel(c) >= 14) want.push(["Intimidating Presence", 1, "long"]);     // a Berserker's (2026-11-06)
+  { const fl = fighterLevel(c); if(fl >= 2 && !is2014(c)) want.push(["Action Surge", fl >= 17 ? 2 : 1, "short"]); if(fl >= 9 && !is2014(c)) want.push(["Indomitable", fl >= 17 ? 3 : fl >= 13 ? 2 : 1, "long"]); }     // a 2024 Fighter's (the SRD 5.2.1 Fighter table)
   { const dl = druidLevel(c); if(dl >= 2 && !is2014(c)) want.push(["Wild Shape", dl >= 17 ? 4 : dl >= 6 ? 3 : 2, "one"]);     // a 2024 Druid's (the SRD 5.2.1's Druid table: 2, 3 at 6, 4 at 17)
     if(landOf(c) && dl >= 6 && !is2014(c)) want.push(["Natural Recovery", 1, "long"]); }     // a Land druid's free Circle spell
   { const cl = clericLevel(c); if(cl >= 2 && !is2014(c)) want.push(["Channel Divinity", cl >= 18 ? 4 : cl >= 6 ? 3 : 2, "one"]); if(cl >= 10 && !is2014(c)) want.push(["Divine Intervention", 1, "long"]); }     // a 2024 Cleric's (one Channel Divinity back on a Short Rest, all on a Long)
@@ -11676,7 +11679,7 @@ const freeFrom = r => /^divine intervention$/i.test(String(r.name || "")) ? "Div
 /* their Strength checks with Advantage (Large Form), and checks to end Grappled (a Goliath's Powerful Build) */
 const strAdvT = t => !!(t && t.kind!=="foe" && t.p && (t.p.big || t.p.rage));
 const strAdvWhy = t => t && t.p ? (t.p.rage ? "Rage" : t.p.big ? "Large Form" : "") : "";
-const escapeAdvT = (t, acr) => (strAdvT(t) && !acr) || !!(t && t.kind!=="foe" && t.p && goliathOf(t.p));
+const escapeAdvT = (t, acr) => (strAdvT(t) && !acr) || !!(t && t.kind!=="foe" && t.p && goliathOf(t.p)) || !!(!acr && t && t.kind!=="foe" && t.p && champOf(t.p) && fiHas(t.p, "Remarkable Athlete", 3));     // (a Champion's Remarkable Athlete: Athletics)
 /* ══ THE BARBARIAN (Joseph, 2026-11-06: "go 1-10", the SRD's class features). Their level from "Barbarian 5" or a plain
    "Barbarian"; a Berserker by subclass. p.rage = { since: round, ext: the turn it was last started or kept up }:
    Resistance to Bludgeoning, Piercing, and Slashing (dmgTakes), the Rage Damage bonus on Strength attacks (a chip, ticked
@@ -11955,6 +11958,52 @@ const LANDS = { arid:[[3, ["Blur", "Burning Hands", "Fire Bolt"]], [5, ["Firebal
 const circleNames = p => landOf(p) && LANDS[p.land] ? LANDS[p.land].filter(([lv]) => druidLevel(p) >= lv).flatMap(([, n]) => n) : [];
 const circleSpells = p => circleNames(p).map(n => spellByName(n)).filter(Boolean);
 const landAidDice = lv => `${lv >= 14 ? 4 : lv >= 10 ? 3 : 2}d6`;
+/* ══ THE FIGHTER (Joseph, 2026-11-12, the SRD walk-through: "Do 1-8"; text from his SRD 5.2.1 PDF). Their Fighter level;
+   the Champion by subclass; only what the sheet has (as for the Cleric). Fighting Style feats picked on the card (style1,
+   and style2 from a Champion's Additional Fighting Style): archery, defense, gwf, twf ══ */
+function fighterLevel(c){ const s = String((c && c.cls) || ""), m = /\bfighter\s*(\d+)/i.exec(s); return m ? clampLv(+m[1]) : /\bfighter\b/i.test(s) ? clampLv(c.level) : 0; }
+function champOf(c){ return fighterLevel(c) > 0 && /\bchampion\b/i.test(`${(c && c.subcls) || ""} ${(c && c.cls) || ""}`); }
+function fiHas(c, name, lv){ return fighterLevel(c) >= lv && (c.feats ? new RegExp(`\\b${name}\\b`, "i").test(c.feats) : !is2014(c)); }
+const styleOf = (c, k) => !!c && (c.style1===k || c.style2===k);
+/* Improved Critical (3) and Superior Critical (15): a Champion's weapon and Unarmed Strike attack rolls crit on 19 (18) */
+function critMin(t, info){
+  const p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !champOf(p) || !info || info.spell) return 20;
+  return fiHas(p, "Superior Critical", 15) ? 18 : fiHas(p, "Improved Critical", 3) ? 19 : 20;
+}
+/* a melee weapon held in two hands (Great Weapon Fighting): Two-Handed, or Versatile used two-handed (the line says so) */
+const twoHandT = info => { const k = weaponKind(info && info.name), pr = WEAPON_PROPS[k] || ""; return !/Ammunition/.test(pr) && (/Two-Handed/.test(pr) || (/Versatile/.test(pr) && /two/i.test(String(info.name || "")))); };
+/* Great Weapon Fighting: a 1 or 2 on the weapon's damage dice counts as 3 */
+function gwfAdjust(r, dice, crit){
+  const T = diceTerms(dice), first = T.find(x => x.d); if(!first) return { r, w:"" };
+  const n = Math.abs(first.n) * (crit ? 2 : 1); let up = 0; const rolls = r.rolls.slice(); for(let i = 0; i < n && i < rolls.length; i++) if(rolls[i] < 3){ up += 3 - rolls[i]; rolls[i] = 3; }
+  return up ? { r:{ total:r.total + up, rolls }, w:` (Great Weapon Fighting: ${up} more, 1s and 2s as 3s)` } : { r, w:"" };
+}
+/* the start of a Fighter's turn: Heroic Warrior (Champion 10) gives Heroic Inspiration if they have none; Survivor's
+   Heroic Rally (Champion 18) heals 5 + Constitution modifier when Bloodied with at least 1 hit point */
+function fighterTurnStart(c, id){
+  const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !champOf(p)) return;
+  const say = line => { (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line); };
+  if(fiHas(p, "Heroic Warrior", 10) && !p.insp){ p.insp = true; say(`${t.label} has Heroic Inspiration (Heroic Warrior)`); }
+  const hp = numOr(p.hp, 0), max = numOr(p.hpMax, 0);
+  if(fiHas(p, "Survivor", 18) && hp >= 1 && max && hp <= max / 2){ const n = 5 + abBonus(p, "con"), got = healAny(t, n); if(got) say(`${t.label} regains ${got} hit points (Heroic Rally)`); }
+}
+/* after a logged attack or Second Wind (logAction): Tactical Shift (5, Second Wind as a Bonus Action) and Remarkable Athlete
+   (Champion 3, after a crit) give half their Speed to move without opportunity attacks; Studied Attacks (13) after a miss */
+function fighterAfter(c, actor, info, targets, isBonus){
+  const p = actor && actor.kind==="pc" && actor.p ? pcState(actor.p) : null; if(!p || !fighterLevel(p) || c.turn!==actor.id) return [];
+  const out = [], half = () => { const M = (c.moved = c.moved || {})[actor.id] = c.moved[actor.id] || { ft:0, dash:false, moves:[] }, h = Math.floor(speedOf(actor) / 2); M.extra = (M.extra || 0) + h; c.forceful = { id:actor.id, at:turnStamp(c) }; return h; };
+  if(/second wind/i.test(info.name || "") && isBonus && fiHas(p, "Tactical Shift", 5)) out.push(`Tactical Shift: up to ${half()} ft without opportunity attacks`);
+  if(act.outcome==="crit" && isAttackAct(info) && !info.spell && champOf(p) && fiHas(p, "Remarkable Athlete", 3)) out.push(`Remarkable Athlete: up to ${half()} ft without opportunity attacks`);
+  if(act.outcome==="miss" && isAttackAct(info) && fiHas(p, "Studied Attacks", 13)) for(const tg of targets){ c.effects = (c.effects || []).filter(e => !(e.vex && e.by===actor.id && e.who===tg.id));
+    (c.effects = c.effects || []).push({ id:uid("ef"), who:tg.id, cond:"", by:actor.id, name:"Studied Attacks", at:turnStamp(c), round:c.round, end:"", repeat:null, sp:null, rounds:null, vex:true }); out.push(`Studied Attacks: Advantage on their next attack on ${tg.label}`); }
+  return out;
+}
+/* Tactical Master (9): a mastered weapon's property swapped for Push, Sap, or Slow on this attack (act.tmaster) */
+function tmasterHtml(c, t, info){
+  const M = t && t.kind==="pc" && t.p && !info.spell ? masteryOf(t, info) : ""; if(!M || !fiHas(pcState(t.p), "Tactical Master", 9)) return "";
+  return `<div class="field" style="margin:-2px 0 6px"><label>Tactical Master: this attack's mastery</label><select id="ac-tmaster"><option value="">${esc(M)} (the weapon's own)</option>${["Push", "Sap", "Slow"].filter(k => k!==M).map(k => `<option ${act.tmaster===k ? "selected" : ""}>${k}</option>`).join("")}</select></div>`;
+}
+const tmasterOf = (t, info) => { const M = masteryOf(t, info); return M && act.tmaster && t && t.p && fiHas(pcState(t.p), "Tactical Master", 9) ? act.tmaster : M; };
 /* Archdruid's Evergreen Wild Shape (20): rolling Initiative with no use left gives one back */
 function evergreenWS(c, id){
   const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !drHas(p, "Archdruid", 20)) return;
@@ -11989,10 +12038,18 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
     for(let L = 5; L >= 1; L--) while(p.slots[L] && p.slots[L].used > 0 && L <= budget){ p.slots[L].used--; budget -= L; got.push(ORD[L]); }
     if(!got.length) return; p.nrUsed = true; line = `${nm} gets back ${andList(got)}-level slots (Natural Recovery)`; }
   if(line){ gameLog("spell", line); flash(line + "."); saveParty(); touch(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} } });
-function d20Rescue(c, t, tot, need, what, kind){
+function d20Rescue(c, t, tot, need, what, kind, base){
   let w = "";
   if(!t || tot >= need) return { tot, w };
   const p = t.kind!=="foe" && t.p ? pcState(t.p) : null;
+  /* a Fighter's Indomitable (9): a failed save rerolled with + their Fighter level, the new roll standing (base: the save's bonus) */
+  if(p && kind==="save" && base!=null && fiHas(p, "Indomitable", 9)){ const r = (p.res || []).find(q => /^indomitable$/i.test(q.name || "")), lv = fighterLevel(p);
+    if(r && r.used < r.max && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Indomitable (${r.max - r.used} left until a Long Rest): reroll it with +${lv}? The new roll stands.`)){
+      const Q = pcD20(t, `the ${what} again (Indomitable, +${lv})`); r.used++; tot = Q.d + base + lv; w += ` (Indomitable: rerolled, d20 ${Q.d}${Q.w} ${base < 0 ? "−" : "+"} ${Math.abs(base)} + ${lv} = ${tot})`; if(tot >= need) return { tot, w }; } }
+  /* a Fighter's Tactical Mind (2): a failed ability check, a Second Wind use for +1d10 (kept if it still fails) */
+  if(p && kind==="check" && fiHas(p, "Tactical Mind", 2)){ const r = (p.res || []).find(q => /second wind/i.test(q.name || ""));
+    if(r && r.used < r.max && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Tactical Mind: spend a Second Wind (${r.max - r.used} left) for +1d10? It isn't spent if the check still fails.`)){
+      const Q = pcDie(t, "the d10 for Tactical Mind", 10); tot += Q.d; if(tot >= need) r.used++; w += ` (Tactical Mind: +${Q.d}${Q.w}, ${tot}${tot >= need ? "" : ", still short: Second Wind kept"})`; if(tot >= need) return { tot, w }; } }
   if(p && loreOf(p) && bardLevel(p) >= 14 && (kind==="attack" || kind==="check") && biLeft(p) > 0
     && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Peerless Skill: roll their Bardic Inspiration die (d${biDie(bardLevel(p))}) and add it? (The use comes back if it still fails.)`)){
     const Q = pcDie(t, `the Bardic Inspiration die (d${biDie(bardLevel(p))}) for Peerless Skill`, biDie(bardLevel(p))); tot += Q.d;
@@ -12399,7 +12456,22 @@ function wildFormsEditor(c, i){
 }
 /* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
 function originCardHtml(c){
-  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + masteryCardHtml(c);
+  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + fighterCardHtml(c) + masteryCardHtml(c);
+}
+/* a Fighter's Fighting Style picks (only theirs; a Champion's second from 7), and Heroic Inspiration on anyone's card who has it */
+const STYLES = [["archery", "Archery: +2 to hit with Ranged weapons"], ["defense", "Defense: +1 AC in armor"], ["gwf", "Great Weapon Fighting: 1s and 2s as 3s, two-handed"], ["twf", "Two-Weapon Fighting: the modifier on the off-hand attack"]];
+function fighterCardHtml(c){
+  const row = (k, label) => `<div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">${label}</label><select data-clpick="${esc(c.id)}" data-k="${k}" style="flex:2;min-width:0"><option value="">Pick one</option>${STYLES.filter(([v]) => k==="style1" ? v!==c.style2 : v!==c.style1).map(([v, l]) => `<option value="${v}" ${c[k]===v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
+  return (fiHas(c, "Fighting Style", 1) ? row("style1", "Fighting Style") : "") + (champOf(c) && fiHas(c, "Additional Fighting Style", 7) ? row("style2", "Additional Fighting Style") : "")
+    + (c.insp ? `<div class="fc-res"><span class="chip" title="Spend it to reroll any die you roll, and use either roll">Heroic Inspiration</span><button class="btn small" data-inspuse="${esc(c.id)}">Used it</button></div>` : "");
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-inspuse]"); if(!b) return; const p = pcById(b.dataset.inspuse); if(!p) return;
+  delete p.insp; gameLog("fight", `${p.name || "They"} spend${p.name ? "s" : ""} Heroic Inspiration`); saveParty(); touch(); try{ renderPane(true); if(battleOf) renderBattlePanel(); }catch(err){} });
+/* Two-Weapon Fighting: the ability modifier on an off-hand attack whose damage doesn't have it (no + number on the line) */
+function twfMod(t, info){
+  const p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !styleOf(p, "twf") || !info || info.spell) return 0;
+  const w = act.what || "", row = /^pca:/.test(w) ? (p.attacks || [])[+w.slice(4)] : null;
+  return row && /off-?hand|bonus action/i.test(row.name || "") && !/[+-]\s*\d+\s*$/.test(String(row.dmg || "")) ? Math.max(0, abilModFor(t, info)) : 0;
 }
 /* a Cleric's picks on their card (only theirs, and only what their sheet has): Divine Order (1), Blessed Strikes (7) */
 function clericCardHtml(c){
@@ -15251,7 +15323,7 @@ function rollAdvOf(c, t, tg, info){
   if(them.includes("Prone")) (near ? A : D).push(`${tg.label} is Prone${near ? "" : ", more than 5 ft off"}`);
   if(fxVsAdv(hOfT(tg))) A.push("an effect on them");
   if(reckWanted(c, t) && strAtkT(t, info) && !act.brutal) A.push(`${t.label} attacks recklessly`);     // Reckless Attack (Brutal Strike gives it up)
-  if((c.effects || []).some(e => e.vex && e.by===t.id && e.who===tg.id)) A.push(`Vex on ${tg.label}`);     // Weapon Mastery: Vex, Sap
+  { const V = (c.effects || []).find(e => e.vex && e.by===t.id && e.who===tg.id); if(V) A.push(`${V.name==="Studied Attacks" ? "Studied Attacks" : "Vex"} on ${tg.label}`); }     // Weapon Mastery's Vex, a Fighter's Studied Attacks; Sap below
   if((c.effects || []).some(e => e.sap && e.who===t.id)) D.push(`${t.label} is Sapped`);
   if(reckOn(c, tg)) A.push(`${tg.label} is attacking recklessly`);
   return { v:A.length && D.length ? "" : A.length ? "adv" : D.length ? "dis" : "", why:A.length && D.length ? `Advantage (${A.join(", ")}) and Disadvantage (${D.join(", ")}) cancel` : [...A, ...D].join(", "),
@@ -15884,7 +15956,7 @@ function selfOnly(info, t){
 /* an attack that also asks for a save (the Ghoul's Claw: "Melee Attack Roll ... Constitution Saving Throw") is an attack: the save comes on a hit */
 const ATTACK_WORDS = /^(?:Melee|Ranged)(?: or Ranged)? (?:Weapon |Spell )?Attack(?: Roll)?\b/i;
 const isAttackAct = info => !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && (!info.save || ATTACK_WORDS.test(String(info.text || ""))) && /^(fa|wsa|itm):/.test(act.what||"")));
-const acOf = o => !o ? 10 : (o.kind==="foe" ? (parseInt((foeById(o.x.foe)||{}).ac) || 10) : (parseInt(pcState(o.p).ac) || 10)) + fxNum(hOfT(o), "ac", null, false);     // Shield of Faith, Haste, Shield, Slow
+const acOf = o => !o ? 10 : (o.kind==="foe" ? (parseInt((foeById(o.x.foe)||{}).ac) || 10) : (parseInt(pcState(o.p).ac) || 10) + (o.p && !o.p.cbId && styleOf(o.p, "defense") && !shapeForm(o.p) ? 1 : 0)) + fxNum(hOfT(o), "ac", null, false);     // (Defense: +1 on a sheet made here, taken to be in armor; the Character Book's AC has it already)     // Shield of Faith, Haste, Shield, Slow
 function toHitOf(c, t, info){
   if(!info || !t) return null; const w = act.what || "", num = s => { const m = /([+-]?\d+)/.exec(String(s ?? "")); return m ? +m[1] : null; };
   const bare = n => String(n).replace(/^(Bonus action|Bonus|Reaction|Legendary): /i, "");
@@ -15964,7 +16036,7 @@ function toHitRow(c, t, info, all){
       <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
     ${(() => { if(act.adv || !tg) return ""; const hu = act.helpUsed, CA = rollAdvOf(c, t, tg, info); act.helpUsed = hu; if(!CA || !CA.v) return "";     // what the app works out, said before anyone rolls (Joseph, 2026-11-08: Ander's Poisoned did nothing to a d20 typed in)
       const A = CA.v==="adv"; return `<p class="actspell" style="margin:-2px 0 6px;color:var(--lead)"><b>Roll with ${A ? "Advantage" : "Disadvantage"}</b>${CA.why ? `: ${esc(CA.why)}` : ""}. A d20 from the table: they roll two and you type the ${A ? "higher" : "lower"}.</p>`; })()}
-    ${reckRowHtml(c, t, info)}
+    ${reckRowHtml(c, t, info)}${tmasterHtml(c, t, info)}
     ${(() => { const me = luckLeft(t), vs = tg && tg.side!==t.side ? luckLeft(tg) : 0; if(!me && !vs) return "";
       return `<div class="pcrow" style="align-items:center;margin:-2px 0 6px;font-size:12px">${me ? `<label title="Lucky: Advantage on this attack roll (the 2024 rule; 3 points a long rest)"><input type="checkbox" id="ac-luckme" ${act.luckMe ? "checked" : ""}> ${esc(t.label)} spends a Luck point: Advantage (${me} left)</label>` : ""}
         ${vs ? `<label title="Lucky: an attack roll against them has Disadvantage"><input type="checkbox" id="ac-luckvs" ${act.luckVs ? "checked" : ""}> ${esc(tg.label)} spends a Luck point: Disadvantage on it (${vs} left)</label>` : ""}</div>`; })()}
@@ -16566,7 +16638,7 @@ function actDice(c, t, info){
   const sc = info && info.spell ? scaledSpell(info.spell, act.lvl, t && t.kind==="pc" ? clampLv(t.p.level) : 0) : null;
   const part1 = sc && sc.parts[0] ? sc.parts[0] : (info && info.hint) || null, part2 = (sc && sc.parts[1]) || null;
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
-  const MQ = isAtk ? masteryOf(t, info) : "";     // Weapon Mastery: the weapon's property, as a chip (on by itself)
+  const MQ = isAtk ? tmasterOf(t, info) : "";     // (Tactical Master's swap, if picked)     // Weapon Mastery: the weapon's property, as a chip (on by itself)
   const addons = (t && (isAtk || part1) ? [...attackAddons(t), ...(MQ ? [{ key:"mastery", name:`${MQ} (mastery)`, dice:"", dtype:"", mastery:MQ, note:MASTERY_TEXT[MQ] }] : [])] : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)) && !(a.dstrike && (!isAtk || (info && info.spell) || c.turn!==t.id || addonUsed(c, t.id, "dstrike-radiant") || addonUsed(c, t.id, "dstrike-necrotic")))
     && !(a.pstrike && (!isAtk || (info && info.spell) || c.turn!==t.id || ["cold", "fire", "lightning", "thunder"].some(k => addonUsed(c, t.id, `pstrike-${k}`)))));     // Divine Strike, Primal Strike: a weapon (or a beast's attack), their turn, once     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
@@ -16574,7 +16646,7 @@ function actDice(c, t, info){
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
      Cure Wounds), and the form's + box adds anything else to the damage */
   const desc = String((info && info.spell && info.spell.desc) || ""), sMod = t && t.kind==="pc" ? spellModOf(pcState(t.p)) : 0;
-  const dmgMod = (sMod && /damage[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0) + potentMod(t, info);     // a Cleric's Potent Spellcasting: Wisdom on their Cleric cantrips
+  const dmgMod = (sMod && /damage[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0) + potentMod(t, info) + twfMod(t, info);     // (and Two-Weapon Fighting)     // a Cleric's Potent Spellcasting: Wisdom on their Cleric cantrips
   const healMod = sMod && /(Hit Points|regains?)[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0;     // "+ your…" too: Rin's 2014 sheet (2026-11-08)
   /* the damage, a part for each type (2026-10-30): its own, what rides on the same hit ("plus 7 (2d6) Fire"), what's ticked */
   const baseType = String(act.dtype || (part1 && part1.dtype) || "").toLowerCase(), parts = [];
@@ -16859,6 +16931,7 @@ function logAction(n, c){
     if(far.length && !confirm(`Intimidating Presence reaches 30 feet: ${far.map(o => o.label).join(", ")} ${far.length > 1 ? "are" : "is"} farther. Log it anyway?`)) return;
     const p = pcState(actor.p), r = p.res.find(q => (q.id || q.name)===info.res), rg = p.res.find(q => /^rage$/i.test(q.name || ""));
     if(r && (+r.used || 0) >= (+r.max || 0) && rg && (+rg.used || 0) < (+rg.max || 0) && confirm(`${actor.label} has used Intimidating Presence. Spend a Rage (${rg.max - rg.used} left) to have it again?`)){ rg.used = (+rg.used || 0) + 1; r.used = Math.max(0, (+r.used || 0) - 1); } }
+  if(/action surge/i.test(info.name || "") && actor.kind==="pc" && c.turn===actor.id && ((c.acted || {})[actor.id] || {}).more > 0 && !confirm(`${actor.label} has used Action Surge this turn already: it's once a turn. Log it anyway?`)) return;     // two uses from 17, one a turn
   if(info.origin && info.res && actor.p){ const r = pcState(actor.p).res.find(q => (q.id || q.name)===info.res); if(r && (+r.used || 0) >= (+r.max || 0) && !confirm(`${actor.label} has no ${r.name} left (${r.rest==="short" ? "back on a Short or Long Rest" : r.rest==="one" ? "one back on a Short Rest, all on a Long Rest" : "back on a Long Rest"}). Log it anyway?`)) return; }
   if(info.kind==="spell" && ragingT(actor) && !confirm(`${actor.label} is raging, and can't cast spells while the Rage lasts. Log it anyway?`)) return;
   /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
@@ -16916,7 +16989,7 @@ function logAction(n, c){
   const cp = actor.kind==="pc" && actor.p ? pcState(actor.p) : null;
   let pPool = info.cdFx==="preserve" && cp ? 5 * clericLevel(cp) : 0, blessedTo = false;     // Preserve Life: the hit points to share; someone else healed by a slot spell (Blessed Healer)
   const searN = info.cdFx==="turn" && cp && clHas(cp, "Sear Undead", 5) ? rollTerms(diceTerms(`${Math.max(1, abBonus(cp, "wis"))}d8`)).total : 0;     // Sear Undead: one roll for every Undead that fails
-  const MW = isAttackAct(info) ? masteryOf(actor, info) : "", MQ = MW && D.on.some(a => a.mastery) ? MW : "";     // Weapon Mastery: this weapon's property, and whether it's on
+  const MW = isAttackAct(info) ? tmasterOf(actor, info) : "", MQ = MW && D.on.some(a => a.mastery) ? MW : "";     // Weapon Mastery: this weapon's property, and whether it's on
   const vexSap0 = new Set((c.effects || []).filter(e => e.vex || e.sap).map(e => e.id));     // Vex and Sap from before this attack, used up by it
   const reacted0 = JSON.stringify(c.reacted||{}), movedBefore = JSON.stringify(c.moved||{}), bigBefore = actor.kind==="pc" && actor.p ? !!actor.p.big : null;     // (Stone's Endurance and Storm's Thunder take reactions below)
   if(info.origin && actor.kind==="pc") turned.push(...originDo(c, actor, info));     // Adrenaline Rush, Large Form, Cloud's Jaunt
@@ -16952,7 +17025,7 @@ function logAction(n, c){
     /* an attack's save on a hit (the Ghoul's Claw: "Constitution Saving Throw: DC 10. Failure: ... Paralyzed"): rolled for each target it hits */
     let riderMade = false; act.riderMade = act.riderMade || {};
     if(act.cond && !off && isAttackAct(info) && !info.spell && ["hit","crit"].includes(act.outcome)){ const R = SAVE_WORD.exec(String(info.text || ""));
-      if(R){ const b = saveBonusOf(t, R[1]), Q = saveD(t, R[1], `a ${R[1]} save against DC ${R[2]} (${info.name || "the attack"})`), d = Q.d, RSr = d20Rescue(c, t, mightTot(t, R[1], d + b), +R[2], `${R[1]} save`, "save"), tot = RSr.tot; riderMade = tot >= +R[2]; act.riderMade[t.id] = riderMade;     /* (a grapple's save too) */
+      if(R){ const b = saveBonusOf(t, R[1]), Q = saveD(t, R[1], `a ${R[1]} save against DC ${R[2]} (${info.name || "the attack"})`), d = Q.d, RSr = d20Rescue(c, t, mightTot(t, R[1], d + b), +R[2], `${R[1]} save`, "save", b), tot = RSr.tot; riderMade = tot >= +R[2]; act.riderMade[t.id] = riderMade;     /* (a grapple's save too) */
         turned.push(`${t.label}: ${R[1]} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(t, R[1], d + b)}${RSr.w} vs DC ${R[2]}, ${riderMade ? "made" : `failed: ${act.cond}`}`); } }
     /* a grapple (item 3): on a hit, or a failed save, if they're small enough: who holds them and the escape DC */
     { const GT = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null, landed = isAttackAct(info) ? ["hit","crit"].includes(act.outcome) : !["miss","save"].includes(act.outcome) && !(svOf(t) && svOf(t).made);
@@ -17060,6 +17133,7 @@ function logAction(n, c){
   if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
     if(act.brutal){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).brutal = turnStamp(c); } }     // Brutal Strike: once on their turn
   if(act.sunderId && isAttackAct(info)) c.effects = (c.effects || []).filter(e => e.id!==act.sunderId);     // a Sundering Blow's +5, used
+  { const FA = fighterAfter(c, actor, info, targets, isBonus); if(FA.length){ const e = c.log[c.log.length - 1]; if(e) e.text = e.text.replace(/\.$/, `; ${FA.join("; ")}.`); } }     // Tactical Shift, Remarkable Athlete, Studied Attacks
   if(blessedTo && cp && clHas(cp, "Blessed Healer", 6) && !targets.some(o => o.id===actor.id)){ const n = lifeSlotBonus(actor, info), got = healAny(actor, n);     // Blessed Healer
     if(got) { const e = c.log[c.log.length - 1]; if(e) e.text = e.text.replace(/\.$/, `; ${actor.label} regains ${got} (Blessed Healer).`); } }
   if(cp && dealt > 0 && potentMod(actor, info) && clericLevel(cp) >= 14){ const n = 2 * Math.max(0, abBonus(cp, "wis"));     // Improved Potent Spellcasting: temporary hit points
@@ -17245,7 +17319,7 @@ function effectsSweep(c, id, when){
     if(when!=="end" || e.who!==id || e.at===now) continue;
     if(e.end==="targetNext"){ snapIds.add(e.who); out.push(effectEnd(c, e, "the end of its turn")); continue; }
     if(e.rounds && c.round >= e.round + e.rounds){ snapIds.add(e.who); out.push(effectEnd(c, e, `${e.rounds / 10} minute`)); continue; }
-    if(e.repeat){ const b = saveBonusOf(t, e.repeat.abil), Q = saveD(t, e.repeat.abil, `a ${e.repeat.abil} save against DC ${e.repeat.dc} to end ${e.name}`), d = Q.d, RSe = d20Rescue(c, t, mightTot(t, e.repeat.abil, d + b), e.repeat.dc, `${e.repeat.abil} save against ${e.name}`, "save"), tot = RSe.tot, ok = tot >= e.repeat.dc, roll = `${e.repeat.abil} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(t, e.repeat.abil, d + b)}${RSe.w} vs DC ${e.repeat.dc}`;
+    if(e.repeat){ const b = saveBonusOf(t, e.repeat.abil), Q = saveD(t, e.repeat.abil, `a ${e.repeat.abil} save against DC ${e.repeat.dc} to end ${e.name}`), d = Q.d, RSe = d20Rescue(c, t, mightTot(t, e.repeat.abil, d + b), e.repeat.dc, `${e.repeat.abil} save against ${e.name}`, "save", b), tot = RSe.tot, ok = tot >= e.repeat.dc, roll = `${e.repeat.abil} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(t, e.repeat.abil, d + b)}${RSe.w} vs DC ${e.repeat.dc}`;
       snapIds.add(e.who); if(ok) out.push(effectEnd(c, e, "", `repeats the save, ${roll}: made`)); else out.push(`${t.label} repeats the save against ${e.name}, ${roll}: still ${e.cond}.`); }
   }
   if(!out.length) return;
@@ -17311,7 +17385,7 @@ function gripRowHtml(c, t){
 function gripEscape(c, t){
   const g = gripOf(c, t); if(!g) return "";
   const ath = checkOf(t, "Athletics"), acr = g.how==="Athletics" ? -99 : checkOf(t, "Acrobatics"), useAcr = acr > ath, b = useAcr ? acr : ath;
-  const adv = escapeAdvT(t, useAcr), mode = g.dis && !adv ? "dis" : adv && !g.dis ? "adv" : "", why = adv ? (strAdvT(t) && !useAcr ? strAdvWhy(t) : "Powerful Build") : "";     // a Goliath: Advantage to end Grappled; Rage, Large Form: on a Strength check
+  const adv = escapeAdvT(t, useAcr), mode = g.dis && !adv ? "dis" : adv && !g.dis ? "adv" : "", why = adv ? (strAdvT(t) && !useAcr ? strAdvWhy(t) : goliathOf(t.p || {}) ? "Powerful Build" : "Remarkable Athlete") : "";     // a Goliath: Advantage to end Grappled; Rage, Large Form, a Champion's Remarkable Athlete: on a Strength check
   const Q = pcD20(t, `${useAcr ? "a Dexterity (Acrobatics)" : "a Strength (Athletics)"} check against DC ${g.dc} to break free`, mode);
   const r1 = Q.d, r2 = Q.typed ? Q.d : 1 + Math.floor(Math.random() * 20), d = mode==="dis" ? Math.min(r1, r2) : mode==="adv" ? Math.max(r1, r2) : r1, RSg = d20Rescue(c, t, useAcr ? d + b : mightTot(t, "str", d + b), g.dc, "check to break free", "check"), CWg = t.kind==="foe" && RSg.tot >= g.dc ? cuttingWords(c, t, RSg.tot, g.dc, "check to break free") : null, tot = CWg ? CWg.tot : RSg.tot, ok = tot >= g.dc;     // Athletics: a Strength check (Indomitable Might); Peerless Skill, a Bardic Inspiration die
   const snap = snapOf(c, [t.id]), gripsBefore = JSON.stringify(c.grips || {});
@@ -17373,7 +17447,7 @@ function shovePlan(c, t, tg){
 }
 async function autoShove(c, t, tg, plan, said){
   const m = t.kind==="foe" ? foeById(t.x.foe) : null, str = m ? Math.floor(((+((m.ab || [])[0]) || 10) - 10) / 2) : abBonus(pcState(t.p), "str"), pb = m ? profOf({ cr:m.cr }) : profOf(pcState(t.p)), dc = 8 + str + pb;
-  const sb = saveBonusOf(tg, "Strength"), db = saveBonusOf(tg, "Dexterity"), ab = db > sb ? "Dexterity" : "Strength", b = Math.max(sb, db), Q = saveD(tg, ab, `a ${ab} save against DC ${dc} (${t.label} shoves them)`), d = Q.d, RSs = d20Rescue(c, tg, mightTot(tg, ab, d + b), dc, `${ab} save against the shove`, "save"), tot = RSs.tot, made = tot >= dc;
+  const sb = saveBonusOf(tg, "Strength"), db = saveBonusOf(tg, "Dexterity"), ab = db > sb ? "Dexterity" : "Strength", b = Math.max(sb, db), Q = saveD(tg, ab, `a ${ab} save against DC ${dc} (${t.label} shoves them)`), d = Q.d, RSs = d20Rescue(c, tg, mightTot(tg, ab, d + b), dc, `${ab} save against the shove`, "save", b), tot = RSs.tot, made = tot >= dc;
   await autoSay(`${t.label} tries to shove ${tg.label}${plan.kind==="push" ? " back" : " to the ground"}!`);
   const snap = snapOf(c, [tg.id]), from = { ...c.pos[tg.id] };
   let what = "";
@@ -17474,7 +17548,7 @@ function zoneHit(c, u, t, why, squares){
   if(Z.once){ const H = u.hit = u.hit || {}; if(H[t.id]===turnStamp(c)) return ""; H[t.id] = turnStamp(c); }
   const snap = snapOf(c, [t.id]), holdsBefore = JSON.stringify(c.holds || {}), bits = [];
   let made = false;
-  if(Z.save){ const dc = spellDcOfT(owner) || 10, b = saveBonusOf(t, Z.save), Q = saveD(t, Z.save, `a ${Z.save} save against DC ${dc} (${s.name})`), d = Q.d, RSz = d20Rescue(c, t, mightTot(t, Z.save, d + b), dc, `${Z.save} save (${s.name})`, "save"), tot = RSz.tot; made = tot >= dc;
+  if(Z.save){ const dc = spellDcOfT(owner) || 10, b = saveBonusOf(t, Z.save), Q = saveD(t, Z.save, `a ${Z.save} save against DC ${dc} (${s.name})`), d = Q.d, RSz = d20Rescue(c, t, mightTot(t, Z.save, d + b), dc, `${Z.save} save (${s.name})`, "save", b), tot = RSz.tot; made = tot >= dc;
     bits.push(`${Z.save} save d20 ${d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}${mightW(t, Z.save, d + b)}${RSz.w} vs DC ${dc}, ${made ? "made" : "failed"}`); }
   if(Z.cond){ if(!made && !condImmune(t, Z.cond)){ const cs = condsOfT(t); if(!cs.includes(Z.cond)) cs.push(Z.cond);
       (c.holds = c.holds || {})[t.id] = { by:owner.id, tier:"half", name:s.name, sp:s.id, cond:"", dmgEnds:"", once:false, turns:0, pts:0 }; bits.push(Z.cond); } }
@@ -17668,7 +17742,7 @@ function renderBattlePanelNow(){
     <div class="pcrow"><button class="btn" style="flex:1" data-ba="layout">${c.layout==="lineup"?"Show the battle map":"Show a simple lineup"}</button></div>
     <p class="grouplab">Turn order${Array.isArray(c.order)&&c.order.length?` <i>· arranged by hand</i>`:""}</p>
     ${all.map((t,k)=>`<div class="initrow${c.turn===t.id?" cur":""}${battleSel===t.id?" sel":""}${t.side==="party"?" pc":""}${t.fled?" fled":""}">
-        <input class="init-in" data-bid="${t.id}" type="number" value="${t.init??""}" placeholder="${t.kind==="pc" && t.p && barbLevel(t.p) >= 7 && t.init==null ? "adv" : "–"}" ${t.shared?`disabled title="Goes right after its owner"`:`title="Initiative${t.kind==="pc" && t.p && barbLevel(t.p) >= 7 ? " (Feral Instinct: they roll it with Advantage)" : ""}"`}>
+        <input class="init-in" data-bid="${t.id}" type="number" value="${t.init??""}" placeholder="${t.kind==="pc" && t.p && (barbLevel(t.p) >= 7 || (champOf(t.p) && fiHas(t.p, "Remarkable Athlete", 3))) && t.init==null ? "adv" : "–"}" ${t.shared?`disabled title="Goes right after its owner"`:`title="Initiative${t.kind==="pc" && t.p && barbLevel(t.p) >= 7 ? " (Feral Instinct: they roll it with Advantage)" : t.kind==="pc" && t.p && champOf(t.p) && fiHas(t.p, "Remarkable Athlete", 3) ? " (Remarkable Athlete: they roll it with Advantage)" : ""}"`}>
         <span class="ir-name" data-bsel="${t.id}">${esc(t.label)}${reactedThisRound(c,t.id)?` <small class="rused" title="Used their reaction this round">⚡ used</small>`:""}${t.id===c.turn && ((c.moved||{})[t.id]||{}).ft ? ` <small class="rused" title="Feet moved this turn, of their speed">↦ ${c.moved[t.id].ft}/${moveAllow(c,t)} ft</small>` : ""}${actionUsed(c,t.id) || ((c.acted||{})[t.id]||{}).more ? ` <small class="rused" title="Their action this turn (Action Surge gives one more)">${((c.acted||{})[t.id]||{}).swings > 0 ? `● ${c.acted[t.id].swings} attack${c.acted[t.id].swings>1?"s":""} left in it` : actionsLeft(c,t.id) > 0 ? `● ${actionsLeft(c,t.id)} action${actionsLeft(c,t.id)>1?"s":""} left` : "● action used"}</small>` : ""}${bonusUsed(c,t.id)?` <small class="rused" title="Used their bonus action this turn">◑ bonus used</small>`:""}</span><span class="mono">${hpText(t)}</span>
         <span class="ir-ctl"><button data-breact="${t.id}" title="Take a reaction (opportunity attack…)">⚡</button><button data-bturn="${t.id}" title="Their turn now">▶</button><button data-bmove="${k}" data-dir="-1" title="Move up" ${k?"":"disabled"}>▲</button><button data-bmove="${k}" data-dir="1" title="Move down" ${k<all.length-1?"":"disabled"}>▼</button></span></div>`).join("")}
     ${Array.isArray(c.order)&&c.order.length?`<button class="btn wide" data-ba="initorder" style="margin-top:4px">Back to initiative order</button>`:""}
@@ -17770,6 +17844,7 @@ function renderBattlePanelNow(){
   { const wf = $("#ac-wsfx"); if(wf) wf.onchange = ()=>{ act.wsFx = wf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // a Land druid's Wild Shape use
   { const lh = $("#ac-laheal"); if(lh) lh.onchange = ()=>{ act.laHeal = lh.value; }; }
   { const cf = $("#ac-cdfx"); if(cf) cf.onchange = ()=>{ act.cdFx = cf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // Channel Divinity's effect: set up as if just chosen
+  { const tm = $("#ac-tmaster"); if(tm) tm.onchange = ()=>{ act.tmaster = tm.value; const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); act.addons = (act.addons || []).filter(k => k!=="mastery"); if(t && info && tmasterOf(t, info) && !["Nick", "Cleave"].includes(tmasterOf(t, info))) act.addons.push("mastery"); redraw(); }; }     // Tactical Master
   { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; if(!act.reck) act.brutal = false; redraw(); }; }     // Reckless Attack
   { const bs = $("#ac-brutal"); if(bs) bs.onchange = ()=>{ act.brutal = bs.checked; if(act.brutal && !act.brutalFx) act.brutalFx = ["forceful", ""]; redraw(); }; }     // Brutal Strike
   document.querySelectorAll("[data-brutalfx]").forEach(s => s.onchange = ()=>{ act.brutalFx = act.brutalFx || ["forceful", ""]; act.brutalFx[+s.dataset.brutalfx] = s.value; if(act.brutalFx[1]===act.brutalFx[0]) act.brutalFx[1] = ""; redraw(); });
@@ -17798,7 +17873,7 @@ function renderBattlePanelNow(){
       const how = `${Q.typed ? `d20 ${d0} (rolled at the table${adv || lk ? ", Advantage" : dis ? ", Disadvantage" : ""}${SM.why ? `: ${SM.why}` : ""})` : adv || lk || dis ? `d20 ${r1} and ${r2}, ${dis ? "Disadvantage" : "Advantage"}${lk ? " (a Luck point)" : SM.why ? ` (${SM.why})` : ""}: ${d0}` : `d20 ${d0}`}${hl ? `${hl.said}: ${d})` : ""}${bo ? ` ${bo < 0 ? "−" : "+"} ${Math.abs(bo)}` : ""}${cb ? ` (${cvr.word} +${cb})` : ""}${F.said}${bo || F.said ? ` = ${tot}` : ""}`;
       let totF = tot, xw = "";     // a failed save: Countercharm (against Charmed or Frightened), then a Bardic Inspiration die
       if(totF < X.dc && /^(charmed|frightened)$/i.test(String(act.cond || ""))){ const CCr = countercharm(c, x, tot - d, X.dc, `${X.S.abil} save against ${act.cond}`); if(CCr){ totF = CCr.tot; xw += CCr.w; } }
-      if(totF < X.dc){ const RSv = d20Rescue(c, x, totF, X.dc, `${X.S.abil} save`, "save"); totF = RSv.tot; xw += RSv.w; }
+      if(totF < X.dc){ const RSv = d20Rescue(c, x, totF, X.dc, `${X.S.abil} save`, "save", tot - d); totF = RSv.tot; xw += RSv.w; }
       (act.saves = act.saves || {})[x.id] = { tot:totF, made:totF >= X.dc, said:`${x.label} ${how}${IMw}${xw} vs DC ${X.dc}: ${totF >= X.dc ? "made" : "failed"}` };
       if(totF < X.dc){ const lr = legResist(c, x); if(lr){ act.saves[x.id].made = true; act.saves[x.id].said += ` — ${lr}`; } } }     // Legendary Resistance, when it matters
     svOutcome(); flash(act.targets.map(id=>(act.saves||{})[id]).filter(Boolean).map(r=>r.said).join(" · ")); renderBattlePanel(); });
@@ -17882,19 +17957,21 @@ function renderBattlePanelNow(){
       const hl = !mine ? hLuck(t, d) : null; if(hl) d = hl.d;     // a halfling's 1, rerolled
       const how = (mine ? `d20 ${d} (rolled at the table${adv ? `, with ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? `: ${CA.why}` : ""}` : ""})` :adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")})` : ""}: ${hl ? 1 : d}` : `d20 ${hl ? 1 : d}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")}: Advantage and Disadvantage cancel)` : ""}`) + (hl ? `${hl.said}: ${d})` : "");
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
-      const extra = (Math.round(+act.hitMod) || 0) + (SU ? 5 : 0), tot0 = d + bonus + extra + fN + F.n, out0 = d===20 ? "crit" : d===1 ? "miss" : tot0 >= ac ? "hit" : "miss";     // meets it, beats it
+      const arch = t.kind==="pc" && t.p && !t.p.cbId && styleOf(t.p, "archery") && !info.spell && /Ammunition|Dart/.test(`${WEAPON_PROPS[weaponKind(info.name)] || ""} ${weaponKind(info.name)}`) ? 2 : 0;     // Archery (a sheet made here; the Character Book's numbers have it already)
+      const cm = critMin(t, info), extra = (Math.round(+act.hitMod) || 0) + (SU ? 5 : 0) + arch, tot0 = d + bonus + extra + fN + F.n, out0 = d >= cm ? "crit" : d===1 ? "miss" : tot0 >= ac ? "hit" : "miss";     // meets it, beats it; a Champion crits on 19 (18)
       const RS = out0==="miss" && d!==1 ? d20Rescue(c, t, tot0, ac, `attack roll on ${tg.label}`, "attack") : { tot:tot0, w:"" }, tot = RS.tot, out = out0==="miss" && d!==1 && tot >= ac ? "hit" : out0;     // Peerless Skill, a Bardic Inspiration die
-      const CW = out==="hit" && d!==20 ? cuttingWords(c, t, tot, ac, `attack roll on ${tg.label}`) : null;     // a Lore bard's Cutting Words
+      const CW = out==="hit" && d < cm ? cuttingWords(c, t, tot, ac, `attack roll on ${tg.label}`) : null;     // a Lore bard's Cutting Words
       const rx = out==="hit" && !(CW && CW.miss) ? autoDefend(c, t, tg, tot, ac, info) : null, sure = !rx && out==="hit" && !(CW && CW.miss) && CA && CA.crit, res = rx || (CW && CW.miss) ? "miss" : sure ? "crit" : out;     // its Parry or Shield, if the autopilot runs it; Paralyzed or Unconscious within 5 ft: a crit
-      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (${SU ? `${extra===5 ? "" : "modifier and "}Sundering Blow` : "modifier"})` : ""}${act.brutal ? " (Brutal Strike: no Advantage)" : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot0}${RS.w}${CW ? CW.w : ""} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : CW && CW.miss ? "a miss" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
+      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (${[(Math.round(+act.hitMod) || 0) ? "modifier" : "", SU ? "Sundering Blow" : "", arch ? "Archery" : ""].filter(Boolean).join(" and ")})` : ""}${act.brutal ? " (Brutal Strike: no Advantage)" : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot0}${RS.w}${CW ? CW.w : ""} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d >= cm ? `${d===18 ? "an" : "a"} ${d}, a crit (${cm===18 ? "Superior" : "Improved"} Critical)` : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : CW && CW.miss ? "a miss" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
       { const SA = ["hit","crit"].includes(res) && attackAddons(t).find(a => /sneak attack/i.test(a.name)), why = SA && !(act.addons || []).includes(SA.key) && !addonUsed(c, t.id, SA.key) ? sneakWhy(c, t, tg, info, mine ? act.adv : adv) : "";     // Sneak Attack, when it applies (item 5)
         if(why){ (act.addons = act.addons || []).push(SA.key); act.toHit.said += ` · Sneak Attack (${why})`; } }
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
     if((w==="dmg" || w.startsWith("part:")) && D.parts.length){ const crit = act.outcome==="crit", P = act.partV = act.partV || {};     // all of it, or one part
       const sav = D.on.some(a => a.savage);     // Savage Attacker: the weapon's part rolled twice, the higher kept
       D.parts.forEach((p, i)=>{ if(w!=="dmg" && w!==`part:${i}`) return; const k0 = diceTerms(p.dice).filter(x=>!x.d).reduce((a, x)=>a + x.k, 0), lab = `${p.dice}${p.dtype ? ` ${p.dtype}` : ""}${crit ? " (crit: dice twice)" : ""}`;
-        let r = rollTerms(diceTerms(p.dice), crit), said = diceWords(lab, r.rolls, k0, r.total);
-        if(sav && i===0){ const r2 = rollTerms(diceTerms(p.dice), crit), s2 = diceWords(lab, r2.rolls, k0, r2.total), keep2 = r2.total > r.total;
+        const gwf = i===0 && t.kind==="pc" && t.p && styleOf(t.p, "gwf") && !info.spell && twoHandT(info), roll = () => { const r0 = rollTerms(diceTerms(p.dice), crit); return gwf ? gwfAdjust(r0, p.dice, crit) : { r:r0, w:"" }; };     // Great Weapon Fighting on the weapon's dice
+        let G1 = roll(), r = G1.r, said = diceWords(lab, r.rolls, k0, r.total) + G1.w;
+        if(sav && i===0){ const G2 = roll(), r2 = G2.r, s2 = diceWords(lab, r2.rolls, k0, r2.total) + G2.w, keep2 = r2.total > r.total;
           said = `Savage Attacker: ${said} and ${s2}, kept ${keep2 ? r2.total : r.total}`; if(keep2) r = r2; }
         P[p.dtype] = { v:r.total, said }; });
       partsSum(D); if(w==="dmg") cwDamage(c, t); flash(act.rolled.dmg.said); renderBattlePanel(); return; }     // a Lore bard's Cutting Words on the damage
@@ -23010,7 +23087,7 @@ function nextTurn(c){
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
   const legPrev = c.turn;
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); readyTurnStart(c, c.turn); effectsTurnStart(c, c.turn); zonesTurn(c, c.turn, "start"); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); readyTurnStart(c, c.turn); effectsTurnStart(c, c.turn); fighterTurnStart(c, c.turn); zonesTurn(c, c.turn, "start"); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
   legAfterTurn(c, legPrev);                      // a legendary creature's chance, after someone else's turn
   autoNext(c);                                   // an enemy's turn runs by itself, if that's set
   return true;
@@ -27134,6 +27211,7 @@ function taBardBtns(x, P){
   const tot = ta.tot[x.key], dc = +ta.dc || 0; if(tot===undefined || tot==="") return "";
   const short = !dc || +tot < dc, made = !dc || +tot >= dc, o = x.o, B = [];
   if(o.bi && short) B.push(`<button class="btn small" data-tabi="hold" data-k="${esc(x.key)}" title="Their Bardic Inspiration die, added to this check (it's used up)">Add their Bardic Inspiration (d${o.bi.die})</button>`);
+  { const sw = fiHas(o, "Tactical Mind", 2) && (pcState(o).res || []).find(q => /second wind/i.test(q.name || "")); if(sw && sw.used < sw.max && short) B.push(`<button class="btn small" data-tabi="tm" data-k="${esc(x.key)}" title="A Second Wind use, spent only if the check then succeeds">Tactical Mind (+1d10)</button>`); }     // a Fighter's
   if(loreOf(o) && bardLevel(o) >= 14 && biLeft(pcState(o)) > 0 && short) B.push(`<button class="btn small" data-tabi="peer" data-k="${esc(x.key)}" title="The use is spent only if it then succeeds">Peerless Skill (d${biDie(bardLevel(o))})</button>`);
   if(!x.key.startsWith("pc:") && made) for(const b of P.filter(y => y.key!==x.key && y.o.cls && loreOf(y.o) && bardLevel(y.o) >= 3 && biLeft(pcState(y.o)) > 0))
     B.push(`<button class="btn small" data-tabi="cut" data-k="${esc(x.key)}" data-by="${esc(b.key)}" title="${esc(b.name)}'s Reaction and a Bardic Inspiration use: the die off this check">${esc(b.name.split(" ")[0])}'s Cutting Words (d${biDie(bardLevel(b.o))})</button>`);
@@ -27144,6 +27222,8 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
   const asT = y => ({ kind:"pc", p:y.o, label:y.name, side:"party" }), prev = ((ta.d20 || {})[x.key] || {}).said || `${tot0}`;
   let n = 0, w = "";
   if(kind==="hold"){ const Q = pcDie(asT(x), `the Bardic Inspiration die (d${x.o.bi.die})`, +x.o.bi.die); n = Q.d; w = `Bardic Inspiration +${n}${Q.w}`; partyDoing("Bardic Inspiration", x.o); delete x.o.bi; }
+  if(kind==="tm"){ const o = pcState(x.o), sw = (o.res || []).find(q => /second wind/i.test(q.name || "")), Q = pcDie(asT(x), "the d10 for Tactical Mind", 10); n = Q.d;
+    const ok = !dc || tot0 + n >= dc; partyDoing("Tactical Mind", x.o); if(ok && sw) sw.used = (+sw.used || 0) + 1; w = `Tactical Mind +${n}${Q.w}${ok ? "" : ", still short: Second Wind kept"}`; }
   if(kind==="peer"){ const o = pcState(x.o), Q = pcDie(asT(x), `the Bardic Inspiration die (d${biDie(bardLevel(o))}) for Peerless Skill`, biDie(bardLevel(o))); n = Q.d;
     const ok = !dc || tot0 + n >= dc; partyDoing("Peerless Skill", x.o); if(ok) biRes(o).used = (+biRes(o).used || 0) + 1; w = `Peerless Skill +${n}${Q.w}${ok ? "" : ", still short: the use is kept"}`; }
   if(kind==="cut"){ const y = P.find(z => z.key===b.dataset.by); if(!y) return; const o = pcState(y.o), Q = pcDie(asT(y), `the Bardic Inspiration die (d${biDie(bardLevel(o))}) for Cutting Words`, biDie(bardLevel(o)));
