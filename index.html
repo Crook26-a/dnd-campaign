@@ -9630,7 +9630,7 @@ function cbIntoPc(pc, x){
   for(const k of ["name","player","species","cls","subcls","bg","align","ac","hpMax","speed","init","pp","dc","satk","saves","skills","senses","langs","looks","persona"]) if(x[k]!=null && x[k]!=="") pc[k] = x[k];
   for(const k of ["str","dex","con","int","wis","cha","hp","temp"]) if(x[k]!=null) pc[k] = x[k];
   pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
-  if(x.feats) pc.feats = x.feats; if(x.rules) pc.rules = x.rules; if(x.giant) pc.giant = x.giant;     // which rules their sheet is built on (2014 or 2024) if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds
+  if(x.feats) pc.feats = x.feats; if(x.rules) pc.rules = x.rules; if(x.order) pc.order = x.order; if(x.strikes) pc.strikes = x.strikes; if(x.giant) pc.giant = x.giant;     // which rules their sheet is built on (2014 or 2024) if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds
   if(x.bi && +x.bi.die) pc.bi = { die:+x.bi.die, by:x.bi.by || "" }; else if(x.bi===null) delete pc.bi;     // a Bardic Inspiration die they hold     // their features by name (Alert, Savage Attacker…), and a Goliath's giant (2026-11-06)
   if((+pc.xp || 0) < XP_LEVELS[pc.level]) pc.xp = XP_LEVELS[pc.level];     // the Character Book keeps no XP: a level it raised brings the XP up to that level's start (Joseph, 2026-11-03: "I updated Gnick, but it didn't update the xp")
   if(x.purse) pc.purse = { ...x.purse };
@@ -9715,7 +9715,7 @@ function pcToCb(c){
     hpMax:numOr(c.hpMax,1), hp:numOr(c.hp, numOr(c.hpMax,1)), temp:numOr(c.temp,0), hd:{ die, max:hdRes ? +hdRes.max : clampLv(c.level), used:hdRes ? +hdRes.used||0 : 0 },
     death:{ ok:+((c.death||{}).s)||0, fail:+((c.death||{}).f)||0 }, conds:(c.conds||[]).slice(), exh:0, conc:null, effects:[],
     res:(c.res||[]).filter(r=>r && r.name && r!==hdRes).map(r=>({ id:r.id||uid("rs_"), name:r.name, max:+r.max||0, used:+r.used||0, rest:["short","long","one"].includes(r.rest) ? r.rest : "long" })),
-    slots, pact:c.cls==="Warlock", giant:c.giant || "", mastery:(c.mastery || []).slice(), bi:c.bi ? String(c.bi.die) : "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
+    slots, pact:c.cls==="Warlock", giant:c.giant || "", order:c.order || "", strikes:c.strikes || "", mastery:(c.mastery || []).slice(), bi:c.bi ? String(c.bi.die) : "", attacks, spells:(c.spells||[]).map(spellOf).filter(Boolean).map(cbSpell), traits, items,
     purse:{ cp:0, sp:0, ep:0, gp:0, pp:0, ...(c.purse||{}) }, debtCp:0, marked:false, log:[], sessions:[], people:[],
     story:{ profs:[c.langs ? `Languages: ${c.langs}` : ""].filter(Boolean).join("\n"), traits:line("Trait") || (/^\w+:/m.test(persona) ? "" : persona), ideals:line("Ideal"), bonds:line("Bond"), flaws:line("Flaw"), looks:c.looks||"", backstory:"", more:"" },
     rolls:[], inspiration:false };
@@ -12308,8 +12308,16 @@ function wildFormsEditor(c, i){
 }
 /* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
 function originCardHtml(c){
-  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + masteryCardHtml(c);
+  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + masteryCardHtml(c);
 }
+/* a Cleric's picks on their card (only theirs, and only what their sheet has): Divine Order (1), Blessed Strikes (7) */
+function clericCardHtml(c){
+  const row = (k, label, opts) => `<div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">${label}</label><select data-clpick="${esc(c.id)}" data-k="${k}" style="flex:2;min-width:0"><option value="">Pick one</option>${opts.map(([v, l]) => `<option value="${v}" ${c[k]===v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
+  return (clHas(c, "Divine Order", 1) ? row("order", "Divine Order", [["protector", "Protector: Martial weapons, Heavy armor"], ["thaumaturge", "Thaumaturge: Wisdom on Arcana and Religion"]]) : "")
+    + (clHas(c, "Blessed Strikes", 7) ? row("strikes", "Blessed Strikes", [["divine", `Divine Strike: +${clericLevel(c) >= 14 ? 2 : 1}d8 on a weapon hit`], ["potent", "Potent Spellcasting: Wisdom on Cleric cantrips"]]) : "");
+}
+document.addEventListener("change", e => { const t = e.target; if(!t.dataset || t.dataset.clpick==null) return; const p = pcById(t.dataset.clpick); if(!p) return;
+  if(t.value) p[t.dataset.k] = t.value; else delete p[t.dataset.k]; saveParty(); touch(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} });
 /* a Bardic Inspiration die they hold (anyone's card), and a Bard's Font of Inspiration (5+: a spell slot for a use; only theirs) */
 function bardCardHtml(c){
   let h = c.bi ? `<div class="fc-res"><span class="chip" title="Add it to a failed attack roll, save, or check within the hour; the app offers it">Inspired: d${c.bi.die}${c.bi.by ? ` (from ${esc(c.bi.by)})` : ""}</span><button class="btn small" data-biclear="${esc(c.id)}" title="Used at the table, or the hour is up">Clear</button></div>` : "";
@@ -27044,7 +27052,8 @@ function skillMod(o, skill){
   const fx = fxNum(o, "check", skill, false), worn = fxNum(o, "check", skill, true) - fx;     // a spell's (Pass without Trace +10 Stealth), and what they wear where the app works it out
   if(ABIL_NAME[skill]) return abBonus(o, skill) + fx + worn;
   const m = new RegExp(`${skill.replace(/ /g,"\\s+")}\\s*([+-]\\d+)`, "i").exec(String(o.skills||"")); if(m) return +m[1] + fx;
-  return abBonus(o, SKILL_AB[skill] || "dex") + fx + worn + (bardLevel(o) >= 2 ? Math.floor(profOf(o) / 2) : 0);     // a Bard's Jack of All Trades: half their Proficiency Bonus on a skill they lack
+  return abBonus(o, SKILL_AB[skill] || "dex") + fx + worn + (bardLevel(o) >= 2 ? Math.floor(profOf(o) / 2) : 0)     // a Bard's Jack of All Trades: half their Proficiency Bonus on a skill they lack
+    + (o.order==="thaumaturge" && clericLevel(o) && /^(Arcana|Religion)$/i.test(skill) ? Math.max(1, abBonus(o, "wis")) : 0);     // a Thaumaturge cleric's Wisdom on Arcana and Religion
 }
 const spellModOf = o => { const s = parseInt(String(o.satk||"").replace("+","")); return isFinite(s) ? s - profOf(o) : 0; };
 const knownSpells = o => (o.spells||[]).map(id=>spellFor(o, id)).filter(Boolean);

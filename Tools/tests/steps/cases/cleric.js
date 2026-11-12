@@ -48,6 +48,13 @@ step("Turn Undead: both zombies fail: Frightened and Incapacitated, Sear Undead'
   const d0 = chebSq(c.pos[M.id], c.pos[Z2.id]); c.turn = Z2.id; holdsTurnStart(c, Z2.id); root.autoPace = "now"; const r = await autoTurn(c, Z2); const d1 = chebSq(c.pos[M.id], c.pos[Z2.id]);
   return `act.cond ${cond} | ${line} || ${after} || after Bram's hit: ${hit} || ${r ? r.said : "no turn"} | squares from Mira ${d0} → ${d1}`;
 });
+step("Divine Order on Mira's card (not Old Gnick's, nor Bram's); Thaumaturge adds her Wisdom (+3) to Religion; Blessed Strikes waits for level 7", async () => {
+  const M = clWho("Mira"), G = clWho("Old Gnick"), B = clWho("Bram"), host = document.createElement("div"); document.body.appendChild(host);
+  host.innerHTML = clericCardHtml(M.p); const opts = [...host.querySelectorAll("select")].map(s => s.dataset.k).join(", "); const r0 = skillMod(pcState(M.p), "Religion");
+  const s = host.querySelector('[data-k="order"]'); s.value = "thaumaturge"; s.dispatchEvent(new Event("change", { bubbles: true })); await wait(20); host.remove();
+  const p = pcState(M.p); p.level = 7; const seven = [...(() => { const h = document.createElement("div"); h.innerHTML = clericCardHtml(M.p); return h.querySelectorAll("select"); })()].map(x => x.dataset.k).join(", "); p.level = 5;
+  return `Mira's picks: ${opts} | order now ${M.p.order} | Religion ${r0} → ${skillMod(pcState(M.p), "Religion")}, Medicine ${skillMod(pcState(M.p), "Medicine")} | at 7: ${seven} || Old Gnick: "${clericCardHtml(G.p)}" | Bram: "${clericCardHtml(B.p)}"`;
+});
 step("Preserve Life: 25 hit points split between Bram (Bloodied, 10/44) and Old Gnick (5/27), each no higher than half its maximum; Mira (full) asks first", async () => {
   const c = clFight(), B = clWho("Bram"), G = clWho("Old Gnick"), M = clWho("Mira"); pcState(B.p).hp = 10; pcState(G.p).hp = 5; c.round++; pcState(M.p).res.find(x => x.name === "Channel Divinity").used = 0;
   await clCD("Mira", "preserve"); act.targets = [B.id, G.id]; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30);
