@@ -55,6 +55,16 @@ step("Divine Order on Mira's card (not Old Gnick's, nor Bram's); Thaumaturge add
   const p = pcState(M.p); p.level = 7; const seven = [...(() => { const h = document.createElement("div"); h.innerHTML = clericCardHtml(M.p); return h.querySelectorAll("select"); })()].map(x => x.dataset.k).join(", "); p.level = 5;
   return `Mira's picks: ${opts} | order now ${M.p.order} | Religion ${r0} → ${skillMod(pcState(M.p), "Religion")}, Medicine ${skillMod(pcState(M.p), "Medicine")} | at 7: ${seven} || Old Gnick: "${clericCardHtml(G.p)}" | Bram: "${clericCardHtml(B.p)}"`;
 });
+step("Blessed Strikes at 7: Divine Strike's chips on Mira's Mace, gone after one hit that turn; Potent Spellcasting puts +3 on Sacred Flame; at 14 a damaging cantrip offers 6 temp HP", async () => {
+  const c = clFight(), M = clWho("Mira"), F = combatants(c).find(t => /cultist/i.test(t.label)), p = pcState(M.p); p.level = 7; p.strikes = "divine"; c.round++; await clTurn(M);
+  act.what = "pca:0"; act.targets = [F.id]; act.outcome = "hit"; renderBattlePanel(); await wait(20); const chips = [...document.querySelectorAll("[data-addon]")].map(b => b.textContent.trim()).join(", ");
+  document.querySelector('[data-addon="dstrike-radiant"]').click(); await wait(20); const dice = actDice(c, M, actInfo(c, M)).dmgLabel; act.dmg = "9"; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30);
+  const line = clLast(); act = freshAct(M.id); act.what = "pca:0"; act.targets = [F.id]; renderBattlePanel(); await wait(20); const again = [...document.querySelectorAll("[data-addon]")].map(b => b.textContent.trim()).join(", ") || "none";
+  p.strikes = "potent"; act = freshAct(M.id); act.what = "sp:spell:sacred-flame"; act.targets = [F.id]; renderBattlePanel(); await wait(20); const flame = actDice(c, M, actInfo(c, M)).dmgLabel;
+  p.level = 14; c.round++; await clTurn(M); act.what = "sp:spell:sacred-flame"; act.targets = [F.id]; act.outcome = "fail"; act.dmg = "12"; renderBattlePanel(); await wait(20); p.temp = 0; clAsk([true]); $("#ac-go").click(); await wait(30);
+  const temp = `asked "${(clAsked.find(a => /Potent/.test(a)) || "no").slice(0, 70)}…", temp HP ${p.temp}`; p.level = 5; delete p.strikes; p.temp = 0;
+  return `chips: ${chips} | ${dice} | ${line} | next attack's chips: ${again} || Sacred Flame ${flame} || at 14: ${temp}`;
+});
 step("Preserve Life: 25 hit points split between Bram (Bloodied, 10/44) and Old Gnick (5/27), each no higher than half its maximum; Mira (full) asks first", async () => {
   const c = clFight(), B = clWho("Bram"), G = clWho("Old Gnick"), M = clWho("Mira"); pcState(B.p).hp = 10; pcState(G.p).hp = 5; c.round++; pcState(M.p).res.find(x => x.name === "Channel Divinity").used = 0;
   await clCD("Mira", "preserve"); act.targets = [B.id, G.id]; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30);

@@ -11898,6 +11898,12 @@ function cdInfo(t, k, res){
   if(k==="preserve") return { ...base, name:"Preserve Life", heal:true };
   return { ...base, name:"Channel Divinity" };
 }
+/* Potent Spellcasting (Blessed Strikes, 7): Wisdom on the damage of their Cleric cantrips; from 14, a damaging one offers
+   twice their Wisdom as temporary hit points (to themselves, asked first; someone else within 60 ft: by hand on their card) */
+function potentMod(t, info){
+  const p = t && t.kind==="pc" && t.p ? pcState(t.p) : null, s = info && info.spell;
+  return p && p.strikes==="potent" && clHas(p, "Blessed Strikes", 7) && s && !(+s.lv) && /\bCleric\b/.test(String(s.cls || "")) ? Math.max(0, abBonus(p, "wis")) : 0;
+}
 function d20Rescue(c, t, tot, need, what, kind){
   let w = "";
   if(!t || tot >= need) return { tot, w };
@@ -16197,6 +16203,8 @@ function attackAddons(t){
     { const lv = barbLevel(c); if(lv && c.rage) out.push({ key:"rage", name:"Rage", dice:String(rageBonus(lv)), dtype:"", rage:true, note:`Rage Damage on a Strength attack: +${rageBonus(lv)}` });
       /* a Berserker's Frenzy: raging and Reckless, the first target they hit on their turn with a Strength attack takes (Rage Damage)d6 more */
       if(lv && c.rage && berserkerOf(c)) out.push({ key:"frenzy", name:"Frenzy", dice:`${rageBonus(lv)}d6`, dtype:"", frenzy:true, note:"Raging and Reckless: the first target they hit on their turn with a Strength attack" }); }
+    /* a Cleric's Divine Strike (Blessed Strikes, 7): once on their turn, a weapon hit, +1d8 (2d8 from 14) Radiant or Necrotic */
+    if(c.strikes==="divine" && clHas(c, "Blessed Strikes", 7)) for(const dt of ["radiant", "necrotic"]) out.push({ key:`dstrike-${dt}`, name:`Divine Strike (${dt[0].toUpperCase() + dt.slice(1)})`, dice:clericLevel(c) >= 14 ? "2d8" : "1d8", dtype:dt, once:true, dstrike:true, note:"Once on their turn, a weapon hit" });
     /* Savage Attacker (the Soldier's origin feat): once a turn, a weapon's damage dice rolled twice, either total used (the higher, here) */
     if(/savage attacker/i.test(featText(c))) out.push({ key:"savage", name:"Savage Attacker", once:true, savage:true, note:"Once a turn, on a weapon hit: the damage dice rolled twice, the higher kept" });
   }
@@ -16461,13 +16469,13 @@ function actDice(c, t, info){
   const part1 = sc && sc.parts[0] ? sc.parts[0] : (info && info.hint) || null, part2 = (sc && sc.parts[1]) || null;
   const isAtk = !!info && (info.kind==="attack" || !!(info.spell && info.spell.atk) || (!info.spell && !!info.hint && !info.save && /^(fa|wsa|itm):/.test(act.what||"")));
   const MQ = isAtk ? masteryOf(t, info) : "";     // Weapon Mastery: the weapon's property, as a chip (on by itself)
-  const addons = (t && (isAtk || part1) ? [...attackAddons(t), ...(MQ ? [{ key:"mastery", name:`${MQ} (mastery)`, dice:"", dtype:"", mastery:MQ, note:MASTERY_TEXT[MQ] }] : [])] : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)));     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
+  const addons = (t && (isAtk || part1) ? [...attackAddons(t), ...(MQ ? [{ key:"mastery", name:`${MQ} (mastery)`, dice:"", dtype:"", mastery:MQ, note:MASTERY_TEXT[MQ] }] : [])] : []).filter(a => !(a.savage && (!isAtk || (info && info.spell))) && !(a.giant && !isAtk) && !(a.rage && !strAtkT(t, info)) && !(a.frenzy && !frenzyCan(c, t, info)) && !(a.dstrike && (!isAtk || (info && info.spell) || c.turn!==t.id || addonUsed(c, t.id, "dstrike-radiant") || addonUsed(c, t.id, "dstrike-necrotic"))));     // Divine Strike: a weapon, their turn, once     // on any damage, not just attacks (Joseph, 2026-10-30); Savage Attacker a weapon's, Giant Ancestry an attack roll's
   const on = addons.filter(a=>(act.addons||[]).includes(a.key));
   /* the modifier the rules add (Joseph, 2026-10-30: "a plus modifier for spiritual weapon and just in general"): a spell
      whose damage or healing is "… plus your spellcasting ability modifier" gets the caster's (Spiritual Weapon 1d8 + it,
      Cure Wounds), and the form's + box adds anything else to the damage */
   const desc = String((info && info.spell && info.spell.desc) || ""), sMod = t && t.kind==="pc" ? spellModOf(pcState(t.p)) : 0;
-  const dmgMod = (sMod && /damage[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0);
+  const dmgMod = (sMod && /damage[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0) + (Math.round(+act.dmgMod) || 0) + potentMod(t, info);     // a Cleric's Potent Spellcasting: Wisdom on their Cleric cantrips
   const healMod = sMod && /(Hit Points|regains?)[^.]*(plus|\+) your spellcasting ability modifier/i.test(desc) ? sMod : 0;     // "+ your…" too: Rin's 2014 sheet (2026-11-08)
   /* the damage, a part for each type (2026-10-30): its own, what rides on the same hit ("plus 7 (2d6) Fire"), what's ticked */
   const baseType = String(act.dtype || (part1 && part1.dtype) || "").toLowerCase(), parts = [];
@@ -16946,6 +16954,8 @@ function logAction(n, c){
   if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
     if(act.brutal){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).brutal = turnStamp(c); } }     // Brutal Strike: once on their turn
   if(act.sunderId && isAttackAct(info)) c.effects = (c.effects || []).filter(e => e.id!==act.sunderId);     // a Sundering Blow's +5, used
+  if(cp && dealt > 0 && potentMod(actor, info) && clericLevel(cp) >= 14){ const n = 2 * Math.max(0, abBonus(cp, "wis"));     // Improved Potent Spellcasting: temporary hit points
+    if(n && confirm(`Potent Spellcasting: ${actor.label} can give ${n} temporary hit points to themselves or someone within 60 feet. Give them to ${actor.label}? (Someone else: set it on their card.)`) && n > numOr(cp.temp, 0)){ cp.temp = n; flash(`${actor.label} has ${n} temporary hit points (Potent Spellcasting).`); } }
   if(isAttackAct(info)){ const tid = new Set(targets.map(o => o.id)); c.effects = (c.effects || []).filter(e => !(vexSap0.has(e.id) && ((e.vex && e.by===actor.id && tid.has(e.who)) || (e.sap && e.who===actor.id)))); }     // Vex's Advantage and Sap's Disadvantage, used
   if(act.nicked){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).nick = turnStamp(c); }
   /* a Rage kept up this turn: an attack roll against an enemy, a save forced on one, or a Bonus Action */
