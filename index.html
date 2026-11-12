@@ -11583,6 +11583,11 @@ function originRes(c){
   { const cl = clericLevel(c); if(cl >= 2 && !is2014(c)) want.push(["Channel Divinity", cl >= 18 ? 4 : cl >= 6 ? 3 : 2, "one"]); if(cl >= 10 && !is2014(c)) want.push(["Divine Intervention", 1, "long"]); }     // a 2024 Cleric's (one Channel Divinity back on a Short Rest, all on a Long)
   { const ml = monkLevel(c); if(ml >= 2 && !is2014(c)){ want.push(["Focus Points", ml, "short"], ["Uncanny Metabolism", 1, "long"]);     // a 2024 Monk's (the SRD 5.2.1 Monk table)
       if(openHandOf(c) && ml >= 6) want.push(["Wholeness of Body", Math.max(1, abBonus(c, "wis")), "long"]); } }
+  { const pl = palLevel(c); if(pl && !is2014(c)){     // a 2024 Paladin's (the SRD 5.2.1 Paladin table): Channel Divinity 2 (3 at 11), the free casts, Holy Nimbus
+      if(pl >= 3 && paHas(c, "Channel Divinity", 3) && !(clericLevel(c) >= 2)) want.push(["Channel Divinity", pl >= 11 ? 3 : 2, "one"]);
+      if(paHas(c, "Paladin's Smite", 2)) want.push(["Divine Smite, free (Paladin's Smite)", 1, "long"]);
+      if(paHas(c, "Faithful Steed", 5)) want.push(["Find Steed, free (Faithful Steed)", 1, "long"]);
+      if(devotionOf(c) && paHas(c, "Holy Nimbus", 20)) want.push(["Holy Nimbus", 1, "long"]); } }
   { const bl = bardLevel(c); if(bl) want.push(["Bardic Inspiration", Math.max(1, Math.floor(((+c.cha || 10) - 10) / 2)), bl >= 5 ? "short" : "long"]); }     // a Bard's (Font of Inspiration: a Short Rest too from 5)
   for(const [name, max, rest] of want){ let r = c.res.find(q => String(q.name || "").trim().toLowerCase()===name.toLowerCase()); if(!r) c.res.push(r = { id:uid("rs"), name, max, used:0, rest });
     r.max = max; r.used = Math.min(max, +r.used || 0); r.rest = rest; }
@@ -11637,6 +11642,9 @@ function originDo(c, t, info){
   if(info.origin==="bi"){ const d = biDie(bardLevel(p)), got = (act.targets || []).map(id => combatants(c).find(o => o.id===id)).filter(o => o && o.id!==t.id);
     for(const o of got){ const h = hOfT(o); if(h) h.bi = { die:d, by:t.label }; }
     return got.length ? [`${got.map(o => o.label).join(", ")} ${got.length > 1 ? "each hold" : "holds"} a Bardic Inspiration die (d${d}), to add to a failed attack roll, save, or check within the hour`] : []; }
+  if(info.origin==="cd" && info.cdFx==="sense") return [`${t.label} knows where every Celestial, Fiend, and Undead within 60 ft is, and its type, for 10 minutes (and consecrated or desecrated places)`];
+  if(info.origin==="cd" && info.cdFx==="sacred"){ p.sacred = { round:c.round }; return [`${t.label}'s melee weapon is imbued for 10 minutes: +${Math.max(1, abBonus(p, "cha"))} to hit, Radiant damage if they like (set the Type), Bright Light 20 ft`]; }
+  if(info.origin==="nimbus"){ p.nimbus = { round:c.round }; return [`Holy Nimbus for 10 minutes: Advantage on saves forced by Fiends or Undead; an enemy starting its turn in the aura takes ${Math.max(0, abBonus(p, "cha")) + pb} Radiant; the aura is sunlight`]; }
   if(info.origin==="rageExt"){ if(p.rage) p.rage.ext = turnStamp(c); return [`${t.label}'s Rage goes on until the end of their next turn`]; }
   if(info.origin==="rage"){ const lv = barbLevel(p), out = [];
     p.rage = { since:c.round, ext:turnStamp(c) };
@@ -11781,6 +11789,7 @@ function saveModeT(c, t, k){
   const A = [], D = []; if(!t) return { adv:false, dis:false, why:"", stagger:false };
   if(k==="str" && strAdvT(t)) A.push(strAdvWhy(t));
   if(k==="dex" && dangerSenseT(t)) A.push("Danger Sense");
+  if(t.kind!=="foe" && t.p && t.p.nimbus && c && fiendOrUndeadT(combatants(c).find(o => o.id===act.actor))) A.push("Holy Ward");     // Holy Nimbus: a save a Fiend or Undead forces
   const stagger = !!(c && (c.effects || []).some(e => e.who===t.id && e.stagger)); if(stagger) D.push("Staggering Blow");
   return { adv:A.length > 0, dis:D.length > 0, why:[...A, ...D].join(", "), stagger };
 }
@@ -11917,6 +11926,10 @@ function cdChoices(p){
   if(clHas(p, "Channel Divinity", 2) && !is2014(p)) o.push(["spark-heal", "Divine Spark: heal"], ["spark-radiant", "Divine Spark: Radiant damage"], ["spark-necrotic", "Divine Spark: Necrotic damage"]);
   if(turnHas(p)) o.push(["turn", "Turn Undead"]);
   if(lifeOf(p) && clHas(p, "Preserve Life", 3)) o.push(["preserve", "Preserve Life"]);
+  /* a Paladin's (2026-11-12): Divine Sense (3), Abjure Foes (9), a Devotion paladin's Sacred Weapon (3) */
+  if(paHas(p, "Channel Divinity", 3)) o.push(["sense", "Divine Sense: Celestials, Fiends, and Undead within 60 ft, 10 minutes"]);
+  if(devotionOf(p) && paHas(p, "Sacred Weapon", 3)) o.push(["sacred", `Sacred Weapon: +${Math.max(1, abBonus(p, "cha"))} to hit with a melee weapon, 10 minutes`]);
+  if(paHas(p, "Abjure Foes", 9)) o.push(["abjure", `Abjure Foes: up to ${Math.max(1, abBonus(p, "cha"))} creatures, a Wisdom save or Frightened`]);
   return o;
 }
 function cdInfo(t, k, res){
@@ -11927,6 +11940,10 @@ function cdInfo(t, k, res){
   if(k==="turn") return { ...base, name:"Turn Undead", save:true, cond:"Frightened",
     text:`Wisdom Saving Throw: DC ${dc}. Failure: the creature has the Frightened${is2014(p) ? "" : " and Incapacitated"} conditions for 1 minute, and tries to move as far from you as it can on its turns. This effect ends early on the creature if it takes any damage.` };
   if(k==="preserve") return { ...base, name:"Preserve Life", heal:true };
+  if(k==="sense") return { ...base, name:"Divine Sense", ba:true, self:true };
+  if(k==="sacred") return { ...base, name:"Sacred Weapon", self:true };
+  if(k==="abjure") return { ...base, name:"Abjure Foes", save:true, cond:"Frightened",
+    text:`Wisdom Saving Throw: DC ${dc}. Failure: the creature has the Frightened condition for 1 minute. While Frightened this way, it can only move, take an action, or take a Bonus Action on its turns. This effect ends early on the creature if it takes any damage.` };
   return { ...base, name:"Channel Divinity" };
 }
 /* the Life Domain: Disciple of Life (3), a spell cast with a slot heals 2 + the slot's level more; Blessed Healer (6), healing
@@ -12154,6 +12171,82 @@ function monkCardHtml(c){
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-qpclear]"); if(!b) return; const p = pcById(b.dataset.qpclear); if(!p) return;
   delete p.qpalm; gameLog("fight", `${p.name || "The monk"} ends Quivering Palm's vibrations harmlessly`); saveParty(); touch(); try{ renderPane(true); if(battleOf) renderBattlePanel(); }catch(err){} });
+/* ══ THE PALADIN (Joseph, 2026-11-12, the SRD walk-through: "Yes please"; text from his SRD 5.2.1 PDF). palLevel (above,
+   with Lay on Hands' pool); the Oath of Devotion by subclass; only what the sheet has, and only on a 2024 sheet. The
+   auras reach 10 ft from the Paladin's token (30 ft from 18), on their side, off while they're Incapacitated ══ */
+function devotionOf(c){ return palLevel(c) > 0 && /devotion/i.test(`${(c && c.subcls) || ""} ${(c && c.cls) || ""}`); }
+function paHas(c, name, lv){ return !!c && !is2014(c) && palLevel(c) >= lv && (c.feats ? new RegExp(`\\b${name}\\b`, "i").test(c.feats) : true); }
+const fiendOrUndeadT = t => !!t && t.kind==="foe" && /\b(undead|fiend)\b/i.test(String((foeById(t.x.foe) || {}).type || ""));
+/* the Paladins whose Aura of Protection covers t (the token's square within reach of theirs) */
+function auraPals(c, t){
+  if(!c || !c.pos || !t || !c.pos[t.id]) return [];
+  return combatants(c).filter(o => o.kind==="pc" && o.p && o.side===t.side && !o.fled && !isDownT(o) && c.pos[o.id] && paHas(pcState(o.p), "Aura of Protection", 6) && !condsOfT(o).some(k => INCAP.includes(k))
+    && chebSq(c.pos[o.id], c.pos[t.id]) * 5 <= (paHas(pcState(o.p), "Aura Expansion", 18) ? 30 : 10));
+}
+/* Aura of Protection: + the Paladin's Charisma modifier (at least 1) on saves; the best one if two Paladins cover them */
+const auraSave = t => { const P = auraPals(aoeFight(), t); return P.length ? Math.max(...P.map(o => Math.max(1, abBonus(pcState(o.p), "cha")))) : 0; };
+/* the always-prepared spells: Divine Smite (Paladin's Smite, 2), Find Steed (Faithful Steed, 5), the Oath of Devotion's */
+const DEVOTION_SPELLS = [[3, ["Protection from Evil and Good", "Shield of Faith"]], [5, ["Aid", "Zone of Truth"]], [9, ["Beacon of Hope", "Dispel Magic"]], [13, ["Freedom of Movement", "Guardian of Faith"]], [17, ["Commune", "Flame Strike"]]];
+function palSpells(p){
+  const lv = palLevel(p); if(!lv || is2014(p)) return []; const names = [];
+  if(paHas(p, "Paladin's Smite", 2)) names.push("Divine Smite"); if(paHas(p, "Faithful Steed", 5)) names.push("Find Steed");
+  if(devotionOf(p)) for(const [L, N] of DEVOTION_SPELLS) if(lv >= L) names.push(...N);
+  return names.map(n => spellByName(n)).filter(Boolean);
+}
+/* Divine Smite on a hit: the slot levels they can spend (and the free cast, Paladin's Smite) */
+const smiteFreeRes = p => ((p && p.res) || []).find(r => /^divine smite\b/i.test(r.name || "") && /free|no slot/i.test(r.name || ""));
+function smiteOpts(p){
+  const o = [], fr = smiteFreeRes(p); if(fr && fr.used < fr.max) o.push(["free", "Free (Paladin's Smite), as 1st level"]);
+  for(let L = 1; L <= 9; L++) if(p.slots && p.slots[L] && p.slots[L].max > p.slots[L].used) o.push([String(L), `A ${ORD[L]}-level slot (${p.slots[L].max - p.slots[L].used} left)`]);
+  return o;
+}
+const smiteKnown = p => !!p && (paHas(p, "Paladin's Smite", 2) || (p.spells || []).includes("spell:divine-smite"));
+const smiteLvlOf = p => { const o = smiteOpts(p), v = o.some(x => x[0]===act.smiteLvl) ? act.smiteLvl : (o[0] || [])[0]; return v==="free" ? 1 : +v || 1; };
+function smiteHtml(c, t, info){
+  if(!t || t.kind!=="pc" || !t.p || !(act.addons || []).includes("smite")) return ""; const o = smiteOpts(pcState(t.p)); if(!o.length) return "";
+  const v = o.some(x => x[0]===act.smiteLvl) ? act.smiteLvl : o[0][0], tg = combatants(c).find(x => x.id===(act.targets || [])[0]);
+  return `<div class="field" style="margin:-2px 0 6px"><label>Divine Smite (a Bonus Action, on the hit)${tg && fiendOrUndeadT(tg) ? `: +1d8, ${esc(tg.label)} is a Fiend or Undead` : ""}</label><select id="ac-smite">${o.map(([k, l]) => `<option value="${k}" ${k===v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
+}
+/* after the hit: the slot (or the free cast) spent, the Bonus Action, and Smite of Protection (Devotion 15): Half Cover for them and allies in the aura until their next turn */
+function smiteSpend(c, actor, turned){
+  const p = pcState(actor.p), o = smiteOpts(p), v = o.some(x => x[0]===act.smiteLvl) ? act.smiteLvl : (o[0] || [])[0]; if(!v) { turned.push("Divine Smite: no slot left to spend"); return; }
+  if(v==="free"){ const r = smiteFreeRes(p); r.used = (+r.used || 0) + 1; turned.push(`Divine Smite, free (Paladin's Smite; back on a Long Rest)`); }
+  else { p.slots[+v].used++; turned.push(`Divine Smite with a ${ORD[+v]}-level slot`); }
+  act.smiteBA = true;
+  if(devotionOf(p) && paHas(p, "Smite of Protection", 15)){ const near = combatants(c).filter(o2 => auraPals(c, o2).some(x => x.id===actor.id));
+    for(const o2 of near) (c.effects = c.effects || []).push({ id:uid("ef"), who:o2.id, cond:"", by:actor.id, name:"Smite of Protection", at:turnStamp(c), round:c.round, end:"srcStart", repeat:null, sp:null, rounds:null, sanct:"" });
+    if(near.length) turned.push(`Smite of Protection: Half Cover for ${andList(near.map(x => x.label))} until ${actor.label}'s next turn`); }
+}
+/* Radiant Strikes (11): +1d8 Radiant on a hit with a melee weapon or an Unarmed Strike (on by itself) */
+const meleeWeaponT = info => !!info && !info.spell && isAttackAct(info) && !/Ammunition/.test(WEAPON_PROPS[weaponKind(info.name)] || "") && !/\b(bow|crossbow|sling|blowgun)\b/i.test(info.name || "");
+const rstrikeOn = (t, info) => !!(t && t.kind==="pc" && t.p && paHas(pcState(t.p), "Radiant Strikes", 11) && meleeWeaponT(info));
+/* Sacred Weapon (Devotion 3): + Charisma (at least 1) to hit with their melee weapon for 10 minutes (p.sacred) */
+const sacredHit = (t, info) => { const p = t && t.kind==="pc" && t.p ? t.p : null, c = aoeFight(); if(!p || !p.sacred || !meleeWeaponT(info)) return 0; if(c && c.round - (p.sacred.round || c.round) >= 100){ delete p.sacred; return 0; } return Math.max(1, abBonus(pcState(p), "cha")); };
+/* the start of anyone's turn: Holy Nimbus (Devotion 20) burns an enemy starting it in the aura: Charisma + Proficiency Bonus Radiant */
+function palTurnStart(c, id){
+  const t = combatants(c).find(x => x.id===id); if(!t || isDownT(t)) return;
+  for(const o of combatants(c)){ const p = o.kind==="pc" && o.p ? o.p : null; if(!p || !p.nimbus) continue;
+    if(c.round - (p.nimbus.round || c.round) >= 100){ delete p.nimbus; continue; }
+    if(t.side===o.side || t.side==="neutral" || !c.pos || !c.pos[t.id] || !c.pos[o.id] || condsOfT(o).some(k => INCAP.includes(k)) || chebSq(c.pos[o.id], c.pos[t.id]) * 5 > (paHas(pcState(p), "Aura Expansion", 18) ? 30 : 10)) continue;
+    const P = pcState(p), n0 = Math.max(0, abBonus(P, "cha")) + pbOfPc(P), how = dmgTakes(t, "radiant"), n = dmgAfter(n0, how), snap = snapOf(c, [t.id]), ds = [], down = n > 0 ? (t.kind==="foe" ? damageFoe(t.x, n) : damagePc(t.p, n, false, ds)) : false;
+    const line = `${t.label} starts its turn in ${o.label}'s Holy Nimbus: ${n} Radiant damage${how ? ` (${how})` : ""}${ds.length ? `, ${ds.join(", ")}` : ""}${down ? `. ${t.label} drops` : ""}`;
+    (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + ".", snap }); gameLog("fight", line); }
+}
+/* a Paladin's card (only theirs): Lay on Hands' pool, the aura, Holy Nimbus's slot button */
+function palCardHtml(c){
+  const lv = palLevel(c); if(!lv || is2014(c)) return ""; const B = [], r = (c.res || []).find(q => /lay on hands/i.test(q.name || ""));
+  if(r) B.push(`Lay on Hands ${r.max - r.used}/${r.max}`);
+  if(paHas(c, "Aura of Protection", 6)) B.push(`Aura ${paHas(c, "Aura Expansion", 18) ? 30 : 10} ft: saves +${Math.max(1, abBonus(c, "cha"))}${paHas(c, "Aura of Courage", 10) ? ", no Frightened" : ""}${devotionOf(c) && paHas(c, "Aura of Devotion", 7) ? ", no Charmed" : ""}`);
+  if(c.sacred) B.push("Sacred Weapon up"); if(c.nimbus) B.push("Holy Nimbus up");
+  const hn = (c.res || []).find(q => /^holy nimbus$/i.test(q.name || "")), s5 = c.slots && c.slots[5] && c.slots[5].max > c.slots[5].used;
+  return `<div class="fc-res">${B.map(b => `<span class="chip">${esc(b)}</span>`).join("")}${(c.sacred || c.nimbus) ? `<button class="btn small" data-palend="${esc(c.id)}" title="No action needed">End ${c.sacred && c.nimbus ? "them" : c.sacred ? "Sacred Weapon" : "Holy Nimbus"}</button>` : ""}${hn && hn.used >= hn.max && s5 ? `<button class="btn small" data-palnim="${esc(c.id)}" title="No action needed">A 5th-level slot: Holy Nimbus back</button>` : ""}</div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-palend],[data-palnim]"); if(!b) return; const p = pcById(b.dataset.palend || b.dataset.palnim); if(!p) return; pcState(p);
+  if(b.dataset.palend){ delete p.sacred; delete p.nimbus; gameLog("fight", `${p.name || "The paladin"} ends it`); }
+  else { const hn = p.res.find(q => /^holy nimbus$/i.test(q.name || "")); if(!hn || !(p.slots[5] && p.slots[5].max > p.slots[5].used)) return; p.slots[5].used++; hn.used = Math.max(0, hn.used - 1); gameLog("spell", `${p.name || "The paladin"} spends a 5th-level slot: Holy Nimbus back`); }
+  saveParty(); touch(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} });
+/* Restoring Touch (14): Lay on Hands also ends these, 5 from the pool each */
+const RESTORE_CONDS = ["Blinded", "Charmed", "Deafened", "Frightened", "Paralyzed", "Stunned"];
 /* Archdruid's Evergreen Wild Shape (20): rolling Initiative with no use left gives one back */
 function evergreenWS(c, id){
   const t = combatants(c).find(x => x.id===id), p = t && t.kind==="pc" && t.p ? pcState(t.p) : null; if(!p || !drHas(p, "Archdruid", 20)) return;
@@ -12610,13 +12703,13 @@ function wildFormsEditor(c, i){
 }
 /* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
 function originCardHtml(c){
-  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + fighterCardHtml(c) + monkCardHtml(c) + masteryCardHtml(c);
+  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + fighterCardHtml(c) + monkCardHtml(c) + palCardHtml(c) + masteryCardHtml(c);
 }
 /* a Fighter's Fighting Style picks (only theirs; a Champion's second from 7), and Heroic Inspiration on anyone's card who has it */
 const STYLES = [["archery", "Archery: +2 to hit with Ranged weapons"], ["defense", "Defense: +1 AC in armor"], ["gwf", "Great Weapon Fighting: 1s and 2s as 3s, two-handed"], ["twf", "Two-Weapon Fighting: the modifier on the off-hand attack"]];
 function fighterCardHtml(c){
-  const row = (k, label) => `<div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">${label}</label><select data-clpick="${esc(c.id)}" data-k="${k}" style="flex:2;min-width:0"><option value="">Pick one</option>${STYLES.filter(([v]) => k==="style1" ? v!==c.style2 : v!==c.style1).map(([v, l]) => `<option value="${v}" ${c[k]===v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
-  return (fiHas(c, "Fighting Style", 1) ? row("style1", "Fighting Style") : "") + (champOf(c) && fiHas(c, "Additional Fighting Style", 7) ? row("style2", "Additional Fighting Style") : "")
+  const row = (k, label) => `<div class="pcrow" style="align-items:center;margin:4px 0"><label class="mini" style="flex:1">${label}</label><select data-clpick="${esc(c.id)}" data-k="${k}" style="flex:2;min-width:0"><option value="">Pick one</option>${STYLES.concat(palLevel(c) ? [["blessed", "Blessed Warrior: two Cleric cantrips, with Charisma"]] : []).filter(([v]) => k==="style1" ? v!==c.style2 : v!==c.style1).map(([v, l]) => `<option value="${v}" ${c[k]===v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
+  return (fiHas(c, "Fighting Style", 1) || paHas(c, "Fighting Style", 2) ? row("style1", "Fighting Style") : "") /* (a Paladin's at 2, or Blessed Warrior) */ + (champOf(c) && fiHas(c, "Additional Fighting Style", 7) ? row("style2", "Additional Fighting Style") : "")
     + (c.insp ? `<div class="fc-res"><span class="chip" title="Spend it to reroll any die you roll, and use either roll">Heroic Inspiration</span><button class="btn small" data-inspuse="${esc(c.id)}">Used it</button></div>` : "");
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-inspuse]"); if(!b) return; const p = pcById(b.dataset.inspuse); if(!p) return;
@@ -12727,6 +12820,7 @@ function restPc(c, kind){
   delete c.big;                                                  // Large Form lasts 10 minutes: any rest outlasts it
   delete c.rage; delete c.reck; delete c.relDC;                  // and a Rage; Relentless Rage's DC is back to 10
   delete c.bi;                                                   // a Bardic Inspiration die lasts the hour
+  delete c.sacred; delete c.nimbus; delete c.supDef;             // Sacred Weapon and Holy Nimbus (10 minutes), Superior Defense
   if(kind==="long") delete c.persistUsed;                        // Persistent Rage again
   if(kind==="short"){ for(const r of c.res){ if(r.rest==="short") r.used = 0; else if(r.rest==="one") r.used = Math.max(0, r.used-1); } return; }
   const max = numOr(c.hpMax); if(max!=null) c.hp = max;
@@ -16103,6 +16197,7 @@ const OUTCOMES = [["hit","Hit"],["crit","Crit"],["miss","Miss"],["fail","Save fa
 function selfOnly(info, t){
   if(!info) return false;
   if(info.monk) return !!info.self;     // Patient Defense, Step of the Wind, Wholeness of Body, Superior Defense
+  if(info.cdFx==="sense" || info.cdFx==="sacred" || info.origin==="nimbus") return true;     // a Paladin's
   if(info.spell){ const r = String(info.spell.range||""); return /^self/i.test(r) && !/radius|cone|cube|line|sphere|emanation/i.test(r) && (!info.spell.dmg || !!spellTemp(info.spell)); }     // False Life: its "dmg" is its temporary hit points
   if(info.res) return /second wind|action surge|form of dread|rage|wild shape|cunning action/i.test(String(info.name||info.res));
   if(info.kind==="item" && !info.bite && t && t.p){ const x = usableOf(pcState(t.p)).find(y=>y.k===info.useK); return !!x && (/\byourself\b/i.test(x.u.effect || "") || (!!x.u.tempHp && !x.u.heal)); }
@@ -16153,9 +16248,9 @@ function saveBonusOf(t, abil){
   const said = s => { const m = new RegExp(`\\b${k}[a-z]*\\s*([+-]\\d+)`, "i").exec(String(s||"")); return m ? +m[1] : null; };
   if(t.kind==="foe"){ const m = foeById(t.x.foe), v = m && said(m.sav); if(v!=null) return v; return Math.floor(((m && Array.isArray(m.ab) ? +m.ab[ABK.indexOf(k)] : 10) - 10) / 2); }
   const o = t.kind==="pc" ? pcState(t.p) : t.p; if(!o) return 0;
-  const v = said(o.saves) ?? said((pcStatBlock(t.p)||{}).sav); if(v!=null) return v;
+  const v = said(o.saves) ?? said((pcStatBlock(t.p)||{}).sav); if(v!=null) return v + auraSave(t);     // (a Paladin's Aura of Protection: not in the sheet's numbers)
   const cls = Object.keys(CLASS_SAVES).find(n=>new RegExp(`\\b${n}\\b`, "i").test(String(o.cls||""))), prof = (cls && CLASS_SAVES[cls].includes(k)) || mkHas(o, "Disciplined Survivor", 14) ? profOf(o) : 0;     // the class's save proficiencies (a Monk's Disciplined Survivor: all)
-  return abBonus(o, k) + prof + fxNum(o, "save", k, true) - fxNum(o, "save", k, false);     // what they wear (a Cloak of Protection): only here, where the app works it out
+  return abBonus(o, k) + prof + fxNum(o, "save", k, true) - fxNum(o, "save", k, false) + auraSave(t);     // what they wear (a Cloak of Protection): only here, where the app works it out
 }
 function saveRow(c, t, info, all){
   const S = saveOfAct(c, t, info); if(!S) return "";
@@ -16191,7 +16286,7 @@ function toHitRow(c, t, info, all){
       <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
     ${(() => { if(act.adv || !tg) return ""; const hu = act.helpUsed, CA = rollAdvOf(c, t, tg, info); act.helpUsed = hu; if(!CA || !CA.v) return "";     // what the app works out, said before anyone rolls (Joseph, 2026-11-08: Ander's Poisoned did nothing to a d20 typed in)
       const A = CA.v==="adv"; return `<p class="actspell" style="margin:-2px 0 6px;color:var(--lead)"><b>Roll with ${A ? "Advantage" : "Disadvantage"}</b>${CA.why ? `: ${esc(CA.why)}` : ""}. A d20 from the table: they roll two and you type the ${A ? "higher" : "lower"}.</p>`; })()}
-    ${reckRowHtml(c, t, info)}${tmasterHtml(c, t, info)}${ohHtml(c, t, info)}
+    ${reckRowHtml(c, t, info)}${tmasterHtml(c, t, info)}${ohHtml(c, t, info)}${smiteHtml(c, t, info)}
     ${(() => { const me = luckLeft(t), vs = tg && tg.side!==t.side ? luckLeft(tg) : 0; if(!me && !vs) return "";
       return `<div class="pcrow" style="align-items:center;margin:-2px 0 6px;font-size:12px">${me ? `<label title="Lucky: Advantage on this attack roll (the 2024 rule; 3 points a long rest)"><input type="checkbox" id="ac-luckme" ${act.luckMe ? "checked" : ""}> ${esc(t.label)} spends a Luck point: Advantage (${me} left)</label>` : ""}
         ${vs ? `<label title="Lucky: an attack roll against them has Disadvantage"><input type="checkbox" id="ac-luckvs" ${act.luckVs ? "checked" : ""}> ${esc(tg.label)} spends a Luck point: Disadvantage on it (${vs} left)</label>` : ""}</div>`; })()}
@@ -16319,7 +16414,7 @@ function isActionAct(t, info, what, isBonus){
   if(!info || isBonus || act.reaction || act.legendary || info.kind==="flee" || /action surge/i.test(info.name||"") || /opportunity/i.test(what||"")) return false;
   if(info.spell && /reaction/i.test(info.spell.time||"")) return false;     // Shield, Counterspell: a reaction
   if(info.free) return false;
-  if(info.monk==="fs" || info.monk==="sd") return false;     // Flurry of Blows' next strike (its Bonus Action is spent), Superior Defense (no action)
+  if(info.monk==="fs" || info.monk==="sd" || info.cdFx==="sacred") return false;     // (Sacred Weapon: with the Attack action)     // Flurry of Blows' next strike (its Bonus Action is spent), Superior Defense (no action)
   const w = String(what||""), nm = w.replace(/^(fa|wsa):/, "");
   if(w.startsWith("fa:") && t && t.kind==="foe"){ const m = foeById(t.x.foe); if(m && (pairs(m.leg).some(([n])=>n===nm) || pairs(m.rea).some(([n])=>n===nm))) return false; }
   if(w.startsWith("wsa:") && t && t.p){ const sb = pcStatBlock(t.p); if(sb && pairs(sb.rea).some(([n])=>n===nm || n===`Reaction: ${nm}`)) return false; }
@@ -16413,7 +16508,7 @@ function actionChoices(t){
         ? { v:`bite:${x.k}`, label:`${usableLabel(x)} · ${x.u.onHitBa ? "Bonus Action, " : ""}after a hit` }
         : { v:`use:${x.k}`, label:`${usableLabel(x)}${x.u.use?` · ${x.u.use}`:""}` }) });
       const asRow = new Set((c.attacks||[]).map(a=>rowSpell(t.p, a)).filter(Boolean).map(s=>s.id));
-      const known = (c.spells||[]).map(spellOf).filter(s=>s && !asRow.has(s.id)).concat(circleSpells(c).filter(s => !(c.spells||[]).includes(s.id))).sort((a,b)=>a.lv-b.lv||a.name.localeCompare(b.name));     // a Land druid's Circle Spells, always prepared
+      const known = (c.spells||[]).map(spellOf).filter(s=>s && !asRow.has(s.id)).concat(circleSpells(c).filter(s => !(c.spells||[]).includes(s.id))).concat(palSpells(c).filter(s => !(c.spells||[]).includes(s.id) && !circleNames(c).includes(s.name))).sort((a,b)=>a.lv-b.lv||a.name.localeCompare(b.name));     // a Land druid's Circle Spells, always prepared
       if(known.length) out.push({ group:`${t.label}'s spells`, items:known.map(s=>({ v:`sp:${s.id}`, label:`${s.name} (${s.lv?ORD[s.lv]:"cantrip"})` })) });
     }
     if(beast && drHas(c, "Beast Spells", 18)){ const S = (c.spells||[]).map(spellOf).concat(circleSpells(c)).filter(Boolean).filter(s => !/\b(\d[\d,]*\+? ?gp|consume[sd]?)\b/i.test(String(s.comp || "")));     // Beast Spells (18): spells in beast form, not those with a costly or consumed component
@@ -16530,6 +16625,10 @@ function attackAddons(t){
     if(/savage attacker/i.test(featText(c))) out.push({ key:"savage", name:"Savage Attacker", once:true, savage:true, note:"Once a turn, on a weapon hit: the damage dice rolled twice, the higher kept" });
     /* a Monk's Stunning Strike (5): once a turn, on a Monk weapon or Unarmed Strike hit, 1 Focus Point (spent on a hit); Quivering Palm (Open Hand 17): 4 on an Unarmed Strike hit */
     { const fc = aoeFight(); if(mkHas(c, "Stunning Strike", 5) && focusLeft(c) > 0 && !(fc && addonUsed(fc, t.id, "stun"))) out.push({ key:"stun", name:"Stunning Strike", stun:true, note:`Once a turn, on a Monk weapon or Unarmed Strike hit: 1 Focus Point; a Constitution save (DC ${focusDC(c)}) or Stunned until the start of their next turn, else Speed halved and the next attack on it with Advantage` });
+      /* a Paladin's Divine Smite on a hit (Paladin's Smite, 2; or the spell known): 2d8 Radiant, +1d8 a slot level above 1st, +1d8 on a Fiend or Undead; the slot (or free cast) and the Bonus Action spent when it hits */
+      if(smiteKnown(c) && smiteOpts(c).length){ const L = smiteLvlOf(c), tg = fc && combatants(fc).find(x => x.id===(act.targets || [])[0]); out.push({ key:"smite", name:"Divine Smite", dice:`${1 + L + (tg && fiendOrUndeadT(tg) ? 1 : 0)}d8`, dtype:"radiant", smite:true, note:"A Bonus Action on the hit: a spell slot (picked under it) or the free cast; +1d8 a level above 1st, +1d8 on a Fiend or Undead" }); }
+      /* Radiant Strikes (11): +1d8 Radiant on a melee weapon or Unarmed Strike hit, on by itself */
+      if(paHas(c, "Radiant Strikes", 11)) out.push({ key:"rstrike", name:"Radiant Strikes", dice:"1d8", dtype:"radiant", note:"Every hit with a melee weapon or an Unarmed Strike" });
       if(openHandOf(c) && mkHas(c, "Quivering Palm", 17) && focusLeft(c) >= 4 && !c.qpalm) out.push({ key:"qpalm", name:"Quivering Palm", qpalm:true, note:"On an Unarmed Strike hit: 4 Focus Points, the vibrations set (end them later with an action: 10d12 Force, a Constitution save for half)" }); }
   }
   if(t.kind==="pc") out.push(...itemExtras(pcState(t.p)));
@@ -16569,7 +16668,7 @@ function spellAddonUp(c, t, key, v){
 function autoAddonKeys(c, t, info, rowDt){
   if(!t || !info) return [];
   const lit = (c.lit || {})[t.id] || {}, dt = String(rowDt || ""), weaponHit = !info.spell;
-  const own = [...(ragingT(t) && strAtkT(t, info) ? ["rage"] : []), ...(frenzyCan(c, t, info) ? ["frenzy"] : []), ...(masteryOf(t, info) && !["Nick", "Cleave"].includes(masteryOf(t, info)) ? ["mastery"] : [])];     // Rage Damage, Frenzy, a weapon's mastery: on by themselves
+  const own = [...(ragingT(t) && strAtkT(t, info) ? ["rage"] : []), ...(frenzyCan(c, t, info) ? ["frenzy"] : []), ...(masteryOf(t, info) && !["Nick", "Cleave"].includes(masteryOf(t, info)) ? ["mastery"] : []), ...(rstrikeOn(t, info) ? ["rstrike"] : [])];     // Rage Damage, Frenzy, a weapon's mastery: on by themselves
   return own.concat(attackAddons(t).filter(a => !new RegExp(`\\b${a.dtype}\\b`, "i").test(dt) && (
     (a.key.startsWith("inv:") && extraFits(a, act.what, info.name) && (!a.cond || lit[a.key])) ||
     (a.key.startsWith("spell:") && weaponHit && lit[a.key] && spellAddonUp(c, t, a.key, lit[a.key])))).map(a => a.key));
@@ -16650,6 +16749,7 @@ function condImmune(t, cond){
   const c = String(cond||"").toLowerCase(); if(!c) return false;
   if(t.kind!=="foe" && t.p && t.p.rage && berserkerOf(t.p) && barbLevel(t.p) >= 6 && (c==="charmed" || c==="frightened")) return true;     // Mindless Rage
   if(t.kind!=="foe" && t.p && c==="poisoned" && wardOf(t.p)) return true;     // Nature's Ward
+  if(/^(frightened|charmed)$/.test(c) && auraPals(aoeFight(), t).some(o => c==="frightened" ? paHas(pcState(o.p), "Aura of Courage", 10) : devotionOf(pcState(o.p)) && paHas(pcState(o.p), "Aura of Devotion", 7))) return true;     // a Paladin's Aura of Courage (10) and Devotion's Aura of Devotion (7)
   const m = t.kind==="foe" ? foeById(t.x.foe) : null, p = t.kind==="foe" ? null : t.p;
   if(m && String(m.cimm||"").toLowerCase().split(/[,;]\s*|\s+and\s+/).map(s=>s.trim()).includes(c)) return true;
   const def = [p && p.defenses, m && (pairs(m.tr).find(([n])=>/^Defenses$/i.test(n))||[])[1]].filter(Boolean).join(" ; ").toLowerCase();
@@ -16751,7 +16851,8 @@ function actInfo(c, t){
       if(act.wsFx==="aid" && drHas(p, "Land's Aid", 3)) return { kind:"ability", name:"Land's Aid", res:w.slice(4), origin:"landaid", save:true, hint:{ dice, dtype:"necrotic" }, healDice:"",
         text:`Constitution Saving Throw: DC ${dc}. Failure: ${dice} Necrotic damage. Success: half as much damage. One creature of your choice in the area regains ${dice} Hit Points.` };
       if(act.wsFx==="sanct" && drHas(p, "Nature's Sanctuary", 14)) return { kind:"ability", name:"Nature's Sanctuary", res:w.slice(4), origin:"sanct", healDice:"" }; }
-    if(/^channel divinity\b/i.test(nm) && clericLevel(pcState(t.p))){ const C = cdChoices(pcState(t.p)), k = C.some(x => x[0]===act.cdFx) ? act.cdFx : (C[0] || [])[0]; if(k) return cdInfo(t, k, w.slice(4)); }     // a Cleric's Channel Divinity: the effect picked under it
+    if(/^holy nimbus$/i.test(nm) && devotionOf(pcState(t.p))) return { kind:"ability", name:"Holy Nimbus", res:w.slice(4), ba:true, origin:"nimbus", self:true, healDice:"" };     // a Devotion paladin's (20)
+    if(/^channel divinity\b/i.test(nm) && (clericLevel(pcState(t.p)) || palLevel(pcState(t.p)))){ const C = cdChoices(pcState(t.p)), k = C.some(x => x[0]===act.cdFx) ? act.cdFx : (C[0] || [])[0]; if(k) return cdInfo(t, k, w.slice(4)); }     // a Cleric's Channel Divinity: the effect picked under it
     if(/^bardic inspiration$/i.test(nm) && bardLevel(pcState(t.p))) return { kind:"ability", name:"Bardic Inspiration", res:w.slice(4), ba:true, origin:"bi", healDice:"" };     // a Bard's: a die to someone else
     if(/^intimidating presence$/i.test(nm)){ const dc = ipDC(pcState(t.p));     // a Berserker's, level 14: a Bonus Action, a Wisdom save or Frightened
       return { kind:"ability", name:"Intimidating Presence", res:w.slice(4), ba:true, origin:"ip", save:true, cond:"Frightened", healDice:"",
@@ -16901,7 +17002,7 @@ function actionForm(c, all){
     ${info && info.origin==="cd" ? `<div class="field" style="margin:-2px 0 6px"><label>Channel Divinity: which</label><select id="ac-cdfx">${cdChoices(pcState(t.p)).map(([k, l]) => `<option value="${k}" ${k===info.cdFx ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
       ${info.cdFx==="preserve" ? `<p class="empty-note" style="font-size:11px;margin:-4px 0 6px">${5 * clericLevel(pcState(t.p))} hit points split among the Bloodied creatures picked (within 30 ft), in the order picked; none above half its hit point maximum.</p>` : ""}` : ""}
     ${info && info.loh ? (r=>`<div class="pcrow" style="align-items:center"><p class="empty-note" style="flex:2;font-size:11px;margin:0">Lay on Hands, a Bonus Action and a touch: ${r ? r.max - r.used : 0} of ${r ? r.max : 0} hit points left in the pool. Pick who (themself too), and type how many it restores in Healing.</p>
-      <button class="chip${act.lohPoison ? " on" : ""}" data-lohpois title="5 from the pool ends the Poisoned condition (those 5 don't also heal)">End Poisoned (5)</button></div>`)(pcState(t.p).res.find(q=>(q.id||q.name)===info.res)) : ""}
+      <button class="chip${act.lohPoison ? " on" : ""}" data-lohpois title="5 from the pool ends the Poisoned condition (those 5 don't also heal)">End Poisoned (5)</button>${paHas(pcState(t.p), "Restoring Touch", 14) ? RESTORE_CONDS.map(k => `<button class="chip${(act.lohCure || []).includes(k) ? " on" : ""}" data-lohcure="${k}" title="Restoring Touch: 5 from the pool ends it">End ${k} (5)</button>`).join("") : ""}</div>`)(pcState(t.p).res.find(q=>(q.id||q.name)===info.res)) : ""}
     ${D.parts.length > 1 ? `<div class="pcrow">${D.parts.map((p, i)=>`<div class="field" style="flex:1;min-width:0"><label>${esc(p.dice)} ${esc(p.dtype)}</label><div style="display:flex;gap:4px"><input class="mono" type="number" min="0" data-acpart="${i}" value="${esc(String(((act.partV||{})[p.dtype]||{}).v ?? ""))}" placeholder="—" style="min-width:0;flex:1" title="Rolled at the table? Type it in"><button class="btn" data-acroll="part:${i}" title="Rolls just this part">Roll</button></div></div>`).join("")}</div>` : ""}
     ${D.dmgDice || D.healDice ? `<div class="pcrow">${D.dmgDice?`<button class="btn" style="flex:1" data-acroll="dmg" title="Rolls the dice into the Damage box. A crit rolls every die twice. Each type is rolled on its own, and a target that resists, is immune to or is vulnerable to one takes half, none or double of that part.">Roll ${D.parts.length > 1 ? "all: " : ""}${esc(D.dmgLabel)}${act.outcome==="crit"?" · crit, dice ×2":""}</button>`:""}${D.healDice?`<button class="btn" style="flex:1" data-acroll="heal" title="Rolls the dice into the Healing box (the caster's modifier included where the spell adds it)">Roll ${D.temp ? "temp HP" : "healing"} ${esc(D.healDice)}</button>`:""}</div>` : ""}
     ${D.part2 ? `<div class="actpart2"><label class="grouplab" style="margin-top:6px">Then: ${esc(D.part2.dtype)} damage (${esc(D.part2.dice)})</label>
@@ -16928,7 +17029,7 @@ function snapOf(c, ids){
     if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, temp:x.temp||0, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null, fx:x.fx||null, bi:x.bi||null })) };
     const p = partyRoster().find(y=>y.id===id);
     if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null, fx:p.fx||null,
-      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null, diWait:p.diWait||null, supDef:p.supDef||null, qpalm:p.qpalm||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
+      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null, diWait:p.diWait||null, supDef:p.supDef||null, qpalm:p.qpalm||null, sacred:p.sacred||null, nimbus:p.nimbus||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
   }
   return s;
 }
@@ -16936,7 +17037,7 @@ function restoreSnap(c, s){
   for(const id in s){
     if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; if(!x.fx) delete x.fx; if(!x.bi) delete x.bi; } }     // concentration and spell effects come back with the rest
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; if(!p.fx) delete p.fx;
-      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape", "diWait", "supDef", "qpalm"]) if(p[k]==null) delete p[k]; } }
+      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape", "diWait", "supDef", "qpalm", "sacred", "nimbus"]) if(p[k]==null) delete p[k]; } }
   }
 }
 const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of STAT_KEYS) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
@@ -17058,7 +17159,7 @@ function logAction(n, c){
   if(slotSpell && c.turn===actor.id && (c.log||[]).some(e=>e.by===actor.id && e.at===turnStamp(c) && e.slot)
     && !confirm(`${actor.label} has already cast a spell with a spell slot this turn. In the 2024 rules a character can expend only one spell slot to cast a spell on a turn. Log this one anyway?`)) return;
   /* Lay on Hands: what it takes from the pool (the healing, and 5 more to end Poisoned) has to be there */
-  if(info.loh){ const r = pcState(actor.p).res.find(q=>(q.id||q.name)===info.res), left = r ? r.max - r.used : 0, need = Math.max(0, Math.round(+act.heal||0)) + (act.lohPoison ? 5 : 0);
+  if(info.loh){ const r = pcState(actor.p).res.find(q=>(q.id||q.name)===info.res), left = r ? r.max - r.used : 0, need = Math.max(0, Math.round(+act.heal||0)) + (act.lohPoison ? 5 : 0) + 5 * (act.lohCure || []).length;
     if(!need){ flash("Lay on Hands: type how many hit points it restores (or tick ending Poisoned)."); return; }
     if(need > left){ flash(`Lay on Hands: that needs ${need} from the pool, and ${left} ${left===1 ? "is" : "are"} left.`); return; }
     const far = targets.filter(o=>o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) > 1);
@@ -17077,7 +17178,10 @@ function logAction(n, c){
   if(info.self) act.outcome = "none";     // on themselves: nothing hits or misses
   if(info.origin==="sanct") act.outcome = "none";
   if(info.origin==="landaid" && !targets.length && !act.laHeal){ flash("Land's Aid: pick the creatures in the sphere (and who it heals)."); return; }
-  if(info.origin==="cd"){ const k = info.cdFx, bloodied = o => o.kind==="foe" ? o.x.max > 0 && o.x.hp <= o.x.max / 2 : numOr(pcState(o.p).hp, 0) <= numOr(pcState(o.p).hpMax, 0) / 2;     // Channel Divinity: who and how far
+  if(info.origin==="cd" && info.cdFx==="abjure"){ const p = pcState(actor.p), n = Math.max(1, abBonus(p, "cha")), T = targets.filter(o => o.id!==actor.id), far = T.filter(o => c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 60);     // Abjure Foes: up to Charisma-modifier creatures within 60 ft
+    if(!T.length){ flash("Abjure Foes: pick the creatures."); return; }
+    if((T.length > n || far.length) && !confirm(`Abjure Foes: ${[T.length > n ? `it takes ${n} creature${n > 1 ? "s" : ""} at most (${T.length} picked)` : "", far.length ? `${far.map(o => o.label).join(", ")} ${far.length > 1 ? "are" : "is"} more than 60 feet away` : ""].filter(Boolean).join("; ")}. Log it anyway?`)) return; }
+  if(info.origin==="cd" && !["sense", "sacred", "abjure"].includes(info.cdFx)){ const k = info.cdFx, bloodied = o => o.kind==="foe" ? o.x.max > 0 && o.x.hp <= o.x.max / 2 : numOr(pcState(o.p).hp, 0) <= numOr(pcState(o.p).hpMax, 0) / 2;     // Channel Divinity: who and how far
     if(!targets.length){ flash(`${info.name}: pick ${k==="turn" ? "the Undead" : k==="preserve" ? "the Bloodied creatures" : "who"}.`); return; }
     const far = targets.filter(o => o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 30);
     const bad = k==="turn" ? targets.filter(o => !undeadT(o)) : k==="preserve" ? targets.filter(o => !bloodied(o)) : targets.filter(o => o.id===actor.id);
@@ -17117,7 +17221,7 @@ function logAction(n, c){
       if(/^divine intervention$/i.test(miR.name || "") && /^wish$/i.test((info.spell && info.spell.name) || "")){ const w = rollTerms(diceTerms("2d4")).total; p.diWait = w; slotTxt = ` (Greater Divine Intervention: no slot; Divine Intervention is gone for ${w} Long Rests)`; } }
     else if(info.kind==="spell" && !info.free && !part && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
     if(info.res && wsActOf(actor, info) && act.wsForm){ if(shapeShift(p, act.wsForm)) slotTxt = ` (into ${shapeName(p)})`; }
-    else if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) : 1));     // a pool (Lay on Hands) spends what it gives
+    else if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) + 5 * (act.lohCure || []).length : 1));     // a pool (Lay on Hands) spends what it gives
       if(r && info.loh) slotTxt = ` (${r.max - r.used} left in the pool)`; }
     if(info.kind==="item"){ const x = usableOf(p).find(y=>y.k===info.useK);                 /* using a carried thing spends a charge (or the thing) */
       if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } spendItem(p, x.k);
@@ -17192,6 +17296,7 @@ function logAction(n, c){
     else if(heal){ const dl = cp && clHas(cp, "Disciple of Life", 3) ? lifeSlotBonus(actor, info) : 0; hl = healAny(t, heal + dl); healed += hl;     // Disciple of Life's 2 + the slot level
       if(dl) turned.push(`${t.label}: +${dl} (Disciple of Life)`); if(dl && t.id!==actor.id && hl > 0) blessedTo = true; }
     if(info.loh && act.lohPoison){ const cs = condsOfT(t), k = cs.indexOf("Poisoned"); if(k >= 0){ cs.splice(k, 1); turned.push(`${t.label}: no longer Poisoned`); } }     // Lay on Hands' 5 points
+    if(info.loh && (act.lohCure || []).length){ const cs = condsOfT(t), gone = act.lohCure.filter(k => cs.includes(k)); for(const k of gone){ cs.splice(cs.indexOf(k), 1); if(c.effects) c.effects = c.effects.filter(e => !(e.who===t.id && e.cond===k)); } if(gone.length) turned.push(`${t.label}: no longer ${andList(gone)} (Restoring Touch)`); }
     /* "becomes Stable" (Spare the Dying): at 0 hit points and not dead, three successes, the failures cleared */
     if(info.spell && /becomes Stable/i.test(info.spell.desc || "") && t.kind!=="foe" && t.p && isDownT(t) && !deadT(t)){ pcState(t.p).death = { s:3, f:0 }; turned.push(`${t.label} is Stable`); }
     /* an attack's save on a hit (the Ghoul's Claw: "Constitution Saving Throw: DC 10. Failure: ... Paralyzed"): rolled for each target it hits */
@@ -17226,6 +17331,7 @@ function logAction(n, c){
   /* once-a-turn add-ons (Sneak Attack) are spent for this turn */
   if((act.addons||[]).includes("sup")){ const r = supRes(actor); if(r && (+r.used||0) < (+r.max||0)) r.used = (+r.used||0) + 1; }     // a superiority die, spent hit or miss
   for(const a of D.on) if(a.once){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {})[a.key] = turnStamp(c); }
+  if(actor.kind==="pc" && actor.p && D.on.some(a => a.smite) && ["hit","crit"].includes(act.outcome)) smiteSpend(c, actor, turned);     // a Paladin's Divine Smite: the slot and the Bonus Action
   /* a carried thing's On a hit (Glaive Bite), its own choice after the hit: the charge went above (an item); it heals
      the wielder all or half of the damage it did */
   let biteWords = "";
@@ -17261,7 +17367,7 @@ function logAction(n, c){
   c.log = c.log || [];
   const reactedBefore = reacted0, bonusBefore = JSON.stringify(c.bonused||{}), actedBefore = JSON.stringify(c.acted||{});
   if(act.reaction){ c.reacted = c.reacted || {}; c.reacted[actor.id] = c.round; }
-  if(isBonus){ c.bonused = c.bonused || {}; c.bonused[actor.id] = c.round; }
+  if(isBonus || act.smiteBA){ c.bonused = c.bonused || {}; c.bonused[actor.id] = c.round; }     // (Divine Smite is a Bonus Action spell)
   const surge = /action surge/i.test(info.name||"");     // one more action this turn
   if(isAction || surge || swingLeft){ c.acted = c.acted || {}; const a = c.acted[actor.id] = c.acted[actor.id] || { n:0, more:0 };
     if(swingLeft) a.swings--;                                                 // one more of this action's attacks
@@ -18020,6 +18126,7 @@ function renderBattlePanelNow(){
   { const lh = $("#ac-laheal"); if(lh) lh.onchange = ()=>{ act.laHeal = lh.value; }; }
   { const cf = $("#ac-cdfx"); if(cf) cf.onchange = ()=>{ act.cdFx = cf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // Channel Divinity's effect: set up as if just chosen
   { const oh = $("#ac-ohfx"); if(oh) oh.onchange = ()=>{ act.ohFx = oh.value; }; }     // Open Hand Technique's pick
+  { const sm = $("#ac-smite"); if(sm) sm.onchange = ()=>{ act.smiteLvl = sm.value; redraw(); }; }     // Divine Smite's slot: its dice follow
   { const tm = $("#ac-tmaster"); if(tm) tm.onchange = ()=>{ act.tmaster = tm.value; const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); act.addons = (act.addons || []).filter(k => k!=="mastery"); if(t && info && tmasterOf(t, info) && !["Nick", "Cleave"].includes(tmasterOf(t, info))) act.addons.push("mastery"); redraw(); }; }     // Tactical Master
   { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; if(!act.reck) act.brutal = false; redraw(); }; }     // Reckless Attack
   { const bs = $("#ac-brutal"); if(bs) bs.onchange = ()=>{ act.brutal = bs.checked; if(act.brutal && !act.brutalFx) act.brutalFx = ["forceful", ""]; redraw(); }; }     // Brutal Strike
@@ -18090,6 +18197,7 @@ function renderBattlePanelNow(){
   el.querySelectorAll("[data-upend]").forEach(b=>b.onclick = ()=>{ const u = (c.ups||[]).find(x=>x.id===b.dataset.upend); if(!u) return;     // ending a spell that's up, by hand
     upEnd(c, u, "ended"); if(String(act.what||"")===`again:${u.id}`) act = freshAct(act.actor); touch(); renderBattle(); renderBattlePanel(); });
   el.querySelectorAll("[data-lohpois]").forEach(b=>b.onclick = ()=>{ keep(); act.lohPoison = !act.lohPoison; renderBattlePanel(); });
+  el.querySelectorAll("[data-lohcure]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.lohcure, L = act.lohCure = act.lohCure || []; if(L.includes(k)) L.splice(L.indexOf(k), 1); else L.push(k); renderBattlePanel(); });     // Restoring Touch
   el.querySelectorAll("[data-addon]").forEach(b=>b.onclick = ()=>{ keep(); const k = b.dataset.addon, A = act.addons || [];
     act.addons = A.includes(k) ? A.filter(x=>x!==k) : [...A, k];
     if(k.startsWith("inv:")){ const L = (c.lit = c.lit || {})[act.actor] = c.lit[act.actor] || {}; if(act.addons.includes(k)) L[k] = true; else delete L[k]; }     // lit stays lit
@@ -18134,11 +18242,12 @@ function renderBattlePanelNow(){
       const how = (mine ? `d20 ${d} (rolled at the table${adv ? `, with ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? `: ${CA.why}` : ""}` : ""})` :adv ? `d20 ${r1} and ${r2}, ${adv==="adv" ? "Advantage" : "Disadvantage"}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")})` : ""}: ${hl ? 1 : d}` : `d20 ${hl ? 1 : d}${CA && CA.why ? ` (${CA.why})` : ""}${LK.length ? ` (${LK.join(", ")}: Advantage and Disadvantage cancel)` : ""}`) + (hl ? `${hl.said}: ${d})` : "");
       const F = fxRoll(hOfT(t), "atk"), fN = fxNum(hOfT(t), "atk");     // Bless, Bane: their dice on the roll
       const arch = t.kind==="pc" && t.p && !t.p.cbId && styleOf(t.p, "archery") && !info.spell && /Ammunition|Dart/.test(`${WEAPON_PROPS[weaponKind(info.name)] || ""} ${weaponKind(info.name)}`) ? 2 : 0;     // Archery (a sheet made here; the Character Book's numbers have it already)
-      const cm = critMin(t, info), extra = (Math.round(+act.hitMod) || 0) + (SU ? 5 : 0) + arch, tot0 = d + bonus + extra + fN + F.n, out0 = d >= cm ? "crit" : d===1 ? "miss" : tot0 >= ac ? "hit" : "miss";     // meets it, beats it; a Champion crits on 19 (18)
+      const swB = sacredHit(t, info);     // a Devotion paladin's Sacred Weapon
+      const cm = critMin(t, info), extra = (Math.round(+act.hitMod) || 0) + (SU ? 5 : 0) + arch + swB, tot0 = d + bonus + extra + fN + F.n, out0 = d >= cm ? "crit" : d===1 ? "miss" : tot0 >= ac ? "hit" : "miss";     // meets it, beats it; a Champion crits on 19 (18)
       const RS = out0==="miss" && d!==1 ? d20Rescue(c, t, tot0, ac, `attack roll on ${tg.label}`, "attack") : { tot:tot0, w:"" }, tot = RS.tot, out = out0==="miss" && d!==1 && tot >= ac ? "hit" : out0;     // Peerless Skill, a Bardic Inspiration die
       const CW = out==="hit" && d < cm ? cuttingWords(c, t, tot, ac, `attack roll on ${tg.label}`) : null;     // a Lore bard's Cutting Words
       const rx = out==="hit" && !(CW && CW.miss) ? autoDefend(c, t, tg, tot, ac, info) : null, sure = !rx && out==="hit" && !(CW && CW.miss) && CA && CA.crit, res = rx || (CW && CW.miss) ? "miss" : sure ? "crit" : out;     // its Parry or Shield, if the autopilot runs it; Paralyzed or Unconscious within 5 ft: a crit
-      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (${[(Math.round(+act.hitMod) || 0) ? "modifier" : "", SU ? "Sundering Blow" : "", arch ? "Archery" : ""].filter(Boolean).join(" and ")})` : ""}${act.brutal ? " (Brutal Strike: no Advantage)" : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot0}${RS.w}${CW ? CW.w : ""} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d >= cm ? `${d===18 ? "an" : "a"} ${d}, a crit (${cm===18 ? "Superior" : "Improved"} Critical)` : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : CW && CW.miss ? "a miss" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
+      act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (${[(Math.round(+act.hitMod) || 0) ? "modifier" : "", SU ? "Sundering Blow" : "", arch ? "Archery" : "", swB ? "Sacred Weapon" : ""].filter(Boolean).join(" and ")})` : ""}${act.brutal ? " (Brutal Strike: no Advantage)" : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot0}${RS.w}${CW ? CW.w : ""} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d >= cm ? `${d===18 ? "an" : "a"} ${d}, a crit (${cm===18 ? "Superior" : "Improved"} Critical)` : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : CW && CW.miss ? "a miss" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
       { const SA = ["hit","crit"].includes(res) && attackAddons(t).find(a => /sneak attack/i.test(a.name)), why = SA && !(act.addons || []).includes(SA.key) && !addonUsed(c, t.id, SA.key) ? sneakWhy(c, t, tg, info, mine ? act.adv : adv) : "";     // Sneak Attack, when it applies (item 5)
         if(why){ (act.addons = act.addons || []).push(SA.key); act.toHit.said += ` · Sneak Attack (${why})`; } }
       act.d20 = ""; flash(act.toHit.said); renderBattlePanel(); return; }
@@ -23263,7 +23372,7 @@ function nextTurn(c){
   let k = order.findIndex(t=>t.id===c.turn);
   if(c.turn!=null && k+1>=order.length){ newRound(c); k = -1; }
   const legPrev = c.turn;
-  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); readyTurnStart(c, c.turn); effectsTurnStart(c, c.turn); fighterTurnStart(c, c.turn); zonesTurn(c, c.turn, "start"); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
+  c.turn = order[k+1].id; if(c.reacted) delete c.reacted[c.turn]; if(c.bonused) delete c.bonused[c.turn]; if(c.acted) delete c.acted[c.turn]; if(c.moved) delete c.moved[c.turn]; battleSel = c.turn; act = freshAct(c.turn); readyTurnStart(c, c.turn); effectsTurnStart(c, c.turn); fighterTurnStart(c, c.turn); palTurnStart(c, c.turn); zonesTurn(c, c.turn, "start"); fxTurnStart(c, c.turn); holdsTurnStart(c, c.turn);
   legAfterTurn(c, legPrev);                      // a legendary creature's chance, after someone else's turn
   autoNext(c);                                   // an enemy's turn runs by itself, if that's set
   return true;
@@ -27434,7 +27543,9 @@ function skillMod(o, skill){
     + (o.order==="thaumaturge" && clericLevel(o) && /^(Arcana|Religion)$/i.test(skill) ? Math.max(1, abBonus(o, "wis")) : 0)     // a Thaumaturge cleric's Wisdom on Arcana and Religion
     + (o.porder==="magician" && druidLevel(o) && /^(Arcana|Nature)$/i.test(skill) ? Math.max(1, abBonus(o, "wis")) : 0);     // a Magician druid's on Arcana and Nature
 }
-const spellModOf = o => { const s = parseInt(String(o.satk||"").replace("+","")); return isFinite(s) ? s - profOf(o) : 0; };
+/* their spellcasting modifier: from the sheet's spell attack bonus, else (a sheet made here with none typed, 2026-11-12) their class's spellcasting ability */
+const CAST_ABIL = [[/\b(wizard|artificer)\b/i, "int"], [/\b(cleric|druid|ranger)\b/i, "wis"], [/\b(bard|paladin|sorcerer|warlock)\b/i, "cha"]];
+const spellModOf = o => { const s = parseInt(String(o.satk||"").replace("+","")); if(isFinite(s)) return s - profOf(o); const k = (CAST_ABIL.find(([re]) => re.test(String(o.cls || ""))) || [])[1]; return k ? abBonus(o, k) : 0; };
 const knownSpells = o => (o.spells||[]).map(id=>spellFor(o, id)).filter(Boolean);
 function healSources(o){
   const out = knownSpells(o).filter(s=>s.heal).map(s=>({ k:"spell:"+s.id, s, label:s.name }));
