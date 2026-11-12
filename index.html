@@ -11594,7 +11594,10 @@ function originRes(c){
       if(pl >= 3 && paHas(c, "Channel Divinity", 3) && !(clericLevel(c) >= 2)) want.push(["Channel Divinity", pl >= 11 ? 3 : 2, "one"]);
       if(paHas(c, "Paladin's Smite", 2)) want.push(["Divine Smite, free (Paladin's Smite)", 1, "long"]);
       if(paHas(c, "Faithful Steed", 5)) want.push(["Find Steed, free (Faithful Steed)", 1, "long"]);
-      if(devotionOf(c) && paHas(c, "Holy Nimbus", 20)) want.push(["Holy Nimbus", 1, "long"]); } }
+      if(devotionOf(c) && paHas(c, "Holy Nimbus", 20)) want.push(["Holy Nimbus", 1, "long"]);
+      /* the Oath of the Fallen Crown's (Joseph's own oath, 2026-11-12): Aura of Never Again (Charisma modifier a Long Rest), Spectral Court */
+      if(fallenOf(c) && paHas(c, "Aura of Never Again", 7)) want.push(["Aura of Never Again", Math.max(1, abBonus(c, "cha")), "long"]);
+      if(fallenOf(c) && paHas(c, "Spectral Court", 20)) want.push(["Spectral Court", 1, "long"]); } }
   { const bl = bardLevel(c); if(bl) want.push(["Bardic Inspiration", Math.max(1, Math.floor(((+c.cha || 10) - 10) / 2)), bl >= 5 ? "short" : "long"]); }     // a Bard's (Font of Inspiration: a Short Rest too from 5)
   for(const [name, max, rest] of want){ let r = c.res.find(q => String(q.name || "").trim().toLowerCase()===name.toLowerCase()); if(!r) c.res.push(r = { id:uid("rs"), name, max, used:0, rest });
     r.max = max; r.used = Math.min(max, +r.used || 0); r.rest = rest; }
@@ -11659,6 +11662,7 @@ function originDo(c, t, info){
   if(info.origin==="hmove"){ const tg = combatants(c).find(x => x.id===(act.targets || [])[0]); if(!tg) return [];
     (c.hmark = c.hmark || {})[t.id] = tg.id; return [`Hunter's Mark moves to ${tg.label}`]; }
   if(info.origin==="nimbus"){ p.nimbus = { round:c.round }; return [`Holy Nimbus for 10 minutes: Advantage on saves forced by Fiends or Undead; an enemy starting its turn in the aura takes ${Math.max(0, abBonus(p, "cha")) + pb} Radiant; the aura is sunlight`]; }
+  if(info.origin==="court"){ p.court = { round:c.round }; return [`The Spectral Court rises around ${t.label} for 10 minutes: at the start of each of their turns, one ally in the aura can use its Reaction to make one attack; enemies in the aura save against Kneel Before the Crown with Disadvantage`]; }
   if(info.origin==="rageExt"){ if(p.rage) p.rage.ext = turnStamp(c); return [`${t.label}'s Rage goes on until the end of their next turn`]; }
   if(info.origin==="rage"){ const lv = barbLevel(p), out = [];
     p.rage = { since:c.round, ext:turnStamp(c) };
@@ -11804,6 +11808,8 @@ function saveModeT(c, t, k){
   if(k==="str" && strAdvT(t)) A.push(strAdvWhy(t));
   if(k==="dex" && dangerSenseT(t)) A.push("Danger Sense");
   if(t.kind!=="foe" && t.p && t.p.nimbus && c && fiendOrUndeadT(combatants(c).find(o => o.id===act.actor))) A.push("Holy Ward");     // Holy Nimbus: a save a Fiend or Undead forces
+  { const by = c && act && act.cdFx==="kneel" ? combatants(c).find(o => o.id===act.actor) : null;     // the Fallen Crown's Spectral Court (20): an enemy in the aura saves against Kneel with Disadvantage
+    if(by && by.p && by.p.court && by.side!==t.side && nearFt(c, by, t) <= palReach(pcState(by.p))) D.push("Spectral Court"); }
   const stagger = !!(c && (c.effects || []).some(e => e.who===t.id && e.stagger)); if(stagger) D.push("Staggering Blow");
   return { adv:A.length > 0, dis:D.length > 0, why:[...A, ...D].join(", "), stagger };
 }
@@ -11944,6 +11950,7 @@ function cdChoices(p){
   if(paHas(p, "Channel Divinity", 3)) o.push(["sense", "Divine Sense: Celestials, Fiends, and Undead within 60 ft, 10 minutes"]);
   if(devotionOf(p) && paHas(p, "Sacred Weapon", 3)) o.push(["sacred", `Sacred Weapon: +${Math.max(1, abBonus(p, "cha"))} to hit with a melee weapon, 10 minutes`]);
   if(paHas(p, "Abjure Foes", 9)) o.push(["abjure", `Abjure Foes: up to ${Math.max(1, abBonus(p, "cha"))} creatures, a Wisdom save or Frightened`]);
+  if(fallenOf(p) && paHas(p, "Kneel Before the Crown", 3)) o.push(["kneel", "Kneel Before the Crown: creatures within 30 ft, a Wisdom save or Prone, no standing up"]);     // the Fallen Crown's (3)
   return o;
 }
 function cdInfo(t, k, res){
@@ -11958,6 +11965,9 @@ function cdInfo(t, k, res){
   if(k==="sacred") return { ...base, name:"Sacred Weapon", self:true };
   if(k==="abjure") return { ...base, name:"Abjure Foes", save:true, cond:"Frightened",
     text:`Wisdom Saving Throw: DC ${dc}. Failure: the creature has the Frightened condition for 1 minute. While Frightened this way, it can only move, take an action, or take a Bonus Action on its turns. This effect ends early on the creature if it takes any damage.` };
+  /* (worded so effectAdd doesn't time the Prone itself: lying down outlasts the turn; the kneel effect only stops the standing) */
+  if(k==="kneel") return { ...base, name:"Kneel Before the Crown", save:true, cond:"Prone",
+    text:`Wisdom Saving Throw: DC ${dc}. Failure: the creature has the Prone condition and can't stand up until its next turn is over.` };
   return { ...base, name:"Channel Divinity" };
 }
 /* the Life Domain: Disciple of Life (3), a spell cast with a slot heals 2 + the slot's level more; Blessed Healer (6), healing
@@ -12205,7 +12215,49 @@ function palSpells(p){
   const lv = palLevel(p); if(!lv || is2014(p)) return []; const names = [];
   if(paHas(p, "Paladin's Smite", 2)) names.push("Divine Smite"); if(paHas(p, "Faithful Steed", 5)) names.push("Find Steed");
   if(devotionOf(p)) for(const [L, N] of DEVOTION_SPELLS) if(lv >= L) names.push(...N);
+  if(fallenOf(p)) for(const [L, N] of FALLEN_SPELLS) if(lv >= L) names.push(...N);
   return names.map(n => spellByName(n)).filter(Boolean);
+}
+/* ══ THE OATH OF THE FALLEN CROWN (Joseph's own oath, 2026-11-12: "build the subclass, and build the mechanics into the
+   apps"; not in the SRD). A paladin sworn to a fallen king or queen. Oath spells; Kneel Before the Crown (Channel Divinity,
+   3): a Wisdom save or Prone, no standing up until its next turn is over (c.effects kneel); Wrath of the Fallen (5): when
+   a creature within 10 ft (the aura's reach) drops to 0, or they use Never Again, + Charisma Radiant on their weapon hits
+   until the end of their next turn (c.effects wrath, srcEnd; it starts over, never stacks); Aura of Never Again (7): their
+   Reaction, a creature on their side in the aura drops to 1 instead of 0 (asked in damagePc); Vengeance of the Crown
+   (15): with it, a teleport beside the one who did it and a weapon attack (said, for the DM to log); Spectral Court (20):
+   10 minutes (p.court): one ally in the aura attacks with its Reaction at the start of their turns (said), and enemies in
+   the aura save against Kneel with Disadvantage ══ */
+function fallenOf(c){ return palLevel(c) > 0 && /fallen crown/i.test(`${(c && c.subcls) || ""} ${(c && c.cls) || ""}`); }
+const FALLEN_SPELLS = [[3, ["Command", "Heroism"]], [5, ["Calm Emotions", "Zone of Truth"]], [9, ["Spirit Guardians", "Beacon of Hope"]], [13, ["Compulsion", "Guardian of Faith"]], [17, ["Flame Strike", "Antilife Shell"]]];
+const palReach = p => paHas(p, "Aura Expansion", 18) ? 30 : 10;
+const nearFt = (c, a, b) => c && c.pos && c.pos[a.id] && c.pos[b.id] ? chebSq(c.pos[a.id], c.pos[b.id]) * 5 : Infinity;
+const wrathOn = (c, t) => !!(c && t && (c.effects || []).some(e => e.wrath && e.who===t.id));
+function wrathStart(c, o, why){
+  c.effects = (c.effects || []).filter(e => !(e.wrath && e.who===o.id));
+  c.effects.push({ id:uid("ef"), who:o.id, cond:"", by:o.id, name:"Wrath of the Fallen", at:turnStamp(c), round:c.round, end:"srcEnd", repeat:null, sp:null, rounds:null, wrath:true });
+  return `${o.label}: Wrath of the Fallen (${why}), +${Math.max(0, abBonus(pcState(o.p), "cha"))} Radiant on weapon hits until the end of their next turn`;
+}
+/* a creature just dropped to 0: each Fallen Crown paladin up and within reach of it feels the Wrath */
+function fallenDropped(c, t, said){
+  if(!c || !t) return;
+  for(const o of combatants(c)){ if(o.kind!=="pc" || !o.p || o.id===t.id || o.fled || isDownT(o)) continue; const p = pcState(o.p);
+    if(!fallenOf(p) || !paHas(p, "Wrath of the Fallen", 5) || condsOfT(o).some(k => INCAP.includes(k)) || nearFt(c, o, t) > palReach(p)) continue;
+    said.push(wrathStart(c, o, `${t.label} dropped`)); }
+}
+/* Aura of Never Again: p (a character) is dropping to 0; a Fallen Crown paladin on their side, with them in the aura and a
+   Reaction and a use left, can make it 1 instead (asked). True when it did */
+function neverAgain(p, said){
+  const c = aoeFight(); if(!c) return false; const t = combatants(c).find(o => o.kind==="pc" && o.p && (o.p===p || (p.id && o.p.id===p.id))); if(!t) return false;
+  for(const o of combatants(c)){ if(o.kind!=="pc" || !o.p || o.side!==t.side || o.fled || (o.id!==t.id && isDownT(o))) continue; const q = pcState(o.p);
+    if(!fallenOf(q) || !paHas(q, "Aura of Never Again", 7) || condsOfT(o).some(k => INCAP.includes(k)) || reactedThisRound(c, o.id) || nearFt(c, o, t) > palReach(q)) continue;
+    const r = (q.res || []).find(x => /^aura of never again$/i.test(x.name || "")); if(!r || r.used >= r.max) continue;
+    if(!confirm(`${p.name || "They"} drop${p.name ? "s" : ""} to 0 hit points. Aura of Never Again: ${o.label} uses their Reaction so ${o.id===t.id ? "they drop" : `${p.name || "they"} drop${p.name ? "s" : ""}`} to 1 instead? (${r.max - r.used} use${r.max - r.used===1 ? "" : "s"} left)`)) continue;
+    r.used = (+r.used || 0) + 1; (c.reacted = c.reacted || {})[o.id] = c.round;
+    if(said){ said.push(`Aura of Never Again (${o.label}'s Reaction): 1 hit point instead of 0`);
+      if(paHas(q, "Wrath of the Fallen", 5)) said.push(wrathStart(c, o, "Never Again"));
+      if(paHas(q, "Vengeance of the Crown", 15)) said.push(`Vengeance of the Crown: ${o.label} teleports up to 30 ft to a space beside the creature that did it (move their token) and makes one weapon attack, all in the same Reaction (log it with "As a reaction")`); }
+    return true; }
+  return false;
 }
 /* Divine Smite on a hit: the slot levels they can spend (and the free cast, Paladin's Smite) */
 const smiteFreeRes = p => ((p && p.res) || []).find(r => /^divine smite\b/i.test(r.name || "") && /free|no slot/i.test(r.name || ""));
@@ -12239,6 +12291,11 @@ const sacredHit = (t, info) => { const p = t && t.kind==="pc" && t.p ? t.p : nul
 /* the start of anyone's turn: Holy Nimbus (Devotion 20) burns an enemy starting it in the aura: Charisma + Proficiency Bonus Radiant */
 function palTurnStart(c, id){
   const t = combatants(c).find(x => x.id===id); if(!t || isDownT(t)) return;
+  /* the Fallen Crown's Spectral Court (20): at the start of the paladin's own turn, one ally in the aura can attack with its Reaction */
+  if(t.kind==="pc" && t.p && t.p.court){ if(c.round - (t.p.court.round || c.round) >= 100) delete t.p.court;
+    else if(!condsOfT(t).some(k => INCAP.includes(k))){ const A = combatants(c).filter(o => o.id!==t.id && o.side===t.side && !o.fled && !isDownT(o) && !reactedThisRound(c, o.id) && nearFt(c, t, o) <= palReach(pcState(t.p)));
+      const line = A.length ? `The Spectral Court commands: ${A.length > 1 ? `one of ${A.map(o => o.label).join(", ")}` : A[0].label} can use their Reaction to make one attack now (log it with "As a reaction")` : `The Spectral Court: no ally in ${t.label}'s aura has a Reaction to attack with`;
+      (c.log = c.log || []).push({ id:uid("lg"), round:c.round, text:line + "." }); gameLog("fight", line); flash(line); } }
   for(const o of combatants(c)){ const p = o.kind==="pc" && o.p ? o.p : null; if(!p || !p.nimbus) continue;
     if(c.round - (p.nimbus.round || c.round) >= 100){ delete p.nimbus; continue; }
     if(t.side===o.side || t.side==="neutral" || !c.pos || !c.pos[t.id] || !c.pos[o.id] || condsOfT(o).some(k => INCAP.includes(k)) || chebSq(c.pos[o.id], c.pos[t.id]) * 5 > (paHas(pcState(p), "Aura Expansion", 18) ? 30 : 10)) continue;
@@ -12251,13 +12308,16 @@ function palCardHtml(c){
   const lv = palLevel(c); if(!lv || is2014(c)) return ""; const B = [], r = (c.res || []).find(q => /lay on hands/i.test(q.name || ""));
   if(r) B.push(`Lay on Hands ${r.max - r.used}/${r.max}`);
   if(paHas(c, "Aura of Protection", 6)) B.push(`Aura ${paHas(c, "Aura Expansion", 18) ? 30 : 10} ft: saves +${Math.max(1, abBonus(c, "cha"))}${paHas(c, "Aura of Courage", 10) ? ", no Frightened" : ""}${devotionOf(c) && paHas(c, "Aura of Devotion", 7) ? ", no Charmed" : ""}`);
-  if(c.sacred) B.push("Sacred Weapon up"); if(c.nimbus) B.push("Holy Nimbus up");
-  const hn = (c.res || []).find(q => /^holy nimbus$/i.test(q.name || "")), s5 = c.slots && c.slots[5] && c.slots[5].max > c.slots[5].used;
-  return `<div class="fc-res">${B.map(b => `<span class="chip">${esc(b)}</span>`).join("")}${(c.sacred || c.nimbus) ? `<button class="btn small" data-palend="${esc(c.id)}" title="No action needed">End ${c.sacred && c.nimbus ? "them" : c.sacred ? "Sacred Weapon" : "Holy Nimbus"}</button>` : ""}${hn && hn.used >= hn.max && s5 ? `<button class="btn small" data-palnim="${esc(c.id)}" title="No action needed">A 5th-level slot: Holy Nimbus back</button>` : ""}</div>`;
+  if(c.sacred) B.push("Sacred Weapon up"); if(c.nimbus) B.push("Holy Nimbus up"); if(c.court) B.push("Spectral Court up");
+  { const na = (c.res || []).find(q => /^aura of never again$/i.test(q.name || "")); if(fallenOf(c) && na) B.push(`Never Again ${na.max - na.used}/${na.max}`); }     // the Fallen Crown's
+  { const fc = aoeFight(), me = fc && combatants(fc).find(o => o.kind==="pc" && o.p && (o.p===c || (c.id && o.p.id===c.id))); if(me && wrathOn(fc, me)) B.push(`Wrath: +${Math.max(0, abBonus(c, "cha"))} Radiant`); }
+  const ups = [c.sacred && "Sacred Weapon", c.nimbus && "Holy Nimbus", c.court && "Spectral Court"].filter(Boolean);
+  const hn = (c.res || []).find(q => /^(holy nimbus|spectral court)$/i.test(q.name || "")), s5 = c.slots && c.slots[5] && c.slots[5].max > c.slots[5].used;
+  return `<div class="fc-res">${B.map(b => `<span class="chip">${esc(b)}</span>`).join("")}${ups.length ? `<button class="btn small" data-palend="${esc(c.id)}" title="No action needed">End ${ups.length > 1 ? "them" : ups[0]}</button>` : ""}${hn && hn.used >= hn.max && s5 ? `<button class="btn small" data-palnim="${esc(c.id)}" title="No action needed">A 5th-level slot: ${esc(hn.name)} back</button>` : ""}</div>`;
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-palend],[data-palnim]"); if(!b) return; const p = pcById(b.dataset.palend || b.dataset.palnim); if(!p) return; pcState(p);
-  if(b.dataset.palend){ delete p.sacred; delete p.nimbus; gameLog("fight", `${p.name || "The paladin"} ends it`); }
-  else { const hn = p.res.find(q => /^holy nimbus$/i.test(q.name || "")); if(!hn || !(p.slots[5] && p.slots[5].max > p.slots[5].used)) return; p.slots[5].used++; hn.used = Math.max(0, hn.used - 1); gameLog("spell", `${p.name || "The paladin"} spends a 5th-level slot: Holy Nimbus back`); }
+  if(b.dataset.palend){ delete p.sacred; delete p.nimbus; delete p.court; gameLog("fight", `${p.name || "The paladin"} ends it`); }
+  else { const hn = p.res.find(q => /^(holy nimbus|spectral court)$/i.test(q.name || "")); if(!hn || !(p.slots[5] && p.slots[5].max > p.slots[5].used)) return; p.slots[5].used++; hn.used = Math.max(0, hn.used - 1); gameLog("spell", `${p.name || "The paladin"} spends a 5th-level slot: ${hn.name} back`); }
   saveParty(); touch(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} });
 /* Restoring Touch (14): Lay on Hands also ends these, 5 from the pool each */
 const RESTORE_CONDS = ["Blinded", "Charmed", "Deafened", "Frightened", "Paralyzed", "Stunned"];
@@ -12881,7 +12941,7 @@ function restPc(c, kind){
   delete c.big;                                                  // Large Form lasts 10 minutes: any rest outlasts it
   delete c.rage; delete c.reck; delete c.relDC;                  // and a Rage; Relentless Rage's DC is back to 10
   delete c.bi;                                                   // a Bardic Inspiration die lasts the hour
-  delete c.sacred; delete c.nimbus; delete c.supDef;             // Sacred Weapon and Holy Nimbus (10 minutes), Superior Defense
+  delete c.sacred; delete c.nimbus; delete c.court; delete c.supDef;             // Sacred Weapon, Holy Nimbus, and Spectral Court (10 minutes), Superior Defense
   if(kind==="long") delete c.persistUsed;                        // Persistent Rage again
   if(kind==="short"){ for(const r of c.res){ if(r.rest==="short") r.used = 0; else if(r.rest==="one") r.used = Math.max(0, r.used-1); } return; }
   const max = numOr(c.hpMax); if(max!=null) c.hp = max;
@@ -15647,7 +15707,8 @@ const autoLogLine = (c, t, text) => (c.log = c.log || []).push({ id:uid("lg"), r
 /* the start of its turn: stand up, or try to break free (true: its action is spent) */
 async function autoConds(c, t, n, wantsOut, canFight){
   const cs = condsOfT(t);
-  if(cs.includes("Prone")){ const sp = speedOf(t), half = Math.ceil(sp / 2);
+  if(cs.includes("Prone") && (c.effects || []).some(e => e.kneel && e.who===t.id)) autoLogLine(c, t, `${t.label} can't stand up this turn (Kneel Before the Crown).`);
+  else if(cs.includes("Prone")){ const sp = speedOf(t), half = Math.ceil(sp / 2);
     if(sp > 0 && sp - movedOf(c, t.id).ft >= half){ autoLogLine(c, t, `${t.label} stands up (half its Speed, ${half} ft).`); cs.splice(cs.indexOf("Prone"), 1);
       const M = (c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] }; M.ft += half; renderBattle(); await autoSay(c.log[c.log.length - 1].text); } }
   if(!(cs.includes("Grappled") || cs.includes("Restrained")) || (!wantsOut && canFight())) return false;
@@ -16262,7 +16323,7 @@ const OUTCOMES = [["hit","Hit"],["crit","Crit"],["miss","Miss"],["fail","Save fa
 function selfOnly(info, t){
   if(!info) return false;
   if(info.monk) return !!info.self;     // Patient Defense, Step of the Wind, Wholeness of Body, Superior Defense
-  if(info.cdFx==="sense" || info.cdFx==="sacred" || ["nimbus", "tireless", "veil"].includes(info.origin)) return true;     // a Paladin's
+  if(info.cdFx==="sense" || info.cdFx==="sacred" || ["nimbus", "court", "tireless", "veil"].includes(info.origin)) return true;     // a Paladin's
   if(info.spell){ const r = String(info.spell.range||""); return /^self/i.test(r) && !/radius|cone|cube|line|sphere|emanation/i.test(r) && (!info.spell.dmg || !!spellTemp(info.spell)); }     // False Life: its "dmg" is its temporary hit points
   if(info.res) return /second wind|action surge|form of dread|rage|wild shape|cunning action/i.test(String(info.name||info.res));
   if(info.kind==="item" && !info.bite && t && t.p){ const x = usableOf(pcState(t.p)).find(y=>y.k===info.useK); return !!x && (/\byourself\b/i.test(x.u.effect || "") || (!!x.u.tempHp && !x.u.heal)); }
@@ -16699,6 +16760,8 @@ function attackAddons(t){
       { const hm = fc && hmarkOf(fc, t.id); if(hm) out.push({ key:"hmark", name:"Hunter's Mark", dice:`1d${hmDie(c)}`, dtype:"force", hmark:true, note:`On ${hm.label}, the marked creature: on by itself when it's the target` }); }
       if(hunterOf(c) && c.prey==="colossus" && rgHas(c, "Hunter's Prey", 3) && !(fc && addonUsed(fc, t.id, "colossus"))) out.push({ key:"colossus", name:"Colossus Slayer", dice:"1d8", dtype:"", colossus:true, note:"Once a turn, a weapon hit on a creature missing any of its hit points: on by itself" });
       if(paHas(c, "Radiant Strikes", 11)) out.push({ key:"rstrike", name:"Radiant Strikes", dice:"1d8", dtype:"radiant", note:"Every hit with a melee weapon or an Unarmed Strike" });
+      /* the Fallen Crown's Wrath of the Fallen (5): + Charisma Radiant on a weapon hit while it's up (on by itself) */
+      if(fallenOf(c) && wrathOn(fc, t) && abBonus(c, "cha") > 0) out.push({ key:"wrath", name:"Wrath of the Fallen", dice:String(abBonus(c, "cha")), dtype:"radiant", note:"A weapon hit, until the end of their next turn after a creature near them dropped (or they used Never Again)" });
       if(openHandOf(c) && mkHas(c, "Quivering Palm", 17) && focusLeft(c) >= 4 && !c.qpalm) out.push({ key:"qpalm", name:"Quivering Palm", qpalm:true, note:"On an Unarmed Strike hit: 4 Focus Points, the vibrations set (end them later with an action: 10d12 Force, a Constitution save for half)" }); }
   }
   if(t.kind==="pc") out.push(...itemExtras(pcState(t.p)));
@@ -16738,7 +16801,7 @@ function spellAddonUp(c, t, key, v){
 function autoAddonKeys(c, t, info, rowDt){
   if(!t || !info) return [];
   const lit = (c.lit || {})[t.id] || {}, dt = String(rowDt || ""), weaponHit = !info.spell;
-  const own = [...(ragingT(t) && strAtkT(t, info) ? ["rage"] : []), ...(frenzyCan(c, t, info) ? ["frenzy"] : []), ...(masteryOf(t, info) && !["Nick", "Cleave"].includes(masteryOf(t, info)) ? ["mastery"] : []), ...(rstrikeOn(t, info) ? ["rstrike"] : []), ...(hmarkOf(c, t.id) && hmarkOf(c, t.id).id===(act.targets || [])[0] && isAttackAct(info) ? ["hmark"] : []),
+  const own = [...(ragingT(t) && strAtkT(t, info) ? ["rage"] : []), ...(frenzyCan(c, t, info) ? ["frenzy"] : []), ...(masteryOf(t, info) && !["Nick", "Cleave"].includes(masteryOf(t, info)) ? ["mastery"] : []), ...(rstrikeOn(t, info) ? ["rstrike"] : []), ...(wrathOn(c, t) && !info.spell && isAttackAct(info) ? ["wrath"] : []), ...(hmarkOf(c, t.id) && hmarkOf(c, t.id).id===(act.targets || [])[0] && isAttackAct(info) ? ["hmark"] : []),
     ...(t.kind==="pc" && t.p && hunterOf(pcState(t.p)) && pcState(t.p).prey==="colossus" && rgHas(pcState(t.p), "Hunter's Prey", 3) && !addonUsed(c, t.id, "colossus") && !info.spell && isAttackAct(info) && (tg => tg && (tg.kind==="foe" ? tg.x.hp < tg.x.max : numOr(pcState(tg.p).hp, 0) < numOr(pcState(tg.p).hpMax, 0)))(combatants(c).find(x => x.id===(act.targets || [])[0])) ? ["colossus"] : [])];     // Rage Damage, Frenzy, a weapon's mastery: on by themselves
   return own.concat(attackAddons(t).filter(a => !new RegExp(`\\b${a.dtype}\\b`, "i").test(dt) && (
     (a.key.startsWith("inv:") && extraFits(a, act.what, info.name) && (!a.cond || lit[a.key])) ||
@@ -16926,6 +16989,8 @@ function actInfo(c, t){
     if(/^tireless$/i.test(nm) && rangerLevel(pcState(t.p))) return { kind:"ability", name:"Tireless", res:w.slice(4), origin:"tireless", self:true, healDice:"" };     // a Ranger's (10): a Magic action
     if(/^nature's veil$/i.test(nm) && rangerLevel(pcState(t.p))) return { kind:"ability", name:"Nature's Veil", res:w.slice(4), ba:true, origin:"veil", self:true, healDice:"" };     // a Ranger's (14)
     if(/^holy nimbus$/i.test(nm) && devotionOf(pcState(t.p))) return { kind:"ability", name:"Holy Nimbus", res:w.slice(4), ba:true, origin:"nimbus", self:true, healDice:"" };     // a Devotion paladin's (20)
+    if(/^spectral court$/i.test(nm) && fallenOf(pcState(t.p))) return { kind:"ability", name:"Spectral Court", res:w.slice(4), ba:true, origin:"court", self:true, healDice:"" };     // a Fallen Crown paladin's (20)
+    if(/^aura of never again$/i.test(nm)) return { kind:"ability", name:"Aura of Never Again", res:w.slice(4), origin:"passive", healDice:"" };     // asked by itself when someone in the aura drops to 0
     if(/^channel divinity\b/i.test(nm) && (clericLevel(pcState(t.p)) || palLevel(pcState(t.p)))){ const C = cdChoices(pcState(t.p)), k = C.some(x => x[0]===act.cdFx) ? act.cdFx : (C[0] || [])[0]; if(k) return cdInfo(t, k, w.slice(4)); }     // a Cleric's Channel Divinity: the effect picked under it
     if(/^bardic inspiration$/i.test(nm) && bardLevel(pcState(t.p))) return { kind:"ability", name:"Bardic Inspiration", res:w.slice(4), ba:true, origin:"bi", healDice:"" };     // a Bard's: a die to someone else
     if(/^intimidating presence$/i.test(nm)){ const dc = ipDC(pcState(t.p));     // a Berserker's, level 14: a Bonus Action, a Wisdom save or Frightened
@@ -17104,7 +17169,7 @@ function snapOf(c, ids){
     if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, temp:x.temp||0, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null, fx:x.fx||null, bi:x.bi||null })) };
     const p = partyRoster().find(y=>y.id===id);
     if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null, fx:p.fx||null,
-      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null, diWait:p.diWait||null, supDef:p.supDef||null, qpalm:p.qpalm||null, sacred:p.sacred||null, nimbus:p.nimbus||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
+      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null, diWait:p.diWait||null, supDef:p.supDef||null, qpalm:p.qpalm||null, sacred:p.sacred||null, nimbus:p.nimbus||null, court:p.court||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
   }
   return s;
 }
@@ -17112,7 +17177,7 @@ function restoreSnap(c, s){
   for(const id in s){
     if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; if(!x.fx) delete x.fx; if(!x.bi) delete x.bi; } }     // concentration and spell effects come back with the rest
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; if(!p.fx) delete p.fx;
-      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape", "diWait", "supDef", "qpalm", "sacred", "nimbus"]) if(p[k]==null) delete p[k]; } }
+      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape", "diWait", "supDef", "qpalm", "sacred", "nimbus", "court"]) if(p[k]==null) delete p[k]; } }
   }
 }
 const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of STAT_KEYS) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
@@ -17138,6 +17203,8 @@ function damagePc(p, v, crit, said){
   if(was > 0 && hp <= 0 && p.death.f < 3 && orcOf(p)){ const r = originUse(p, "Relentless Endurance");
     if(r && confirm(`${p.name || "They"} drop${p.name ? "s" : ""} to 0 hit points. Relentless Endurance (once a Long Rest): drop to 1 hit point instead?`)){
       r.used = (+r.used || 0) + 1; hp = p.hp = 1; if(said) said.push("Relentless Endurance: 1 hit point instead of 0"); return false; } }
+  /* a Fallen Crown paladin's Aura of Never Again (7), 2026-11-12 */
+  if(was > 0 && hp <= 0 && p.death.f < 3 && neverAgain(p, said)){ hp = p.hp = 1; return false; }
   if(hp<=0 && !p.conds.includes("Unconscious")) p.conds.push("Unconscious");
   if(was>0 && hp<=0) statsOf(p).downs += 1;      // dropped to 0 hp: counts against their value score
   if(hp<=0) delete p.shape;                                      // Wild Shape ends when they go down
@@ -17248,7 +17315,7 @@ function logAction(n, c){
   if(act.cleaveOf){ const first = combatants(c).find(x => x.id===act.cleaveOf), bad = targets.filter(o => o.id===act.cleaveOf || (first && c.pos && c.pos[o.id] && c.pos[first.id] && chebSq(c.pos[o.id], c.pos[first.id]) > 1));
     if(bad.length && !confirm(`Cleave's attack goes at a second creature within 5 feet of ${first ? first.label : "the first"}: ${bad.map(o => o.label).join(", ")} ${bad.length > 1 ? "aren't" : "isn't"}. Log it anyway?`)) return; }
   /* origins (2026-11-06): the ones that happen by themselves aren't logged from Resources */
-  if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
+  if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : /never again/i.test(info.name) ? "the app asks when someone in their aura drops to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
   if(info.origin==="large" && actor.p && actor.p.big){ flash(`${actor.label} is Large already.`); return; }
   if(info.self) act.outcome = "none";     // on themselves: nothing hits or misses
   if(info.origin==="sanct") act.outcome = "none";
@@ -17256,7 +17323,10 @@ function logAction(n, c){
   if(info.origin==="cd" && info.cdFx==="abjure"){ const p = pcState(actor.p), n = Math.max(1, abBonus(p, "cha")), T = targets.filter(o => o.id!==actor.id), far = T.filter(o => c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 60);     // Abjure Foes: up to Charisma-modifier creatures within 60 ft
     if(!T.length){ flash("Abjure Foes: pick the creatures."); return; }
     if((T.length > n || far.length) && !confirm(`Abjure Foes: ${[T.length > n ? `it takes ${n} creature${n > 1 ? "s" : ""} at most (${T.length} picked)` : "", far.length ? `${far.map(o => o.label).join(", ")} ${far.length > 1 ? "are" : "is"} more than 60 feet away` : ""].filter(Boolean).join("; ")}. Log it anyway?`)) return; }
-  if(info.origin==="cd" && !["sense", "sacred", "abjure"].includes(info.cdFx)){ const k = info.cdFx, bloodied = o => o.kind==="foe" ? o.x.max > 0 && o.x.hp <= o.x.max / 2 : numOr(pcState(o.p).hp, 0) <= numOr(pcState(o.p).hpMax, 0) / 2;     // Channel Divinity: who and how far
+  if(info.origin==="cd" && info.cdFx==="kneel"){ const T = targets.filter(o => o.id!==actor.id), far = T.filter(o => nearFt(c, actor, o) > 30 && nearFt(c, actor, o) < Infinity);     // Kneel Before the Crown: creatures they choose within 30 ft
+    if(!T.length){ flash("Kneel Before the Crown: pick the creatures."); return; }
+    if(far.length && !confirm(`Kneel Before the Crown reaches 30 feet: ${far.map(o => o.label).join(", ")} ${far.length > 1 ? "are" : "is"} farther. Log it anyway?`)) return; }
+  if(info.origin==="cd" && !["sense", "sacred", "abjure", "kneel"].includes(info.cdFx)){ const k = info.cdFx, bloodied = o => o.kind==="foe" ? o.x.max > 0 && o.x.hp <= o.x.max / 2 : numOr(pcState(o.p).hp, 0) <= numOr(pcState(o.p).hpMax, 0) / 2;     // Channel Divinity: who and how far
     if(!targets.length){ flash(`${info.name}: pick ${k==="turn" ? "the Undead" : k==="preserve" ? "the Bloodied creatures" : "who"}.`); return; }
     const far = targets.filter(o => o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 30);
     const bad = k==="turn" ? targets.filter(o => !undeadT(o)) : k==="preserve" ? targets.filter(o => !bloodied(o)) : targets.filter(o => o.id===actor.id);
@@ -17355,13 +17425,17 @@ function logAction(n, c){
     if(info.cdFx==="turn" && undeadT(t) && (svOf(t) ? !svOf(t).made : act.outcome==="fail")){     // Turn Undead failed: Incapacitated too (2024), and Sear Undead's Radiant (it doesn't end the turning)
       if(cp && !is2014(cp) && !condImmune(t, "Incapacitated")){ const cs = condsOfT(t); if(!cs.includes("Incapacitated")) cs.push("Incapacitated"); }
       if(searN){ dm = searN; turned.push(`${t.label}: Sear Undead, ${searN} Radiant damage`); } }
+    /* Kneel Before the Crown failed: no standing up until its next turn is over (the Prone itself stays till it stands) */
+    if(info.cdFx==="kneel" && t.id!==actor.id && (svOf(t) ? !svOf(t).made : act.outcome==="fail") && !condImmune(t, "Prone"))
+      (c.effects = c.effects || []).push({ id:uid("ef"), who:t.id, cond:"", by:actor.id, name:"Kneel Before the Crown", at:turnStamp(c), round:c.round, end:"targetNext", repeat:null, sp:null, rounds:null, kneel:true });
     if(info.cdFx==="preserve"){ const max = t.kind==="foe" ? t.x.max : numOr(pcState(t.p).hpMax, 0), now = t.kind==="foe" ? t.x.hp : numOr(pcState(t.p).hp, 0), n = Math.max(0, Math.min(pPool, Math.floor(max / 2) - now));
       if(n){ hl = healAny(t, n); healed += hl; pPool -= hl; } turned.push(`${t.label}: +${hl} hit points (Preserve Life${now + hl >= Math.floor(max / 2) ? ", to half its maximum" : ""})`); }
     if(!dm && !off && act.outcome==="miss" && MQ==="Graze"){ const g = abilModFor(actor, info); if(g > 0){ dm = g; turned.push(`${t.label}: Graze, ${g} damage on the miss`); } }     // Weapon Mastery: Graze
     if(dm && !off && t.kind==="pc" && t.id!==actor.id && isAttackAct(info) && ["hit","crit"].includes(act.outcome)) dm = deflectAttacks(c, t, actor, dm, D.parts && D.parts.length > 1 ? D.parts[0].dtype : act.dtype, turned);     // a Monk's Deflect Attacks: their Reaction
     if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = shDefense(c, t, dm, D.parts && D.parts.length > 1 ? D.parts[0].dtype : act.dtype, turned);     // a Hunter's Superior Hunter's Defense: their Reaction
     if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = stoneEndurance(c, t, dm, turned);     // a Goliath's Stone's Endurance: their Reaction, the damage cut
-    if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
+    if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm;
+      if(dropped) fallenDropped(c, t, turned); }     // the Fallen Crown's Wrath of the Fallen
     if(got && t.kind==="pc" && t.id!==actor.id) stormThunder(c, t, actor, turned);     // a Goliath's Storm's Thunder: their Reaction, 1d8 Thunder back
     if(got && ["hit","crit"].includes(act.outcome) && isAttackAct(info)){ const GA = D.on.find(a => a.giant); if(GA) giantHit(c, actor, t, GA, turned); }     // Fire's Burn, Frost's Chill, Hill's Tumble
     if(["hit","crit"].includes(act.outcome) && !off && actor.kind==="pc" && actor.p && isAttackAct(info) && !info.spell) monkHit(c, actor, t, D, info, turned);
@@ -17673,7 +17747,7 @@ function effectEnd(c, e, why, extra){
   const t = combatants(c).find(x => x.id===e.who); c.effects = (c.effects || []).filter(x => x!==e); if(!t) return "";
   const cs = condsOfT(t), i = cs.indexOf(e.cond); if(i >= 0 && !(c.effects || []).some(x => x.who===e.who && x.cond===e.cond)) cs.splice(i, 1);
   const H = c.holds && c.holds[e.who]; if(H && (H.cond===e.cond || (e.sp && H.sp===e.sp) || H.name===e.name)) delete c.holds[e.who];
-  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.stagger || e.sunder || e.sap || e.vex || e.noOA || e.sanct!=null ? "it" : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
+  return `${t.label}${extra ? ` ${extra}` : ""}: ${e.slow ? `the −${e.slow} ft Speed` : e.kneel ? "the hold that keeps it kneeling" : e.wrath || e.stagger || e.sunder || e.sap || e.vex || e.noOA || e.sanct!=null ? "it" : e.cond} ends (${e.name}${why ? `, ${why}` : ""}).`;
 }
 function effectsSweep(c, id, when){
   const all = combatants(c), now = turnStamp(c), out = [], before = JSON.stringify(c.effects || []), holdsBefore = JSON.stringify(c.holds || {}), snapIds = new Set();
