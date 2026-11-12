@@ -11646,9 +11646,14 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
    free (Drow)", "Shield, free (Magic Initiate)") */
 function miResOf(t, info){
   if(!t || t.kind!=="pc" || !t.p || !info || info.kind!=="spell" || info.free || !info.spell || !(info.spell.lv > 0)) return null;
-  const nm = lc(info.spell.name); return (pcState(t.p).res || []).find(r => /magic initiate|\bfree\b|no slot/i.test(r.name || "") && lc(r.name).startsWith(nm)) || null;
+  const nm = lc(info.spell.name), own = (pcState(t.p).res || []).find(r => /magic initiate|\bfree\b|no slot/i.test(r.name || "") && lc(r.name).startsWith(nm)); if(own) return own;
+  /* a Cleric's Divine Intervention (10): any Cleric spell of level 5 or lower that isn't cast as a Reaction, no slot, once a
+     Long Rest; Wish too from 20 (Greater Divine Intervention, then 2d4 Long Rests before it's back) */
+  const p = pcState(t.p), s = info.spell, di = (p.res || []).find(r => /^divine intervention$/i.test(r.name || ""));
+  if(di && clHas(p, "Divine Intervention", 10) && ((+s.lv <= 5 && /\bCleric\b/.test(String(s.cls || "")) && !/reaction/i.test(String(s.time || ""))) || (/^wish$/i.test(s.name || "") && clHas(p, "Greater Divine Intervention", 20)))) return di;
+  return null;
 }
-const freeFrom = r => (/\(([^)]+)\)/.exec(String(r.name||"").replace(/,?\s*no slot/i, "")) || [])[1] || (/magic initiate/i.test(r.name||"") ? "Magic Initiate" : "free");
+const freeFrom = r => /^divine intervention$/i.test(String(r.name || "")) ? "Divine Intervention" : (/\(([^)]+)\)/.exec(String(r.name||"").replace(/,?\s*no slot/i, "")) || [])[1] || (/magic initiate/i.test(r.name||"") ? "Magic Initiate" : "free");
 /* their Strength checks with Advantage (Large Form), and checks to end Grappled (a Goliath's Powerful Build) */
 const strAdvT = t => !!(t && t.kind!=="foe" && t.p && (t.p.big || t.p.rage));
 const strAdvWhy = t => t && t.p ? (t.p.rage ? "Rage" : t.p.big ? "Large Form" : "") : "";
@@ -12423,6 +12428,7 @@ function restPc(c, kind){
   delete c.shape;                                                // a long rest outlasts any Wild Shape
   delete c.conc;                                                 // and any spell they were holding (Joseph's fight, 2026-11-06: Spiritual Weapon and Shield of Faith carried into the next fight)
   for(let L=1; L<=9; L++) c.slots[L].used = 0; for(const r of c.res) r.used = 0;
+  if(c.diWait > 0){ c.diWait--; const r = c.res.find(q => /^divine intervention$/i.test(q.name || "")); if(c.diWait > 0 && r) r.used = r.max; else delete c.diWait; }     // after Wish: 2d4 Long Rests without Divine Intervention
 }
 /* the whole party rests at once: one step to undo */
 function restParty(kind){
@@ -16591,7 +16597,7 @@ function snapOf(c, ids){
     if(x) s[id] = { k:"foe", v:JSON.parse(JSON.stringify({ hp:x.hp, temp:x.temp||0, conds:x.conds, used:x.used, spent:x.spent, fled:!!x.fled, conc:x.conc||null, fx:x.fx||null, bi:x.bi||null })) };
     const p = partyRoster().find(y=>y.id===id);
     if(p){ pcState(p); s[id] = { k:"pc", v:JSON.parse(JSON.stringify({ hp:p.hp, temp:p.temp, conds:p.conds, death:p.death, slots:p.slots, res:p.res, stats:p.stats||null, conc:p.conc||null, fx:p.fx||null,
-      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
+      rage:p.rage||null, reck:p.reck||null, big:p.big||null, relDC:p.relDC||null, persistUsed:p.persistUsed||null, bi:p.bi||null, shape:p.shape||null, diWait:p.diWait||null })) }; }     // a Barbarian's Rage and Reckless Attack too (2026-11-06)
   }
   return s;
 }
@@ -16599,7 +16605,7 @@ function restoreSnap(c, s){
   for(const id in s){
     if(s[id].k==="foe"){ const x = c.list.find(y=>y.id===id); if(x){ Object.assign(x, s[id].v); if(!x.conc) delete x.conc; if(!x.fx) delete x.fx; if(!x.bi) delete x.bi; } }     // concentration and spell effects come back with the rest
     else { const p = partyRoster().find(y=>y.id===id); if(p){ Object.assign(p, s[id].v); if(!s[id].v.stats) delete p.stats; if(!p.conc) delete p.conc; if(!p.fx) delete p.fx;
-      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape"]) if(p[k]==null) delete p[k]; } }
+      for(const k of ["rage", "reck", "big", "relDC", "persistUsed", "bi", "shape", "diWait"]) if(p[k]==null) delete p[k]; } }
   }
 }
 const statsOf = p => { p.stats = p.stats || {}; const S = p.stats; for(const k of STAT_KEYS) S[k] = S[k]||0; S.spells = S.spells||{}; S.abilities = S.abilities||{}; return S; };
@@ -16769,7 +16775,8 @@ function logAction(n, c){
   if(actor.kind==="pc"){
     const p = pcState(actor.p), S = statsOf(p);
     const miR = act.miFree && !part ? miResOf(actor, info) : null;     // Magic Initiate: its own use, no slot
-    if(miR){ miR.used = Math.min(miR.max, (+miR.used || 0) + 1); slotTxt = ` (${freeFrom(miR)}: no slot; ${miR.max - miR.used} left until a Long Rest)`; }
+    if(miR){ miR.used = Math.min(miR.max, (+miR.used || 0) + 1); slotTxt = ` (${freeFrom(miR)}: no slot; ${miR.max - miR.used} left until a Long Rest)`;
+      if(/^divine intervention$/i.test(miR.name || "") && /^wish$/i.test((info.spell && info.spell.name) || "")){ const w = rollTerms(diceTerms("2d4")).total; p.diWait = w; slotTxt = ` (Greater Divine Intervention: no slot; Divine Intervention is gone for ${w} Long Rests)`; } }
     else if(info.kind==="spell" && !info.free && !part && info.spell && info.spell.lv>0 && act.lvl){ const sl = p.slots[act.lvl]; if(sl && sl.max>0) sl.used = Math.min(sl.max, sl.used+1); slotTxt = ` (${ORD[act.lvl]})`; }
     if(info.res && wsActOf(actor, info) && act.wsForm){ if(shapeShift(p, act.wsForm)) slotTxt = ` (into ${shapeName(p)})`; }
     else if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) : 1));     // a pool (Lay on Hands) spends what it gives

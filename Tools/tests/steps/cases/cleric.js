@@ -65,6 +65,17 @@ step("Blessed Strikes at 7: Divine Strike's chips on Mira's Mace, gone after one
   const temp = `asked "${(clAsked.find(a => /Potent/.test(a)) || "no").slice(0, 70)}…", temp HP ${p.temp}`; p.level = 5; delete p.strikes; p.temp = 0;
   return `chips: ${chips} | ${dice} | ${line} | next attack's chips: ${again} || Sacred Flame ${flame} || at 14: ${temp}`;
 });
+step("Divine Intervention (10): Cure Wounds free (no slot), once a Long Rest; at 20 Wish too, and then 2d4 Long Rests without it; not for Bram's spells", async () => {
+  const c = clFight(), M = clWho("Mira"), B = clWho("Bram"), p = pcState(M.p); p.level = 10; pcState(p); c.round++; await clTurn(M);
+  act.what = "sp:spell:cure-wounds"; act.targets = [B.id]; renderBattlePanel(); await wait(20); const box = document.querySelector("#ac-mi"), label = box ? box.parentElement.textContent.replace(/\s+/g, " ").trim() : "no box";
+  box.checked = true; box.onchange(); await wait(20); const s0 = JSON.stringify(p.slots.slice(1, 4).map(s => s.used)); act.heal = "8"; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30);
+  const one = `${clLast().slice(0, 110)} | slots used ${s0} → ${JSON.stringify(pcState(M.p).slots.slice(1, 4).map(s => s.used))}`;
+  p.level = 20; pcState(p); p.res.find(r => r.name === "Divine Intervention").used = 0; c.round++; await clTurn(M); act.what = "sp:spell:wish"; act.targets = [M.id]; renderBattlePanel(); await wait(20);
+  const wb = document.querySelector("#ac-mi"); wb.checked = true; wb.onchange(); await wait(20); act.outcome = "none"; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30);
+  const w = pcState(M.p).diWait, wish = `${clLast().replace(/^.*\(Greater/, "(Greater").slice(0, 100)} | wait ${w}`; restPc(pcState(M.p), "long"); const after1 = `${pcState(M.p).diWait || 0} left, ${pcState(M.p).res.find(r => r.name === "Divine Intervention").used ? "still used" : "ready"}`;
+  p.level = 5; pcState(p);
+  return `${label} || ${one} || ${wish} | after one Long Rest: ${after1}`;
+});
 step("Preserve Life: 25 hit points split between Bram (Bloodied, 10/44) and Old Gnick (5/27), each no higher than half its maximum; Mira (full) asks first", async () => {
   const c = clFight(), B = clWho("Bram"), G = clWho("Old Gnick"), M = clWho("Mira"); pcState(B.p).hp = 10; pcState(G.p).hp = 5; c.round++; pcState(M.p).res.find(x => x.name === "Channel Divinity").used = 0;
   await clCD("Mira", "preserve"); act.targets = [B.id, G.id]; renderBattlePanel(); await wait(20); clAsk([]); $("#ac-go").click(); await wait(30);
