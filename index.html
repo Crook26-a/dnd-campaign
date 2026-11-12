@@ -9630,7 +9630,7 @@ function cbIntoPc(pc, x){
   for(const k of ["name","player","species","cls","subcls","bg","align","ac","hpMax","speed","init","pp","dc","satk","saves","skills","senses","langs","looks","persona"]) if(x[k]!=null && x[k]!=="") pc[k] = x[k];
   for(const k of ["str","dex","con","int","wis","cha","hp","temp"]) if(x[k]!=null) pc[k] = x[k];
   pc.level = clampLv(x.level || pc.level); pc.cbId = x.cbId;
-  if(x.feats) pc.feats = x.feats; if(x.giant) pc.giant = x.giant; if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds
+  if(x.feats) pc.feats = x.feats; if(x.rules) pc.rules = x.rules; if(x.giant) pc.giant = x.giant;     // which rules their sheet is built on (2014 or 2024) if(Array.isArray(x.mastery)) pc.mastery = x.mastery.slice();     // Weapon Mastery's kinds
   if(x.bi && +x.bi.die) pc.bi = { die:+x.bi.die, by:x.bi.by || "" }; else if(x.bi===null) delete pc.bi;     // a Bardic Inspiration die they hold     // their features by name (Alert, Savage Attacker…), and a Goliath's giant (2026-11-06)
   if((+pc.xp || 0) < XP_LEVELS[pc.level]) pc.xp = XP_LEVELS[pc.level];     // the Character Book keeps no XP: a level it raised brings the XP up to that level's start (Joseph, 2026-11-03: "I updated Gnick, but it didn't update the xp")
   if(x.purse) pc.purse = { ...x.purse };
@@ -11568,6 +11568,7 @@ function originRes(c){
   if(goliathOf(c)){ want.push(["Giant Ancestry", pb, "long"]); if(clampLv(c.level) >= 5) want.push(["Large Form", 1, "long"]); }
   if(orcOf(c)) want.push(["Adrenaline Rush", pb, "short"], ["Relentless Endurance", 1, "long"]);
   if(berserkerOf(c) && barbLevel(c) >= 14) want.push(["Intimidating Presence", 1, "long"]);     // a Berserker's (2026-11-06)
+  { const cl = clericLevel(c); if(cl >= 2 && !is2014(c)) want.push(["Channel Divinity", cl >= 18 ? 4 : cl >= 6 ? 3 : 2, "one"]); if(cl >= 10 && !is2014(c)) want.push(["Divine Intervention", 1, "long"]); }     // a 2024 Cleric's (one Channel Divinity back on a Short Rest, all on a Long)
   { const bl = bardLevel(c); if(bl) want.push(["Bardic Inspiration", Math.max(1, Math.floor(((+c.cha || 10) - 10) / 2)), bl >= 5 ? "short" : "long"]); }     // a Bard's (Font of Inspiration: a Short Rest too from 5)
   for(const [name, max, rest] of want){ let r = c.res.find(q => String(q.name || "").trim().toLowerCase()===name.toLowerCase()); if(!r) c.res.push(r = { id:uid("rs"), name, max, used:0, rest });
     r.max = max; r.used = Math.min(max, +r.used || 0); r.rest = rest; }
@@ -11868,6 +11869,35 @@ function countercharm(c, x, bonus, dc, what){
 }
 /* a failed d20 roll (an attack roll, a save, a check): Peerless Skill first (a Lore bard's own attack or check, from 14,
    their use kept if it still fails), then a Bardic Inspiration die they hold. Asked first; back: the new total and words */
+/* ══ THE CLERIC (Joseph, 2026-11-12, the SRD walk-through: "Build it"). Their Cleric level; the Life Domain by subclass.
+   A feature is offered only when their sheet has it: a sheet from the Character Book lists its features by name (feats),
+   so a 2014 cleric (Gnick) gets Turn Undead but not the 2024 Divine Spark; a sheet made here goes by class and level,
+   unless it says it's 2014 ══ */
+function clericLevel(c){ const s = String((c && c.cls) || ""), m = /\bcleric\s*(\d+)/i.exec(s); return m ? clampLv(+m[1]) : /\bcleric\b/i.test(s) ? clampLv(c.level) : 0; }
+function lifeOf(c){ return clericLevel(c) > 0 && /\blife\b/i.test(`${(c && c.subcls) || ""} ${(c && c.cls) || ""}`); }
+function is2014(c){ return String((c && c.rules) || "")==="2014" || /\b2014 (Player's Handbook|rules)\b/i.test(String((c && c.notes) || "")); }
+function clHas(c, name, lv){ return clericLevel(c) >= lv && (c.feats ? new RegExp(`\\b${name}\\b`, "i").test(c.feats) : !is2014(c)); }
+const turnHas = c => clericLevel(c) >= 2 && (c.feats ? /Channel Divinity|Turn Undead/i.test(c.feats) : true);
+const sparkDice = lv => `${lv >= 18 ? 4 : lv >= 13 ? 3 : lv >= 7 ? 2 : 1}d8`;
+const undeadT = t => t && t.kind==="foe" && /undead/i.test(String((foeById(t.x.foe) || {}).type || ""));
+/* Channel Divinity's effects they have, and what each does in the Action box (picked under its row: act.cdFx) */
+function cdChoices(p){
+  const o = [];
+  if(clHas(p, "Channel Divinity", 2) && !is2014(p)) o.push(["spark-heal", "Divine Spark: heal"], ["spark-radiant", "Divine Spark: Radiant damage"], ["spark-necrotic", "Divine Spark: Necrotic damage"]);
+  if(turnHas(p)) o.push(["turn", "Turn Undead"]);
+  if(lifeOf(p) && clHas(p, "Preserve Life", 3)) o.push(["preserve", "Preserve Life"]);
+  return o;
+}
+function cdInfo(t, k, res){
+  const p = pcState(t.p), lv = clericLevel(p), wis = abBonus(p, "wis"), dc = spellDcOfT(t), dice = `${sparkDice(lv)}${wis ? `${wis < 0 ? "" : "+"}${wis}` : ""}`, base = { kind:"ability", res, origin:"cd", cdFx:k, healDice:"" };
+  if(k==="spark-heal") return { ...base, name:"Divine Spark", healDice:dice };
+  if(/^spark-/.test(k)){ const dt = k.slice(6); return { ...base, name:"Divine Spark", save:true, hint:{ dice, dtype:dt },
+    text:`Constitution Saving Throw: DC ${dc}. Failure: ${dice} ${dt} damage. Success: half as much damage.` }; }
+  if(k==="turn") return { ...base, name:"Turn Undead", save:true, cond:"Frightened",
+    text:`Wisdom Saving Throw: DC ${dc}. Failure: the creature has the Frightened${is2014(p) ? "" : " and Incapacitated"} conditions for 1 minute, and tries to move as far from you as it can on its turns. This effect ends early on the creature if it takes any damage.` };
+  if(k==="preserve") return { ...base, name:"Preserve Life", heal:true };
+  return { ...base, name:"Channel Divinity" };
+}
 function d20Rescue(c, t, tot, need, what, kind){
   let w = "";
   if(!t || tot >= need) return { tot, w };
@@ -15164,6 +15194,10 @@ async function autoTurnNow(c, t, n){
     c.autoLast = { id:t.id, round:c.round, n:(c.log || []).length - log0, from:from0, len:(c.log || []).length, said:added.join(" ") || `${t.label} does nothing it can see to do.` };
     if(c.turn===t.id) act = freshAct(t.id); if(autoNow()) askOpportunity(t.id, from0);     // step by step, it was offered as it walked
     return c.autoLast; };
+  if(H && H.name==="Turn Undead"){ const by = all().find(x => x.id===H.by), S = speedOf(t) > 0 ? autoSquares(c, t, n, false) : [];     // turned: as far from the cleric as it can, and nothing else
+    const far = by && c.pos[by.id] && S.length ? S.slice().sort((a, b) => chebSq(c.pos[by.id], b) - chebSq(c.pos[by.id], a) || a.cost - b.cost)[0] : null;
+    const ft = far && chebSq(c.pos[by.id], far) > chebSq(c.pos[by.id], c.pos[t.id]) ? await autoWalk(c, t, far) : 0;
+    said.push(`${t.label} is turned by ${autoByName(c, H)}: ${ft ? `it moves ${ft} ft away` : "it can't get any farther away"}, and takes no action.`); await autoSay(said[said.length - 1]); return done(); }
   if(H && H.tier==="full"){ said.push(`${t.label} is held by ${autoByName(c, H)}'s ${H.name}: it loses its turn.`); await autoSay(said[0]); return done(); }
   if(H && (H.tier==="order" || H.tier==="turn")){ said.push(`${t.label} is under ${autoByName(c, H)}'s ${H.name}: ${autoByName(c, H)} says what it does this turn.`); await autoSay(said[0]); const r = done(); r.handed = true; return r; }
   /* its conditions (item 8): can't act; stands up; breaks free if it can't fight from where it is (then it moves, its action spent) */
@@ -16369,6 +16403,7 @@ function actInfo(c, t){
   if(w.startsWith("res:")){ const r = (t.p&&pcState(t.p).res.find(r=>(r.id||r.name)===w.slice(4)))||{}, nm = r.name||"a resource";
     const heal = /second wind/i.test(nm) ? ((/(\d+d\d+(?:\s*[+-]\s*\d+)?)/.exec(nm)||[])[1] || `1d10+${clampLv(pcState(t.p).level)}`).replace(/\s+/g, "") : "";     // Second Wind heals (2026-10-30)
     if(/lay on hands/i.test(nm)) return { kind:"ability", name:"Lay on Hands", res:w.slice(4), loh:true, ba:true, healDice:"" };     // a Bonus Action (2024): a pool of hit points
+    if(/^channel divinity\b/i.test(nm) && clericLevel(pcState(t.p))){ const C = cdChoices(pcState(t.p)), k = C.some(x => x[0]===act.cdFx) ? act.cdFx : (C[0] || [])[0]; if(k) return cdInfo(t, k, w.slice(4)); }     // a Cleric's Channel Divinity: the effect picked under it
     if(/^bardic inspiration$/i.test(nm) && bardLevel(pcState(t.p))) return { kind:"ability", name:"Bardic Inspiration", res:w.slice(4), ba:true, origin:"bi", healDice:"" };     // a Bard's: a die to someone else
     if(/^intimidating presence$/i.test(nm)){ const dc = ipDC(pcState(t.p));     // a Berserker's, level 14: a Bonus Action, a Wisdom save or Frightened
       return { kind:"ability", name:"Intimidating Presence", res:w.slice(4), ba:true, origin:"ip", save:true, cond:"Frightened", healDice:"",
@@ -16510,6 +16545,8 @@ function actionForm(c, all){
       <div class="field" style="flex:.8"><label>${info && info.reduce ? "Takes off" : D.temp ? "Temp HP" : "Healing"}${D.healDice?` <i>(${esc(D.healDice)})</i>`:""}</label><input id="ac-heal" type="number" min="0" value="${esc(act.heal)}"></div></div>
     ${info && info.reduce ? `<div class="pcrow" style="align-items:center"><div class="field" style="flex:.9"><label>Damage they took</label><input id="ac-took" type="number" min="0" value="${esc(act.took||"")}" placeholder="the hit"></div>
       <p class="empty-note" style="flex:2;font-size:11px;margin:0">${esc(info.name)} ${esc(reduceWords(info.reduce))}. Pick who was hit; what it takes off comes back as hit points.</p></div>` : ""}
+    ${info && info.origin==="cd" ? `<div class="field" style="margin:-2px 0 6px"><label>Channel Divinity: which</label><select id="ac-cdfx">${cdChoices(pcState(t.p)).map(([k, l]) => `<option value="${k}" ${k===info.cdFx ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+      ${info.cdFx==="preserve" ? `<p class="empty-note" style="font-size:11px;margin:-4px 0 6px">${5 * clericLevel(pcState(t.p))} hit points split among the Bloodied creatures picked (within 30 ft), in the order picked; none above half its hit point maximum.</p>` : ""}` : ""}
     ${info && info.loh ? (r=>`<div class="pcrow" style="align-items:center"><p class="empty-note" style="flex:2;font-size:11px;margin:0">Lay on Hands, a Bonus Action and a touch: ${r ? r.max - r.used : 0} of ${r ? r.max : 0} hit points left in the pool. Pick who (themself too), and type how many it restores in Healing.</p>
       <button class="chip${act.lohPoison ? " on" : ""}" data-lohpois title="5 from the pool ends the Poisoned condition (those 5 don't also heal)">End Poisoned (5)</button></div>`)(pcState(t.p).res.find(q=>(q.id||q.name)===info.res)) : ""}
     ${D.parts.length > 1 ? `<div class="pcrow">${D.parts.map((p, i)=>`<div class="field" style="flex:1;min-width:0"><label>${esc(p.dice)} ${esc(p.dtype)}</label><div style="display:flex;gap:4px"><input class="mono" type="number" min="0" data-acpart="${i}" value="${esc(String(((act.partV||{})[p.dtype]||{}).v ?? ""))}" placeholder="—" style="min-width:0;flex:1" title="Rolled at the table? Type it in"><button class="btn" data-acroll="part:${i}" title="Rolls just this part">Roll</button></div></div>`).join("")}</div>` : ""}
@@ -16684,6 +16721,14 @@ function logAction(n, c){
   if(info.origin==="passive"){ flash(`${info.name} happens by itself: ${/relentless/i.test(info.name) ? "the app asks when they drop to 0 hit points" : "the app offers it on a hit (a chip by the damage) or when they take damage"}${/^Giant Ancestry$/.test(info.name) ? ". Pick their giant on their card first" : ""}.`); return; }
   if(info.origin==="large" && actor.p && actor.p.big){ flash(`${actor.label} is Large already.`); return; }
   if(info.self) act.outcome = "none";     // on themselves: nothing hits or misses
+  if(info.origin==="cd"){ const k = info.cdFx, bloodied = o => o.kind==="foe" ? o.x.max > 0 && o.x.hp <= o.x.max / 2 : numOr(pcState(o.p).hp, 0) <= numOr(pcState(o.p).hpMax, 0) / 2;     // Channel Divinity: who and how far
+    if(!targets.length){ flash(`${info.name}: pick ${k==="turn" ? "the Undead" : k==="preserve" ? "the Bloodied creatures" : "who"}.`); return; }
+    const far = targets.filter(o => o.id!==actor.id && c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 30);
+    const bad = k==="turn" ? targets.filter(o => !undeadT(o)) : k==="preserve" ? targets.filter(o => !bloodied(o)) : targets.filter(o => o.id===actor.id);
+    const why = [far.length ? `${far.map(o => o.label).join(", ")} ${far.length > 1 ? "are" : "is"} more than 30 feet away` : "",
+      bad.length ? `${bad.map(o => o.label).join(", ")} ${k==="turn" ? (bad.length > 1 ? "aren't Undead" : "isn't Undead") : k==="preserve" ? `${bad.length > 1 ? "aren't" : "isn't"} Bloodied (at half their hit points or fewer)` : "is the cleric (Divine Spark goes to another creature)"}` : ""].filter(Boolean);
+    if(why.length && !confirm(`${info.name}: ${why.join("; ")}. Log it anyway?`)) return;
+    if(k==="spark-heal" || k==="preserve") act.outcome = "none"; }
   if(info.origin==="bi"){ const T = targets.filter(o => o.id!==actor.id);     // Bardic Inspiration: another creature within 60 ft, one die at a time
     if(!T.length){ flash("Bardic Inspiration goes to another creature: pick who."); return; }
     const far = T.filter(o => c.pos && c.pos[o.id] && c.pos[actor.id] && chebSq(c.pos[actor.id], c.pos[o.id]) * 5 > 60), has = T.filter(o => (hOfT(o) || {}).bi);
@@ -16747,6 +16792,9 @@ function logAction(n, c){
   const SV = act.saves ? saveOfAct(c, actor, info) : null, svOf = t => SV ? (act.saves[t.id] || null) : null;
   const effectsBefore = JSON.stringify(c.effects || []), gripsBefore = JSON.stringify(c.grips || {});
   let retal = null, cleaveFrom = null;     // a Berserker hurt from within 5 ft (Retaliation); a Cleave weapon's first hit
+  const cp = actor.kind==="pc" && actor.p ? pcState(actor.p) : null;
+  let pPool = info.cdFx==="preserve" && cp ? 5 * clericLevel(cp) : 0;     // Preserve Life: the hit points to share
+  const searN = info.cdFx==="turn" && cp && clHas(cp, "Sear Undead", 5) ? rollTerms(diceTerms(`${Math.max(1, abBonus(cp, "wis"))}d8`)).total : 0;     // Sear Undead: one roll for every Undead that fails
   const MW = isAttackAct(info) ? masteryOf(actor, info) : "", MQ = MW && D.on.some(a => a.mastery) ? MW : "";     // Weapon Mastery: this weapon's property, and whether it's on
   const vexSap0 = new Set((c.effects || []).filter(e => e.vex || e.sap).map(e => e.id));     // Vex and Sap from before this attack, used up by it
   const reacted0 = JSON.stringify(c.reacted||{}), movedBefore = JSON.stringify(c.moved||{}), bigBefore = actor.kind==="pc" && actor.p ? !!actor.p.big : null;     // (Stone's Endurance and Storm's Thunder take reactions below)
@@ -16759,6 +16807,11 @@ function logAction(n, c){
       turned.push(`${t.label}: d100 ${r} ${off ? "≤" : ">"} ${mp}, ${off ? `the hit turns aside${why ? ` (${why})` : ""}` : "it lands"}`); }
     if(!off && isAttackAct(info) && ["hit","crit"].includes(act.outcome)){ const m = mirrorCheck(actor, t); if(m){ off = m.off; turned.push(m.said); } }     // Mirror Image
     let dm = (r=>{ const sv = svOf(t); return sv && sv.made ? (SV.half ? Math.floor(r / 2) : 0) : r; })(byT && byT[t.id]!=null && dmg ? byT[t.id] : dmg);
+    if(info.cdFx==="turn" && undeadT(t) && (svOf(t) ? !svOf(t).made : act.outcome==="fail")){     // Turn Undead failed: Incapacitated too (2024), and Sear Undead's Radiant (it doesn't end the turning)
+      if(cp && !is2014(cp) && !condImmune(t, "Incapacitated")){ const cs = condsOfT(t); if(!cs.includes("Incapacitated")) cs.push("Incapacitated"); }
+      if(searN){ dm = searN; turned.push(`${t.label}: Sear Undead, ${searN} Radiant damage`); } }
+    if(info.cdFx==="preserve"){ const max = t.kind==="foe" ? t.x.max : numOr(pcState(t.p).hpMax, 0), now = t.kind==="foe" ? t.x.hp : numOr(pcState(t.p).hp, 0), n = Math.max(0, Math.min(pPool, Math.floor(max / 2) - now));
+      if(n){ hl = healAny(t, n); healed += hl; pPool -= hl; } turned.push(`${t.label}: +${hl} hit points (Preserve Life${now + hl >= Math.floor(max / 2) ? ", to half its maximum" : ""})`); }
     if(!dm && !off && act.outcome==="miss" && MQ==="Graze"){ const g = abilModFor(actor, info); if(g > 0){ dm = g; turned.push(`${t.label}: Graze, ${g} damage on the miss`); } }     // Weapon Mastery: Graze
     if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = stoneEndurance(c, t, dm, turned);     // a Goliath's Stone's Endurance: their Reaction, the damage cut
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm; }
@@ -16864,7 +16917,8 @@ function logAction(n, c){
   const holdsBefore = JSON.stringify(c.holds || {}), shaken = [], held = [];
   for(const h of [...hits, ...hits2]){ const H = c.holds && c.holds[h.id], hb = H && all.find(x=>x.id===H.by);     // "any" damage, or only the holder's side's (Suggestion, Charm Person)
     if(h.dmg > 0 && H && (H.dmgEnds==="any" || (H.dmgEnds==="theirs" && hb && hb.side===actor.side)) && !shaken.includes(h.label)){ delete c.holds[h.id]; shaken.push(h.label);
-      if(H.cond){ const x = all.find(y=>y.id===h.id), cs = x && (x.kind==="foe" ? x.x.conds : (x.p && pcState(x.p).conds)); if(cs && cs.includes(H.cond)) cs.splice(cs.indexOf(H.cond), 1); } } }     // Charm Person's Charmed comes off with it
+      if(H.cond){ const x = all.find(y=>y.id===h.id), cs = x && (x.kind==="foe" ? x.x.conds : (x.p && pcState(x.p).conds)); if(cs && cs.includes(H.cond)) cs.splice(cs.indexOf(H.cond), 1);
+        if(cs && H.name==="Turn Undead" && cs.includes("Incapacitated")) cs.splice(cs.indexOf("Incapacitated"), 1); } } }     // Charm Person's Charmed comes off with it; Turn Undead's Incapacitated too
   { const tier = ctrlOf(info), sp = info.spell, text = String((sp && sp.desc) || info.text || "");
     if(tier && !part) for(const t of targets){ const sv = svOf(t);
       if(t.side===actor.side || ["miss","save"].includes(act.outcome) || (sv && sv.made) || (act.riderMade || {})[t.id] || (act.cond && condImmune(t, act.cond)) || turned.some(w=>w.startsWith(t.label + ":") && /turns aside/.test(w))) continue;
@@ -17587,6 +17641,7 @@ function renderBattlePanelNow(){
   };
   const sp = $("#ac-spell"); if(sp) sp.onchange = ()=>{ act.spellText = sp.value; redraw(); };
   const lv = $("#ac-lvl"); if(lv) lv.onchange = ()=>{ act.lvl = +lv.value; redraw(); };
+  { const cf = $("#ac-cdfx"); if(cf) cf.onchange = ()=>{ act.cdFx = cf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // Channel Divinity's effect: set up as if just chosen
   { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; if(!act.reck) act.brutal = false; redraw(); }; }     // Reckless Attack
   { const bs = $("#ac-brutal"); if(bs) bs.onchange = ()=>{ act.brutal = bs.checked; if(act.brutal && !act.brutalFx) act.brutalFx = ["forceful", ""]; redraw(); }; }     // Brutal Strike
   document.querySelectorAll("[data-brutalfx]").forEach(s => s.onchange = ()=>{ act.brutalFx = act.brutalFx || ["forceful", ""]; act.brutalFx[+s.dataset.brutalfx] = s.value; if(act.brutalFx[1]===act.brutalFx[0]) act.brutalFx[1] = ""; redraw(); });
