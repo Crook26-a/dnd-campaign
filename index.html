@@ -11587,6 +11587,7 @@ function originRes(c){
   { const cl = clericLevel(c); if(cl >= 2 && !is2014(c)) want.push(["Channel Divinity", cl >= 18 ? 4 : cl >= 6 ? 3 : 2, "one"]); if(cl >= 10 && !is2014(c)) want.push(["Divine Intervention", 1, "long"]); }     // a 2024 Cleric's (one Channel Divinity back on a Short Rest, all on a Long)
   { const ml = monkLevel(c); if(ml >= 2 && !is2014(c)){ want.push(["Focus Points", ml, "short"], ["Uncanny Metabolism", 1, "long"]);     // a 2024 Monk's (the SRD 5.2.1 Monk table)
       if(openHandOf(c) && ml >= 6) want.push(["Wholeness of Body", Math.max(1, abBonus(c, "wis")), "long"]); } }
+  if(roHas(c, "Stroke of Luck", 20)) want.push(["Stroke of Luck", 1, "short"]);     // a Rogue's (20)
   { const rl = rangerLevel(c); if(rl && !is2014(c)){ const w = Math.max(1, abBonus(c, "wis"));     // a 2024 Ranger's (the SRD 5.2.1 Ranger table: Favored Enemy 2/3/4/5/6 at 1/5/9/13/17)
       if(rgHas(c, "Favored Enemy", 1)) want.push(["Hunter's Mark, free (Favored Enemy)", rl >= 17 ? 6 : rl >= 13 ? 5 : rl >= 9 ? 4 : rl >= 5 ? 3 : 2, "long"]);
       if(rgHas(c, "Tireless", 10)) want.push(["Tireless", w, "long"]); if(rgHas(c, "Nature's Veil", 14)) want.push(["Nature's Veil", w, "long"]); } }
@@ -12321,6 +12322,83 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
   saveParty(); touch(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} });
 /* Restoring Touch (14): Lay on Hands also ends these, 5 from the pool each */
 const RESTORE_CONDS = ["Blinded", "Charmed", "Deafened", "Frightened", "Paralyzed", "Stunned"];
+/* ══ THE ROGUE (Joseph, 2026-11-13, the SRD walk-through: "Yes"; text from his SRD 5.2.1 PDF). Their Rogue level; the
+   Thief by subclass; only what the sheet has, and only on a 2024 sheet. Sneak Attack is a chip of its own from the level
+   (a typed "Sneak Attack" line still works); Cunning Strike picks under it take dice off for an effect ══ */
+function rogueLevel(c){ const s = String((c && c.cls) || ""), m = /\brogue\s*(\d+)/i.exec(s); return m ? clampLv(+m[1]) : /\brogue\b/i.test(s) ? clampLv(c.level) : 0; }
+function thiefOf(c){ return rogueLevel(c) > 0 && /\bthief\b/i.test(`${(c && c.subcls) || ""} ${(c && c.cls) || ""}`); }
+function roHas(c, name, lv){ return !!c && !is2014(c) && rogueLevel(c) >= lv && (c.feats ? new RegExp(`\\b${name}\\b`, "i").test(c.feats) : true); }
+const sneakDice = p => Math.ceil(rogueLevel(p) / 2);     // the Sneak Attack column: 1d6, +1d6 every odd level
+const csDC = p => 8 + abBonus(p, "dex") + pbOfPc(p);
+/* the Cunning Strike effects they have: [key, name, cost in d6] */
+function csOpts(p){
+  const o = []; if(!roHas(p, "Cunning Strike", 5)) return o;
+  o.push(["poison", "Poison: a Constitution save or Poisoned (needs a Poisoner's Kit)", 1], ["trip", "Trip: a Dexterity save or Prone (Large or smaller)", 1], ["withdraw", "Withdraw: move half their Speed, no opportunity attacks", 1]);
+  if(roHas(p, "Devious Strikes", 14)) o.push(["daze", "Daze: a Constitution save or only one of move, action, Bonus Action next turn", 2], ["obscure", "Obscure: a Dexterity save or Blinded until the end of its next turn", 3], ["ko", "Knock Out: a Constitution save or Unconscious for 1 minute (ends on damage)", 6]);
+  if(thiefOf(p) && roHas(p, "Supreme Sneak", 9)) o.push(["stealth", "Stealth Attack: hiding, this attack doesn't give them away", 1]);
+  return o;
+}
+const csPicked = p => { const O = csOpts(p), max = roHas(p, "Improved Cunning Strike", 11) ? 2 : 1; return (act.cs || []).filter(k => O.some(o => o[0]===k)).slice(0, max); };
+const csCost = p => csPicked(p).reduce((a, k) => a + ((csOpts(p).find(o => o[0]===k) || [])[2] || 0), 0);
+function csHtml(c, t, info){
+  if(!t || t.kind!=="pc" || !t.p || !(act.addons || []).includes("sneak")) return ""; const p = pcState(t.p), O = csOpts(p); if(!O.length) return "";
+  const n = roHas(p, "Improved Cunning Strike", 11) ? 2 : 1, cur = act.cs || [];
+  const sel = i => `<select data-cs="${i}" style="flex:1;min-width:0"><option value="">${i ? "No second effect" : "No Cunning Strike"}</option>${O.filter(o => o[2] <= sneakDice(p) && (!i || o[0]!==cur[0])).map(([k, l, d]) => `<option value="${k}" ${cur[i]===k ? "selected" : ""}>${esc(l)} (−${d}d6)</option>`).join("")}</select>`;
+  return `<div class="field" style="margin:-2px 0 6px"><label>Cunning Strike (DC ${csDC(p)}): Sneak Attack dice traded for</label><div class="pcrow">${sel(0)}${n > 1 && cur[0] ? sel(1) : ""}</div></div>`;
+}
+/* after a hit with Sneak Attack: the Cunning Strike effects, then the Sneak Attack spent */
+function rogueHit(c, actor, t, D, info, turned){
+  const p = pcState(actor.p); if(!D.on.some(a => a.sneak)) return; const dc = csDC(p);
+  const add = e => (c.effects = c.effects || []).push({ id:uid("ef"), who:t.id, cond:"", by:actor.id, at:turnStamp(c), round:c.round, end:"", repeat:null, sp:null, rounds:null, ...e });
+  const save = (ab, why) => { const b = saveBonusOf(t, ab), Q = saveD(t, ab, `a ${ab} save against DC ${dc} (${why})`), RS = d20Rescue(c, t, mightTot(t, ab, Q.d + b), dc, `${ab} save`, "save", b), ok = RS.tot >= dc;
+    return { ok, said:`${t.label}: ${why}, ${ab} save d20 ${Q.d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${RS.tot}${RS.w} vs DC ${dc}` }; };
+  const put = (cond, e) => { if(condImmune(t, cond)) return false; const cs = condsOfT(t); if(!cs.includes(cond)) cs.push(cond); add({ cond, ...e }); return true; };
+  for(const k of csPicked(p)){
+    if(k==="poison"){ const S = save("Constitution", "Poison"); turned.push(S.ok ? `${S.said}, made` : `${S.said}, failed: ${put("Poisoned", { name:"Cunning Strike: Poison", repeat:{ abil:"Constitution", dc }, rounds:10 }) ? "Poisoned (it repeats the save at the end of each of its turns)" : "but it can't be Poisoned"}`); }
+    if(k==="trip"){ if(footOf(t) > 2){ turned.push(`${t.label}: too big to Trip`); continue; } const S = save("Dexterity", "Trip"); if(!S.ok && !condImmune(t, "Prone")){ const cs = condsOfT(t); if(!cs.includes("Prone")) cs.push("Prone"); } turned.push(`${S.said}, ${S.ok ? "made" : "failed: Prone"}`); }
+    if(k==="withdraw" && c.turn===actor.id){ const M = (c.moved = c.moved || {})[actor.id] = c.moved[actor.id] || { ft:0, dash:false, moves:[] }, h = Math.floor(speedOf(actor) / 2); M.extra = (M.extra || 0) + h; c.forceful = { id:actor.id, at:turnStamp(c) }; turned.push(`Withdraw: ${actor.label} can move up to ${h} ft without opportunity attacks`); }
+    if(k==="daze"){ const S = save("Constitution", "Daze"); if(!S.ok) add({ name:"Dazed", end:"targetNext" }); turned.push(`${S.said}, ${S.ok ? "made" : "failed: on its next turn it can only move, or take an action, or a Bonus Action"}`); }
+    if(k==="obscure"){ const S = save("Dexterity", "Obscure"); turned.push(S.ok ? `${S.said}, made` : `${S.said}, failed: ${put("Blinded", { name:"Cunning Strike: Obscure", end:"targetNext" }) ? "Blinded until the end of its next turn" : "but it can't be Blinded"}`); }
+    if(k==="ko"){ const S = save("Constitution", "Knock Out"); turned.push(S.ok ? `${S.said}, made` : `${S.said}, failed: ${put("Unconscious", { name:"Cunning Strike: Knock Out", repeat:{ abil:"Constitution", dc }, rounds:10, ko:true }) ? "Unconscious for 1 minute, until it takes damage (it repeats the save at the end of each of its turns)" : "but it can't be knocked out"}`); }
+    if(k==="stealth") turned.push(`Stealth Attack: ${actor.label} stays hidden if they end the turn behind Three-Quarters or Total Cover`); }
+}
+/* a Rogue's choices: Cunning Action (Dash, Disengage, Hide), Steady Aim (3), a Thief's Fast Hands (3) */
+function rogueChoices(t, p){
+  if(!rogueLevel(p) || is2014(p)) return []; const o = [];
+  if(roHas(p, "Cunning Action", 2)) o.push({ v:"ro:dash", label:"Cunning Action: Dash (a Bonus Action)" }, { v:"ro:dis", label:"Cunning Action: Disengage (a Bonus Action)" }, { v:"ro:hide", label:"Cunning Action: Hide (a Bonus Action, Stealth DC 15)" });
+  if(roHas(p, "Steady Aim", 3)) o.push({ v:"ro:aim", label:"Steady Aim: Advantage on the next attack this turn, Speed 0 (a Bonus Action)" });
+  if(thiefOf(p) && roHas(p, "Fast Hands", 3)) o.push({ v:"ro:fast", label:"Fast Hands: Sleight of Hand, Thieves' Tools, or Use an Object (a Bonus Action)" });
+  return o;
+}
+function rogueDo(c, t, info){
+  const p = pcState(t.p), k = info.rogue, M = () => (c.moved = c.moved || {})[t.id] = c.moved[t.id] || { ft:0, dash:false, moves:[] };
+  if(k==="dash"){ M().dash = true; return [`Dash: ${speedOf(t)} ft more movement`]; }
+  if(k==="dis"){ (c.disengaged = c.disengaged || {})[t.id] = turnStamp(c); return ["Disengage: no opportunity attacks against them this turn"]; }
+  if(k==="hide"){ const b = skillMod(p, "Stealth"), Q = pcD20(t, "a Dexterity (Stealth) check to Hide (DC 15)"), tot = Q.d + b, made = tot >= 15; c.stealth = c.stealth || {};
+    if(made) c.stealth[t.id] = { ...(c.stealth[t.id] || {}), hide:tot }; return [`Hide: Stealth d20 ${Q.d}${Q.w}${b ? ` ${b < 0 ? "−" : "+"} ${Math.abs(b)}` : ""} = ${tot}, ${made ? `hidden (enemies find them with Perception ${tot} or more)` : "not hidden (DC 15)"}`]; }
+  if(k==="aim"){ c.aim = { id:t.id, at:turnStamp(c) }; const m = M(); m.ft = moveAllow(c, t); return ["Steady Aim: Advantage on their next attack roll this turn; their Speed is 0 until the end of the turn"]; }
+  if(k==="fast") return [`Fast Hands${act.note ? "" : ": a Sleight of Hand check, Thieves' Tools, or Use an Object (say which in the Note)"}`];
+  return [];
+}
+/* Uncanny Dodge (5): an attacker they can see hits them: their Reaction halves the damage (asked) */
+function uncannyDodge(c, t, by, dm, turned){
+  const p = pcState(t.p); if(!roHas(p, "Uncanny Dodge", 5) || dm <= 1 || isDownT(t) || reactedThisRound(c, t.id) || cantAct(t).length) return dm;
+  if(!confirm(`${by ? by.label : "An attacker"} hits ${t.label} for ${dm}. Uncanny Dodge (their Reaction): halve it?`)) return dm;
+  (c.reacted = c.reacted || {})[t.id] = c.round; const n = Math.floor(dm / 2); turned.push(`${t.label}: Uncanny Dodge (Reaction), ${n} instead of ${dm}`); return n;
+}
+/* Reliable Talent (7): a skill check they're proficient in: a d20 of 9 or lower counts as 10 */
+function reliableD(p, skill, d){
+  if(d >= 10 || !roHas(p, "Reliable Talent", 7) || !skill || ABIL_NAME[skill]) return d;
+  const txt = String(p.skills || "").split(/\bAlso\b/)[0]; return new RegExp(`\\b${String(skill).replace(/ /g, "\\s+")}\\b`, "i").test(txt) ? 10 : d;
+}
+/* a Rogue's card (only theirs): Sneak Attack's dice and the Cunning Strike DC; notes */
+function rogueCardHtml(c){
+  const lv = rogueLevel(c); if(!lv || is2014(c)) return ""; const B = [];
+  if(roHas(c, "Sneak Attack", 1)) B.push(`Sneak Attack ${sneakDice(c)}d6`); if(roHas(c, "Cunning Strike", 5)) B.push(`Cunning Strike DC ${csDC(c)}`);
+  const notes = [thiefOf(c) && roHas(c, "Second-Story Work", 3) ? "Second-Story Work: a Climb Speed, jumps by Dexterity" : "", thiefOf(c) && roHas(c, "Use Magic Device", 13) ? "Use Magic Device: four attunements, a d6 on spending charges (a 6 spends none), any Spell Scroll" : "",
+    thiefOf(c) && roHas(c, "Thief's Reflexes", 17) ? "Thief's Reflexes: a second turn in round 1 at their Initiative minus 10 (the app doesn't add it: give them that turn by hand)" : "", roHas(c, "Elusive", 18) ? "Elusive: no Advantage on attacks against them unless they're Incapacitated" : ""].filter(Boolean);
+  return `<div class="fc-res">${B.map(b => `<span class="chip">${esc(b)}</span>`).join("")}</div>` + (notes.length ? `<p class="empty-note" style="font-size:11px;margin:2px 0 4px">${esc(notes.join(". "))}.</p>` : "");
+}
 /* ══ THE RANGER (Joseph, 2026-11-12, the SRD walk-through: "Do it"; text from his SRD 5.2.1 PDF). Their Ranger level; the
    Hunter by subclass; only what the sheet has, and only on a 2024 sheet. Hunter's Mark (anyone's): casting it marks the
    first target, c.hmark[casterId], for as long as they concentrate on it; its die rides on their attacks on that creature ══ */
@@ -12402,10 +12480,14 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
     for(let L = 5; L >= 1; L--) while(p.slots[L] && p.slots[L].used > 0 && L <= budget){ p.slots[L].used--; budget -= L; got.push(ORD[L]); }
     if(!got.length) return; p.nrUsed = true; line = `${nm} gets back ${andList(got)}-level slots (Natural Recovery)`; }
   if(line){ gameLog("spell", line); flash(line + "."); saveParty(); touch(); try{ renderPane(true); if(battleOf){ renderBattle(); renderBattlePanel(); } }catch(err){} } });
-function d20Rescue(c, t, tot, need, what, kind, base){
+function d20Rescue(c, t, tot, need, what, kind, base, dIn){
   let w = "";
   if(!t || tot >= need) return { tot, w };
   const p = t.kind!=="foe" && t.p ? pcState(t.p) : null;
+  /* a Rogue's Stroke of Luck (20): a failed d20 roll turned into a 20, once a Short Rest (the die known: a save's, or an attack's) */
+  { const d0 = base!=null ? tot - base : dIn, r = p && roHas(p, "Stroke of Luck", 20) ? (p.res || []).find(q => /^stroke of luck$/i.test(q.name || "")) : null;
+    if(r && d0!=null && d0 < 20 && r.used < r.max && tot - d0 + 20 >= need && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Stroke of Luck (once a Short Rest): turn the d20 into a 20?`)){
+      r.used++; const was = tot; tot = tot - d0 + 20; return { tot, w:` (Stroke of Luck: the d20 ${d0} counts as a 20, ${was} → ${tot})` }; } }
   /* a Fighter's Indomitable (9): a failed save rerolled with + their Fighter level, the new roll standing (base: the save's bonus) */
   if(p && kind==="save" && base!=null && fiHas(p, "Indomitable", 9)){ const r = (p.res || []).find(q => /^indomitable$/i.test(q.name || "")), lv = fighterLevel(p);
     if(r && r.used < r.max && confirm(`${t.label}'s ${what} comes to ${tot}, short of ${need}. Indomitable (${r.max - r.used} left until a Long Rest): reroll it with +${lv}? The new roll stands.`)){
@@ -12824,7 +12906,7 @@ function wildFormsEditor(c, i){
 }
 /* on a Goliath's card (Joseph, 2026-11-06: "the card and sheet"): their giant ancestry, and Large Form while it's on */
 function originCardHtml(c){
-  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + fighterCardHtml(c) + monkCardHtml(c) + palCardHtml(c) + rangerCardHtml(c) + masteryCardHtml(c);
+  return goliathCardHtml(c) + barbCardHtml(c) + bardCardHtml(c) + clericCardHtml(c) + druidCardHtml(c) + fighterCardHtml(c) + monkCardHtml(c) + palCardHtml(c) + rangerCardHtml(c) + rogueCardHtml(c) + masteryCardHtml(c);
 }
 /* a Fighter's Fighting Style picks (only theirs; a Champion's second from 7), and Heroic Inspiration on anyone's card who has it */
 const STYLES = [["archery", "Archery: +2 to hit with Ranged weapons"], ["defense", "Defense: +1 AC in armor"], ["gwf", "Great Weapon Fighting: 1s and 2s as 3s, two-handed"], ["twf", "Two-Weapon Fighting: the modifier on the off-hand attack"]];
@@ -15696,6 +15778,8 @@ function rollAdvOf(c, t, tg, info){
   { const V = (c.effects || []).find(e => e.vex && e.by===t.id && e.who===tg.id); if(V) A.push(`${V.name==="Studied Attacks" ? "Studied Attacks" : "Vex"} on ${tg.label}`); }     // Weapon Mastery's Vex, a Fighter's Studied Attacks; Sap below
   if((c.effects || []).some(e => e.sap && e.who===t.id)) D.push(`${t.label} is Sapped`);
   if(reckOn(c, tg)) A.push(`${tg.label} is attacking recklessly`);
+  if(c && c.aim && c.aim.id===t.id && c.aim.at===turnStamp(c)) A.push("Steady Aim");     // a Rogue's, used by this attack
+  if(tg.kind==="pc" && tg.p && roHas(pcState(tg.p), "Elusive", 18) && !them.some(k => INCAP.includes(k)) && A.length){ D.push(`(no Advantage: ${tg.label} is Elusive)`); A.length = 0; }     // a Rogue's Elusive
   { const hm = t.kind==="pc" && t.p ? hmarkOf(c, t.id) : null; if(hm && hm.id===tg.id && rgHas(pcState(t.p), "Precise Hunter", 17)) A.push(`Precise Hunter (${tg.label} is marked)`); }     // a Ranger's (17)
   if(act.reaction && act.actor===t.id && tg.kind==="pc" && tg.p && hunterOf(pcState(tg.p)) && pcState(tg.p).tactics==="escape" && rgHas(pcState(tg.p), "Defensive Tactics", 7)) D.push(`${tg.label}: Escape the Horde`);     // opportunity attacks on them
   { const md = c && c.mdef && c.mdef[tg.id]; if(md && md.by===t.id && md.at===turnStamp(c) && tg.p && pcState(tg.p).tactics==="multi") D.push(`${tg.label}: Multiattack Defense`); }
@@ -16322,7 +16406,7 @@ const OUTCOMES = [["hit","Hit"],["crit","Crit"],["miss","Miss"],["fail","Save fa
    radius…), an item used on "yourself" (or that gives its user temporary hit points) */
 function selfOnly(info, t){
   if(!info) return false;
-  if(info.monk) return !!info.self;     // Patient Defense, Step of the Wind, Wholeness of Body, Superior Defense
+  if(info.monk || info.rogue) return !!info.self;     // Patient Defense, Step of the Wind, Wholeness of Body, Superior Defense
   if(info.cdFx==="sense" || info.cdFx==="sacred" || ["nimbus", "court", "tireless", "veil"].includes(info.origin)) return true;     // a Paladin's
   if(info.spell){ const r = String(info.spell.range||""); return /^self/i.test(r) && !/radius|cone|cube|line|sphere|emanation/i.test(r) && (!info.spell.dmg || !!spellTemp(info.spell)); }     // False Life: its "dmg" is its temporary hit points
   if(info.res) return /second wind|action surge|form of dread|rage|wild shape|cunning action/i.test(String(info.name||info.res));
@@ -16375,7 +16459,7 @@ function saveBonusOf(t, abil){
   if(t.kind==="foe"){ const m = foeById(t.x.foe), v = m && said(m.sav); if(v!=null) return v; return Math.floor(((m && Array.isArray(m.ab) ? +m.ab[ABK.indexOf(k)] : 10) - 10) / 2); }
   const o = t.kind==="pc" ? pcState(t.p) : t.p; if(!o) return 0;
   const v = said(o.saves) ?? said((pcStatBlock(t.p)||{}).sav); if(v!=null) return v + auraSave(t);     // (a Paladin's Aura of Protection: not in the sheet's numbers)
-  const cls = Object.keys(CLASS_SAVES).find(n=>new RegExp(`\\b${n}\\b`, "i").test(String(o.cls||""))), prof = (cls && CLASS_SAVES[cls].includes(k)) || mkHas(o, "Disciplined Survivor", 14) ? profOf(o) : 0;     // the class's save proficiencies (a Monk's Disciplined Survivor: all)
+  const cls = Object.keys(CLASS_SAVES).find(n=>new RegExp(`\\b${n}\\b`, "i").test(String(o.cls||""))), prof = (cls && CLASS_SAVES[cls].includes(k)) || mkHas(o, "Disciplined Survivor", 14) || ((k==="wis" || k==="cha") && roHas(o, "Slippery Mind", 15)) ? profOf(o) : 0;     // the class's save proficiencies (a Monk's Disciplined Survivor: all)
   return abBonus(o, k) + prof + fxNum(o, "save", k, true) - fxNum(o, "save", k, false) + auraSave(t);     // what they wear (a Cloak of Protection): only here, where the app works it out
 }
 function saveRow(c, t, info, all){
@@ -16412,7 +16496,7 @@ function toHitRow(c, t, info, all){
       <button class="btn" data-acroll="hit" title="Rolls (or uses your d20), adds the bonus, and sets Hit, Miss or Crit">Roll to hit vs AC ${(cv => acOf(tg) + cv.ac + (cv.word ? `, ${cv.word}` : ""))(coverOf(c, t.id, tg.id))}</button></div>
     ${(() => { if(act.adv || !tg) return ""; const hu = act.helpUsed, CA = rollAdvOf(c, t, tg, info); act.helpUsed = hu; if(!CA || !CA.v) return "";     // what the app works out, said before anyone rolls (Joseph, 2026-11-08: Ander's Poisoned did nothing to a d20 typed in)
       const A = CA.v==="adv"; return `<p class="actspell" style="margin:-2px 0 6px;color:var(--lead)"><b>Roll with ${A ? "Advantage" : "Disadvantage"}</b>${CA.why ? `: ${esc(CA.why)}` : ""}. A d20 from the table: they roll two and you type the ${A ? "higher" : "lower"}.</p>`; })()}
-    ${reckRowHtml(c, t, info)}${tmasterHtml(c, t, info)}${ohHtml(c, t, info)}${smiteHtml(c, t, info)}
+    ${reckRowHtml(c, t, info)}${tmasterHtml(c, t, info)}${ohHtml(c, t, info)}${smiteHtml(c, t, info)}${csHtml(c, t, info)}
     ${(() => { const me = luckLeft(t), vs = tg && tg.side!==t.side ? luckLeft(tg) : 0; if(!me && !vs) return "";
       return `<div class="pcrow" style="align-items:center;margin:-2px 0 6px;font-size:12px">${me ? `<label title="Lucky: Advantage on this attack roll (the 2024 rule; 3 points a long rest)"><input type="checkbox" id="ac-luckme" ${act.luckMe ? "checked" : ""}> ${esc(t.label)} spends a Luck point: Advantage (${me} left)</label>` : ""}
         ${vs ? `<label title="Lucky: an attack roll against them has Disadvantage"><input type="checkbox" id="ac-luckvs" ${act.luckVs ? "checked" : ""}> ${esc(tg.label)} spends a Luck point: Disadvantage on it (${vs} left)</label>` : ""}</div>`; })()}
@@ -16631,6 +16715,7 @@ function actionChoices(t){
       out.push({ group:"Attacks", items:[...own, ...itemWeapons(c.inv).map(o=>({ v:`itm:${o.x.id}`, label:`${o.x.name}${o.x.hit?` (${o.x.hit} magic)`:""}` })), { v:"atk:Weapon attack", label:"Weapon attack" },{ v:"atk:Unarmed strike", label:"Unarmed strike" }] });
       { const mk = monkChoices(t, c); if(mk.length) out.push({ group:"Monk", items:mk }); }     // a Monk's (2026-11-12)
       { const rg = rangerChoices(t, c); if(rg.length) out.push({ group:"Hunter's Mark", items:rg }); }     // moving the mark
+      { const ro = rogueChoices(t, c); if(ro.length) out.push({ group:"Rogue", items:ro }); }     // Cunning Action, Steady Aim, Fast Hands
       /* a carried thing with On a hit (Glaive Bite) is its own choice, made after the hit: "bite:<k>" */
       const usable = usableOf(c); if(usable.length) out.push({ group:"Items", items:usable.map(x=>x.u.onHit
         ? { v:`bite:${x.k}`, label:`${usableLabel(x)} · ${x.u.onHitBa ? "Bonus Action, " : ""}after a hit` }
@@ -16731,7 +16816,9 @@ function attackAddons(t){
   const once = text => /once (a|per) turn|1\/turn/i.test(text||"");
   if(t.kind==="pc"){
     const c = pcState(t.p);
-    (c.attacks||[]).forEach((a,j)=>{ if(isAddonRow(a)) out.push({ key:`pca:${j}`, name:a.name.replace(/\s*\(.*\)\s*$/,""), dice:a.dmg||"", dtype:String(a.dtype||"").toLowerCase(), once:once(a.name)||/sneak attack/i.test(a.name) }); });
+    (c.attacks||[]).forEach((a,j)=>{ if(isAddonRow(a)) out.push({ key:`pca:${j}`, name:a.name.replace(/\s*\(.*\)\s*$/,""), dice:a.dmg||"", dtype:String(a.dtype||"").toLowerCase(), once:once(a.name)||/sneak attack/i.test(a.name), sneak:/sneak attack/i.test(a.name) }); });
+    /* a Rogue's Sneak Attack from their level (no typed line needed), less the dice Cunning Strike trades */
+    if(roHas(c, "Sneak Attack", 1) && !(c.attacks || []).some(a => isAddonRow(a) && /sneak attack/i.test(a.name || ""))){ const n = Math.max(0, sneakDice(c) - csCost(c)); out.push({ key:"sneak", name:"Sneak Attack", dice:n ? `${n}d6` : "", dtype:"", once:true, sneak:true, note:`Once a turn, a Finesse or ranged weapon hit with Advantage, or an ally beside the target: ${sneakDice(c)}d6` }); }
     for(const s of (c.spells||[]).map(spellOf).filter(Boolean).filter(s => !(/^hunter's mark$/i.test(s.name || "") && aoeFight() && hmarkOf(aoeFight(), t.id)))){     // (Hunter's Mark marked: its own chip below)
       const m = /until the spell ends[^.]*\bextra (\d+d\d+) ([A-Z][a-z]+) damage/i.exec(s.desc||"");
       if(m) out.push({ key:`spell:${s.id}`, name:s.name, dice:m[1], dtype:m[2].toLowerCase(), note:"while the spell lasts" });
@@ -17030,6 +17117,7 @@ function actInfo(c, t){
   if(w.startsWith("use:")){ const k = +w.slice(4), o = t.p ? pcState(t.p) : null, x = o && usableOf(o).find(y=>y.k===k);     /* a carried thing with a use */
     return { kind:"item", name:x ? x.it.name : "an item", useK:k, ba:!!(x && /bonus/i.test(x.u.use||"")), healDice:x ? (x.u.reduce ? reduceDice(x.u, o, false) : abilDice(x.u.heal || x.u.tempHp, o)) : "", temp:!!(x && !x.u.heal && !x.u.reduce && x.u.tempHp), reduce:x && x.u.reduce ? x.u : null, hint:x && x.u.dmg ? { dice:x.u.dmg, dtype:x.u.dtype } : null, cond:x ? x.u.cond : "", save:false }; }
   if(w.startsWith("mk:")) return monkInfo(c, t, w.slice(3));     // a Monk's (2026-11-12)
+  if(w.startsWith("ro:")){ const k = w.slice(3), N = { dash:"Cunning Action: Dash", dis:"Cunning Action: Disengage", hide:"Cunning Action: Hide", aim:"Steady Aim", fast:"Fast Hands" }; return { kind:"ability", name:N[k] || "Cunning Action", ba:true, self:true, rogue:k, healDice:"" }; }     // a Rogue's
   if(w==="rg:move") return { kind:"ability", name:"Hunter's Mark (moved)", ba:true, origin:"hmove", healDice:"" };     // Hunter's Mark moved to a new creature
   if(w.startsWith("atk:")) return { kind:"attack", name:w.slice(4) };
   if(w==="other") return { kind:"other", name:a.otherText||"something" };
@@ -17230,7 +17318,8 @@ function logFightCheck(c, actor){
   const R = typed >= 1 && typed <= 20 ? { d:typed, w:` (rolled at the table${dis ? ", with Disadvantage: Poisoned" : ""})` }
     : dis && !playerRollsT(actor) ? (r => ({ d:Math.min(...r), w:` (Disadvantage, Poisoned: ${r[0]} and ${r[1]})` }))([1 + Math.floor(Math.random() * 20), 1 + Math.floor(Math.random() * 20)])
     : (Q => dis ? { ...Q, w:`${Q.w || ""} (Disadvantage: Poisoned)` } : Q)(pcD20(actor, `a ${chkLabel(k)} check (DC ${dc})`, dis ? "dis" : ""));
-  const tot = R.d + b, ok = tot >= dc;
+  const rd = reliableD(pcState(p), k, R.d), tot = rd + b, ok = tot >= dc;     // a Rogue's Reliable Talent
+  if(rd!==R.d) R.w = `${R.w || ""} (Reliable Talent: counts as 10)`;
   if(R.d===1 && (typed===1 || (dis && !playerRollsT(actor)))){ const S = statsOf(p); S.ones = (+S.ones || 0) + 1; }     // a natural 1 that didn't come through pcDie
   const actedBefore = JSON.stringify(c.acted || {}), snap = snapOf(c, [actor.id]);
   const a = (c.acted = c.acted || {})[actor.id] = c.acted[actor.id] || { n:0, more:0 }; a.n++;
@@ -17348,6 +17437,7 @@ function logAction(n, c){
   if(info.origin && info.res && actor.p){ const r = pcState(actor.p).res.find(q => (q.id || q.name)===info.res); if(r && (+r.used || 0) >= (+r.max || 0) && !confirm(`${actor.label} has no ${r.name} left (${r.rest==="short" ? "back on a Short or Long Rest" : r.rest==="one" ? "one back on a Short Rest, all on a Long Rest" : "back on a Long Rest"}). Log it anyway?`)) return; }
   if(info.focus && actor.p && focusLeft(pcState(actor.p)) < info.focus && !confirm(`${actor.label} has ${focusLeft(pcState(actor.p))} Focus Point${focusLeft(pcState(actor.p))===1 ? "" : "s"} left, and ${info.name} takes ${info.focus} (all back on a Short or Long Rest). Log it anyway?`)) return;     // a Monk's
   if(info.monk==="wb" && actor.p && (r => r && r.used >= r.max)(wholeRes(pcState(actor.p))) && !confirm(`${actor.label} has no Wholeness of Body left (back on a Long Rest). Log it anyway?`)) return;
+  if(info.rogue==="aim" && movedOf(c, actor.id).ft > 0 && !confirm(`Steady Aim needs ${actor.label} not to have moved this turn, and they have. Log it anyway?`)) return;
   if(info.monk==="sd" && c.turn===actor.id && ((c.log || []).some(e => e.by===actor.id && e.at===turnStamp(c))) && !confirm(`Superior Defense is used at the start of ${actor.label}'s turn, and they've done something this turn already. Log it anyway?`)) return;
   if(info.kind==="spell" && ragingT(actor) && !confirm(`${actor.label} is raging, and can't cast spells while the Rage lasts. Log it anyway?`)) return;
   /* an enemy's Counterspell (item 5): failed, the spell fails; the action is spent, the slot isn't */
@@ -17369,8 +17459,8 @@ function logAction(n, c){
     else if(info.res){ const r = p.res.find(r=>(r.id||r.name)===info.res); if(r) r.used = Math.min(r.max, r.used + (info.loh ? heal + (act.lohPoison ? 5 : 0) + 5 * (act.lohCure || []).length : 1));     // a pool (Lay on Hands) spends what it gives
       if(r && info.loh) slotTxt = ` (${r.max - r.used} left in the pool)`; }
     if(info.kind==="item"){ const x = usableOf(p).find(y=>y.k===info.useK);                 /* using a carried thing spends a charge (or the thing) */
-      if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } spendItem(p, x.k);
-        slotTxt = x.u.charges ? ` (${p.inv.includes(x.e) ? `${x.e.ch}/${x.u.charges} charges left` : "used up"})` : (p.inv.includes(x.e) ? "" : " (the last one)");
+      if(x){ if(x.u.charges && chargesLeft(x.e, x.u) < x.u.perUse){ flash(`${x.it.name} has no charges left.`); return; } const umd = x.u.charges && thiefOf(p) && roHas(p, "Use Magic Device", 13) ? 1 + Math.floor(Math.random() * 6) : 0; if(umd!==6) spendItem(p, x.k);     // a Thief's Use Magic Device: a 6 spends no charge
+        slotTxt = x.u.charges ? ` (${umd===6 ? "Use Magic Device: a 6, no charge spent; " : umd ? `Use Magic Device d6 ${umd}; ` : ""}${p.inv.includes(x.e) ? `${x.e.ch}/${x.u.charges} charges left` : "used up"})` : (p.inv.includes(x.e) ? "" : " (the last one)");
         if(info.bite && info.bite.onHitBa) slotTxt += " as a Bonus Action"; } }
     if(info.kind==="spell"){ S.spells[info.name] = (S.spells[info.name]||0)+1;
       /* a spell's attack roll is an attack too (Joseph, 2026-11-08: "Best aim" left out Ander's Fire Bolt and Xuna's Guiding Bolt) */
@@ -17411,8 +17501,9 @@ function logAction(n, c){
   const hmBefore = JSON.stringify(c.hmark || {});     // (Hunter's Mark: who it marks, for undo)
   if(info.origin && actor.kind==="pc") turned.push(...originDo(c, actor, info));     // Adrenaline Rush, Large Form, Cloud's Jaunt
   if(info.spell && /^hunter's mark$/i.test(info.spell.name || "") && targets[0] && !part) (c.hmark = c.hmark || {})[actor.id] = targets[0].id;     // anyone's Hunter's Mark marks its target
-  const mkBefore = info.monk ? { f:JSON.stringify(c.flurry || null), d:JSON.stringify(c.dodging || {}), dis:JSON.stringify(c.disengaged || {}) } : null, helpedBefore = JSON.stringify(c.helped || {});
-  if(info.monk && actor.kind==="pc") turned.push(...monkDo(c, actor, info));     // a Monk's Flurry of Blows, Patient Defense, Step of the Wind…
+  const mkBefore = info.monk || info.rogue ? { st:JSON.stringify(c.stealth || {}), aim:JSON.stringify(c.aim || null), f:JSON.stringify(c.flurry || null), d:JSON.stringify(c.dodging || {}), dis:JSON.stringify(c.disengaged || {}) } : null, helpedBefore = JSON.stringify(c.helped || {});
+  if(info.monk && actor.kind==="pc") turned.push(...monkDo(c, actor, info));
+  if(info.rogue && actor.kind==="pc") turned.push(...rogueDo(c, actor, info));     // a Rogue's Cunning Action, Steady Aim, Fast Hands     // a Monk's Flurry of Blows, Patient Defense, Step of the Wind…
   { const G0 = actor.kind==="foe" && !info.spell ? gripFromText(info.text) : null; if(G0 && (act.cond==="Grappled" || G0.also.includes(act.cond))) act.cond = ""; }     // a grapple puts on what comes with it itself (not on someone too big)     // how long what it puts on lasts (effectAdd), and grapples, for undo
   for(const t of targets){
     let dropped = false, got = 0, hl = 0, off = false;
@@ -17432,6 +17523,7 @@ function logAction(n, c){
       if(n){ hl = healAny(t, n); healed += hl; pPool -= hl; } turned.push(`${t.label}: +${hl} hit points (Preserve Life${now + hl >= Math.floor(max / 2) ? ", to half its maximum" : ""})`); }
     if(!dm && !off && act.outcome==="miss" && MQ==="Graze"){ const g = abilModFor(actor, info); if(g > 0){ dm = g; turned.push(`${t.label}: Graze, ${g} damage on the miss`); } }     // Weapon Mastery: Graze
     if(dm && !off && t.kind==="pc" && t.id!==actor.id && isAttackAct(info) && ["hit","crit"].includes(act.outcome)) dm = deflectAttacks(c, t, actor, dm, D.parts && D.parts.length > 1 ? D.parts[0].dtype : act.dtype, turned);     // a Monk's Deflect Attacks: their Reaction
+    if(dm && !off && t.kind==="pc" && t.id!==actor.id && isAttackAct(info) && ["hit","crit"].includes(act.outcome)) dm = uncannyDodge(c, t, actor, dm, turned);     // a Rogue's Uncanny Dodge: their Reaction
     if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = shDefense(c, t, dm, D.parts && D.parts.length > 1 ? D.parts[0].dtype : act.dtype, turned);     // a Hunter's Superior Hunter's Defense: their Reaction
     if(dm && !off && t.kind==="pc" && t.id!==actor.id) dm = stoneEndurance(c, t, dm, turned);     // a Goliath's Stone's Endurance: their Reaction, the damage cut
     if(dm && !off){ got = dm; const ds = []; dropped = t.kind==="foe" ? damageFoe(t.x, dm) : damagePc(t.p, dm, act.outcome==="crit", ds); ds.forEach(w => turned.push(`${t.label}: ${w}`)); dealt += dm; if(t.kind==="pc") statsOf(t.p).taken += dm;
@@ -17439,6 +17531,8 @@ function logAction(n, c){
     if(got && t.kind==="pc" && t.id!==actor.id) stormThunder(c, t, actor, turned);     // a Goliath's Storm's Thunder: their Reaction, 1d8 Thunder back
     if(got && ["hit","crit"].includes(act.outcome) && isAttackAct(info)){ const GA = D.on.find(a => a.giant); if(GA) giantHit(c, actor, t, GA, turned); }     // Fire's Burn, Frost's Chill, Hill's Tumble
     if(["hit","crit"].includes(act.outcome) && !off && actor.kind==="pc" && actor.p && isAttackAct(info) && !info.spell) monkHit(c, actor, t, D, info, turned);
+    if(["hit","crit"].includes(act.outcome) && !off && actor.kind==="pc" && actor.p && isAttackAct(info)) rogueHit(c, actor, t, D, info, turned);     // Cunning Strike
+    if(got > 0) for(const e of (c.effects || []).filter(e => e.who===t.id && e.ko && e.at!==turnStamp(c))) turned.push(effectEnd(c, e, "it took damage").replace(/[.]$/, ""));     // Knock Out ends on damage
     if(["hit","crit"].includes(act.outcome) && !off && actor.kind==="pc" && actor.p && isAttackAct(info)) rangerHit(c, actor, t, D, info, got, turned);     // Colossus Slayer, Superior Hunter's Prey
     if(["hit","crit"].includes(act.outcome) && !off && isAttackAct(info) && t.kind==="pc" && t.p && hunterOf(pcState(t.p)) && pcState(t.p).tactics==="multi" && rgHas(pcState(t.p), "Defensive Tactics", 7)) (c.mdef = c.mdef || {})[t.id] = { by:actor.id, at:turnStamp(c) };     // Multiattack Defense     // Stunning Strike, Quivering Palm, Open Hand Technique
     if(["hit","crit"].includes(act.outcome) && !off && act.brutal && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 9 && isAttackAct(info)) brutalHit(c, actor, t, turned);     // Brutal Strike's effect
@@ -17565,6 +17659,7 @@ function logAction(n, c){
   if(isAttackAct(info) && c.turn===actor.id){ (c.attacked = c.attacked || {})[actor.id] = turnStamp(c); if(act.reck && actor.kind==="pc" && actor.p && barbLevel(actor.p) >= 2) actor.p.reck = { at:turnStamp(c) };
     if(act.brutal){ c.onceUsed = c.onceUsed || {}; (c.onceUsed[actor.id] = c.onceUsed[actor.id] || {}).brutal = turnStamp(c); } }     // Brutal Strike: once on their turn
   if(act.sunderId && isAttackAct(info)) c.effects = (c.effects || []).filter(e => e.id!==act.sunderId);     // a Sundering Blow's +5, used
+  if(isAttackAct(info) && c.aim && c.aim.id===actor.id) delete c.aim;     // Steady Aim: the next attack roll this turn
   { const FA = fighterAfter(c, actor, info, targets, isBonus); if(FA.length){ const e = c.log[c.log.length - 1]; if(e) e.text = e.text.replace(/\.$/, `; ${FA.join("; ")}.`); } }     // Tactical Shift, Remarkable Athlete, Studied Attacks
   if(blessedTo && cp && clHas(cp, "Blessed Healer", 6) && !targets.some(o => o.id===actor.id)){ const n = lifeSlotBonus(actor, info), got = healAny(actor, n);     // Blessed Healer
     if(got) { const e = c.log[c.log.length - 1]; if(e) e.text = e.text.replace(/\.$/, `; ${actor.label} regains ${got} (Blessed Healer).`); } }
@@ -17691,6 +17786,7 @@ function undoAction(c){
   restoreSnap(c, e.snap); if(e.fled!=null) c.fled = JSON.parse(e.fled); if(e.reacted!=null) c.reacted = JSON.parse(e.reacted); if(e.bonused!=null) c.bonused = JSON.parse(e.bonused); if(e.acted!=null) c.acted = JSON.parse(e.acted); if(e.moved!=null) c.moved = JSON.parse(e.moved); if(e.dis!=null) c.disengaged = JSON.parse(e.dis); if(e.tac!=null){ const T = JSON.parse(e.tac); c.dealt = T.d; c.hurt = T.h; c.hurtAt = T.a; } if(e.once!=null) c.onceUsed = JSON.parse(e.once);
   if(e.big){ const T = combatants(c).find(x => x.id===e.big.id); if(T && T.p){ if(e.big.v) T.p.big = true; else delete T.p.big; } }     // Large Form taken back
   if(e.jaunt) delete c.jaunt;
+  if(e.mk && e.mk.st!=null){ c.stealth = JSON.parse(e.mk.st); c.aim = JSON.parse(e.mk.aim); if(!c.aim) delete c.aim; }     // a Rogue's Hide or Steady Aim taken back
   if(e.mk){ c.flurry = JSON.parse(e.mk.f); if(!c.flurry) delete c.flurry; c.dodging = JSON.parse(e.mk.d); c.disengaged = JSON.parse(e.mk.dis); }     // a Monk's Flurry, Dodge, Disengage taken back
   if(e.helpedB!=null) c.helped = JSON.parse(e.helpedB);
   if(e.hmB!=null) c.hmark = JSON.parse(e.hmB);     // Hunter's Mark's target taken back     // Stunning Strike's Advantage taken back
@@ -18289,7 +18385,8 @@ function renderBattlePanelNow(){
   { const lh = $("#ac-laheal"); if(lh) lh.onchange = ()=>{ act.laHeal = lh.value; }; }
   { const cf = $("#ac-cdfx"); if(cf) cf.onchange = ()=>{ act.cdFx = cf.value; const w = $("#ac-what"); if(w) w.dispatchEvent(new Event("change", { bubbles:true })); else redraw(); }; }     // Channel Divinity's effect: set up as if just chosen
   { const oh = $("#ac-ohfx"); if(oh) oh.onchange = ()=>{ act.ohFx = oh.value; }; }     // Open Hand Technique's pick
-  { const sm = $("#ac-smite"); if(sm) sm.onchange = ()=>{ act.smiteLvl = sm.value; redraw(); }; }     // Divine Smite's slot: its dice follow
+  { const sm = $("#ac-smite"); if(sm) sm.onchange = ()=>{ act.smiteLvl = sm.value; redraw(); }; }
+  el.querySelectorAll("[data-cs]").forEach(s => s.onchange = ()=>{ const L = (act.cs || []).slice(); L[+s.dataset.cs] = s.value; act.cs = L.filter(Boolean); redraw(); });     // Cunning Strike's picks: the Sneak Attack dice follow     // Divine Smite's slot: its dice follow
   { const tm = $("#ac-tmaster"); if(tm) tm.onchange = ()=>{ act.tmaster = tm.value; const t = all.find(x=>x.id===act.actor), info = t && actInfo(c, t); act.addons = (act.addons || []).filter(k => k!=="mastery"); if(t && info && tmasterOf(t, info) && !["Nick", "Cleave"].includes(tmasterOf(t, info))) act.addons.push("mastery"); redraw(); }; }     // Tactical Master
   { const rk = $("#ac-reck"); if(rk) rk.onchange = ()=>{ act.reck = rk.checked; if(!act.reck) act.brutal = false; redraw(); }; }     // Reckless Attack
   { const bs = $("#ac-brutal"); if(bs) bs.onchange = ()=>{ act.brutal = bs.checked; if(act.brutal && !act.brutalFx) act.brutalFx = ["forceful", ""]; redraw(); }; }     // Brutal Strike
@@ -18407,7 +18504,7 @@ function renderBattlePanelNow(){
       const arch = t.kind==="pc" && t.p && !t.p.cbId && styleOf(t.p, "archery") && !info.spell && /Ammunition|Dart/.test(`${WEAPON_PROPS[weaponKind(info.name)] || ""} ${weaponKind(info.name)}`) ? 2 : 0;     // Archery (a sheet made here; the Character Book's numbers have it already)
       const swB = sacredHit(t, info);     // a Devotion paladin's Sacred Weapon
       const cm = critMin(t, info), extra = (Math.round(+act.hitMod) || 0) + (SU ? 5 : 0) + arch + swB, tot0 = d + bonus + extra + fN + F.n, out0 = d >= cm ? "crit" : d===1 ? "miss" : tot0 >= ac ? "hit" : "miss";     // meets it, beats it; a Champion crits on 19 (18)
-      const RS = out0==="miss" && d!==1 ? d20Rescue(c, t, tot0, ac, `attack roll on ${tg.label}`, "attack") : { tot:tot0, w:"" }, tot = RS.tot, out = out0==="miss" && d!==1 && tot >= ac ? "hit" : out0;     // Peerless Skill, a Bardic Inspiration die
+      const RS = out0==="miss" && d!==1 ? d20Rescue(c, t, tot0, ac, `attack roll on ${tg.label}`, "attack", null, d) : { tot:tot0, w:"" }, tot = RS.tot, out = out0==="miss" && d!==1 && tot >= ac ? "hit" : out0;     // Peerless Skill, a Bardic Inspiration die
       const CW = out==="hit" && d < cm ? cuttingWords(c, t, tot, ac, `attack roll on ${tg.label}`) : null;     // a Lore bard's Cutting Words
       const rx = out==="hit" && !(CW && CW.miss) ? autoDefend(c, t, tg, tot, ac, info) : null, sure = !rx && out==="hit" && !(CW && CW.miss) && CA && CA.crit, res = rx || (CW && CW.miss) ? "miss" : sure ? "crit" : out;     // its Parry or Shield, if the autopilot runs it; Paralyzed or Unconscious within 5 ft: a crit
       act.outcome = res; act.toHit = { v:res, tg:tg.id, said:`To hit: ${how} ${bonus < 0 ? "−" : "+"} ${Math.abs(bonus)}${extra ? ` ${extra < 0 ? "−" : "+"} ${Math.abs(extra)} (${[(Math.round(+act.hitMod) || 0) ? "modifier" : "", SU ? "Sundering Blow" : "", arch ? "Archery" : "", swB ? "Sacred Weapon" : ""].filter(Boolean).join(" and ")})` : ""}${act.brutal ? " (Brutal Strike: no Advantage)" : ""}${fN ? ` ${fN < 0 ? "−" : "+"} ${Math.abs(fN)} (effects)` : ""}${F.said} = ${tot0}${RS.w}${CW ? CW.w : ""} vs AC ${ac} (${tg.label}${cv.word ? `, ${cv.word} +${cv.ac}` : ""}): ${d===20 ? "a natural 20, a crit" : d >= cm ? `${d===18 ? "an" : "a"} ${d}, a crit (${cm===18 ? "Superior" : "Improved"} Critical)` : d===1 ? "a natural 1, a miss" : rx ? "it would hit" : CW && CW.miss ? "a miss" : sure ? "a hit within 5 ft, a crit" : out}${rx ? ` — ${rx}` : ""}` };
