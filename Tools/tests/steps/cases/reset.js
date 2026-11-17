@@ -1,5 +1,5 @@
 // Reset the party (Joseph, 2026-11-04): in the Test Arena, one button puts everyone back as new between fights.
-const ARENA = "file:///C:/Users/josep/OneDrive/Documents/DnD/Ordinate%20Survey/Campaigns/Test%20Arena/Test%20Arena.json";
+const ARENA = "file:///C:/Users/josep/Documents/DnD/Ordinate%20Survey/Campaigns/Test%20Arena/Test%20Arena.json";
 const rsGet = url => { const x = new XMLHttpRequest(); x.open("GET", url, false); x.send(); return x.responseText; };
 const rsSay = () => partyRoster().map(p => { pcState(p); const used = p.slots.reduce((a, s) => a + ((s && s.used) || 0), 0);
   return `${p.name} ${p.hp}/${p.hpMax} temp ${p.temp} slots used ${used} conds [${p.conds.join(",")}] death ${p.death.s}/${p.death.f}${p.conc ? " conc " + p.conc.name : ""}`; }).join(" / ");
